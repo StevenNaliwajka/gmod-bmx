@@ -63,6 +63,20 @@ function ENT:Initialize()
     phys:EnableMotion(true)
     phys:Wake()
 
+    -- THIS IS WHAT MAKES PhysicsSimulate RUN. It is not enough to define the
+    -- method: ENT:PhysicsSimulate is the MOTION CONTROLLER callback, and
+    -- VPhysics only invokes it for physics objects that have been added to one.
+    --
+    -- Without these two lines the entity is completely well-formed, spawns
+    -- normally, has correct mass and a valid hull -- and simply never
+    -- simulates. No wheels, no balance, no error. It falls under stock gravity
+    -- and tips over, which looks exactly like "the balance controller is
+    -- broken" rather than "the balance controller has never once executed".
+    -- That cost a full headless test run to find; the harness reported nine
+    -- failures whose single common cause was this.
+    self:StartMotionController()
+    self:AddToMotionController(phys)
+
     ----------------------------------------------------------------------
     -- Simulation state
     ----------------------------------------------------------------------

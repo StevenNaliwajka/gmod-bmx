@@ -1,0 +1,14 @@
+{
+    "title":       "BMX",
+    "type":        "vehicle",
+    "tags":        ["fun", "realism"],
+    "ignore": [
+        ".git/*",
+        ".github/*",
+        "docs/*",
+        "tools/*",
+        "*.md",
+        "LICENSE",
+        ".gitignore"
+    ]
+}

@@ -1,0 +1,259 @@
+# Design
+
+Why this addon is built the way it is, and what is deliberately not built yet.
+
+---
+
+## 1. The decision that shapes everything: not a Source vehicle
+
+Garry's Mod gives you three ways to make something driveable, and two of them
+are dead ends for a bicycle.
+
+**`prop_vehicle_jeep` plus a vehicle script.** This is Source's own vehicle
+system: a four-wheel VPhysics controller configured by a `.txt` in
+`scripts/vehicles/`. The wheel count is structural, not a parameter. It has no
+representation of lean, and its controller actively resists torque applied from
+Lua because it is continuously correcting the chassis toward its own solution.
+Every motorbike in GMod built this way is a four-wheeler with two wheels made
+invisible, which is exactly why none of them feel like bikes.
+
+**Real two-wheel physics.** Two thin cylinders resting on a plane at Source's
+physics rate jitter, tunnel through displacement seams, and catch on brush
+edges. The contact patch is small, the mass above it is high, and VPhysics is
+not a solver you can tune your way out of that with.
+
+**A scripted entity with a Lua-driven simulation.** What this addon does. One
+box hull for world collision, two raycast wheels, and the whole vehicle model
+written out where it can be read and changed. It is more work up front and it is
+the only one of the three that can produce the target behaviour.
+
+## 2. Raycast wheels
+
+A wheel here is a downward trace from an axle mount, plus a force applied at the
+contact point. It has no collision hull at all, so it cannot tunnel or jitter,
+and its behaviour is a function you can read rather than a solver you can only
+observe. Same model as Bullet's `btRaycastVehicle` and Unity's `WheelCollider`.
+
+Per wheel, per substep:
+
+1. Trace down `restLength + radius` from the mount.
+2. Suspension: `N = k*compression + c*d(compression)/dt`, clamped to `N >= 0`
+   because a wheel can push and never pull. A separate, much stiffer bump-stop
+   term past `restLength` keeps a hard landing from putting the hull through the
+   floor, which VPhysics resolves by launching the bike.
+3. Tyre forces from **slip velocity**, not slip ratio.
+4. Clamp both into a friction circle of radius `grip * N`.
+5. Integrate the wheel's own `omega` against the drive torque, the brake, and
+   the reaction from the tyre force.
+
+### Why slip velocity and not slip ratio
+
+The classic tyre model uses slip *ratio*, which divides by ground speed. A BMX
+spends a great deal of its life at or near zero ground speed: track stands,
+rolling out of a stall, landing a stoppie. Slip ratio is singular there and
+every implementation papers over it with a low-speed special case that has its
+own tuning and its own failure modes.
+
+Slip velocity (`omega*radius - v_forward`) has no singularity, is stable from
+zero to top speed with no special-casing, and produces the same behaviour
+everywhere it matters. The stiffness constant changes units; nothing else does.
+
+### What comes free from the friction circle
+
+Because both tyre forces are clamped into one circle, several behaviours that
+would otherwise need explicit code fall out:
+
+- Grabbing the brake mid-corner washes out the front, because braking and
+  cornering spend the same budget.
+- Locking the rear (`omega` driven to zero by the brake) makes `slipLong`
+  become `-v_forward`, which saturates immediately: a skid.
+- Landing sideways saturates laterally and the bike slides out.
+
+Saturation per wheel is on the tuning overlay for exactly this reason. When the
+bike does something surprising, that number usually explains it.
+
+## 3. Steering is an output
+
+This is the part that makes it feel like GTA rather than like a prop with
+wheels.
+
+A real bicycle does not turn because the bars moved. It turns because it is
+leaning, and the bars moved to sustain the lean. Binding `A`/`D` to a steer
+angle inverts cause and effect, and no amount of tuning fixes a model that is
+backwards.
+
+So the chain is:
+
+```
+rider input  ->  target roll angle
+                 PD controller drives actual roll toward it
+                 steer angle DERIVED from the roll that resulted
+                 steered front tyre generates lateral force
+                 bike yaws, centripetal acceleration appears
+                 that acceleration is what holds the lean up
+```
+
+The derivation is the steady-state cornering relation plus the bicycle model:
+
+```
+tan(roll)  = v^2 / (g * R)          leaning balances centripetal acceleration
+R          = wheelbase / tan(steer) turn radius from steer angle
+=> tan(steer) = wheelbase * g * tan(roll) / v^2
+```
+
+As `v` falls this saturates to `maxSteer`, which is not a failure mode: slow
+riding genuinely does need large steering inputs. Below `walkSpeed` it blends
+into direct steering so a rider can paddle the bike around on the spot, where
+there is no lean-driven cornering to derive from.
+
+### The assist, and its ceiling
+
+The PD holding roll on target is an assist. It is capped at
+`Balance.maxAssistAccel` and its authority ramps in with speed, both
+deliberately:
+
+- **Below `fadeInLow` there is no assist at all**, so a stationary bike falls
+  over. A bike that balances itself at walking pace reads as a hovering prop.
+- **The cap is finite**, so a bad landing can beat it. With no cap, no landing
+  can ever go wrong because the controller simply undoes it, and the game has no
+  failure state.
+
+The cap is sized against the gravity torque it has to beat at full lean
+(`m * g * h * sin(maxLean)`), with about 1.4x margin. That derivation is written
+out in `sh_config.lua` next to the number, so a future tuner knows which end of
+the range they are working in.
+
+The centre of mass **height** is load-bearing here and is not a cosmetic
+detail: it sets that gravity torque, and it sets how readily rear drive force
+lifts the front. Dropping it toward the axle is the classic arcade cheat. It
+makes the bike almost untippable and it also kills wheelies stone dead.
+
+## 4. Air
+
+Air control is far more authoritative than anything on the ground. That is not a
+cheat: a rider really can whip an 11 kg bike around underneath 75 kg of
+themselves, and it is the entire reason the sport exists.
+
+The one honest cheat is `Air.autoLevel`: a weak pull back toward upright,
+applied to roll only and only while descending. Without it every jump ends in a
+crash for a casual player. It never touches pitch, because levelling pitch would
+fight every intentional flip. `bmx_autolevel 0` for the purist version.
+
+Air mode does not engage the instant both wheels lose contact. A bump in the
+road unloads both wheels for a substep or two, and switching control modes there
+makes the bike twitch on rough ground and scores phantom tricks for riding over
+a kerb. `Air.engageDelay` is that debounce.
+
+### Tricks
+
+Rotation is integrated about each **local** axis while airborne. The angle tells
+you where the bike is; only the integral tells you how it got there, which is
+the difference between a backflip and a bike that happens to be upside down.
+
+Landing is judged after scoring, so a trick that ends in a crash is still
+reported. It just does not pay.
+
+## 5. Networking
+
+Server-authoritative. GMod exposes no vehicle prediction API, so a custom
+vehicle cannot be predicted the way a player's movement is. simfphys and LVS
+have the same constraint. High-ping riders will feel it.
+
+The mitigations here are honest ones: client-side camera smoothing, and input
+read from the usercmd rather than from a second `net` channel. What is
+deliberately *not* attempted is local prediction, which in the absence of engine
+support means reconciling two divergent physics simulations and produces
+rubber-banding worse than the latency it hides.
+
+What actually crosses the wire:
+
+- **Usercmds** (free, already sent every tick, already ordered, already
+  rate-limited, and already carrying analog axes for gamepads). Read in
+  `StartCommand` server-side. A `net` message for lean would only add a second,
+  unordered, unvalidated channel saying the same thing.
+- **A handful of networked vars at 20 Hz**: speed, grounded, steer, stamina,
+  cadence, hop charge, score.
+- **Nothing for wheel position.** The client re-runs the same suspension trace
+  and places the wheel from the result. Two traces per bike per frame beats
+  networking two floats at physics rate, and the world geometry is identical on
+  both ends so the answer is exactly right.
+- **Steer is networked** and cannot be derived, because it is an *output* of the
+  balance controller rather than a function of the rider's key.
+- **The debug stream** only exists while a rider sets `bmx_debug 1`, only goes
+  to that rider, and is sent unreliable.
+
+## 6. Two implementation details worth knowing
+
+**`PhysicsSimulate`, not `Think`.** It is the only hook in GMod called once per
+VPhysics substep with that substep's `dt`. `Think` runs at frame rate with a
+`dt` that varies with how many props someone just spawned, and a PD controller
+tuned at 60 fps oscillates at 200. Forces are applied inside it via
+`ApplyForceOffset`, so `SIM_NOTHING` is the correct return: it means "not
+overriding your integration, only adding to it".
+
+**Torque via a force couple, not `ApplyTorqueCenter`.** That function takes an
+`Angle` whose component-to-axis mapping is documented inconsistently and has
+bitten enough addons to be worth avoiding. `BMX.ApplyTorque` instead applies two
+equal and opposite forces at a lever arm perpendicular to the chosen axis. The
+linear components cancel exactly, leaving `torque = 2*r*F` about that axis and
+nothing else. Slightly more expensive, completely unambiguous, and it can be
+checked on paper when the bike misbehaves.
+
+Similarly, angular velocity is estimated from successive orientations rather
+than read from `PhysObj:GetAngleVelocity`:
+
+```
+w ~= 1/2 * (f_prev x f_now + r_prev x r_now + u_prev x u_now) / dt
+```
+
+Exact in the limit, accurate to well under a degree at substep sizes, three
+cross products, and no ambiguity about what the components mean.
+
+## 7. Roadmap
+
+| Phase | Deliverable | Status |
+|---|---|---|
+| 0 | Entity, pod seat, chassis hull, debug overlay | done |
+| 1 | Raycast wheels, suspension, drive, brakes, skids | done |
+| 2 | Lean PD, derived steering, balance assist | done |
+| 3 | Wheelies, stoppies, bunny hop, air mode, tricks | done |
+| 4 | Crash and ejection, damage, sound | done, placeholder sounds |
+| 5 | Tuning pass on a live server, per-bike physics, real model | **next** |
+| 6 | Rider animation, CI packing, Workshop release | not started |
+
+Phases 0 to 4 are written and parse clean. **None of it has been ridden.** The
+numbers are derived-from-reality starting points and Phase 5 is where they meet
+a server.
+
+### Phase 5: per-bike physics, and why it is not half-built
+
+Bike entries in `sh_bikes.lua` describe appearance and mount points. They carry
+no physics overrides, because the simulation reads `BMX.Config` as a global.
+
+Making it per-bike is a real refactor with a real choice in it:
+
+- **Thread a `cfg` table through every function** in `sv_wheel`, `sv_balance`,
+  `sv_air` and `sv_physics`. Explicit, no global state, touches every signature.
+- **Swap `BMX.Config` to point at the active bike's table for the duration of
+  its substep.** Two lines, safe because `PhysicsStep` is never re-entrant, and
+  a form of global mutation that will surprise the next reader.
+
+The first is correct. It is not done yet, and a `physics = {}` field that
+silently does nothing would be worse than no field at all.
+
+## 8. Content and licensing
+
+The shipped model is a placeholder from base GMod, with procedurally drawn
+wheels. That is a deliberate choice, not a stopgap: it means the addon has zero
+content dependencies, can be cloned and ridden immediately, and the wheel
+drawing doubles as the most useful debugging aid the project has. If the bike is
+behaving oddly, you can see where the simulation thinks its wheels are.
+
+A real model needs: a frame, a fork that steers with the front wheel, two
+wheels, and cranks. `frameOffset` / `frameAngles` align it against the axle
+line, which is where the entity origin sits.
+
+**Ripped assets do not go in a public repository.** A GTA 5 BMX model, or
+anything extracted from another game, is the fastest way to have the repository
+taken down. Original or CC0 only, licensed separately from the code and stated
+explicitly.

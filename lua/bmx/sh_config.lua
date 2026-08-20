@@ -43,23 +43,35 @@ C.Chassis = {
     -- through one. Its floor is at z = +2, i.e. 12 units clear of the ground,
     -- because the raycast wheels hold the bike up and a hull that touches the
     -- ground fights them and makes the bike buzz.
-    hullMin = Vector(-16, -4,  2),
-    hullMax = Vector( 16,  4, 38),
+    -- THE HULL IS ALSO THE MASS CENTRE, and that is not a coincidence to be
+    -- tidied away later. **GMod has no PhysObj:SetMassCenter** -- GetMassCenter
+    -- exists, the setter does not (verified on a live server, 2026-08-20). So
+    -- the only way to place the centre of mass is to place the BOX: VPhysics
+    -- puts the COM at the geometric centre of the hull it was given.
+    --
+    -- These bounds are therefore chosen to put the COM at (-2, 0, 20):
+    --     x: (-18 + 14) / 2 = -2      slightly rearward, for the load split
+    --     y: (-4  +  4) / 2 =  0
+    --     z: (  2 + 38) / 2 = 20      a standing rider's mass above the axles
+    --
+    -- MOVING EITHER BOUND MOVES THE CENTRE OF MASS. The height is load-bearing:
+    -- it sets the gravity torque the balance controller has to fight when
+    -- leaning, and how readily rear drive force lifts the front, which is where
+    -- wheelies come from without being scripted. Dropping it toward the axle is
+    -- the classic arcade cheat; it makes the bike almost untippable and kills
+    -- wheelies stone dead.
+    --
+    -- The entity verifies the actual COM against massCenterExpected at spawn
+    -- and complains if they diverge, so this can never silently drift again.
+    hullMin = Vector(-18, -4,  2),
+    hullMax = Vector( 14,  4, 38),
+
+    massCenterExpected = Vector(-2, 0, 20),
 
     -- Low-friction so the frame slides off geometry it clips instead of
     -- catching an edge and cartwheeling. Crash feel comes from the crash
     -- handler, not from hull friction.
     surfaceProp = "gmod_ice",
-
-    -- Centre of mass, local space. This is a LOAD-BEARING number, not a detail:
-    --   * its HEIGHT sets the gravity torque the balance controller has to
-    --     fight when leaning, and how readily rear drive force lifts the front
-    --     (which is where wheelies come from without being scripted)
-    --   * its length-wise position sets the front/rear static load split
-    -- 20 units above the axle line is roughly a standing BMX rider's mass.
-    -- Dropping it toward the axle is the classic arcade cheat: it makes the
-    -- bike almost untippable, and it also kills wheelies stone dead.
-    massCenter = Vector(-2, 0, 20),
 
     -- Moments of inertia used by the balance/pitch controllers, kg*units^2.
     -- Deliberately NOT read from PhysObj:GetInertia(): VPhysics derives that

@@ -340,7 +340,18 @@ local function advance()
         local case = T.cases[name]
         MsgN("[BMX] running " .. name)
 
-        local ctx, err = setupCase(case)
+        -- pcall, because setupCase touches entity code that can THROW, and an
+        -- uncaught error here does not fail the case: it aborts advance()
+        -- before run.idx is incremented, so the Think hook re-enters the same
+        -- case forever. The run then looks "in progress" indefinitely with no
+        -- bike, no bot and no results, which is exactly how the first live run
+        -- of this suite behaved. A test harness that can hang on a bug in the
+        -- thing it is testing is not a harness.
+        local pok, ctx, err = pcall(setupCase, case)
+        if not pok then
+            ctx, err = nil, "setup threw: " .. tostring(ctx)
+        end
+
         if not ctx then
             run.results[#run.results + 1] =
                 { name = name, failed = true, error = err, checks = {} }
@@ -350,6 +361,12 @@ local function advance()
 
         run.ctx = ctx
         run.case = case
+        -- Progress on disk, updated per case. Console output on a dedicated
+        -- server is buffered and arrives in chunks minutes late, so a file is
+        -- the only way to watch a run from outside while it happens.
+        file.Write("bmx_test_progress.txt", string.format(
+            "case %d/%d: %s\nstarted %s\n",
+            run.idx, #run.queue, name, os.date("%H:%M:%S")))
         run.deadline = CurTime() + case.timeout
         run.co = coroutine.create(case.fn)
     end
@@ -360,7 +377,7 @@ local function advance()
         ctx:ok(false, "case exceeded its " .. run.case.timeout .. "s timeout")
         run.co = nil
     else
-        local ok, err = coroutine.resume(run.co, ctx)
+        local ok, err = coroutine.resume(run.co, ctx)   -- resume never throws
         if not ok then
             ctx.failed = true
             ctx.error = tostring(err)
@@ -413,6 +430,17 @@ concommand.Add("bmx_test", function(ply, _, args)
 
     local ok, err = T.Run(args[1])
     if not ok then MsgN("[BMX] " .. err) end
+end)
+
+-- Clearing a wedged run without bouncing the server. Needed the first time this
+-- suite met a real bug, and cheap enough to keep.
+concommand.Add("bmx_test_abort", function(ply)
+    if IsValid(ply) and not ply:IsSuperAdmin() then return end
+    if not run then MsgN("[BMX] no run in progress") return end
+    teardown(run.ctx)
+    run = nil
+    hook.Remove("Think", "BMX.TestRunner")
+    MsgN("[BMX] run aborted")
 end)
 
 concommand.Add("bmx_test_list", function()

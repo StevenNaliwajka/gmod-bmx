@@ -36,8 +36,23 @@ function ENT:Initialize()
     end
 
     phys:SetMass(C.Chassis.mass)
-    phys:SetMassCenter(C.Chassis.massCenter)
     phys:SetMaterial(C.Chassis.surfaceProp)
+
+    -- NOT phys:SetMassCenter(). That function does not exist in GMod: there is
+    -- a GetMassCenter and no setter. Calling it threw inside Initialize, which
+    -- aborted the rest of this function silently -- the entity came out with
+    -- working physics and NO SEAT, and the only visible symptom was a bike
+    -- nobody could sit on. The centre of mass is placed by the HULL GEOMETRY
+    -- instead (see sh_config.lua), so all this can do is check the result.
+    local com = phys:GetMassCenter()
+    local want = C.Chassis.massCenterExpected
+    if want and com:Distance(want) > 1.5 then
+        ErrorNoHalt(string.format(
+            "[BMX] mass centre is %s but the hull was meant to put it at %s. " ..
+            "Someone changed hullMin/hullMax without updating " ..
+            "massCenterExpected; balance and wheelies are now tuned against " ..
+            "the wrong number.\n", tostring(com), tostring(want)))
+    end
 
     -- All damping is ours. VPhysics' built-in drag is tuned for tumbling debris
     -- and fights the tyre model; its angular damping fights the balance
@@ -70,6 +85,7 @@ function ENT:Initialize()
 
     self:CreateSeat()
     self:RebuildTraceFilter()
+    self:AssertBuilt()
 end
 
 --------------------------------------------------------------------------
@@ -88,6 +104,9 @@ function ENT:CreateSeat()
     if not IsValid(pod) then return end
 
     pod:SetModel(bike.seatModel or "models/nova/airboat_seat.mdl")
+    -- A prisoner pod without a vehiclescript is not reliably a working vehicle.
+    -- It is the keyvalue that gives it its seat definition and exit points.
+    pod:SetKeyValue("vehiclescript", "scripts/vehicles/prisoner_pod.txt")
     pod:SetKeyValue("limitview", "0")     -- free look; the chase cam needs it
     pod:SetPos(self:LocalToWorld(C.Chassis.seatOffset))
     pod:SetAngles(self:LocalToWorldAngles(C.Chassis.seatAngles))
@@ -110,6 +129,26 @@ function ENT:CreateSeat()
     pod.BMXBike = self
     self:SetPod(pod)
     self:DeleteOnRemove(pod)
+end
+
+-- Fail LOUDLY rather than half-built. A bike whose Initialize died partway
+-- through still spawns, still has physics, and still looks completely normal
+-- until someone presses E on it and nothing happens. That cost an afternoon
+-- once; it should never cost one again.
+function ENT:AssertBuilt()
+    local why
+    if not IsValid(self:GetPod())              then why = "no seat (CreateSeat failed)"
+    elseif not self.wheels or #self.wheels ~= 2 then why = "wheels missing"
+    elseif not self.st                          then why = "no controller state"
+    elseif not self.input                       then why = "no input table"
+    elseif not IsValid(self:GetPhysicsObject()) then why = "no physics object"
+    end
+    if why then
+        ErrorNoHalt("[BMX] bike " .. self:EntIndex() ..
+            " is half-built: " .. why .. ". Something threw inside Initialize.\n")
+        return false
+    end
+    return true
 end
 
 -- Everything the wheel traces must ignore. Rebuilt whenever the driver changes,

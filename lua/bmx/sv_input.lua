@@ -68,6 +68,14 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     local inp = bike.input
     if not inp then return end
 
+    -- TEST SEAM. A scripted rider (sv_test.lua's headless harness) writes
+    -- bike.input directly, so bail out rather than letting an empty bot usercmd
+    -- zero it again every single tick. This is the one line of production code
+    -- the harness needs, and it is here rather than in the harness because hook
+    -- ordering in GLua is not guaranteed: racing this function is not something
+    -- a test should have to win.
+    if ply.BMXScripted then return end
+
     local buttons = cmd:GetButtons()
     local function down(bit_) return bit.band(buttons, bit_) ~= 0 end
 

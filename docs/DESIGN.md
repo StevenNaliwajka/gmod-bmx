@@ -218,12 +218,18 @@ cross products, and no ambiguity about what the components mean.
 | 2 | Lean PD, derived steering, balance assist | done |
 | 3 | Wheelies, stoppies, bunny hop, air mode, tricks | done |
 | 4 | Crash and ejection, damage, sound | done, placeholder sounds |
-| 5 | Tuning pass on a live server, per-bike physics, real model | **next** |
-| 6 | Rider animation, CI packing, Workshop release | not started |
+| 5 | Headless regression harness (bot rider, no client) | done |
+| 6 | Tuning pass on a live server, per-bike physics, real model | **next** |
+| 7 | Rider animation, CI packing, Workshop release | not started |
 
-Phases 0 to 4 are written and parse clean. **None of it has been ridden.** The
-numbers are derived-from-reality starting points and Phase 5 is where they meet
-a server.
+Phases 0 to 5 are written and parse clean. **None of it has been ridden by a
+human.** The numbers are derived-from-reality starting points, and Phase 6 is
+where they meet a person.
+
+The harness in phase 5 is what makes that split workable: correctness runs
+headless and continuously on a server with no graphics hardware, so the only
+thing a human client is needed for is feel. See `lua/bmx/sv_test.lua` for what
+it can and cannot see.
 
 ### Phase 5: per-bike physics, and why it is not half-built
 

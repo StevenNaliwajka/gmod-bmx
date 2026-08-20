@@ -80,6 +80,35 @@ stream, the self-test and live convar tuning all work. What singleplayer cannot
 show you is latency. See [docs/TESTING.md](docs/TESTING.md) for the order to
 check things in, and [docs/TUNING.md](docs/TUNING.md) for what to change.
 
+## Headless testing
+
+```
+bmx_test          run the regression suite
+bmx_test_list     list the cases
+```
+
+A dedicated server runs the whole simulation whether or not anyone is watching,
+so the suite makes a bot, seats it on a bike, drives it, and asserts on the
+result. **No client, no GPU, no human**, which means correctness regressions can
+be caught on a headless box continuously.
+
+It covers the force-units assumption, ride height and suspension load, the fact
+that a riderless bike is *supposed* to fall over, acceleration and the cadence
+ceiling, rear-brake lockup and friction-circle saturation, lean-derives-steering
+in **both** directions, whether the balance PD actually holds its target, bunny
+hops, wheelies, air mode, and crash ejection. Every case ends with a NaN check,
+because one NaN inside a `PhysObj` is unrecoverable and its symptoms look
+nothing like its cause.
+
+It cannot cover the client half: the camera, the HUD and the wheel drawing never
+execute on a dedicated server. Nor can it tell you the bike is fun. Those need a
+person on a real client, which is exactly the split that makes the rest of it
+worth automating.
+
+Results print to console and land in `data/bmx_test_results.txt`. With
+`bmx_test_quit 1` the server exits when the run finishes, so CI can wait on the
+process and read the file.
+
 ## How it works
 
 The short version, with the long version in [docs/DESIGN.md](docs/DESIGN.md):

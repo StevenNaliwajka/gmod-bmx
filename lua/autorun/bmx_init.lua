@@ -32,6 +32,12 @@ local SERVER_FILES = {
     "bmx/sv_physics.lua",
     "bmx/sv_seat.lua",
     "bmx/sv_debug.lua",
+
+    -- The headless harness loads last: its cases reference BMX.Config, the
+    -- wheel/balance state and the entity, so everything it asserts on must
+    -- already exist. It does nothing until bmx_test is run.
+    "bmx/sv_test.lua",
+    "bmx/sv_test_cases.lua",
 }
 
 local CLIENT_FILES = {

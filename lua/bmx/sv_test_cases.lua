@@ -1,0 +1,335 @@
+--[[--------------------------------------------------------------------------
+    bmx/sv_test_cases.lua
+
+    The cases. Each one is a coroutine that gets a context and asserts on the
+    simulation's own state.
+
+    A NOTE ON THE BANDS. Every expectation here is a RANGE, not a value, and the
+    ranges are wide. That is deliberate. These are regression tests, not a
+    specification: their job is to catch "the drivetrain gearing changed by 3x"
+    or "leaning right now steers left", not to freeze numbers that
+    docs/TUNING.md explicitly expects a human to change. A band tight enough to
+    fail on an honest tuning pass is a band that will be deleted rather than
+    fixed.
+
+    Where a case asserts a SIGN or a DIRECTION rather than a magnitude, that
+    assertion IS the specification and should be tightened, not loosened.
+----------------------------------------------------------------------------]]
+
+local T = BMX.Test
+
+--------------------------------------------------------------------------
+T.Case("forces", { rider = false, timeout = 15,
+    desc = "ApplyForceCenter takes an impulse, which every force here assumes" },
+function(ctx)
+    -- The single assumption the whole simulation rests on. If this fails, every
+    -- other number in the suite is wrong by a factor of the tick interval and
+    -- nothing else will say so.
+    local test = ents.Create("prop_physics")
+    test:SetModel("models/hunter/blocks/cube025x025x025.mdl")
+    test:SetPos(ctx.ground + Vector(0, 0, 300))
+    test:Spawn()
+
+    local phys = test:GetPhysicsObject()
+    if not ctx:ok(IsValid(phys), "test prop has a physics object") then return end
+
+    local mass, want = 100, 100
+    phys:SetMass(mass)
+    phys:EnableGravity(false)
+    phys:EnableDrag(false)
+    phys:SetDamping(0, 0)
+    phys:SetVelocity(vector_origin)
+    phys:Wake()
+    phys:ApplyForceCenter(Vector(0, 0, 1) * mass * want)
+
+    ctx:wait(0.25)
+
+    local dv = IsValid(phys) and phys:GetVelocity().z or 0
+    ctx:log(string.format("tick %.4fs, gravity %.0f u/s^2",
+        engine.TickInterval(), physenv.GetGravity():Length()))
+    ctx:between(dv, want * 0.85, want * 1.15, "dv from a mass*100 impulse", "u/s")
+
+    if math.abs(dv - want * engine.TickInterval()) < want * 0.05 then
+        ctx:log("^ that is FORCE semantics, not impulse. Every ApplyForce* call")
+        ctx:log("  in sv_wheel.lua and sv_physics.lua is multiplied by dt and")
+        ctx:log("  must NOT be. Fix that before trusting anything below.")
+    end
+
+    SafeRemoveEntity(test)
+end)
+
+--------------------------------------------------------------------------
+T.Case("rest", { timeout = 15,
+    desc = "settles on both wheels at the designed ride height" },
+function(ctx)
+    -- Measured EARLY on purpose. With no speed there is no balance authority by
+    -- design, so a stationary bike is in unstable equilibrium and will tip given
+    -- long enough. This case is about the suspension, not the balance.
+    ctx:wait(0.75)
+
+    local f, r = ctx:wheels()
+    ctx:ok(f.onGround, "front wheel found ground")
+    ctx:ok(r.onGround, "rear wheel found ground")
+
+    local WC = BMX.Config.Wheel
+    ctx:between(f.compression, 0.15, WC.restLength, "front compression", "u")
+    ctx:between(r.compression, 0.15, WC.restLength, "rear compression", "u")
+
+    -- Both wheels carrying load, and between them roughly the whole bike.
+    local total = f.load + r.load
+    local weight = BMX.Config.Chassis.mass * physenv.GetGravity():Length()
+    ctx:between(total / weight, 0.75, 1.35, "supported weight / actual weight")
+
+    -- Ride height: the origin sits on the axle line, so it should be one wheel
+    -- radius above the ground minus whatever the tyre squashed.
+    local h = ctx.bike:GetPos().z - ctx.ground.z
+    ctx:between(h, WC.radius - WC.restLength - 1, WC.radius + 1, "ride height", "u")
+
+    ctx:between(math.deg(math.abs(ctx:st().roll)), 0, 12, "roll after 0.75s", "deg")
+end)
+
+--------------------------------------------------------------------------
+T.Case("riderless_falls", { rider = false, timeout = 20,
+    desc = "an unattended bike tips over, which is the DESIGN not a bug" },
+function(ctx)
+    -- This asserts intended behaviour, so that someone "fixing" a bike that
+    -- will not stand up on its own trips a test instead of shipping a hovering
+    -- prop. See sh_config.lua, Balance.fadeInLow.
+    ctx:wait(1)
+
+    -- Nudge it, because a perfectly upright bike sits in unstable equilibrium
+    -- and could balance there indefinitely in a noiseless simulation. A real
+    -- one gets bumped; so does this one.
+    local phys = ctx.bike:GetPhysicsObject()
+    if IsValid(phys) then
+        phys:ApplyForceOffset(ctx.bike:GetRight() * (phys:GetMass() * 12),
+            ctx.bike:LocalToWorld(Vector(0, 0, 30)))
+    end
+
+    local fell = ctx:waitUntil(function()
+        return math.abs(ctx:st().roll) > math.rad(45)
+    end, 12, "the bike to tip past 45 degrees")
+
+    ctx:ok(fell, "a riderless bike falls over (no balance authority at rest)")
+    ctx:log(string.format("final roll %.0f deg", math.deg(ctx:st().roll)))
+end)
+
+--------------------------------------------------------------------------
+T.Case("accelerate", { timeout = 25,
+    desc = "pedalling reaches a plausible speed, capped by cadence not drag" },
+function(ctx)
+    ctx:input({ throttle = 1 })
+    ctx:wait(9)
+
+    local st = ctx:st()
+    -- ~350 u/s is the design target: 120 rpm crank * 2.78 gear * 10u radius.
+    -- The band is deliberately generous; it catches a gearing or torque error
+    -- of the kind that changes the answer by a factor, not by 10%.
+    ctx:between(st.speed, 210, 460, "top speed", "u/s")
+    ctx:log(string.format("that is %.1f km/h", BMX.ToKMH(st.speed)))
+
+    -- Cadence, not drag, is what caps speed. If this is well short of the
+    -- ceiling then something else is limiting and the model has changed shape.
+    ctx:between(st.cadence / BMX.Config.Drive.maxCadence, 0.75, 1.05,
+        "cadence / maxCadence")
+
+    local _, r = ctx:wheels()
+    ctx:ok(r.onGround, "rear wheel still driving on the ground")
+end)
+
+--------------------------------------------------------------------------
+T.Case("brake_locks", { timeout = 30,
+    desc = "the rear brake locks the wheel and the bike stops" },
+function(ctx)
+    if not ctx:accelerateTo(230, 14) then return end
+
+    local _, rear = ctx:wheels()
+    ctx:input({ brakeRear = 1 })
+
+    -- Catch it mid-stop: a locked wheel means omega at zero while the bike is
+    -- still moving, which is what makes the tyre saturate and skid. Sampling
+    -- after it stops would prove nothing.
+    local locked, sat = false, 0
+    local deadline = CurTime() + 3
+    while CurTime() < deadline and ctx:st().speed > 60 do
+        if math.abs(rear.omega) < 1.5 then locked = true end
+        sat = math.max(sat, rear.saturation)
+        coroutine.yield()
+    end
+
+    ctx:ok(locked, "rear wheel locked (omega ~ 0 while still moving)")
+    ctx:between(sat, 0.85, 1.0, "peak rear friction-circle saturation")
+
+    local stopped = ctx:waitUntil(function() return ctx:st().speed < 25 end,
+        8, "the bike to stop")
+    ctx:ok(stopped, "braking brings it to a stop")
+end)
+
+--------------------------------------------------------------------------
+T.Case("lean_steers", { timeout = 35,
+    desc = "leaning turns, and leaning the OTHER way turns the other way" },
+function(ctx)
+    -- The core claim of the whole design: steering is an output of lean. A
+    -- single-direction test would pass with the sign inverted, so this measures
+    -- both and asserts they are opposites.
+    local function sweep(lean)
+        if not ctx:accelerateTo(230, 14) then return nil end
+        local yaw0 = ctx.bike:GetAngles().y
+        ctx:input({ throttle = 0.6, lean = lean })
+        ctx:wait(2.5)
+        local st = ctx:st()
+        local d = math.AngleDifference(ctx.bike:GetAngles().y, yaw0)
+        ctx:input({})
+        return { yaw = d, roll = st.roll, steer = st.steer }
+    end
+
+    local right = sweep(1)
+    if not right then return end
+    ctx:log(string.format("lean right: roll %+.0f deg, steer %+.1f deg, yaw %+.0f deg",
+        math.deg(right.roll), math.deg(right.steer), right.yaw))
+
+    -- roll > 0 is leaning right; in Source, turning right DECREASES yaw.
+    ctx:ok(right.roll > math.rad(8), "leaning right produces a positive roll")
+    ctx:ok(right.steer > 0, "positive roll derives a positive (right) steer angle")
+    ctx:ok(right.yaw < -12, "and the bike actually turns right")
+
+    ctx:waitUntil(function() return math.abs(ctx:st().roll) < math.rad(10) end, 4)
+
+    local left = sweep(-1)
+    if not left then return end
+    ctx:log(string.format("lean left:  roll %+.0f deg, steer %+.1f deg, yaw %+.0f deg",
+        math.deg(left.roll), math.deg(left.steer), left.yaw))
+
+    ctx:ok(left.roll < -math.rad(8), "leaning left produces a negative roll")
+    ctx:ok(left.yaw > 12, "and the bike turns left")
+
+    -- Symmetry. A big asymmetry means a sign or a bias has crept in somewhere.
+    local ratio = math.abs(left.yaw) / math.max(math.abs(right.yaw), 0.001)
+    ctx:between(ratio, 0.55, 1.8, "left/right turn symmetry")
+end)
+
+--------------------------------------------------------------------------
+T.Case("lean_tracks_target", { timeout = 30,
+    desc = "the balance PD actually holds the lean it was asked for" },
+function(ctx)
+    if not ctx:accelerateTo(280, 14) then return end
+
+    ctx:input({ throttle = 0.7, lean = 0.6 })
+    ctx:wait(2.5)
+
+    local st = ctx:st()
+    local target = 0.6 * BMX.Config.Balance.maxLean
+    ctx:log(string.format("authority %.2f at %.0f u/s", st.leanAuthority, st.speed))
+
+    ctx:between(st.leanAuthority, 0.6, 1.0, "assist authority at speed")
+    -- Tracking within 12 degrees. A persistent gap larger than that means the
+    -- assist ran out of authority, which is the exact failure the overlay's
+    -- "roll / target" line exists to show.
+    ctx:between(math.deg(math.abs(target - st.roll)), 0, 12,
+        "|target - actual| roll", "deg")
+end)
+
+--------------------------------------------------------------------------
+T.Case("bunny_hop", { timeout = 30,
+    desc = "a preloaded hop leaves the ground and gains height" },
+function(ctx)
+    if not ctx:accelerateTo(160, 12) then return end
+    ctx:input({ throttle = 0.5 })
+
+    local z0 = ctx.bike:GetPos().z
+    ctx:hop()
+
+    local airborne = ctx:waitUntil(function()
+        local f, r = ctx:wheels()
+        return not f.onGround and not r.onGround
+    end, 1.5, "both wheels to leave the ground")
+    ctx:ok(airborne, "the hop leaves the ground")
+
+    local peak = 0
+    local deadline = CurTime() + 1.6
+    while CurTime() < deadline do
+        peak = math.max(peak, ctx.bike:GetPos().z - z0)
+        coroutine.yield()
+    end
+
+    -- popSpeed 265 against 600 u/s^2 is ~56 units of rise. Wide band because
+    -- forwardBias and the ground normal both shave off some of it.
+    ctx:between(peak, 18, 100, "peak hop height", "u")
+end)
+
+--------------------------------------------------------------------------
+T.Case("wheelie", { timeout = 30,
+    desc = "weight back under power lifts the front wheel and holds it" },
+function(ctx)
+    if not ctx:accelerateTo(140, 12) then return end
+
+    ctx:input({ throttle = 1, pitch = 1 })
+
+    local lifted = ctx:waitUntil(function()
+        local f, r = ctx:wheels()
+        return (not f.onGround) and r.onGround
+    end, 4, "the front wheel to lift with the rear still down")
+    ctx:ok(lifted, "front wheel lifts under power")
+
+    if lifted then
+        ctx:wait(1.2)
+        local st = ctx:st()
+        local f, r = ctx:wheels()
+        ctx:log(string.format("pitch %.0f deg after 1.2s", math.deg(st.pitch)))
+        ctx:ok(r.onGround, "rear wheel still down (it is a wheelie, not a jump)")
+        -- The hold assist has a ceiling on purpose, so a wheelie can still be
+        -- blown. Past holdMax plus a margin it has looped out.
+        ctx:between(math.deg(st.pitch), 5, math.deg(BMX.Config.Pitch.holdMax) + 30,
+            "wheelie pitch", "deg")
+    end
+end)
+
+--------------------------------------------------------------------------
+T.Case("air_mode", { timeout = 30,
+    desc = "air mode engages off a jump and rotation accumulates" },
+function(ctx)
+    if not ctx:accelerateTo(200, 12) then return end
+    ctx:input({ throttle = 0.6 })
+    ctx:hop()
+
+    local engaged = ctx:waitUntil(function() return ctx:st().airMode end,
+        2, "air mode to engage")
+    ctx:ok(engaged, "air mode engages after the debounce")
+    if not engaged then return end
+
+    -- Nose up: pitch +1 is a backflip. A hop only buys a fraction of a second,
+    -- so this asserts that rotation ACCUMULATES, not that a flip completes.
+    ctx:input({ pitch = 1 })
+    local peak = 0
+    local deadline = CurTime() + 1.4
+    while CurTime() < deadline and ctx:st().airMode do
+        peak = math.max(peak, math.abs(ctx:st().spinPitch or 0))
+        coroutine.yield()
+    end
+
+    ctx:log(string.format("accumulated %.2f rad of pitch rotation", peak))
+    ctx:between(peak, 0.35, 12, "|spinPitch| while airborne", "rad")
+end)
+
+--------------------------------------------------------------------------
+T.Case("crash_ejects", { timeout = 25,
+    desc = "a hard impact throws the rider off" },
+function(ctx)
+    ctx:wait(BMX.Config.Crash.grace + 0.3)   -- the grace period is real; respect it
+
+    local phys = ctx.bike:GetPhysicsObject()
+    if not ctx:ok(IsValid(phys), "bike has a physics object") then return end
+
+    -- Drop it inverted from high enough that the hull arrives above
+    -- Crash.maxImpactSpeed. sqrt(2 * 600 * 500) is ~775 u/s, comfortably over.
+    ctx.bike:SetPos(ctx.ground + Vector(0, 0, 500))
+    ctx.bike:SetAngles(Angle(0, 0, 165))
+    phys:SetVelocity(Vector(0, 0, -150))
+    phys:Wake()
+
+    local ejected = ctx:waitUntil(function()
+        return not IsValid(ctx.bike:GetDriver())
+    end, 6, "the rider to be ejected")
+
+    ctx:ok(ejected, "a hard inverted impact ejects the rider")
+end)

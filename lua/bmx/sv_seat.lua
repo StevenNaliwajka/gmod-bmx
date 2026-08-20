@@ -76,6 +76,37 @@ hook.Add("PlayerDisconnected", "BMX.DismountOnDisconnect", function(ply)
 end)
 
 --------------------------------------------------------------------------
+-- THE RIDER MUST NOT COLLIDE WITH THE BIKE THEY ARE SITTING ON.
+--
+-- The chassis hull is deliberately tall enough to stand in for the rider's
+-- body, and the seat sits inside it. So the moment a player is placed in the
+-- pod, their own ~32x32x72 hull is interpenetrating the bike's, and the engine
+-- resolves that the way it resolves any deep overlap: by pushing the two apart
+-- as hard as it takes.
+--
+-- Measured before this existed: mounting a stationary, settled bike put it at
+-- 88 u/s and airborne within one frame, and 500 units below the map shortly
+-- after. Every downstream case failed for reasons that looked like physics
+-- tuning -- the bike could not accelerate, could not hold a lean, could not
+-- wheelie -- when in fact it was simply never on the ground after a rider got
+-- on it.
+--
+-- SetCustomCollisionCheck(true) on the bike is what makes this hook get asked.
+--------------------------------------------------------------------------
+hook.Add("ShouldCollide", "BMX.RiderPassthrough", function(a, b)
+    if not IsValid(a) or not IsValid(b) then return end
+
+    local bike, other
+    if a.IsBMX then bike, other = a, b
+    elseif b.IsBMX then bike, other = b, a
+    else return end
+
+    if other == bike:GetPod() or other == bike:GetDriver() then
+        return false
+    end
+end)
+
+--------------------------------------------------------------------------
 -- Physgun / toolgun etiquette
 --------------------------------------------------------------------------
 

@@ -27,6 +27,12 @@ function ENT:Initialize()
     self:PhysicsInitBox(C.Chassis.hullMin, C.Chassis.hullMax)
     self:SetCollisionBounds(C.Chassis.hullMin, C.Chassis.hullMax)
 
+    -- Opt into GM:ShouldCollide so the rider and the seat can be excluded from
+    -- this hull. See the hook in sv_seat.lua: without it, seating a player
+    -- inside the chassis is an interpenetration the engine resolves by firing
+    -- the bike across the map.
+    self:SetCustomCollisionCheck(true)
+
     local phys = self:GetPhysicsObject()
     if not IsValid(phys) then
         ErrorNoHalt("[BMX] physics init failed for " .. tostring(bike.model) ..

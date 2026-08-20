@@ -64,12 +64,27 @@ end
 -- World setup
 --------------------------------------------------------------------------
 
--- Find flat ground to test on, and REFUSE if there is none. Every number in
--- this suite assumes level ground; on a slope the results are not so much wrong
--- as meaningless, and a suite that quietly reports meaningless numbers is worse
--- than one that will not run.
+-- Find ground to test on.
 --
--- Returns a point ON the ground, or nil.
+-- ORIGINALLY this demanded near-perfect flatness (HitNormal.z >= 0.99, spread
+-- under 2 units) and REFUSED to run otherwise. On the first live run it
+-- rejected every candidate on **gm_flatgrass** -- the flattest map that ships
+-- with the game -- and failed all eleven cases with "no flat ground found".
+--
+-- The reason is that flatgrass's ground is a DISPLACEMENT, not a brush face.
+-- Displacements carry small per-vertex normal variation by construction, so
+-- 0.99 is a threshold almost no real map surface meets. The lesson generalises:
+-- a precondition strict enough to reject the best case you have is a bug in the
+-- precondition, not a property of the world.
+--
+-- So now: tolerate real ground, prefer the flattest candidate, and if nothing
+-- is properly flat still RETURN somewhere and say so, because a suite that
+-- refuses to run tells you nothing at all.
+--
+-- Returns: position, flatness note (nil when genuinely flat).
+local MAX_SLOPE_COS = 0.95   -- ~18 degrees; displacement noise is far below this
+local MAX_SPREAD    = 8      -- units of height variation across the sample
+
 local function findTestGround()
     local candidates = {}
     for _, c in ipairs({ "info_player_start", "info_player_deathmatch",
@@ -80,34 +95,43 @@ local function findTestGround()
     end
     candidates[#candidates + 1] = Vector(0, 0, 128)   -- last resort: world origin
 
-    -- Sample a 400-unit cross. An acceleration run covers ~1200 units, so this
-    -- is a "did we spawn on a hill" check, not a track survey: the cases that
-    -- travel far assert on speed and heading, neither of which a gentle slope
-    -- 800 units away invalidates.
+    -- A 400-unit cross. An acceleration run travels ~1200 units, so this is a
+    -- "did we spawn on a hill" check, not a track survey.
     local CROSS = { Vector(0, 0, 0), Vector(200, 0, 0), Vector(-200, 0, 0),
                     Vector(0, 200, 0), Vector(0, -200, 0) }
 
+    local best, bestSpread = nil, math.huge
+
     for _, base in ipairs(candidates) do
         for _, off in ipairs({ Vector(0, 0, 0), Vector(300, 0, 0), Vector(-300, 0, 0) }) do
-            local centre, hits, flat = base + off, {}, true
+            local centre, hits, ok = base + off, {}, true
 
             for _, corner in ipairs(CROSS) do
                 local p = centre + corner + Vector(0, 0, 96)
                 local tr = util.TraceLine({
                     start = p, endpos = p - Vector(0, 0, 700), mask = MASK_SOLID,
                 })
-                if not tr.Hit or tr.HitNormal.z < 0.99 then flat = false break end
+                if not tr.Hit or tr.HitNormal.z < MAX_SLOPE_COS then ok = false break end
                 hits[#hits + 1] = tr.HitPos
             end
 
-            if flat then
+            if ok and #hits == #CROSS then
                 local lo, hi = math.huge, -math.huge
                 for _, h in ipairs(hits) do lo = math.min(lo, h.z); hi = math.max(hi, h.z) end
-                if hi - lo < 2 then return hits[1] end   -- hits[1] is the centre
+                local spread = hi - lo
+                if spread < bestSpread then
+                    best, bestSpread = hits[1], spread   -- hits[1] is the centre
+                end
+                if spread <= MAX_SPREAD then return hits[1], nil end
             end
         end
     end
-    return nil
+
+    if best then
+        return best, string.format(
+            "ground is not level: %.1f units of variation across 400u", bestSpread)
+    end
+    return nil, "no ground found under any spawn point"
 end
 
 local function ensureBot()
@@ -225,9 +249,9 @@ local function teardown(ctx)
 end
 
 local function setupCase(case)
-    local ground = findTestGround()
+    local ground, groundNote = findTestGround()
     if not ground then
-        return nil, "no flat ground found near any spawn point on " .. game.GetMap()
+        return nil, (groundNote or "no ground") .. " on " .. game.GetMap()
     end
 
     local bike = ents.Create("bmx_base")
@@ -241,6 +265,11 @@ local function setupCase(case)
         bike = bike, checks = {}, lines = {}, failed = false,
         ground = ground,
     }, Ctx)
+
+    -- Not fatal, but every number below assumes level ground, so say it out
+    -- loud in the results rather than letting a slope masquerade as a tuning
+    -- problem.
+    if groundNote then ctx:log("WARNING: " .. groundNote) end
 
     if case.rider then
         local bot, err = ensureBot()
@@ -324,7 +353,16 @@ local function advance()
     if not run.co then
         local name = run.queue[run.idx]
         if not name then
-            local failed = report()
+            -- pcall: a throw in report() used to abort advance() BEFORE `run`
+            -- was cleared, leaving the runner permanently "in progress" with
+            -- the results it had just finished computing thrown away. The
+            -- reporting step must never be able to lose the run it is
+            -- reporting on.
+            local rok, failed = pcall(report)
+            if not rok then
+                ErrorNoHalt("[BMX] report() failed: " .. tostring(failed) .. "\n")
+                failed = -1
+            end
             run = nil
             if GetConVar("bmx_test_quit"):GetBool() then
                 timer.Simple(1, function()

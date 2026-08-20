@@ -271,7 +271,7 @@ function BMX.PhysicsStep(ent, phys, dt)
             -- Nose-up kick, so a hop naturally rolls into a manual. Written as
             -- a torque whose dt cancels, which makes it an impulse.
             BMX.ApplyTorque(phys, ent, ent:GetRight(),
-                BMX.TorqueFor(C.Chassis.inertiaPitch, H.pitchImpulse / dt), dt)
+                BMX.TorqueFor(BMX.IPitch(ent), H.pitchImpulse / dt), dt)
 
             ent.hopReady = CurTime() + H.cooldown
             ent:EmitSound("physics/body/body_medium_impact_soft" ..

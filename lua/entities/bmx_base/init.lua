@@ -77,6 +77,15 @@ function ENT:Initialize()
     self:StartMotionController()
     self:AddToMotionController(phys)
 
+    -- Use the REAL moments of inertia, not the estimates in config. The
+    -- controllers command an angular acceleration and convert with T = I*alpha,
+    -- so a wrong I scales every torque in the addon by the same factor.
+    local I, measured = BMX.CacheInertia(self, phys)
+    if not measured then
+        ErrorNoHalt("[BMX] GetInertia returned nothing usable; " ..
+            "falling back to the config estimates. Rotation will be off.\n")
+    end
+
     ----------------------------------------------------------------------
     -- Simulation state
     ----------------------------------------------------------------------

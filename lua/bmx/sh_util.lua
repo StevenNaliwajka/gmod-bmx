@@ -117,6 +117,41 @@ function BMX.TorqueFor(inertia, alpha)
     return inertia * alpha
 end
 
+-- VPhysics reports inertia in kg*METRES^2, while every force and length in this
+-- addon is in kg*UNITS^2. 1 m = 39.37 units, so the conversion is 39.37^2.
+--
+-- This matters more than a unit note usually does. The controllers command an
+-- angular ACCELERATION and convert it to torque with T = I*alpha, so if I is
+-- wrong by a factor then every torque in the addon is wrong by that factor and
+-- the bike rotates that much too fast. Measured on a live server before this
+-- existed: the invented constants were ~2x the real inertia, which is why the
+-- balance controller flipped the bike and a bunny hop accumulated 45 radians of
+-- rotation in the air.
+BMX.M2U2 = (1 / 0.0254) ^ 2      -- 1550.0
+
+-- Real principal moments for an entity, in kg*units^2, as (roll, pitch, yaw).
+-- Source's local axes are x = forward, y = left, z = up, so the components map
+-- straight onto roll / pitch / yaw in that order.
+--
+-- Cached on the entity at spawn: GetInertia does not change unless the physics
+-- object is rebuilt, and this is read several times per substep.
+function BMX.CacheInertia(ent, phys)
+    local i = phys:GetInertia()
+    if not i or not BMX.FiniteVec(i) or i:Length() <= 0 then
+        -- Fall back to the documented estimates rather than dividing by zero.
+        local C = BMX.Config.Chassis
+        ent.I = Vector(C.inertiaRoll, C.inertiaPitch, C.inertiaYaw)
+        return ent.I, false
+    end
+    ent.I = i * BMX.M2U2
+    return ent.I, true
+end
+
+-- Accessors, with a fallback so a controller can never index a nil.
+function BMX.IRoll(ent)  return (ent.I and ent.I.x) or BMX.Config.Chassis.inertiaRoll  end
+function BMX.IPitch(ent) return (ent.I and ent.I.y) or BMX.Config.Chassis.inertiaPitch end
+function BMX.IYaw(ent)   return (ent.I and ent.I.z) or BMX.Config.Chassis.inertiaYaw   end
+
 -- True if a number is finite. Every value that reaches a PhysObj goes through
 -- this: one NaN entering VPhysics corrupts the object permanently, and the
 -- symptom (a bike that vanishes, or an entire map's physics going still) looks

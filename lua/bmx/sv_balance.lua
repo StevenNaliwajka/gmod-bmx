@@ -82,7 +82,7 @@ function BMX.Balance(ent, phys, dt, inp, st, wheels, groundNormal, speed)
     alpha = BMX.Clamp(alpha, -B.maxAssistAccel, B.maxAssistAccel) * authority
 
     BMX.ApplyTorque(phys, ent, ent:GetForward(),
-        BMX.TorqueFor(C.Chassis.inertiaRoll, alpha), dt)
+        BMX.TorqueFor(BMX.IRoll(ent), alpha), dt)
 
     st.leanAuthority = authority
     st.leanError     = err
@@ -154,7 +154,7 @@ function BMX.PitchControl(ent, phys, dt, inp, st, wheels)
         local target = inp.pitch * P.holdMax
         if st.pitch < P.holdMax then
             local alpha = P.holdKp * (target - st.pitch) - P.holdKd * st.pitchRate
-            torque = torque + BMX.TorqueFor(C.Chassis.inertiaPitch, alpha)
+            torque = torque + BMX.TorqueFor(BMX.IPitch(ent), alpha)
         end
     elseif rearUp and not frontUp and inp.pitch < 0 then
         ------------------------------------------------------------------
@@ -164,12 +164,12 @@ function BMX.PitchControl(ent, phys, dt, inp, st, wheels)
         local target = inp.pitch * -P.stoppieMax
         if st.pitch > P.stoppieMax then
             local alpha = P.holdKp * (target - st.pitch) - P.holdKd * st.pitchRate
-            torque = torque + BMX.TorqueFor(C.Chassis.inertiaPitch, alpha)
+            torque = torque + BMX.TorqueFor(BMX.IPitch(ent), alpha)
         end
     elseif not frontUp and not rearUp then
         -- Both wheels down: damp pitch so the bike settles rather than
         -- porpoising on its own suspension.
-        torque = torque - BMX.TorqueFor(C.Chassis.inertiaPitch,
+        torque = torque - BMX.TorqueFor(BMX.IPitch(ent),
             P.groundDamping * st.pitchRate)
     end
 

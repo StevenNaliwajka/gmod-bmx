@@ -256,7 +256,11 @@ local function setupCase(case)
 
     local bike = ents.Create("bmx_base")
     if not IsValid(bike) then return nil, "could not create bmx_base" end
-    bike:SetPos(ground + Vector(0, 0, BMX.Config.Wheel.radius + 3))
+    -- Just above the resting ride height. Dropping a bike several units onto
+    -- its own suspension is a legitimate thing to test, but it is not what
+    -- most of these cases are about, and the transient it creates muddies
+    -- every measurement taken in the first second.
+    bike:SetPos(ground + Vector(0, 0, BMX.Config.Wheel.radius + 1))
     bike:SetAngles(Angle(0, 0, 0))
     bike:Spawn()
     bike:Activate()

@@ -76,9 +76,9 @@ function BMX.AirControl(ent, phys, dt, inp, st)
     ----------------------------------------------------------------------
     -- Apply
     ----------------------------------------------------------------------
-    BMX.ApplyTorque(phys, ent, right, BMX.TorqueFor(C.Chassis.inertiaPitch, aPitch), dt)
-    BMX.ApplyTorque(phys, ent, fwd,   BMX.TorqueFor(C.Chassis.inertiaRoll,  aRoll),  dt)
-    BMX.ApplyTorque(phys, ent, up,    BMX.TorqueFor(C.Chassis.inertiaYaw,   aYaw),   dt)
+    BMX.ApplyTorque(phys, ent, right, BMX.TorqueFor(BMX.IPitch(ent), aPitch), dt)
+    BMX.ApplyTorque(phys, ent, fwd,   BMX.TorqueFor(BMX.IRoll(ent),  aRoll),  dt)
+    BMX.ApplyTorque(phys, ent, up,    BMX.TorqueFor(BMX.IYaw(ent),   aYaw),   dt)
 
     ----------------------------------------------------------------------
     -- Trick bookkeeping. Integrating the angular velocity about each local

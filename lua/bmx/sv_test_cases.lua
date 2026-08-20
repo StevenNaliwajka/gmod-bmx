@@ -59,6 +59,65 @@ function(ctx)
 end)
 
 --------------------------------------------------------------------------
+T.Case("torque", { rider = false, timeout = 20,
+    desc = "commanding an angular acceleration actually produces it" },
+function(ctx)
+    -- The rotational twin of `forces`, and it exists because the original
+    -- version of this addon got it wrong. Every controller here commands an
+    -- angular ACCELERATION and converts with T = I*alpha, so if I is wrong then
+    -- every torque is wrong by the same factor and the bike rotates that much
+    -- too fast. The invented constants were ~2x the real inertia, which is what
+    -- made the balance controller flip the bike.
+    --
+    -- VPhysics reports inertia in kg*m^2 while this addon works in kg*units^2,
+    -- so the conversion is 39.37^2. This asserts the whole chain end to end
+    -- rather than the conversion in isolation.
+    local probe = ents.Create("bmx_base")
+    probe:SetPos(ctx.ground + Vector(0, 0, 260))
+    probe:SetAngles(Angle(0, 0, 0))
+    probe:Spawn()
+    probe:Activate()
+
+    -- Neuter the simulation on this one: PhysicsStep bails out without state,
+    -- so nothing but our own impulse acts on it.
+    probe.st = nil
+
+    local phys = probe:GetPhysicsObject()
+    if not ctx:ok(IsValid(phys), "probe has a physics object") then
+        SafeRemoveEntity(probe) return
+    end
+
+    phys:EnableGravity(false)
+    phys:SetDamping(0, 0)
+    phys:SetVelocity(vector_origin)
+    phys:Wake()
+
+    ctx:log(string.format("inertia (roll,pitch,yaw) = %.0f, %.0f, %.0f kg*u^2",
+        BMX.IRoll(probe), BMX.IPitch(probe), BMX.IYaw(probe)))
+
+    -- Command exactly 2 rad/s^2 about the roll axis for one substep-sized
+    -- impulse, so the expected result is a clean 2 * dt rad/s.
+    local ALPHA, DT = 2.0, 0.0152
+    local r0, t0 = probe:GetAngles().r, CurTime()
+    BMX.ApplyTorque(phys, probe, probe:GetForward(),
+        BMX.TorqueFor(BMX.IRoll(probe), ALPHA / DT), DT)
+
+    ctx:wait(1.5)
+
+    local elapsed = CurTime() - t0
+    local swept = math.rad(math.AngleDifference(probe:GetAngles().r, r0))
+    local omega = swept / elapsed
+
+    ctx:log(string.format("swept %.1f deg in %.2fs", math.deg(swept), elapsed))
+    -- Commanded alpha/DT for DT seconds is an angular impulse of I*ALPHA, so
+    -- the body should end up rotating at ALPHA rad/s.
+    ctx:between(math.abs(omega), ALPHA * 0.7, ALPHA * 1.4,
+        "resulting omega for a commanded 2.0", "rad/s")
+
+    SafeRemoveEntity(probe)
+end)
+
+--------------------------------------------------------------------------
 T.Case("rest", { timeout = 15,
     desc = "settles on both wheels at the designed ride height" },
 function(ctx)

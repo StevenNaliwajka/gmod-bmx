@@ -256,11 +256,19 @@ local function setupCase(case)
 
     local bike = ents.Create("bmx_base")
     if not IsValid(bike) then return nil, "could not create bmx_base" end
-    -- Just above the resting ride height. Dropping a bike several units onto
-    -- its own suspension is a legitimate thing to test, but it is not what
-    -- most of these cases are about, and the transient it creates muddies
-    -- every measurement taken in the first second.
-    bike:SetPos(ground + Vector(0, 0, BMX.Config.Wheel.radius + 1))
+    -- Spawn at the bike's ACTUAL resting height, computed rather than guessed:
+    -- the origin sits on the design axle line, so at rest it is one radius up
+    -- minus the static sag, and the sag is m*g/2 divided by the spring rate.
+    --
+    -- The previous version used radius + 1, which was 4 units above equilibrium
+    -- once the spring was retuned, and dropping the bike that far produced a
+    -- transient big enough to fail cases that were measuring something else
+    -- entirely. Deriving it means a future spring change cannot silently
+    -- reintroduce that.
+    local WC  = BMX.Config.Wheel
+    local sag = (BMX.Config.Chassis.mass * physenv.GetGravity():Length() * 0.5)
+        / WC.spring
+    bike:SetPos(ground + Vector(0, 0, WC.radius - sag + 1))
     bike:SetAngles(Angle(0, 0, 0))
     bike:Spawn()
     bike:Activate()

@@ -48,14 +48,24 @@ tuning them out of order means retuning everything twice.
 
 Symptom to fix: the bike buzzes, sinks, or bounces on flat ground.
 
-The defaults are sized so each wheel carries `m*g/2` at about 0.6 units of sag
-out of 2 units of travel. Check `compression` on the overlay while parked: it
-should sit near 0.6 on both wheels and be equal. If the bike visibly bottoms out
-on a small drop, the bump-stop is doing its job; if it *passes through* the
-floor, raise `bumpStop` in `sh_config.lua`.
+The defaults are sized so each wheel carries `m*g/2` at about 3 units of sag out
+of 6 units of travel. That travel is **rider compliance**, not a fork: legs and
+arms are the suspension on a BMX. Check `compression` on the overlay while
+parked. It should sit near 3 and be roughly equal front to rear; a large
+front/rear imbalance means the bike is sitting nose-high and will wheelie under
+power instead of accelerating.
+
+**The spring rate is bounded by the timestep, not just by taste.** The frequency
+the integrator sees is `sqrt(k/m_eff)`, and `m_eff` at the contact patch is
+about 20 kg rather than the 43 kg per-wheel share, because the patch sits ~21
+units from the centre of mass and pushing on it mostly pitches the bike. Keep
+`w*dt` under about 0.4 at your tickrate. At the old k of 43000 it was 0.71 and
+the suspension pumped energy in through the pitch coupling until the bike was
+thrown into the sky. If you raise the spring, check against the EFFECTIVE mass.
 
 Damper too low: bouncing. Too high: the bike feels welded to the ground and
-loses its wheels over crests.
+loses its wheels over crests. It cannot destabilise the simulation at any value
+(see the effective-mass clamp in `sv_wheel.lua`), so this is purely a feel knob.
 
 ### 2. Drive: `bmx_crank`
 

@@ -91,7 +91,7 @@ end)
 -- Dropping a bike out of the physgun should leave it awake, or it lands and
 -- goes to sleep before the first PhysicsSimulate and never wakes.
 hook.Add("PhysgunDrop", "BMX.WakeOnDrop", function(_, ent)
-    if ent.BMXBike ~= nil or (ent.st and ent.wheels) then
+    if IsValid(ent) and ent.IsBMX then
         local phys = ent:GetPhysicsObject()
         if IsValid(phys) then phys:Wake() end
     end

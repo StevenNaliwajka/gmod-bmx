@@ -13,13 +13,15 @@
     CONTROLS. Context-sensitive, the same way GTA's are: W/S and A/D mean
     different things on the ground and in the air, because a rider's hands do.
 
-        W / S            ground: pedal / rear brake     air: pitch (flips)
-        A / D            ground: lean (which steers)    air: roll
-        RMB (hold)       ground: wheelie modifier, W/S becomes pitch
-        LMB              front brake  (front-heavy braking = stoppies)
+        W / S            ground: pedal / rear brake
+                         air:    nose down / nose up (front flip / back flip)
+        A / D            ground: lean, which steers     air: roll
+        RMB (hold)       weight BACK: wheelie or manual, works under power
+        LMB              front brake, and the weight shift forward that comes
+                         with it, which is what makes a stoppie controllable
         SPACE            hold to preload, release to bunny hop
         SHIFT            sprint (drains stamina)
-        CTRL             tuck (less drag, tighter rotation in the air)
+        CTRL             tuck (less drag, faster rotation in the air)
 
     Nothing here is predicted. GMod has no vehicle prediction API, so the
     simulation is server-authoritative exactly like simfphys and LVS. High-ping
@@ -86,27 +88,51 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     inp.wheelieMod = down(IN_ATTACK2)
     inp.brakeFront = down(IN_ATTACK) and 1 or 0
 
-    local airborne = not bike:GetGrounded()
+    -- Follow the DEBOUNCED air mode, not raw ground contact. Two reasons: the
+    -- networked Grounded flag is a 20 Hz copy of something that changes at
+    -- physics rate, and raw contact flickers over every kerb. Reading st.airMode
+    -- server-side is both current and already debounced, so the controls do not
+    -- reinterpret themselves for one tick every time you ride over a bump.
+    local airborne = bike.st and bike.st.airMode or false
+
+    inp.leanTarget = side
 
     if airborne then
-        -- In the air the rider has no drivetrain to worry about, so both sticks
-        -- become rotation.
+        ------------------------------------------------------------------
+        -- In the air there is no drivetrain to worry about, so W/S become
+        -- rotation.
+        --
+        -- NOTE THE SIGN. pitchTarget > 0 is NOSE UP, and pushing forward on a
+        -- bike in the air puts the nose DOWN, so W has to negate. GTA maps it
+        -- the same way (stick forward = frontflip) and it is what a rider's
+        -- hands actually do. Getting this backwards costs nothing at load and
+        -- makes every flip feel wrong in a way that is hard to name.
+        ------------------------------------------------------------------
         inp.throttle    = 0
         inp.brakeRear   = 0
-        inp.pitchTarget = fwd
-        inp.leanTarget  = side
-    elseif inp.wheelieMod then
-        -- Ground, modifier held: weight shift instead of drive.
-        inp.throttle    = math.max(fwd, 0) * 0.55   -- keep a little drive so a
-                                                    -- wheelie can be held under power
-        inp.brakeRear   = 0
-        inp.pitchTarget = fwd
-        inp.leanTarget  = side
+        inp.pitchTarget = -fwd
     else
-        inp.throttle    = math.max(fwd, 0)
-        inp.brakeRear   = math.max(-fwd, 0)
-        inp.pitchTarget = 0
-        inp.leanTarget  = side
+        inp.throttle  = math.max(fwd, 0)
+        inp.brakeRear = math.max(-fwd, 0)
+
+        ------------------------------------------------------------------
+        -- Ground weight shift. Two rider actions, two keys, no new bindings:
+        --
+        --   RMB          weight BACK. Combined with W this is a wheelie under
+        --                power, which is how a wheelie actually works; with S
+        --                it is a manual rolling into a skid.
+        --   front brake  weight FORWARD, automatically. A rider grabbing the
+        --                front brake comes forward over the bars whether they
+        --                mean to or not, and modelling that is what makes a
+        --                stoppie controllable rather than an accident.
+        ------------------------------------------------------------------
+        if inp.wheelieMod then
+            inp.pitchTarget = 1
+        elseif inp.brakeFront > 0.5 then
+            inp.pitchTarget = -0.6
+        else
+            inp.pitchTarget = 0
+        end
     end
 
     -- Bunny hop: edge-triggered on release, so the press starts a preload and

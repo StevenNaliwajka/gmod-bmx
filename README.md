@@ -34,13 +34,22 @@ or find **BMX** in the spawn menu's Entities tab. Press `E` to get on.
 
 | Key | On the ground | In the air |
 |---|---|---|
-| `W` / `S` | pedal / rear brake | pitch (flips) |
+| `W` / `S` | pedal / rear brake | nose down / nose up (front flip / back flip) |
 | `A` / `D` | lean, which steers you | roll |
-| `RMB` hold | wheelie modifier: `W`/`S` becomes weight shift | yaw assist |
-| `LMB` | front brake (front-heavy braking gives stoppies) | front brake |
+| `RMB` hold | weight back: wheelie or manual, works under power | yaw assist (with `A`/`D`) |
+| `LMB` | front brake, plus the weight shift forward that comes with it | front brake |
 | `SPACE` | hold to preload, release to bunny hop | - |
 | `SHIFT` | sprint (drains stamina) | - |
 | `CTRL` | tuck: less drag | tuck: faster rotation |
+
+Two of those are worth calling out because they are the difference between
+tricks working and tricks being an accident:
+
+- **`RMB` is weight back, not a mode.** `RMB` + `W` is a wheelie under power,
+  which is how a wheelie actually works. You keep pedalling.
+- **The front brake shifts your weight forward on its own.** A rider grabbing
+  the front brake comes over the bars whether they meant to or not. Modelling
+  that is what makes a stoppie something you can hold.
 
 ## First run
 

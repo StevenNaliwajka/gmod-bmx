@@ -89,12 +89,18 @@ local function derive()
     end
 
     for _, id in ipairs(pending) do
-        local tbl = table.Copy(base.t)
-        tbl.Base      = "bmx_base"
-        tbl.BikeID    = id
-        tbl.PrintName = BMX.Bikes[id].printName
-        tbl.Spawnable = true
-        scripted_ents.Register(tbl, "bmx_" .. id)
+        -- A MINIMAL table, not a copy of the base. Setting Base is what makes
+        -- inheritance happen; copying the base's methods on top of that gives
+        -- every derived bike its own frozen snapshot of them, so a later fix to
+        -- bmx_base silently does not reach the derived classes.
+        scripted_ents.Register({
+            Type      = "anim",
+            Base      = "bmx_base",
+            BikeID    = id,
+            PrintName = BMX.Bikes[id].printName,
+            Category  = "BMX",
+            Spawnable = true,
+        }, "bmx_" .. id)
     end
 
     pending = {}

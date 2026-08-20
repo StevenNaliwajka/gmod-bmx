@@ -75,6 +75,11 @@ for the tuning overlay: roll versus target, assist authority, the derived steer
 angle, and per-wheel load, slip and friction-circle saturation. Tuning a
 controller whose state you cannot see is guesswork with extra steps.
 
+Singleplayer is enough for nearly all of this: you are the server, so the debug
+stream, the self-test and live convar tuning all work. What singleplayer cannot
+show you is latency. See [docs/TESTING.md](docs/TESTING.md) for the order to
+check things in, and [docs/TUNING.md](docs/TUNING.md) for what to change.
+
 ## How it works
 
 The short version, with the long version in [docs/DESIGN.md](docs/DESIGN.md):

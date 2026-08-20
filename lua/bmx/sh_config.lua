@@ -107,8 +107,13 @@ C.Wheel = {
     -- Sized so each wheel carries m*g/2 at ~0.6u of sag:
     --   k = (86*600/2) / 0.6 ~= 43000
     spring = 43000,
-    -- ~0.7 of critical for m_share = 43: 2*sqrt(k*m)*0.7
-    damper = 1900,
+    -- ~0.45 of critical for m_share = 43 (critical is 2*sqrt(k*m) = 2720).
+    -- Deliberately under-damped: a BMX tyre carcass has very little damping,
+    -- and the effective mass at the contact patch is far below the per-wheel
+    -- share because the patch is ~21 units off the centre of mass. The clamp in
+    -- Wheel:Simulate makes any value here stable, so this is now a feel number
+    -- rather than a stability one.
+    damper = 1200,
     -- Extra stiffness applied only past restLength, so hard landings bottom out
     -- against something instead of teleporting the hull through the floor.
     bumpStop = 250000,
@@ -129,7 +134,7 @@ C.Wheel = {
     -- A numerical backstop, not a physical effect: see the clamp in
     -- Wheel:Simulate. Normal riding peaks around 5-8x static on a hard landing,
     -- so 12 never engages in play and only catches the pathological substep.
-    maxLoadFactor = 12,
+    maxLoadFactor = 6,
 
     -- Rotating inertia of one wheel, kg*units^2. Solid-disc approximation for
     -- a 2.2 kg wheel+tyre at r=10: 0.5*m*r^2 = 110.

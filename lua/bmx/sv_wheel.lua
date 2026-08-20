@@ -160,7 +160,54 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
         springF = springF + WC.bumpStop * (comp - WC.restLength)
     end
 
-    local N = springF + WC.damper * compVel
+    ----------------------------------------------------------------------
+    -- THE DAMPER MUST NEVER REVERSE THE APPROACH IT IS DAMPING.
+    --
+    -- This is the single nastiest bug in the file's history, so it is worth
+    -- the space. An explicit damper computes F = c*v and applies it for a
+    -- whole timestep. If c*dt exceeds the effective mass at the contact
+    -- point, that impulse does not just remove the approach velocity, it
+    -- reverses it -- and adds energy every step. The result is a suspension
+    -- that pumps itself up until the bike is thrown into the sky.
+    --
+    -- The trap is that the naive stability check PASSES. Against the
+    -- per-wheel mass share (43 kg) c*dt/m is 0.67, comfortably stable. But
+    -- the contact patch sits ~21 units from the centre of mass, so pushing
+    -- on it mostly PITCHES the bike rather than lifting it, and the mass it
+    -- actually feels is I_pitch/r^2 ~ 26 kg. At that figure c*dt/m is 1.13
+    -- and the loop diverges: one contact spiked 3 rad/s of pitch in a single
+    -- substep, the rotation moved the contact point, that inflated compVel,
+    -- and the damper answered with 429,853 against a 25,800 static load.
+    --
+    -- So compute the real effective mass along the suspension axis -- the
+    -- standard constraint-space quantity, 1/m_eff = 1/M + (r x n).I^-1.(r x n)
+    -- -- and clamp the damper to the impulse that exactly nulls the approach.
+    -- That is unconditionally stable for any c, any dt and any geometry,
+    -- which is a much better property than a damper that happens to be tuned
+    -- low enough today.
+    ----------------------------------------------------------------------
+    local damperF = WC.damper * compVel
+
+    if compVel > 0 then
+        local com = phys:LocalToWorld(phys:GetMassCenter())
+        local rxn = (contact - com):Cross(normal)
+
+        -- Express r x n on the body's principal axes. Source's local frame is
+        -- x = forward, y = LEFT, z = up, so the y component is -Right.
+        local lx =  rxn:Dot(ent:GetForward())
+        local ly = -rxn:Dot(ent:GetRight())
+        local lz =  rxn:Dot(ent:GetUp())
+
+        local invI = lx * lx / BMX.IRoll(ent)
+                   + ly * ly / BMX.IPitch(ent)
+                   + lz * lz / BMX.IYaw(ent)
+
+        local mEff = 1 / (1 / C.Chassis.mass + invI)
+        local cap  = mEff * compVel / dt
+        if damperF > cap then damperF = cap end
+    end
+
+    local N = springF + damperF
     if N < 0 then N = 0 end        -- a wheel can push, never pull
 
     -- ANTI-EXPLOSION CLAMP. Not a physical effect: a numerical backstop.

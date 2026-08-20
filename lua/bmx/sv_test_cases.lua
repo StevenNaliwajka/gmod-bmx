@@ -139,10 +139,15 @@ function(ctx)
     local weight = BMX.Config.Chassis.mass * physenv.GetGravity():Length()
     ctx:between(total / weight, 0.75, 1.35, "supported weight / actual weight")
 
-    -- Ride height: the origin sits on the axle line, so it should be one wheel
-    -- radius above the ground minus whatever the tyre squashed.
+    -- Ride height: the origin sits on the design axle line, so at rest it sits
+    -- one wheel radius up MINUS the static sag. Derived from the config rather
+    -- than hardcoded, so retuning the spring does not "break" this test.
+    local sag = (BMX.Config.Chassis.mass * physenv.GetGravity():Length() * 0.5)
+        / WC.spring
     local h = ctx.bike:GetPos().z - ctx.ground.z
-    ctx:between(h, WC.radius - WC.restLength - 1, WC.radius + 1, "ride height", "u")
+    ctx:log(string.format("predicted sag %.2f u -> ride height %.2f u",
+        sag, WC.radius - sag))
+    ctx:between(h, WC.radius - sag - 2, WC.radius - sag + 2, "ride height", "u")
 
     ctx:between(math.deg(math.abs(ctx:st().roll)), 0, 12, "roll after 0.75s", "deg")
 end)

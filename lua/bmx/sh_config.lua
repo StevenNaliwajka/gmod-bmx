@@ -99,24 +99,45 @@ C.Wheel = {
     radius    = 10,
     wheelbase = 39,
 
-    -- Suspension travel. A BMX has NO suspension: this models tyre carcass
-    -- deflection only. It must be non-zero or the spring is infinitely stiff
-    -- and the integrator explodes, but keep it small.
-    restLength = 2.0,
+    -- Suspension travel. A BMX has no FORK, but it is not rigid: the tyre
+    -- carcass deflects and, far more importantly, THE RIDER IS THE SUSPENSION.
+    -- Legs and arms absorb impacts on a BMX, which is why riders stand up for
+    -- anything rough. 6 units is ~15 cm of rider compliance, which is realistic
+    -- and is what this spring actually represents.
+    --
+    -- The original 2.0 was "a BMX has no suspension, keep it tiny", and it was
+    -- wrong twice over: physically, because it ignored the rider, and
+    -- numerically, because 2 units of travel forces a 43,000 spring to carry
+    -- the bike, and a 43,000 spring is not integrable at 66 Hz. See below.
+    restLength = 6.0,
 
-    -- Sized so each wheel carries m*g/2 at ~0.6u of sag:
-    --   k = (86*600/2) / 0.6 ~= 43000
-    spring = 43000,
-    -- ~0.45 of critical for m_share = 43 (critical is 2*sqrt(k*m) = 2720).
-    -- Deliberately under-damped: a BMX tyre carcass has very little damping,
-    -- and the effective mass at the contact patch is far below the per-wheel
-    -- share because the patch is ~21 units off the centre of mass. The clamp in
-    -- Wheel:Simulate makes any value here stable, so this is now a feel number
-    -- rather than a stability one.
-    damper = 1200,
+    -- Sized so each wheel carries m*g/2 at ~3u of sag, i.e. half its travel:
+    --   k = (86*600/2) / 3 ~= 8600
+    --
+    -- THIS NUMBER IS BOUNDED BY THE TIMESTEP, not just by taste. The natural
+    -- frequency the integrator sees is sqrt(k/m_eff), and m_eff at the contact
+    -- patch is ~20 kg rather than the 43 kg per-wheel share, because the patch
+    -- sits ~21 units from the centre of mass and pushing on it mostly pitches
+    -- the bike (see the effective-mass note in sv_wheel.lua). At k = 43000 that
+    -- is w = 47 rad/s and w*dt = 0.71, which rings hard and pumps energy in
+    -- through the pitch coupling: measured 88,787 of load at 0.62 units of
+    -- compression, against a 25,800 static, and a bike thrown 63 units up by
+    -- being dropped 1.6. At k = 8600 it is w = 21 rad/s and w*dt = 0.32, which
+    -- is comfortable.
+    --
+    -- If you raise this, check w*dt against the EFFECTIVE mass, not the mass.
+    spring = 8600,
+    -- ~0.6 of critical against the EFFECTIVE mass at the contact patch:
+    -- critical is 2*sqrt(k*m_eff) = 2*sqrt(8600*19.8) = 825. The clamp in
+    -- Wheel:Simulate makes any value here stable, so this is a feel number
+    -- rather than a stability one, but sizing it against m_eff rather than the
+    -- per-wheel share is what makes it feel the way the number says it should.
+    damper = 500,
     -- Extra stiffness applied only past restLength, so hard landings bottom out
     -- against something instead of teleporting the hull through the floor.
-    bumpStop = 250000,
+    -- Kept to ~7x the main spring: stiff enough to be a real stop, soft enough
+    -- that arriving at it is not its own explosion.
+    bumpStop = 60000,
 
     -- Tyre model. Both stiffnesses are FORCE PER UNIT OF SLIP VELOCITY
     -- (kg/s), not the classic slip-RATIO stiffness. Slip ratio divides by

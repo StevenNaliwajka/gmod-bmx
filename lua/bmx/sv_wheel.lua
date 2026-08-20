@@ -30,9 +30,13 @@ local abs, min, max, sqrt = math.abs, math.min, math.max, math.sqrt
 -- Construction
 --------------------------------------------------------------------------
 
--- mountLocal: axle position in chassis space. The chassis origin sits ON the
--- axle line, so a wheel's mount is (+/- wheelbase/2, 0, 0) and its ray runs
--- from there straight down.
+-- mountLocal: the SUSPENSION MOUNT in chassis space -- the top of the strut,
+-- NOT the axle. The chassis origin sits on the design axle line, so the mount
+-- is (+/- wheelbase/2, 0, restLength): lifted by exactly the spring's travel.
+--
+-- Putting it on the axle line instead makes the spring read full compression at
+-- the nominal ride height with no travel left, which is a hundredfold force
+-- error and a bike that launches. See the comment in ENT:Initialize.
 function BMX.NewWheel(mountLocal, isFront)
     return setmetatable({
         mount     = mountLocal,
@@ -158,6 +162,17 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
 
     local N = springF + WC.damper * compVel
     if N < 0 then N = 0 end        -- a wheel can push, never pull
+
+    -- ANTI-EXPLOSION CLAMP. Not a physical effect: a numerical backstop.
+    -- One bad substep -- a spawn inside geometry, a teleport, a mount offset
+    -- that leaves the spring bottomed out -- can hand the bump-stop tens of
+    -- units of overshoot and produce a force two orders of magnitude past
+    -- anything real. VPhysics faithfully applies it and the bike leaves the
+    -- map. A ceiling costs nothing in normal riding (a hard landing peaks
+    -- around 5-8x static) and turns "launched into orbit" into "landed hard".
+    local maxN = WC.maxLoadFactor * BMX.Config.Chassis.mass
+        * physenv.GetGravity():Length()
+    if N > maxN then N = maxN end
 
     self.compression = comp
     self.load        = N

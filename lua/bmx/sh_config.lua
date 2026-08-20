@@ -125,6 +125,12 @@ C.Wheel = {
     -- radius grip*N, so this is the single number that decides when you slide.
     grip = 1.35,
 
+    -- Ceiling on suspension force, as a multiple of the WHOLE bike's weight.
+    -- A numerical backstop, not a physical effect: see the clamp in
+    -- Wheel:Simulate. Normal riding peaks around 5-8x static on a hard landing,
+    -- so 12 never engages in play and only catches the pathological substep.
+    maxLoadFactor = 12,
+
     -- Rotating inertia of one wheel, kg*units^2. Solid-disc approximation for
     -- a 2.2 kg wheel+tyre at r=10: 0.5*m*r^2 = 110.
     inertia = 110,

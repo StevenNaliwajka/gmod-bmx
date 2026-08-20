@@ -80,10 +80,23 @@ function ENT:Initialize()
     ----------------------------------------------------------------------
     -- Simulation state
     ----------------------------------------------------------------------
+    -- MOUNTS SIT restLength ABOVE THE AXLE LINE, and that offset is the whole
+    -- suspension. The ray is restLength + radius long and compression is
+    -- measured back from its far end, so a mount placed ON the axle line makes
+    -- the spring read FULL COMPRESSION at the nominal ride height, with no
+    -- travel left in it. Measured consequence of getting this wrong: the bike
+    -- sank to 9.12 units of compression against a 2-unit spring, the bump-stop
+    -- saw 7 units of overshoot, and the suspension applied 2,623,462 against a
+    -- design load of 25,800 -- roughly a hundredfold, which threw the bike
+    -- hundreds of units into the air.
+    --
+    -- With the offset, at rest: mount is 12 - sag above ground, the axle sits
+    -- exactly one radius up, and the origin settles at radius - sag.
     local half = C.Wheel.wheelbase * 0.5
+    local lift = C.Wheel.restLength
     self.wheels = {
-        BMX.NewWheel(Vector( half, 0, 0), true),   -- front
-        BMX.NewWheel(Vector(-half, 0, 0), false),  -- rear
+        BMX.NewWheel(Vector( half, 0, lift), true),   -- front
+        BMX.NewWheel(Vector(-half, 0, lift), false),  -- rear
     }
 
     self.st    = BMX.NewState()

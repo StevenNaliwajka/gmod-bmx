@@ -77,9 +77,32 @@ function BMX.Balance(ent, phys, dt, inp, st, wheels, groundNormal, speed)
     -- as a hovering prop.
     local authority = BMX.Ramp(speed, B.fadeInLow, B.fadeInHigh)
 
+    ----------------------------------------------------------------------
+    -- GRAVITY FEED-FORWARD.
+    --
+    -- A leaning bike is toppled by the ground reaction, which acts at the
+    -- contact patch and is displaced h*sin(roll) from under the centre of mass.
+    -- That torque is m*g*h*sin(roll) and it GROWS with lean, so it is largest
+    -- exactly where the rider is asking for the most commitment.
+    --
+    -- Making the PD supply it through error is the mistake this replaces. At 42
+    -- degrees the requirement is 74 rad/s^2, and a Kp of 26 only asks for that
+    -- at 163 degrees of error -- so the bike sagged out of every lean and then
+    -- fell over, at full assist authority, looking exactly like a tuning
+    -- problem. Cancelling it explicitly leaves the PD doing what a PD is good
+    -- at: killing the residual and the rate.
+    --
+    -- Scaled by authority along with everything else, so a stationary bike is
+    -- still un-helped and still falls over. That is the design, not an oversight.
+    ----------------------------------------------------------------------
+    local h      = C.Chassis.massCenterExpected.z
+    local topple = (C.Chassis.mass * gravity() * h * math.sin(roll)) / BMX.IRoll(ent)
+
     local err   = targetRoll - roll
-    local alpha = B.leanKp * err - B.leanKd * st.rollRate
+    local alpha = -topple + B.leanKp * err - B.leanKd * st.rollRate
     alpha = BMX.Clamp(alpha, -B.maxAssistAccel, B.maxAssistAccel) * authority
+
+    st.toppleAccel = topple
 
     BMX.ApplyTorque(phys, ent, ent:GetForward(),
         BMX.TorqueFor(BMX.IRoll(ent), alpha), dt)

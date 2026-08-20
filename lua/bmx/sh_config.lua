@@ -236,12 +236,21 @@ C.Balance = {
     -- Sized against the gravity torque the assist has to beat at full lean:
     --   T_gravity = m * g * h * sin(maxLean)
     --             = 86 * 600 * 20 * sin(42) = 690,000
-    --   alpha_min = T_gravity / inertiaRoll = 690000 / 22016 = 31 rad/s^2
-    -- 45 leaves ~1.4x margin, so a committed lean is HELD rather than sagging,
-    -- while still being finite enough that a bad landing can beat it. Set this
-    -- below ~31 and the bike can never hold full lean without cornering force,
-    -- which is physically honest and playtests as "it keeps falling over".
-    maxAssistAccel = 45,
+    --   alpha_min = T_gravity / I_roll = 690000 / 9299 = 74 rad/s^2
+    --
+    -- NOTE THE DENOMINATOR. This was originally derived against the invented
+    -- inertia of 22,016, which gave 31 and made 45 look like a 1.4x margin. The
+    -- REAL roll inertia is 9,299 (VPhysics, measured), so 45 was in fact well
+    -- BELOW the requirement: the balance controller could not hold the bike up
+    -- at any lean worth having, at full authority, and the bike fell over while
+    -- every diagnostic said the assist was working perfectly.
+    --
+    -- 110 leaves ~1.5x margin over the 74 needed. Most of that requirement is
+    -- now met by the gravity feed-forward in sv_balance.lua rather than by the
+    -- PD, so this is a ceiling on total authority rather than the working value.
+    -- It still needs to be finite: it is the only thing that lets a bad landing
+    -- beat the assist.
+    maxAssistAccel = 110,
 
     -- Assist authority against speed, u/s. Below fadeInLow the bike is on its
     -- own and will fall over (correct: a stationary bike does). Full authority

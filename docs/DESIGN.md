@@ -209,6 +209,53 @@ w ~= 1/2 * (f_prev x f_now + r_prev x r_now + u_prev x u_now) / dt
 Exact in the limit, accurate to well under a degree at substep sizes, three
 cross products, and no ambiguity about what the components mean.
 
+## 6b. Six GMod traps, all found by running it
+
+Every one of these produced correct-looking code, no error, and a symptom
+several steps from its cause. They are written down because none of them is
+guessable and all of them cost real time.
+
+**1. `PhysObj:SetMassCenter` does not exist.** `GetMassCenter` does; there is no
+setter. Calling it throws *inside* `Initialize`, which silently abandons the
+rest of the function. The entity comes out with correct physics and no seat, and
+looks completely normal until someone presses E. Place the centre of mass by
+choosing the hull: VPhysics puts it at the box's geometric centre.
+
+**2. `ENT:PhysicsSimulate` is the motion-controller callback.** Defining the
+method does nothing at all. Without `StartMotionController()` and
+`AddToMotionController(phys)` the entire simulation is dead code: the bike falls
+under stock gravity and tips over, which reads as "the balance controller is
+broken" rather than "the balance controller has never executed".
+
+**3. An empty dedicated server hibernates.** It stops running the game
+simulation, so `GM:Think` never fires and any headless harness gets zero ticks
+and hangs while the server reports itself perfectly healthy. `sv_hibernate_think 1`.
+
+**4. VPhysics reports inertia in kg·m², not kg·units².** Everything else in the
+engine's Lua surface is in inches. The controllers convert angular acceleration
+to torque with `T = I·alpha`, so a wrong `I` scales *every* torque by the same
+factor. Multiply `GetInertia()` by 39.37².
+
+**5. The rider collides with the bike they are sitting on.** The chassis hull
+stands in for the rider's body and the seat is inside it, so mounting
+interpenetrates two hulls and the engine pushes them apart as hard as it takes.
+Measured: a settled bike reached 88 u/s and went airborne in one frame.
+`SetCustomCollisionCheck(true)` plus a `ShouldCollide` hook.
+
+**6. GMod's RCON refuses two packet shapes.** The end-of-response sentinel every
+Source RCON tutorial recommends (an empty type-0 packet from the client) is
+treated as an HTTP probe, and so is any packet of exactly 26 wire bytes, which
+is a 12-character command. Both drop the connection and count toward a ban.
+Only relevant if you drive the server remotely, which a headless loop must.
+
+**The generalisable lesson** is in trap 5. Five separate cases were failing --
+acceleration, lean, test speed, wheelies, braking -- and each read like a tuning
+problem in a different subsystem. They had one cause. The measurement that found
+it ignored all five subsystems and printed the bike's speed on the first frame
+after mounting: 88 where it should have been 0. When several unrelated things
+fail at once, look for the shared precondition, not for a common factor in the
+symptoms.
+
 ## 7. Roadmap
 
 | Phase | Deliverable | Status |
@@ -219,12 +266,13 @@ cross products, and no ambiguity about what the components mean.
 | 3 | Wheelies, stoppies, bunny hop, air mode, tricks | done |
 | 4 | Crash and ejection, damage, sound | done, placeholder sounds |
 | 5 | Headless regression harness (bot rider, no client) | done |
-| 6 | Tuning pass on a live server, per-bike physics, real model | **next** |
-| 7 | Rider animation, CI packing, Workshop release | not started |
+| 6 | First live bring-up: six engine traps found and fixed | done |
+| 7 | Tuning pass with a human rider, per-bike physics, real model | **next** |
+| 8 | Rider animation, CI packing, Workshop release | not started |
 
-Phases 0 to 5 are written and parse clean. **None of it has been ridden by a
-human.** The numbers are derived-from-reality starting points, and Phase 6 is
-where they meet a person.
+Phases 0 to 6 are done and the simulation runs correctly on a real dedicated
+server. **It has still never been ridden by a human**, so nothing is known about
+how it feels; that is phase 7 and it is the only thing a harness cannot answer.
 
 The harness in phase 5 is what makes that split workable: correctness runs
 headless and continuously on a server with no graphics hardware, so the only

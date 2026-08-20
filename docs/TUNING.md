@@ -139,9 +139,31 @@ order of usefulness:
 
 `gm_flatgrass` covers 1 and 2 and ships with the game.
 
+## Known state, 2026-08-20
+
+The headless suite passes 7-8 of 12 on a real server. `forces` and `torque` both
+pass, which means the linear and rotational force paths are calibrated exactly:
+a commanded impulse and a commanded angular acceleration each produce what they
+say. Suspension, braking, hops, air rotation and crashes all behave.
+
+**The open problem is the static pitch balance, and everything else follows from
+it.** At rest the front wheel carries ~21% of the weight where the geometry says
+45% (front compression 0.91 against a rear 3.36). A lightly loaded front wheel
+resists far less pitch torque than it should, so full throttle produces a
+violent wheelie (measured 74 degrees of pitch) instead of acceleration, the rear
+tyre spends its time either unloaded or spinning up, and the bike never reaches
+the speed the lean cases need. Four of the five remaining failures are
+downstream of that one fact.
+
+Start there. Useful next measurements: the settled front/rear load split with a
+rider aboard, whether the bike sits nose-high at equilibrium, and whether
+`Pitch.torque` (1,050,000 against a real I_pitch of 11,837, so ~89 rad/s^2)
+should be roughly halved.
+
 ## Known-untuned
 
-Everything. v0.1.0 has not been ridden. The numbers in `sh_config.lua` are
+Everything below the level of "it behaves correctly". v0.1.0 has never been
+ridden by a human. The numbers in `sh_config.lua` are
 derived from real BMX figures and scaled for Source's gravity, with the
 derivation written next to each one so you know which are physics and which are
 taste. Expect to change most of the taste ones.

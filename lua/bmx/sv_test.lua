@@ -85,6 +85,30 @@ end
 local MAX_SLOPE_COS = 0.95   -- ~18 degrees; displacement noise is far below this
 local MAX_SPREAD    = 8      -- units of height variation across the sample
 
+-- How far a case may need to travel. Cases accelerate along +X, and a bike that
+-- reaches its design terminal speed of ~310 u/s covers ground fast: the
+-- brake case wants 230 u/s and then a stopping distance on top.
+--
+-- THIS IS MEASURED NOW BECAUSE IT USED TO BE FREE. The original note here said
+-- an acceleration run travels about 1,200 units, and that was true -- while a
+-- tyre bug held the bike to a third of its speed. The moment that was fixed,
+-- runs went off the edge of the flat area at 1,310 units and four cases started
+-- measuring lean and steering on a bike in free fall.
+local WANT_RUNWAY = 2200
+local RUNWAY_STEP = 100
+
+-- How far ground continues in +X from `from`, up to WANT_RUNWAY.
+local function runwayFrom(from)
+    for d = RUNWAY_STEP, WANT_RUNWAY, RUNWAY_STEP do
+        local p  = from + Vector(d, 0, 96)
+        local tr = util.TraceLine({
+            start = p, endpos = p - Vector(0, 0, 700), mask = MASK_SOLID,
+        })
+        if not tr.Hit then return d - RUNWAY_STEP end
+    end
+    return WANT_RUNWAY
+end
+
 local function findTestGround()
     local candidates = {}
     for _, c in ipairs({ "info_player_start", "info_player_deathmatch",
@@ -101,6 +125,7 @@ local function findTestGround()
                     Vector(0, 200, 0), Vector(0, -200, 0) }
 
     local best, bestSpread = nil, math.huge
+    local bestRunway, bestRunwayAt = -1, nil
 
     for _, base in ipairs(candidates) do
         for _, off in ipairs({ Vector(0, 0, 0), Vector(300, 0, 0), Vector(-300, 0, 0) }) do
@@ -122,9 +147,29 @@ local function findTestGround()
                 if spread < bestSpread then
                     best, bestSpread = hits[1], spread   -- hits[1] is the centre
                 end
-                if spread <= MAX_SPREAD then return hits[1], nil end
+                -- Flat AND long enough to ride down. Flatness alone was the old
+                -- test, and it happily picked a billiard table 1,300 units from
+                -- a cliff.
+                if spread <= MAX_SPREAD then
+                    local runway = runwayFrom(hits[1])
+                    if runway >= WANT_RUNWAY then return hits[1], nil end
+                    if runway > bestRunway then
+                        bestRunway, bestRunwayAt = runway, hits[1]
+                    end
+                end
             end
         end
+    end
+
+    -- Nothing had the full runway. Take the longest one that was at least flat,
+    -- and SAY SO, because a short runway is the difference between "the balance
+    -- controller is broken" and "the bike ran out of world". Still returning
+    -- somewhere is deliberate: a suite that refuses to run tells you nothing,
+    -- which is the lesson the flatness threshold above already taught once.
+    if bestRunwayAt then
+        return bestRunwayAt, string.format(
+            "only %d units of runway (want %d): the fast cases will run out of " ..
+            "ground before they finish", bestRunway, WANT_RUNWAY)
     end
 
     if best then
@@ -218,13 +263,66 @@ function Ctx:wheels()
     return f, r
 end
 
+-- Hold an input and step until `fn` says stop, the time runs out, or the bike
+-- leaves the ground for good. Returns whether it was still on the ground at the
+-- end, which is the precondition for every measurement a ground case takes.
+--
+-- A wheel unloads for a substep or two over any real bump, which is why air
+-- mode has a debounce; half a second of no contact at all is a bike that has
+-- left the world, not a bike on a kerb.
+function Ctx:runUntil(seconds, fn, input)
+    if input then self:input(input) end
+
+    local deadline = CurTime() + seconds
+    local airborneSince = nil
+
+    while CurTime() < deadline do
+        if not self.bike.st.grounded then
+            airborneSince = airborneSince or CurTime()
+            if CurTime() - airborneSince > 0.5 then return false end
+        else
+            airborneSince = nil
+        end
+        if fn and fn() then return true end
+        coroutine.yield()
+    end
+    return true
+end
+
 -- Get up to speed, because half the cases need to start from there.
+--
+-- IT MUST FAIL IF THE BIKE LEAVES THE WORLD, and that is not a hypothetical.
+-- `st.speed` is the magnitude of the whole velocity vector, so a bike falling
+-- down a pit reports a speed that climbs forever and passes any target you name.
+-- The test ground on gm_flatgrass runs out about 1,300 units from the spawn
+-- point, an accelerating bike covers that in eight seconds, and every case that
+-- called this then measured lean, steering and pitch on a bike in free fall:
+-- four failures, all reported against the controller, none of them its fault.
+--
+-- Worse, it USED to be true that this could not happen -- the note in
+-- findTestGround still says an acceleration run travels about 1,200 units, which
+-- it did back when a tyre bug capped the bike at a third of its speed. An
+-- assumption that was safe only because something else was broken is the kind
+-- that comes due the moment you fix the other thing.
 function Ctx:accelerateTo(speed, timeout)
-    self:input({ throttle = 1 })
-    local reached = self:waitUntil(function()
-        return self.bike.st.speed >= speed
-    end, timeout or 12, string.format("speed >= %d u/s", speed))
-    return reached
+    local hit = false
+    local grounded = self:runUntil(timeout or 12, function()
+        hit = self.bike.st.speed >= speed
+        return hit
+    end, { throttle = 1 })
+
+    if not grounded then
+        self:ok(false, string.format(
+            "the bike left the ground before reaching %d u/s -- it has run out " ..
+            "of test ground, so nothing measured after this would mean anything",
+            speed))
+        return false
+    end
+    if not hit then
+        self:ok(false, string.format("timed out waiting for speed >= %d u/s", speed))
+        return false
+    end
+    return true
 end
 
 function Ctx:hop()

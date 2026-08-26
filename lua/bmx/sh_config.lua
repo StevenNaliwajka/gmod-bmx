@@ -203,9 +203,25 @@ C.Drive = {
     rearBrake  = 95000,
     frontBrake = 150000,
 
-    -- Aerodynamic drag: F = dragArea * v * |v|. Tuned so coasting from top
-    -- speed on the flat scrubs off believably rather than rolling forever.
-    dragArea = 0.10,
+    -- Aerodynamic drag: F = dragArea * v * |v|, so this is 0.5 * rho * Cd * A
+    -- expressed in kg per UNIT, not per metre. For a rider on a bike
+    -- 0.5 * 1.225 * 0.9 * 0.4 = 0.22 kg/m, and 0.22 / 39.37 = 0.0056.
+    --
+    -- IT DOES NOT GET THE GRAVITY SCALING. Drive torque is scaled up because
+    -- Source pulls 1.55x harder than the real world; drag has nothing to do
+    -- with gravity and scaling it too just makes a slow bike.
+    --
+    -- This was 0.10, eighteen times too much, and it was invisible for as long
+    -- as the tyre bug stopped the bike from ever reaching a speed where drag
+    -- mattered. Once the bike could actually accelerate, it measured a terminal
+    -- 198 u/s against a closed-form prediction of 200 -- the drivetrain model
+    -- agreeing with itself perfectly, at the wrong answer. The give-away is in
+    -- the cadence: the design says top speed is capped by the RIDER SPINNING
+    -- OUT (see maxCadence), and at 0.10 the bike settles at 0.57 of maximum
+    -- cadence, which means it was drag-limited and the whole cadence ceiling
+    -- was decorative. At 0.0056 terminal is 312 u/s at 0.89 of cadence, which
+    -- is the model the rest of this block describes.
+    dragArea = 0.0056,
 }
 
 --------------------------------------------------------------------------

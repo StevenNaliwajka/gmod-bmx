@@ -182,19 +182,46 @@ end)
 T.Case("accelerate", { timeout = 25,
     desc = "pedalling reaches a plausible speed, capped by cadence not drag" },
 function(ctx)
-    ctx:input({ throttle = 1 })
-    ctx:wait(9)
+    -- RUN UNTIL THE SPEED STOPS RISING, not for a fixed number of seconds. A
+    -- fixed wait is really a DISTANCE, and the test ground is finite: nine
+    -- seconds at terminal speed is about 2,800 units against roughly 1,300 of
+    -- runway on gm_flatgrass. The old version of this case rode off the edge at
+    -- eight seconds and then reported the speed of a bike falling down a pit --
+    -- 453 u/s, comfortably inside the band, from a bike that was not touching
+    -- anything.
+    local peak, cadence, plateau, last = 0, 0, 0, 0
 
-    local st = ctx:st()
+    local grounded = ctx:runUntil(9, function()
+        local st = ctx:st()
+        if st.speed > peak then peak, cadence = st.speed, st.cadence end
+
+        -- Terminal speed is an asymptote, so stop when it is close enough:
+        -- half a unit per second of gain, held for half a second.
+        if st.speed - last < 0.5 then
+            plateau = plateau + 1
+            if plateau > 33 then return true end
+        else
+            plateau = 0
+        end
+        last = st.speed
+        return false
+    end, { throttle = 1 })
+
+    -- Said first, because every number below is meaningless without it.
+    ctx:ok(grounded, "the bike stayed on the ground for the whole run")
+
     -- ~350 u/s is the design target: 120 rpm crank * 2.78 gear * 10u radius.
     -- The band is deliberately generous; it catches a gearing or torque error
     -- of the kind that changes the answer by a factor, not by 10%.
-    ctx:between(st.speed, 210, 460, "top speed", "u/s")
-    ctx:log(string.format("that is %.1f km/h", BMX.ToKMH(st.speed)))
+    ctx:between(peak, 210, 460, "top speed", "u/s")
+    ctx:log(string.format("that is %.1f km/h", BMX.ToKMH(peak)))
 
     -- Cadence, not drag, is what caps speed. If this is well short of the
     -- ceiling then something else is limiting and the model has changed shape.
-    ctx:between(st.cadence / BMX.Config.Drive.maxCadence, 0.75, 1.05,
+    -- It is not a redundant check on the line above: a bike held back by drag
+    -- reaches a perfectly plausible top speed with the rider barely turning the
+    -- cranks, which is exactly how an 18x drag error survived unnoticed.
+    ctx:between(cadence / BMX.Config.Drive.maxCadence, 0.75, 1.05,
         "cadence / maxCadence")
 
     local _, r = ctx:wheels()

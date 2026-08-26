@@ -95,10 +95,11 @@ function BMX.Balance(ent, phys, dt, inp, st, wheels, groundNormal, speed)
     -- Scaled by authority along with everything else, so a stationary bike is
     -- still un-helped and still falls over. That is the design, not an oversight.
     --
-    -- ...AND IT MUST BE PUT BACK AT THE TARGET LEAN, WHICH IS WHERE THE MISSING
-    -- 14 DEGREES WENT. Three formulations were tried on a live server. The
-    -- other two are recorded below because both are plausible, one of them is
-    -- what the maths says at first glance, and both put the bike on the ground.
+    -- ...AND IT COSTS 14 DEGREES OF LEAN, WHICH IS A KNOWN TRADE AND NOT AN
+    -- OVERSIGHT. Four formulations have been run on a live server. The three
+    -- that are not here are written out below anyway, because each one looks
+    -- correct from the algebra and all three put the bike on the ground -- so
+    -- without the record the next reader derives one of them again.
     --
     -- Write the plant out:   roll'' = topple(roll) - righting(roll) + alpha
     --

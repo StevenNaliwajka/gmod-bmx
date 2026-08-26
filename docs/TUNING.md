@@ -187,33 +187,61 @@ the old paragraph was real, correctly measured, and about the wrong subsystem.
 
 ### The two that remain, both tuning
 
-**Lean tracking is 13-15 degrees short of target**, reproducibly, at full
-assist authority (`lean_tracks_target` wants 12). The bike under-leans: a
-commanded 42 degrees settles near 17. The gravity feed-forward in
-`sv_balance.lua` cancels `m*g*h*sin(roll)`, but a cornering bike also gets a
-righting moment from the lateral tyre force acting at a contact patch offset
-from the centre of mass, and nothing cancels that. Either the feed-forward
-should account for the cornering reaction, or `leanKp` should rise to cover it.
-That is a handling-model decision, so it wants a human on the bike.
+Both have been attacked with derivation and both pushed back. What follows is
+the record of that, because in each case the obvious fix is wrong in a way you
+only find by running it.
 
-**A full-input wheelie always loops out**, and the geometry says why:
+**Lean tracks 13-15 degrees short of target**, reproducibly, at full assist
+authority (`lean_tracks_target` wants 12). A commanded 42 degrees settles near
+17. Four formulations of the balance feed-forward have been run on a live
+server:
 
-```
-COM sits 17.5u ahead of the rear contact and 20.0u above it
-balance point = atan(17.5 / 20.0)               = 41.2 deg
-Pitch.holdMax                                   = 48   deg
-```
+| | `alpha =` | result |
+|---|---|---|
+| 1 | `-topple(roll) + PD` | **ships.** Stable, 13-15 deg short |
+| 2 | `-(topple - righting) + PD` | on its side in half a second |
+| 3 | `PD` alone | falls over |
+| 4 | `-topple(roll) + topple(target) + PD` | falls over |
 
-The hold assist aims **6.8 degrees past the point where gravity stops resisting
-the wheelie and starts driving it**, so it drives the bike through the balance
-point every time. `Pitch.torque` itself is fine and the old note suggesting it
-be halved was measuring the wrong thing: 1,050,000 is 1.16x the 903,000 needed
-to lift the front, and pitching about the rear contact (I_eff = I_pitch + m\*d^2
-= 72,574, not I_pitch = 11,837) gives an initial lift of 2.0 rad/s^2, which is a
-gentle, realistic lift rather than the ~89 rad/s^2 the old note computed by
-using the free-body inertia for a bike that is not a free body.
+The shortfall is real and its cause is understood: with `topple(roll)` cancelled
+for stability, the steady state demands `Kp*err = righting`, and `righting`
+settles at `topple(roll)`. So the error is structural to a P controller against
+this disturbance.
 
-So `holdMax` wants to sit below 41.2 degrees, and how far below is feel.
+What is instructive is why the alternatives fail. **2** is the one that looks
+careful -- measure the real lateral force, cancel the net, hand the PD a clean
+plant -- and `righting` is downstream of roll through the derived steering, so
+cancelling it closes a positive feedback loop. Measured through the transient,
+`righting` ran two to three times `topple` and the bike rolled past 90 degrees.
+*A cancellation can be arithmetically right and dynamically fatal: what you
+cancel must not depend on what you are controlling.* **3** is what the
+steady-state algebra says should work, and it ignores that the equilibrium is an
+inverted pendulum with a destabilising gain of 111 rad/s² per radian against a
+Kp of 26. **4** is correct on paper and wrong in *timing*: `topple(target)`
+arrives at full value on the first substep while the cornering that justifies it
+needs a few tenths of a second, so the bike takes 93 rad/s² into the lean from
+upright.
+
+Closing the error properly means integral action or a Kp several times larger.
+Both change how the bike feels to ride, so both want a human on the bike.
+
+**A wheelie falls a little short** rather than looping out, which is where it
+was left after two fixes and one revert. `Pitch.holdAim` now aims at a fraction
+of `BMX.WheelieBalance()` -- derived from the mass centre and the wheelbase --
+instead of the old `holdMax` of 48 degrees, which sat 6.8 degrees *past* the
+41.2-degree balance point and drove every wheelie through the point of no
+return. And the direct weight shift now only acts when nothing is being held, so
+the hold PD is actually in control once a wheel is up; before, a constant
+1,050,000 kept shoving while the PD tried to settle.
+
+What is left is that the hold reaches about 5 degrees against a 34-degree
+target, and the case sits on its band edge. Adding a gravity feed-forward and
+using the effective inertia about the rear contact (`I_pitch + m*d²` = 72,574,
+not 11,837) is correct on both counts and was tried: it moved the case from
+"fails the floor at 4.31 with the rear wheel down" to "passes at 5.49 with the
+bike airborne". A wash, and a wash that moved between runs. *A number
+oscillating either side of a band edge is not asking for a better derivation, it
+is telling you the thing is marginal.* Reverted; it wants a rider.
 
 ## Known-untuned
 

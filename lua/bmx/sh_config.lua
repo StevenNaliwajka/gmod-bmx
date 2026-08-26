@@ -255,8 +255,34 @@ C.Balance = {
     -- The PD holding roll on target. Kp is in 1/s^2, Kd in 1/s. Critical-ish
     -- damping is Kd = 2*sqrt(Kp); a little under feels alive, a lot under
     -- oscillates and reads as "twitchy".
-    leanKp = 26,
-    leanKd = 9.0,
+    -- THESE ARE NOT FREE, and the number they have to meet is derivable.
+    --
+    -- The feed-forward cancels the toppling torque, which leaves the lateral
+    -- tyre force's RIGHTING torque unopposed, and the PD has to hold the lean
+    -- against it with error alone. In the steady state that is exactly
+    --
+    --     Kp * (target - roll) = topple(roll)
+    --
+    -- because a developed corner puts the righting torque equal to the toppling
+    -- one (see the long note in sv_balance.lua). Solve it for the 25.2-degree
+    -- target the suite uses and the gap the design asks for -- 12 degrees:
+    --
+    --     Kp  26  ->  21.8 deg of lean shortfall     (measured: 22.4)
+    --     Kp 120  ->  14.6
+    --     Kp 182  ->  12.0   the threshold
+    --     Kp 220  ->  10.8   measured: 10.8
+    --
+    -- So 26 was not an aggressive-versus-relaxed choice, it was a value that
+    -- could not meet the spec written next to it. 220 is the first round number
+    -- with margin. HOW FAR ABOVE 182 to sit is a feel question and this is
+    -- probably the first thing a rider will want to move; the constraint is that
+    -- below ~182 the bike cannot hold the lean it is asked for, at any speed,
+    -- however long you wait.
+    --
+    -- Kd tracks Kp: critical is 2*sqrt(Kp), and a little under feels alive while
+    -- a lot under oscillates and reads as twitchy. 27 is zeta ~0.9.
+    leanKp = 220,
+    leanKd = 27.0,
 
     -- Ceiling on the assist's angular acceleration, rad/s^2. This is the
     -- difference between an arcade bike and one on rails: with no cap, no

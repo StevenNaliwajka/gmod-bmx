@@ -209,7 +209,7 @@ w ~= 1/2 * (f_prev x f_now + r_prev x r_now + u_prev x u_now) / dt
 Exact in the limit, accurate to well under a degree at substep sizes, three
 cross products, and no ambiguity about what the components mean.
 
-## 6b. Eight traps, all found by running it
+## 6b. Nine traps, all found by running it
 
 Every one of these produced correct-looking code, no error, and a symptom
 several steps from its cause. They are written down because none of them is
@@ -271,6 +271,17 @@ pitch and top speed, all reported against the controller, none of them its
 fault. `st.speed` is a velocity magnitude, so a falling bike reports a top speed
 that climbs forever and passes any band you give it.
 
+**9. Which body are you talking about?** `I_pitch` from VPhysics is the
+free-body pitch inertia. A bike doing a wheelie is not a free body: it pivots on
+its rear contact patch, where the inertia is `I_pitch + m*d^2` = 72,574 against
+11,837, a factor of 6.1. THREE separate numbers in this addon were derived
+against the wrong one -- a recommendation to halve `Pitch.torque` (withdrawn),
+the wheelie hold's P term, and its damping -- and each time the result looked
+carefully worked out and was six times wrong. The roll axis has the twin:
+`maxAssistAccel` was sized first against an invented inertia and then against a
+lever arm that reached to the axle line instead of the contact patch, and both
+times came out below requirement while reading as a tuning problem.
+
 **The generalisable lesson** is in trap 5. Five separate cases were failing --
 acceleration, lean, test speed, wheelies, braking -- and each read like a tuning
 problem in a different subsystem. They had one cause. The measurement that found
@@ -291,13 +302,13 @@ symptoms.
 | 5 | Headless regression harness (bot rider, no client) | done |
 | 6 | First live bring-up: six engine traps found and fixed | done |
 | 6b | Tyre integration, drag, and a harness that measured falling bikes | done |
+| 6c | Balance and pitch gains that could not meet their own spec | done |
 | 7 | Tuning pass with a human rider, per-bike physics, real model | **next** |
-| 8 | Rider animation, CI packing, Workshop release | not started |
+| 8 | Rider animation, Workshop release | icon and packer done |
 
-Phases 0 to 6b are done and the simulation runs correctly on a real dedicated
-server: 10 of 12 headless cases pass, and the bike holds its designed ride
-height for an eight-second full-throttle run. The two that remain are tuning
-numbers with derivations written down in `docs/TUNING.md`, not defects.
+Phases 0 to 6c are done and **the suite passes 12 of 12** on a real dedicated
+server, repeatably. The bike rides, brakes, skids, steers from lean, hops, holds
+a wheelie at 34-45 degrees, and tracks a commanded lean to within 11 degrees.
 
 **It has still never been ridden by a human**, so nothing is known about how it
 feels; that is phase 7 and it is the only thing a harness cannot answer.

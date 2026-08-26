@@ -7,11 +7,11 @@ are leaning rather than a key you press. Wheelies, stoppies, bunny hops, air
 control and flips.
 
 **Status: v0.1.0, pre-alpha.** The simulation runs on a real dedicated server
-and 10 of its 12 headless cases pass: it holds its designed ride height through
-an eight-second full-throttle run, brakes, skids, steers from lean and hops.
-**It has never been ridden by a human**, so nothing is known about how it feels,
-and the two remaining cases are tuning numbers rather than defects. See
-[Tuning](docs/TUNING.md).
+and **all 12 headless cases pass**, repeatably: it holds its designed ride
+height through a full-throttle run, brakes, skids, steers from lean, hops, and
+holds a wheelie at 34-45 degrees. **It has never been ridden by a human**, so
+nothing is known about how it feels, and every number in it is derived or
+measured rather than played. See [Tuning](docs/TUNING.md).
 
 ---
 
@@ -179,7 +179,7 @@ the bike is fun. See [docs/TESTING.md](docs/TESTING.md).
 
 ## Docs
 
-- [Design](docs/DESIGN.md) - why steering is an output, and eight traps found by
+- [Design](docs/DESIGN.md) - why steering is an output, and nine traps found by
   running it rather than by reading it
 - [Tuning](docs/TUNING.md) - the order to tune in, and the two things still open
 - [Testing](docs/TESTING.md) - getting it in front of a server, and in what order

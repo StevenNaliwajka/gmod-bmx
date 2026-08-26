@@ -151,97 +151,72 @@ order of usefulness:
 
 ## Known state, 2026-08-26
 
-The headless suite passes **10 of 12** on a real server, and the bike rides:
-eight seconds of full throttle holds a ride height of 7.3-7.5 units against a
-designed 7.0, both wheels down, pitch under 2.5 degrees and roll under 1.
+**The headless suite passes 12 of 12 on a real server**, repeatably. The bike
+rides, brakes, skids, steers from lean, hops, holds a wheelie at 34-45 degrees
+with the rear wheel down 86-91% of the hold, and tracks a commanded lean to
+within 11 degrees of 25.
 
-`forces` and `torque` both pass, so the linear and rotational force paths are
-calibrated exactly. Suspension, braking, steering, hops, air rotation and
-crashes all behave.
+It has still **never been ridden by a human**, so nothing here is known about
+how it feels. Every number below is derived or measured, not played.
 
-### What the previous version of this section got wrong
+### The two things that were wrong, and how they hid
 
-It said the open problem was the static pitch balance, with the front wheel
-carrying 21% of the weight where the geometry says 45%, and four other failures
-downstream of it. The 45% was right and the diagnosis was not. Zeroing the two
-tyre stiffnesses and letting the same bike settle gives **45.1% front / 54.9%
-rear**, so the geometry was correct all along; the 21% was a symptom of a tyre
-model that was shaking the chassis, and the "violent wheelie under full
-throttle" was the same thing. Three bugs, none of them where the notes pointed:
+Both of the last cases to fall were controller gains that could not meet the
+spec written next to them, and in both cases the surrounding physics had an
+error that made the gain look reasonable.
 
-1. Both slip stiffnesses were integrated explicitly and neither was stable at
-   66 Hz (dt/tau of 37.6 and 4.3, against a limit of 2). The friction circle
-   clamped the resulting divergence every tick, which hid it, and then
-   rectified it, because the clamp radius grip\*N oscillated in phase with the
-   force. A riderless bike with no throttle accelerated to 296 u/s in two
-   seconds.
-2. The tyre force was solved before the drive torque was applied, so a driven
-   wheel could only ever spin.
-3. `dragArea` was 18x too strong, which capped the bike at 198 u/s. That one
-   was invisible until 1 and 2 were fixed, because until then the bike never
-   reached a speed where drag mattered.
+**`leanKp` was 26 where the spec needs 182.** With the feed-forward cancelling
+the toppling torque, the lateral tyre force's righting torque is left unopposed
+and the PD holds the lean against it with error alone. The steady state is
+exactly `Kp*(target - roll) = topple(roll)`. Solve it:
 
-The generalisable half: **a measurement taken while something upstream is
-unstable is not evidence about the thing you are measuring.** Every number in
-the old paragraph was real, correctly measured, and about the wrong subsystem.
-
-### The two that remain, both tuning
-
-Both have been attacked with derivation and both pushed back. What follows is
-the record of that, because in each case the obvious fix is wrong in a way you
-only find by running it.
-
-**Lean tracks 13-15 degrees short of target**, reproducibly, at full assist
-authority (`lean_tracks_target` wants 12). A commanded 42 degrees settles near
-17. Four formulations of the balance feed-forward have been run on a live
-server:
-
-| | `alpha =` | result |
+| Kp | predicted shortfall | measured |
 |---|---|---|
-| 1 | `-topple(roll) + PD` | **ships.** Stable, 13-15 deg short |
-| 2 | `-(topple - righting) + PD` | on its side in half a second |
-| 3 | `PD` alone | falls over |
-| 4 | `-topple(roll) + topple(target) + PD` | falls over |
+| 26 | 21.8 deg | 22.4 |
+| 182 | 12.0 (the threshold) | |
+| 220 | 10.8 | 11.0 |
 
-The shortfall is real and its cause is understood: with `topple(roll)` cancelled
-for stability, the steady state demands `Kp*err = righting`, and `righting`
-settles at `topple(roll)`. So the error is structural to a P controller against
-this disturbance.
+So 26 was never an aggressive-versus-relaxed choice; it was a value that could
+not hold the lean it was asked for at any speed, however long you waited. Four
+separate restructurings of the feed-forward were tried first, and all of them
+were working on the wrong term.
 
-What is instructive is why the alternatives fail. **2** is the one that looks
-careful -- measure the real lateral force, cancel the net, hand the PD a clean
-plant -- and `righting` is downstream of roll through the derived steering, so
-cancelling it closes a positive feedback loop. Measured through the transient,
-`righting` ran two to three times `topple` and the bike rolled past 90 degrees.
-*A cancellation can be arithmetically right and dynamically fatal: what you
-cancel must not depend on what you are controlling.* **3** is what the
-steady-state algebra says should work, and it ignores that the equilibrium is an
-inverted pendulum with a destabilising gain of 111 rad/s² per radian against a
-Kp of 26. **4** is correct on paper and wrong in *timing*: `topple(target)`
-arrives at full value on the first substep while the cornering that justifies it
-needs a few tenths of a second, so the bike takes 93 rad/s² into the lean from
-upright.
+**The toppling lever arm went to the axle line, not the contact patch.**
+`massCenterExpected.z` is 20, measured from the chassis origin which sits on the
+axle line; the patch is a further `Wheel.radius` down, so the arm is 30. That
+understated gravity's torque by a third *and* under-sized `maxAssistAccel`,
+whose own derivation used the same 20 and produced 74 rad/s² for a requirement
+that is really 111 -- so a ceiling of 110 looked like a comfortable 1.5x margin
+while sitting *below* the requirement at full lean.
 
-Closing the error properly means integral action or a Kp several times larger.
-Both change how the bike feels to ride, so both want a human on the bike.
+**The wheelie was three faults stacked.** `holdMax` was both the PD's target and
+its give-up ceiling, at 48 degrees against a balance point of `atan(17.5/20)` =
+41.2, so the assist aimed past the point where gravity stops resisting a wheelie
+and starts driving it. The direct weight shift was applied unconditionally on
+top of the hold, so a constant 1,050,000 shoved while the PD tried to settle.
+And `holdKd` was zeta 0.53 against the effective inertia about the rear contact,
+so the nose overshot its equilibrium and went through the balance point.
 
-**A wheelie falls a little short** rather than looping out, which is where it
-was left after two fixes and one revert. `Pitch.holdAim` now aims at a fraction
-of `BMX.WheelieBalance()` -- derived from the mass centre and the wheelbase --
-instead of the old `holdMax` of 48 degrees, which sat 6.8 degrees *past* the
-41.2-degree balance point and drove every wheelie through the point of no
-return. And the direct weight shift now only acts when nothing is being held, so
-the hold PD is actually in control once a wheel is up; before, a constant
-1,050,000 kept shoving while the PD tried to settle.
+### The lesson that cost the most
 
-What is left is that the hold reaches about 5 degrees against a 34-degree
-target, and the case sits on its band edge. Adding a gravity feed-forward and
-using the effective inertia about the rear contact (`I_pitch + m*d²` = 72,574,
-not 11,837) is correct on both counts and was tried: it moved the case from
-"fails the floor at 4.31 with the rear wheel down" to "passes at 5.49 with the
-bike airborne". A wash, and a wash that moved between runs. *A number
-oscillating either side of a band edge is not asking for a better derivation, it
-is telling you the thing is marginal.* Reverted; it wants a rider.
+`I_pitch + m*d²` = 72,574, not `I_pitch` = 11,837. **Three separate numbers in
+this addon were derived against the free-body pitch inertia for a bike that
+pivots on its rear contact patch**, each time producing a figure that looked
+carefully worked out and was 6.1x wrong: an old note recommending `Pitch.torque`
+be halved (withdrawn), the wheelie hold's P term, and its damping. If you are
+sizing anything about pitch, check which body you are talking about first.
+
+The roll axis has the twin of it: `maxAssistAccel` was first derived against an
+invented inertia, then against the wrong lever arm. Both times the number was
+below requirement and both times it read as a tuning problem.
+
+### What a rider will probably want to move first
+
+- `leanKp` 220 / `leanKd` 27. The floor is ~182; above that it is taste, and
+  this is a much stiffer assist than the 26 it replaces. Expect opinions.
+- `Pitch.holdAim` 0.82 of the balance point. Where a wheelie sits.
+- `Wheel.grip` 1.35 and the two slip stiffnesses, which have no real-world
+  reference to derive from.
 
 ## Known-untuned
 

@@ -294,8 +294,21 @@ function BMX.PitchControl(ent, phys, dt, inp, st, wheels)
                 and BMX.Clamp((target - st.pitch) / target, 0, 1) or 0
             torque = torque + inp.pitch * P.torque * reach
 
+            -- AND THE INERTIA IS NOT THE FREE-BODY ONE. A bike on its rear wheel
+            -- is pivoting about the contact patch, so a commanded angular
+            -- acceleration costs I_pitch + m*d^2 = 72,574, not I_pitch = 11,837.
+            -- Using the free-body figure made every correction 6.1x too small --
+            -- and it is the DAMPING that this ruins: the ramp above gets the
+            -- nose up with real angular momentum behind it, holdKd was supplying
+            -- about 99,000 against a 1,050,000 lift, and the bike sailed through
+            -- the target and jumped. Same mistake docs/TUNING.md withdrew an old
+            -- note for, and the reason that note existed at all.
+            local ahead = C.Chassis.massCenterExpected.x + C.Wheel.wheelbase * 0.5
+            local cz    = C.Chassis.massCenterExpected.z
+            local iEff  = BMX.IPitch(ent) + C.Chassis.mass * (ahead * ahead + cz * cz)
+
             local alpha = P.holdKp * (target - st.pitch) - P.holdKd * st.pitchRate
-            torque = torque + BMX.TorqueFor(BMX.IPitch(ent), alpha)
+            torque = torque + BMX.TorqueFor(iEff, alpha)
         end
     elseif rearUp and not frontUp and inp.pitch < 0 then
         ------------------------------------------------------------------

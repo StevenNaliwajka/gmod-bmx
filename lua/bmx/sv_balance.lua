@@ -273,6 +273,27 @@ function BMX.PitchControl(ent, phys, dt, inp, st, wheels)
         -- Aim SHORT OF THE BALANCE POINT, not past it. See Pitch.holdAim.
         local target = inp.pitch * BMX.WheelieBalance() * P.holdAim
         if st.pitch < P.holdMax then
+            ------------------------------------------------------------------
+            -- HAND THE YANK OVER TO THE HOLD, rather than switching between
+            -- them. Cutting the direct weight shift dead the instant the front
+            -- wheel left the ground left a PD of about 53,000 holding a bike
+            -- that still needs 800,000 to stay up, so the nose dropped, the
+            -- front touched, the yank came back at full strength, and the whole
+            -- thing oscillated around the lift threshold. That is why this case
+            -- landed anywhere between 4 and 8 degrees of a 34-degree target on
+            -- identical code: the variance WAS the handover.
+            --
+            -- Ramping it out as the wheelie develops is also what a rider does.
+            -- You throw your weight to get the front up and then stop throwing
+            -- it; you do not keep heaving at a bike that is already up, which is
+            -- what the original unconditional version did and why every wheelie
+            -- looped out. Full yank at zero pitch, nothing left at the target,
+            -- and the two curves cross at a stable ~13 degrees.
+            ------------------------------------------------------------------
+            local reach = target > 0
+                and BMX.Clamp((target - st.pitch) / target, 0, 1) or 0
+            torque = torque + inp.pitch * P.torque * reach
+
             local alpha = P.holdKp * (target - st.pitch) - P.holdKd * st.pitchRate
             torque = torque + BMX.TorqueFor(BMX.IPitch(ent), alpha)
         end
@@ -288,8 +309,7 @@ function BMX.PitchControl(ent, phys, dt, inp, st, wheels)
         end
     else
         -- Nothing is being held, so the rider's weight shift acts directly.
-        -- This is the yank that STARTS a wheelie or a stoppie, and it is the
-        -- only branch that gets it: once a wheel is up, the PD above takes over.
+        -- This is the yank that STARTS a wheelie or a stoppie.
         torque = torque + inp.pitch * P.torque
 
         if not frontUp and not rearUp then

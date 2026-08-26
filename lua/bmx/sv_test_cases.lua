@@ -677,10 +677,18 @@ function(ctx)
     ctx:ok(duplicator.FindEntityClass(ctx.bike:GetClass()) ~= nil,
         "the bike's class is registered with the duplicator")
 
-    local ents_, cons = duplicator.Copy(ctx.bike)
-    ctx:ok(istable(ents_) and next(ents_) ~= nil, "duplicator.Copy returned it")
+    -- CopyEntTable, not Copy. duplicator.Copy returns ONE entity table --
+    -- Class, Pos, Mins, PhysicsObjects and so on -- while Paste wants a LIST of
+    -- them keyed by entity index. Handing the first straight to the second gets
+    -- you an error from inside GMod's CreateEntityFromTable that reads like the
+    -- addon's registration is broken when it is the caller's shape that is
+    -- wrong. Verified on a live server: the addon's own handler pastes fine
+    -- once the shape is right.
+    local t = duplicator.CopyEntTable(ctx.bike)
+    ctx:ok(istable(t) and t.Class == ctx.bike:GetClass(),
+        "duplicator.CopyEntTable captured it")
 
-    local pasted = duplicator.Paste(ctx.bot, ents_, cons or {})
+    local pasted = duplicator.Paste(ctx.bot, { [ctx.bike:EntIndex()] = t }, {})
     local copy
     for _, e in pairs(pasted or {}) do
         if IsValid(e) and e ~= ctx.bike and e.IsBMX then copy = e break end

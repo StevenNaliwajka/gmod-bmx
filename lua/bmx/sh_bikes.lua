@@ -30,6 +30,9 @@ local derived = false
 -- A bike carries no per-instance construction data: which bike it is, is which
 -- CLASS it is, and everything else is rebuilt by Initialize. So the generic
 -- path is exactly right, and there is deliberately nothing clever here.
+-- duplicator.GenericDuplicatorFunction is the stock equivalent and was verified
+-- to behave identically; this is spelled out only because the explicit
+-- DoGenericPhysics call is the part worth being able to see.
 --
 -- The seat is marked DoNotDuplicate where it is created. It is parented to the
 -- bike, so the duplicator would otherwise copy it as a child in its own right

@@ -84,6 +84,40 @@ local function rollDirection(self, ent, normal)
 end
 
 --------------------------------------------------------------------------
+-- The effective mass the chassis presents at a contact point along a
+-- direction: the standard constraint-space quantity,
+--
+--     1/m_eff = 1/M + (r x d) . I^-1 . (r x d)
+--
+-- It is the mass an impulse along `dir` applied at `contact` actually has to
+-- shift, which is NOT the bike's mass whenever the contact is offset from the
+-- centre of mass: pushing forward on a patch 20 units below the COM mostly
+-- pitches the bike, and pushing sideways mostly rolls it.
+--
+-- Every explicit force in this file that is trying to REMOVE a relative
+-- velocity -- the suspension damper, and both tyre forces -- has to be capped
+-- against this figure or it overshoots and adds energy. Sharing one function
+-- is deliberate: the damper was fixed for this in isolation once, and the tyre,
+-- which has exactly the same problem, was left behind for a month.
+--------------------------------------------------------------------------
+local function effectiveMass(ent, phys, contact, dir)
+    local com = phys:LocalToWorld(phys:GetMassCenter())
+    local rxd = (contact - com):Cross(dir)
+
+    -- Express r x d on the body's principal axes. Source's local frame is
+    -- x = forward, y = LEFT, z = up, so the y component is -Right.
+    local lx =  rxd:Dot(ent:GetForward())
+    local ly = -rxd:Dot(ent:GetRight())
+    local lz =  rxd:Dot(ent:GetUp())
+
+    local invI = lx * lx / BMX.IRoll(ent)
+               + ly * ly / BMX.IPitch(ent)
+               + lz * lz / BMX.IYaw(ent)
+
+    return 1 / (1 / BMX.Config.Chassis.mass + invI)
+end
+
+--------------------------------------------------------------------------
 -- One physics substep for one wheel.
 --
 --   driveTorque  kg*units^2/s^2 delivered to THIS wheel by the drivetrain
@@ -189,21 +223,7 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
     local damperF = WC.damper * compVel
 
     if compVel > 0 then
-        local com = phys:LocalToWorld(phys:GetMassCenter())
-        local rxn = (contact - com):Cross(normal)
-
-        -- Express r x n on the body's principal axes. Source's local frame is
-        -- x = forward, y = LEFT, z = up, so the y component is -Right.
-        local lx =  rxn:Dot(ent:GetForward())
-        local ly = -rxn:Dot(ent:GetRight())
-        local lz =  rxn:Dot(ent:GetUp())
-
-        local invI = lx * lx / BMX.IRoll(ent)
-                   + ly * ly / BMX.IPitch(ent)
-                   + lz * lz / BMX.IYaw(ent)
-
-        local mEff = 1 / (1 / C.Chassis.mass + invI)
-        local cap  = mEff * compVel / dt
+        local cap = effectiveMass(ent, phys, contact, normal) * compVel / dt
         if damperF > cap then damperF = cap end
     end
 
@@ -247,6 +267,57 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
     local Fmax  = WC.grip * N
     local Flong = slipLong * WC.longStiffness
     local Flat  = slipLat  * WC.latStiffness
+
+    ----------------------------------------------------------------------
+    -- A TYRE FORCE MAY NEVER MORE THAN CANCEL THE SLIP IT IS ANSWERING.
+    --
+    -- Both stiffnesses above are relaxation rates integrated EXPLICITLY, so
+    -- each is only stable while its force takes more than a timestep to close
+    -- its own slip. Neither was. Measured on the live server at 66 Hz:
+    --
+    --     longitudinal   tau = 0.40 ms,  dt/tau = 37.6
+    --     lateral        tau = 3.52 ms,  dt/tau =  4.3
+    --
+    -- and stability needs dt/tau < 2. So the longitudinal slip was multiplied
+    -- by about -35 every substep and the lateral by -2.3: both flipped sign
+    -- every tick and grew.
+    --
+    -- THE FRICTION CIRCLE HID IT AND THEN MADE IT WORSE. A divergence normally
+    -- ends in a NaN, which is at least loud. Here the circle clamped the
+    -- runaway to grip*N every tick, so it presented as a bounded oscillation
+    -- with no error at all -- and because the clamp RADIUS is grip*N, and N is
+    -- itself oscillating in phase, the positive half-cycle was bounded by a
+    -- larger N than the negative one. That rectifies. The bike accelerated
+    -- from 0 to 296 u/s in two seconds with no rider aboard and no throttle:
+    -- free energy, straight out of a stability bug.
+    --
+    -- What it looked like from outside is worth recording, because none of it
+    -- pointed here: the front wheel bounced clear of the ground so the static
+    -- load split read 21/79 against a designed 45/55, the "top speed" case
+    -- measured a number that had nothing to do with the drivetrain, braking
+    -- could never stop a bike being pushed, and lean, wheelie and steering all
+    -- failed on top of a chassis that was being shaken. Six of the twelve
+    -- cases, and the tuning notes had them down as five separate tuning
+    -- problems downstream of a sixth.
+    --
+    -- The cure is the damper's, one block up: cap the force at the one that
+    -- exactly nulls the slip over this dt. The longitudinal slip closes
+    -- through the chassis AND through the wheel spinning up, so its compliance
+    -- carries the extra r^2/I term; the lateral one has no such path. Below
+    -- the stability limit the linear stiffness is untouched, so this is a
+    -- ceiling rather than a retune, and it holds for any stiffness, any
+    -- tickrate and any contact geometry.
+    ----------------------------------------------------------------------
+    local capLong = abs(slipLong) /
+        (dt * (1 / effectiveMass(ent, phys, contact, fwdDir) + radius * radius / WC.inertia))
+    if abs(Flong) > capLong then
+        Flong = capLong * (Flong >= 0 and 1 or -1)
+    end
+
+    local capLat = abs(slipLat) * effectiveMass(ent, phys, contact, rightDir) / dt
+    if abs(Flat) > capLat then
+        Flat = capLat * (Flat >= 0 and 1 or -1)
+    end
 
     -- Friction circle: the tyre has one budget and braking spends the same
     -- money as cornering. This is the whole reason a bike washes out mid-corner

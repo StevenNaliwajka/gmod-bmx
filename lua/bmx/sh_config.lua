@@ -343,8 +343,30 @@ C.Pitch = {
     -- Wheelie hold assist. Once the front wheel is up, a PD holds pitch near
     -- the rider's target so the bike does not instantly loop out. Without this
     -- a wheelie is a 0.4 second event and nobody can use it.
+    -- holdKd IS DERIVABLE, and being under-damped here does not look like
+    -- under-damping, it looks like a bike that loops out.
+    --
+    -- The yank ramps out as the wheelie develops (see the handover note in
+    -- sv_balance.lua), and that plus the P term crosses the gravity torque at a
+    -- stable equilibrium near 25 degrees. Stable statically -- applied torque
+    -- falls off faster with angle than the gravity torque it is beating -- so
+    -- the failure is purely dynamic overshoot:
+    --
+    --   restoring gradient / I_eff = 15.4 1/s^2  ->  omega = 3.93 rad/s
+    --   critical = 2*omega = 7.9,  so 4.2 is zeta 0.53
+    --
+    -- At that damping the nose overshoots the 25-degree equilibrium, passes the
+    -- 41.2-degree balance point where gravity changes sides, and from there it
+    -- is going over however good the controller is. Measured: 77 degrees.
+    -- 7.1 is zeta 0.9.
+    --
+    -- NOTE THE DENOMINATOR, again. omega uses the effective inertia about the
+    -- rear contact patch (72,574), not the free-body pitch inertia (11,837).
+    -- That factor of 6.1 is the third place in this addon where using the
+    -- free-body figure for a constrained body has produced a number that looked
+    -- carefully derived and was wrong.
     holdKp = 9,
-    holdKd = 4.2,
+    holdKd = 7.1,
 
     -- WHERE IT AIMS, as a fraction of the balance point. NOT an angle, because
     -- the balance point is a consequence of the chassis geometry and an angle

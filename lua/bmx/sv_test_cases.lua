@@ -478,10 +478,21 @@ function(ctx)
         -- mid-wheelie and the second number was a nose-dive into a pit. It also
         -- gives "it is a wheelie, not a jump" for free: a wheelie keeps the rear
         -- wheel down, so a bike that goes fully airborne fails the run itself.
-        local held = ctx:runUntil(1.2)
+        -- MEASURE THE REAR WHEEL OVER THE HOLD, not at one instant at the end of
+        -- it. A wheelie works its rear suspension, so `onGround` is false for
+        -- the odd substep without the bike having left the ground -- and a
+        -- single sample landing on one of those reported "that is a jump" for a
+        -- bike that was sitting on its back wheel the whole time. The case
+        -- failed and passed on identical code depending on which tick it read.
+        local down, ticks = 0, 0
+        local held = ctx:runUntil(1.2, function()
+            local _, rw = ctx:wheels()
+            ticks = ticks + 1
+            if rw.onGround then down = down + 1 end
+            return false
+        end)
 
         local st = ctx:st()
-        local _, r = ctx:wheels()
         ctx:log(string.format("pitch %.0f deg after 1.2s", math.deg(st.pitch)))
 
         if not held then
@@ -489,7 +500,9 @@ function(ctx)
         elseif ctx.stoppedAtEdge then
             ctx:ok(false, "the bike reached the edge of the test ground mid-wheelie")
         else
-            ctx:ok(r.onGround, "rear wheel still down (it is a wheelie, not a jump)")
+            local share = ticks > 0 and (down / ticks) or 0
+            ctx:between(share * 100, 80, 100,
+                "share of the hold with the rear wheel down (a wheelie, not a jump)", "%")
             -- The hold assist has a ceiling on purpose, so a wheelie can still be
             -- blown. Past holdMax plus a margin it has looped out.
             ctx:between(math.deg(st.pitch), 5, math.deg(BMX.Config.Pitch.holdMax) + 30,

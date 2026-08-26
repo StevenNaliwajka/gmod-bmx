@@ -353,15 +353,31 @@ function(ctx)
     -- past the edge of the map.
     local ENOUGH = 150
 
+    -- ACCUMULATE THE YAW, do not subtract the ends. math.AngleDifference
+    -- returns -180..180, so a bike that turns further than half a circle during
+    -- the sweep reports the short way round -- with the WRONG SIGN. A 183-degree
+    -- right-hand turn comes back as +177, which is what "leaning right turns
+    -- left" looks like from a test. Both directions read +170-odd and the case
+    -- failed on a bike that was cornering symmetrically and correctly.
+    --
+    -- It only started mattering when the bike got sharper: at the old gains it
+    -- managed about 55 degrees in the 2.5s and never came near the wrap. Same
+    -- shape as the runway: a measurement that was safe only because the thing it
+    -- measured was worse.
     local function sweep(lean)
         if not ctx:accelerateTo(ENOUGH, 14) then return nil end
-        local yaw0 = ctx.bike:GetAngles().y
-        ctx:input({ throttle = 0.6, lean = lean })
-        ctx:wait(2.5)
+
+        local last, total = ctx.bike:GetAngles().y, 0
+        ctx:runUntil(2.5, function()
+            local y = ctx.bike:GetAngles().y
+            total = total + math.AngleDifference(y, last)
+            last = y
+            return false
+        end, { throttle = 0.6, lean = lean })
+
         local st = ctx:st()
-        local d = math.AngleDifference(ctx.bike:GetAngles().y, yaw0)
         ctx:input({})
-        return { yaw = d, roll = st.roll, steer = st.steer }
+        return { yaw = total, roll = st.roll, steer = st.steer }
     end
 
     local right = sweep(1)

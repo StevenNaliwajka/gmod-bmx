@@ -173,6 +173,11 @@ function ENT:CreateSeat()
         pp:EnableCollisions(false)
     end
 
+    -- The duplicator must not copy the seat in its own right: it is parented to
+    -- this entity and Initialize builds a fresh one, so a pasted bike would come
+    -- up with two.
+    pod.DoNotDuplicate = true
+
     pod.BMXBike = self
     self:SetPod(pod)
     self:DeleteOnRemove(pod)

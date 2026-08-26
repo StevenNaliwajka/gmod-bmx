@@ -19,6 +19,38 @@ BMX.Bikes = BMX.Bikes or {}
 local pending = {}
 local derived = false
 
+--------------------------------------------------------------------------
+-- DUPLICATOR SUPPORT.
+--
+-- Without this a bike cannot be Ctrl+C'd, cannot be saved in a dupe, and
+-- vanishes from a saved game -- and it fails SILENTLY, because the duplicator
+-- simply skips a class it has never been told about. For a Workshop vehicle
+-- that is the first thing a player tries after spawning one.
+--
+-- A bike carries no per-instance construction data: which bike it is, is which
+-- CLASS it is, and everything else is rebuilt by Initialize. So the generic
+-- path is exactly right, and there is deliberately nothing clever here.
+--
+-- The seat is marked DoNotDuplicate where it is created. It is parented to the
+-- bike, so the duplicator would otherwise copy it as a child in its own right
+-- and the pasted bike would come up with two of them -- one built by
+-- Initialize and one pasted on top.
+--------------------------------------------------------------------------
+local function registerDuplicator(class)
+    if not SERVER then return end
+
+    duplicator.RegisterEntityClass(class, function(ply, data)
+        local e = ents.Create(data.Class)
+        if not IsValid(e) then return end
+
+        duplicator.DoGeneric(e, data)
+        e:Spawn()
+        e:Activate()
+        duplicator.DoGenericPhysics(e, ply, data)
+        return e
+    end, "Data")
+end
+
 -- Forward declaration. RegisterBike is defined above the body of this and calls
 -- it, and a `local function` declared later would not be the same name: the
 -- earlier reference would resolve as a global and be nil at call time.
@@ -128,6 +160,8 @@ function deriveOne(id)
         Category  = "BMX",
         Spawnable = true,
     }, "bmx_" .. id)
+
+    registerDuplicator("bmx_" .. id)
 end
 
 local function derive()
@@ -146,6 +180,11 @@ local function derive()
 end
 
 timer.Simple(0, derive)
+
+-- bmx_base is registered by the engine from lua/entities, not by derive(), so
+-- the stock bike needs its own line or the one bike everybody actually spawns
+-- is the one that cannot be duplicated.
+registerDuplicator("bmx_base")
 
 --------------------------------------------------------------------------
 -- THE BIKES

@@ -663,3 +663,69 @@ function(ctx)
     SafeRemoveEntity(stock)
     BMX.Bikes.testtall = nil
 end)
+
+--------------------------------------------------------------------------
+T.Case("duplicator_and_grab", { timeout = 25,
+    desc = "a bike survives a copy/paste, and cannot be grabbed while ridden" },
+function(ctx)
+    ----------------------------------------------------------------------
+    -- DUPLICATOR. The failure this guards against is SILENT: the duplicator
+    -- skips a class it was never told about, so a bike that is not registered
+    -- copies as nothing at all and the player finds out when their dupe comes
+    -- back one bike short.
+    ----------------------------------------------------------------------
+    ctx:ok(duplicator.FindEntityClass(ctx.bike:GetClass()) ~= nil,
+        "the bike's class is registered with the duplicator")
+
+    local ents_, cons = duplicator.Copy(ctx.bike)
+    ctx:ok(istable(ents_) and next(ents_) ~= nil, "duplicator.Copy returned it")
+
+    local pasted = duplicator.Paste(ctx.bot, ents_, cons or {})
+    local copy
+    for _, e in pairs(pasted or {}) do
+        if IsValid(e) and e ~= ctx.bike and e.IsBMX then copy = e break end
+    end
+
+    if ctx:ok(IsValid(copy), "and pasting produced a working bike") then
+        -- Rebuilt, not half-built: a pasted bike whose Initialize did not
+        -- finish looks completely normal until someone presses E on it, which
+        -- is a lesson this addon has already learned once.
+        ctx:ok(IsValid(copy:GetPod()), "the pasted bike has a seat")
+        ctx:ok(copy.wheels and #copy.wheels == 2, "the pasted bike has its wheels")
+
+        -- Exactly one seat. The pod is parented, so without DoNotDuplicate the
+        -- paste brings its own along and Initialize builds another.
+        local pods = 0
+        for _, e in ipairs(ents.FindByClass("prop_vehicle_prisoner_pod")) do
+            if e:GetParent() == copy then pods = pods + 1 end
+        end
+        ctx:between(pods, 1, 1, "and exactly one seat, not a pasted one plus a built one")
+
+        SafeRemoveEntity(copy)
+    end
+
+    ----------------------------------------------------------------------
+    -- GRABBING. A ridden bike held in the physgun is under the engine's shadow
+    -- controller while PhysicsSimulate keeps applying suspension and tyre
+    -- forces to it, with the rider in a pod parented to the argument.
+    ----------------------------------------------------------------------
+    local occupied = IsValid(ctx.bike:GetDriver())
+    if ctx:ok(occupied, "the test bike has a rider aboard") then
+        ctx:ok(hook.Run("PhysgunPickup", ctx.bot, ctx.bike) == false,
+            "physgun refuses a bike with a rider on it")
+        ctx:ok(hook.Run("GravGunPickupAllowed", ctx.bot, ctx.bike) == false,
+            "gravity gun refuses it too")
+        ctx:ok(hook.Run("PhysgunPickup", ctx.bot, ctx.bike:GetPod()) == false,
+            "and the seat is never grabbable")
+    end
+
+    -- An EMPTY bike is ordinary furniture and must stay pickup-able, or the
+    -- guard has quietly broken building with them.
+    local spare = ents.Create("bmx_base")
+    spare:SetPos(ctx.ground + Vector(0, 200, 20))
+    spare:Spawn()
+    spare:Activate()
+    ctx:ok(hook.Run("PhysgunPickup", ctx.bot, spare) ~= false,
+        "an empty bike is still pickup-able")
+    SafeRemoveEntity(spare)
+end)

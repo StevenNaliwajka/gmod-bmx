@@ -117,6 +117,33 @@ hook.Add("PhysgunPickup", "BMX.NoPodGrab", function(ply, ent)
     if ent:GetClass() == "prop_vehicle_prisoner_pod" and ent.BMXBike then
         return false
     end
+    -- AND NOT A BIKE WITH SOMEBODY ON IT. Holding a bike in the physgun puts
+    -- its physics object under the engine's shadow controller while
+    -- PhysicsSimulate keeps applying suspension and tyre forces to it every
+    -- substep, and the rider is in a pod parented to the whole argument. There
+    -- is no useful behaviour to define here, only degrees of mess, so the
+    -- answer is no while it is occupied. An empty bike picks up normally.
+    if ent.IsBMX and IsValid(ent:GetDriver()) then
+        return false
+    end
+end)
+
+-- Same reasoning for the gravity gun, which is the one a stranger on a public
+-- server will actually reach for.
+hook.Add("GravGunPickupAllowed", "BMX.NoGrabRidden", function(ply, ent)
+    if not IsValid(ent) then return end
+    if ent:GetClass() == "prop_vehicle_prisoner_pod" and ent.BMXBike then
+        return false
+    end
+    if ent.IsBMX and IsValid(ent:GetDriver()) then
+        return false
+    end
+end)
+
+hook.Add("GravGunPunt", "BMX.NoPuntRidden", function(ply, ent)
+    if IsValid(ent) and ent.IsBMX and IsValid(ent:GetDriver()) then
+        return false
+    end
 end)
 
 -- Dropping a bike out of the physgun should leave it awake, or it lands and

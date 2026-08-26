@@ -55,6 +55,10 @@ function T.Case(name, opts, fn)
         name    = name,
         fn      = fn,
         rider   = opts.rider ~= false,   -- seat the bot unless told not to
+        -- Set by a case that deliberately destroys its own bike. Without it the
+        -- universal check below reads an intentional removal as the symptom of
+        -- a NaN, which is the one thing it is there to catch.
+        removesBike = opts.removesBike or false,
         timeout = opts.timeout or 40,
         desc    = opts.desc or "",
     }
@@ -439,10 +443,17 @@ end
 -- symptoms (a vanished entity, or an entire map's physics going still) look
 -- nothing like their cause, so it is checked after every single case rather
 -- than being its own test that might not run.
-local function finiteCheck(ctx)
+local function finiteCheck(ctx, case)
     local b = ctx.bike
     if not IsValid(b) then
-        ctx:ok(false, "bike entity did not survive the case")
+        -- A vanished bike is normally the SYMPTOM this check exists for: a NaN
+        -- inside a PhysObj takes the entity with it and looks nothing like its
+        -- cause. But a case that says up front that it removes its own bike has
+        -- not found a NaN, it has finished, and there is nothing left to
+        -- inspect.
+        if not (case and case.removesBike) then
+            ctx:ok(false, "bike entity did not survive the case")
+        end
         return
     end
     local phys = b:GetPhysicsObject()
@@ -565,7 +576,7 @@ local function advance()
     end
 
     if not run.co then
-        finiteCheck(ctx)
+        finiteCheck(ctx, run.case)
         teardown(ctx)
         run.results[#run.results + 1] = {
             name = run.case.name, failed = ctx.failed, error = ctx.error,

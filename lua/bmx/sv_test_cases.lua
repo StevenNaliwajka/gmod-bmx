@@ -739,7 +739,7 @@ function(ctx)
 end)
 
 --------------------------------------------------------------------------
-T.Case("removed_under_rider", { timeout = 20,
+T.Case("removed_under_rider", { timeout = 20, removesBike = true,
     desc = "deleting a bike out from under its rider does not strand them" },
 function(ctx)
     -- The scenario is not exotic: an admin cleanup, a prop limit, a map reset,

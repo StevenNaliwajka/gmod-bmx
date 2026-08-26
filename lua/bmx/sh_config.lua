@@ -298,6 +298,20 @@ C.Pitch = {
     -- a wheelie is a 0.4 second event and nobody can use it.
     holdKp = 9,
     holdKd = 4.2,
+
+    -- WHERE IT AIMS, as a fraction of the balance point. NOT an angle, because
+    -- the balance point is a consequence of the chassis geometry and an angle
+    -- written here would silently stop matching it the moment someone moved the
+    -- hull. See BMX.WheelieBalance().
+    --
+    -- Past the balance point, gravity stops resisting the wheelie and starts
+    -- driving it, so anything aiming beyond it loops out every single time.
+    -- holdMax used to be BOTH the target and the give-up ceiling, at 48 degrees
+    -- against a balance point of 41.2: the assist drove the bike through the
+    -- point of no return and the headless suite could never hold a wheelie.
+    -- 0.82 of 41.2 is ~34 degrees, which is a wheelie with somewhere to go.
+    holdAim = 0.82,
+
     holdMax = math.rad(48),      -- beyond this you are looping out, no help
     stoppieMax = math.rad(-40),
 

@@ -54,6 +54,7 @@ function BMX.NewWheel(mountLocal, isFront)
         load        = 0,      -- N, normal force
         slipLong    = 0,      -- u/s
         slipLat     = 0,      -- u/s
+        latForce    = 0,      -- kg*u/s^2, read by the balance feed-forward
         saturation  = 0,      -- 0..1, how much of the friction circle is used
         contactPos  = Vector(),
         contactNorm = Vector(0, 0, 1),
@@ -151,6 +152,7 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
         self.load       = 0
         self.slipLong   = 0
         self.slipLat    = 0
+        self.latForce   = 0
         self.saturation = 0
         self.compression = 0
         self.contactNorm = Vector(0, 0, 1)
@@ -253,6 +255,7 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
         -- meaningful contact patch; apply the suspension force only.
         phys:ApplyForceOffset(normal * (N * dt), contact)
         self.onGround = true
+        self.latForce = 0
         return
     end
 
@@ -424,6 +427,7 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
     self.groundTime  = CurTime()
     self.slipLong    = slipLong
     self.slipLat     = slipLat
+    self.latForce    = Flat
     self.contactPos  = contact
     self.contactNorm = normal
     self.lastComp    = comp

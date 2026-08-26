@@ -117,6 +117,25 @@ function BMX.TorqueFor(inertia, alpha)
     return inertia * alpha
 end
 
+-- The wheelie balance point, radians: the nose-up angle at which the centre of
+-- mass passes over the rear contact patch. Below it gravity resists the
+-- wheelie; above it gravity DRIVES the wheelie and you are looping out whatever
+-- you do next.
+--
+-- Derived rather than written down, because it is a consequence of two numbers
+-- in the config that people move for unrelated reasons -- the mass centre and
+-- the wheelbase. A hardcoded angle here would go quietly wrong the first time
+-- someone adjusted the hull, and "quietly wrong" for this one means every
+-- wheelie loops out.
+--
+-- With the shipped geometry (COM 17.5u ahead of the rear contact, 20u above it)
+-- it is atan(17.5/20) = 41.2 degrees.
+function BMX.WheelieBalance()
+    local C = BMX.Config
+    local ahead = C.Chassis.massCenterExpected.x + C.Wheel.wheelbase * 0.5
+    return math.atan(ahead / C.Chassis.massCenterExpected.z)
+end
+
 -- VPhysics reports inertia in kg*METRES^2, while every force and length in this
 -- addon is in kg*UNITS^2. 1 m = 39.37 units, so the conversion is 39.37^2.
 --

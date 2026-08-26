@@ -135,30 +135,37 @@ function BMX.Balance(ent, phys, dt, inp, st, wheels, groundNormal, speed)
     --      destabilising gain is d(topple)/d(roll) = 111 rad/s^2 per radian
     --      against a Kp of 26, and it runs away.
     --
-    -- So: cancel topple at the CURRENT roll, which is what buys stability, and
-    -- add it back at the TARGET roll, which is what the cornering will be
-    -- supplying once the bike gets there. At roll = target the two are equal and
-    -- the PD is left at zero error, and topple(targetRoll) is a CONSTANT with
-    -- respect to roll, so unlike 2 it opens no feedback path. Straight-line
-    -- riding is unchanged: target 0 means the second term is 0 and this is
-    -- exactly formulation 1.
+    --   4. alpha = -topple(roll) + topple(target) + PD. Cancel at the current
+    --      roll for stability, add back at the target because that is what the
+    --      cornering will supply once the bike is there. Zero steady-state error
+    --      on paper, and topple(target) is constant with respect to roll so it
+    --      opens no feedback path. It falls over too, and the reason is
+    --      TIMING rather than algebra: topple(target) arrives at full value on
+    --      the first substep while the cornering that justifies it takes a few
+    --      tenths of a second to develop, so the bike gets 93 rad/s^2 into the
+    --      lean from upright and slams straight through the target.
+    --
+    -- SO 1 IS WHAT SHIPS, shortfall and all, and the shortfall is a TUNING
+    -- ITEM rather than a bug -- see docs/TUNING.md. Removing it properly wants
+    -- integral action or a Kp several times larger, and both of those change how
+    -- the bike feels to ride, which is not a judgement a headless suite is
+    -- entitled to make. Every alternative above trades the error for a bike on
+    -- its side, which is a much worse answer than leaning 14 degrees shy.
     ----------------------------------------------------------------------
-    local h    = C.Chassis.massCenterExpected.z
-    local mgh  = C.Chassis.mass * gravity() * h / BMX.IRoll(ent)
+    local h      = C.Chassis.massCenterExpected.z
+    local topple = (C.Chassis.mass * gravity() * h * math.sin(roll)) / BMX.IRoll(ent)
 
-    local topple    = mgh * math.sin(roll)
-    local toppleWant = mgh * math.sin(targetRoll)
-
-    -- Reported, not used: the debug overlay earns its keep by showing what the
+    -- Reported, not used. The debug overlay earns its keep by showing what the
     -- bike is doing about its own balance, and the gap between these two is how
-    -- you see the cornering develop.
+    -- you watch the cornering develop -- which is what made formulation 2's
+    -- feedback loop visible in the first place.
     local lat = 0
     for _, w in ipairs(wheels) do
         if w.onGround then lat = lat + (w.latForce or 0) end
     end
 
     local err   = targetRoll - roll
-    local alpha = -topple + toppleWant + B.leanKp * err - B.leanKd * st.rollRate
+    local alpha = -topple + B.leanKp * err - B.leanKd * st.rollRate
     alpha = BMX.Clamp(alpha, -B.maxAssistAccel, B.maxAssistAccel) * authority
 
     st.toppleAccel   = topple

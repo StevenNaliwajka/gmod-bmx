@@ -121,35 +121,75 @@ end)
 T.Case("rest", { timeout = 15,
     desc = "settles on both wheels at the designed ride height" },
 function(ctx)
-    -- Measured EARLY on purpose. With no speed there is no balance authority by
-    -- design, so a stationary bike is in unstable equilibrium and will tip given
-    -- long enough. This case is about the suspension, not the balance.
-    ctx:wait(0.75)
+    -- READ THE SUSPENSION WHILE THE BIKE IS STILL UPRIGHT.
+    --
+    -- With no speed there is no balance authority, by design -- and that gate is
+    -- on SPEED (Balance.fadeInLow), not on whether anyone is aboard, so a
+    -- stationary RIDDEN bike topples exactly like a riderless one. It does it
+    -- quickly, too: the roll time constant is sqrt(I_roll / m*g*h) = 95 ms, so
+    -- it is a good way over inside a second.
+    --
+    -- This case used to read at a flat 0.75s and call that "early". It was, back
+    -- when a tyre bug shook the bike hard enough to keep it moving and therefore
+    -- upright. With that fixed, the bike honestly topples, and reading
+    -- compression and load off one that is already 27 degrees over measures the
+    -- geometry of a falling bike rather than the spring: it reported 0.64 of the
+    -- bike's weight supported, with both wheels legitimately on the ground and
+    -- the suspension behaving perfectly.
+    local UPRIGHT = math.rad(5)
+    local t0, snap = CurTime(), nil
 
-    local f, r = ctx:wheels()
-    ctx:ok(f.onGround, "front wheel found ground")
-    ctx:ok(r.onGround, "rear wheel found ground")
+    ctx:runUntil(2.5, function()
+        -- Skip the spawn transient: the bike is dropped one unit and bounces.
+        if CurTime() - t0 < 0.35 then return false end
+        if math.abs(ctx:st().roll) > UPRIGHT then return true end
+
+        local f, r = ctx:wheels()
+        snap = {
+            fg = f.onGround, rg = r.onGround,
+            fc = f.compression, rc = r.compression,
+            load = f.load + r.load,
+            h = ctx.bike:GetPos().z - ctx.ground.z,
+            at = CurTime() - t0,
+        }
+        return false
+    end)
+
+    if not ctx:ok(snap ~= nil,
+        "the bike was upright and settled at some point in the first 2.5s") then
+        return
+    end
+    ctx:log(string.format("read at t=%.2fs, still within %.0f deg of upright",
+        snap.at, math.deg(UPRIGHT)))
+
+    ctx:ok(snap.fg, "front wheel found ground")
+    ctx:ok(snap.rg, "rear wheel found ground")
 
     local WC = BMX.Config.Wheel
-    ctx:between(f.compression, 0.15, WC.restLength, "front compression", "u")
-    ctx:between(r.compression, 0.15, WC.restLength, "rear compression", "u")
+    ctx:between(snap.fc, 0.15, WC.restLength, "front compression", "u")
+    ctx:between(snap.rc, 0.15, WC.restLength, "rear compression", "u")
 
     -- Both wheels carrying load, and between them roughly the whole bike.
-    local total = f.load + r.load
     local weight = BMX.Config.Chassis.mass * physenv.GetGravity():Length()
-    ctx:between(total / weight, 0.75, 1.35, "supported weight / actual weight")
+    ctx:between(snap.load / weight, 0.75, 1.35, "supported weight / actual weight")
 
     -- Ride height: the origin sits on the design axle line, so at rest it sits
     -- one wheel radius up MINUS the static sag. Derived from the config rather
     -- than hardcoded, so retuning the spring does not "break" this test.
-    local sag = (BMX.Config.Chassis.mass * physenv.GetGravity():Length() * 0.5)
-        / WC.spring
-    local h = ctx.bike:GetPos().z - ctx.ground.z
+    local sag = (weight * 0.5) / WC.spring
     ctx:log(string.format("predicted sag %.2f u -> ride height %.2f u",
         sag, WC.radius - sag))
-    ctx:between(h, WC.radius - sag - 2, WC.radius - sag + 2, "ride height", "u")
+    ctx:between(snap.h, WC.radius - sag - 2, WC.radius - sag + 2, "ride height", "u")
 
-    ctx:between(math.deg(math.abs(ctx:st().roll)), 0, 12, "roll after 0.75s", "deg")
+    -- And then it falls over, which is the DESIGN and not a bug. Asserted here
+    -- so that someone "fixing" a stationary bike that will not stand up trips a
+    -- test rather than shipping a hovering prop. riderless_falls makes the same
+    -- claim without a rider; this one is the half people assume is different.
+    local fell = ctx:waitUntil(function()
+        return math.abs(ctx:st().roll) > math.rad(35)
+    end, 4, "the ridden stationary bike to topple")
+    ctx:ok(fell, "a RIDDEN bike at a standstill topples too (the assist gate " ..
+        "is on speed, not on having a rider)")
 end)
 
 --------------------------------------------------------------------------
@@ -189,21 +229,26 @@ function(ctx)
     -- eight seconds and then reported the speed of a bike falling down a pit --
     -- 453 u/s, comfortably inside the band, from a bike that was not touching
     -- anything.
-    local peak, cadence, plateau, last = 0, 0, 0, 0
+    local peak, cadence = 0, 0
+    local mark, markSpeed = CurTime(), 0
 
     local grounded = ctx:runUntil(9, function()
         local st = ctx:st()
         if st.speed > peak then peak, cadence = st.speed, st.cadence end
 
-        -- Terminal speed is an asymptote, so stop when it is close enough:
-        -- half a unit per second of gain, held for half a second.
-        if st.speed - last < 0.5 then
-            plateau = plateau + 1
-            if plateau > 33 then return true end
-        else
-            plateau = 0
+        -- Terminal speed is an asymptote, so stop when the approach to it has
+        -- gone flat. MEASURED OVER HALF A SECOND, not per tick: the gain
+        -- between two consecutive substeps at 66 Hz is 1/66th of the
+        -- acceleration, so comparing it against a threshold written in u/s
+        -- declares victory at 33 u/s^2 and walks away with the bike still
+        -- pulling hard. That stopped the run at 237 u/s of a 312 u/s terminal,
+        -- which is inside the speed band and therefore looked fine -- except
+        -- the cadence check, which reads the throttle the rider still has left,
+        -- failed at exactly the boundary and gave it away.
+        if CurTime() - mark >= 0.5 then
+            if st.speed - markSpeed < 1 then return true end
+            mark, markSpeed = CurTime(), st.speed
         end
-        last = st.speed
         return false
     end, { throttle = 1 })
 

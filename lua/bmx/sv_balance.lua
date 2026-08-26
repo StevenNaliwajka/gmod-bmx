@@ -95,30 +95,43 @@ function BMX.Balance(ent, phys, dt, inp, st, wheels, groundNormal, speed)
     -- Scaled by authority along with everything else, so a stationary bike is
     -- still un-helped and still falls over. That is the design, not an oversight.
     --
-    -- ...AND IT MUST NOT CANCEL WHAT THE CORNERING IS ALREADY DOING. This is the
-    -- half that was missing, and it cost 14 degrees of lean.
+    -- ...EXCEPT THAT THERE IS NOTHING LEFT FOR IT TO DO, AND DOING IT ANYWAY IS
+    -- WHERE THE MISSING LEAN WENT. The feed-forward is gone. Both of the ways it
+    -- could have been kept were tried on a live server and both are worse, so
+    -- the reasoning is written out rather than left as an empty line.
     --
     -- Gravity is not the only thing acting on the roll axis. The lateral tyre
-    -- force acts at the same contact patch, h below the centre of mass, and its
+    -- force acts at the same contact patch, below the centre of mass, and its
     -- torque RIGHTS the bike. In steady cornering the two cancel exactly, and
-    -- not by coincidence: the derived steer angle in step 3 below is chosen so
-    -- that tan(steer) = wheelbase*g*tan(roll)/v^2, which is the radius at which
+    -- not by coincidence: the derived steer angle in step 3 is chosen so that
+    -- tan(steer) = wheelbase*g*tan(roll)/v^2, which is the radius at which
     -- m*v^2/R = m*g*tan(roll), whose righting torque h*F*cos(roll) is precisely
-    -- the m*g*h*sin(roll) that gravity is applying. That is what "the loop
-    -- closes through the real tyre model" means at the top of this file.
+    -- the m*g*h*sin(roll) gravity is applying. That cancellation is what "the
+    -- loop closes through the real tyre model" means at the top of this file.
     --
-    -- So subtracting the whole toppling torque left the righting torque
-    -- unopposed: a spurious roll-upright acceleration of m*g*h*sin(roll)/I that
-    -- the PD then had to fight with error alone. The bike sagged out of every
-    -- lean by a repeatable 13-15 degrees, which reads exactly like a Kp that
-    -- wants raising and is nothing of the kind.
+    -- So write the plant out:  roll'' = topple(roll) - righting + alpha.
+    -- At the state we want -- roll at target, cornering developed -- both terms
+    -- are topple(target) and they cancel, leaving roll'' = alpha. The steady
+    -- state therefore needs alpha = 0, which a PD supplies at ZERO error.
+    -- Subtracting topple instead makes the same algebra demand Kp*err =
+    -- topple(roll), which is 13-15 degrees of permanent lean shortfall at these
+    -- gains. The feed-forward was not compensating for the error; it WAS the
+    -- error, and it read exactly like a Kp that wanted raising.
     --
-    -- Cancel the NET instead, and take the lateral force from the wheels rather
-    -- than from the ideal-cornering formula, because the formula is only true
-    -- once the turn has developed. At a standstill, at walking pace, or with the
-    -- steer angle saturated, the tyres genuinely are not producing enough and
-    -- the assist genuinely is needed -- which is the case it was added for. This
-    -- measures the shortfall instead of assuming it.
+    -- AND CANCELLING THE NET IS WORSE, which is the part worth recording. It
+    -- looks like the careful fix: measure the real lateral force, subtract
+    -- (topple - righting), leave the PD a clean plant. It puts the bike on the
+    -- ground inside half a second. The righting torque is the bike's own
+    -- restoring force, and it is downstream of the roll through the derived
+    -- steering -- so cancelling it closes a positive feedback loop (more roll ->
+    -- more steer -> more lateral force -> a bigger feed-forward pushing INTO the
+    -- lean). Measured through the transient, righting ran two to three times
+    -- topple and the bike rolled past 90 degrees. A cancellation can be
+    -- arithmetically right and dynamically fatal; the quantity you cancel must
+    -- not depend on the thing you are controlling.
+    --
+    -- Both quantities are still computed, because the debug overlay earns its
+    -- keep by showing what the bike is actually doing about its own balance.
     ----------------------------------------------------------------------
     local h      = C.Chassis.massCenterExpected.z
     local topple = (C.Chassis.mass * gravity() * h * math.sin(roll)) / BMX.IRoll(ent)
@@ -130,7 +143,7 @@ function BMX.Balance(ent, phys, dt, inp, st, wheels, groundNormal, speed)
     local righting = (lat * h * math.cos(roll)) / BMX.IRoll(ent)
 
     local err   = targetRoll - roll
-    local alpha = -(topple - righting) + B.leanKp * err - B.leanKd * st.rollRate
+    local alpha = B.leanKp * err - B.leanKd * st.rollRate
     alpha = BMX.Clamp(alpha, -B.maxAssistAccel, B.maxAssistAccel) * authority
 
     st.toppleAccel   = topple

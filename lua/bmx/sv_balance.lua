@@ -252,38 +252,9 @@ function BMX.PitchControl(ent, phys, dt, inp, st, wheels)
         ------------------------------------------------------------------
         -- Aim SHORT OF THE BALANCE POINT, not past it. See Pitch.holdAim.
         local target = inp.pitch * BMX.WheelieBalance() * P.holdAim
-
         if st.pitch < P.holdMax then
-            ------------------------------------------------------------------
-            -- CARRY THE WEIGHT FIRST, THEN CORRECT. A wheelie is a balance
-            -- against a gravity torque that is still very much present: 903,000
-            -- with the nose just off the ground, and only reaching zero at the
-            -- balance point. A bare PD never had a chance of supplying that --
-            -- at the angles this actually reached it was outgunned about
-            -- fifteen to one, so the nose simply sat wherever the initial yank
-            -- left it, around 4 degrees, and the case failed on a band floor of
-            -- 5 while looking like a tuning near-miss.
-            --
-            -- So feed the gravity torque forward and leave the PD to do what a
-            -- PD is good at. Same shape as the roll axis, and stable for the
-            -- same reason: it cancels a term that depends on the variable being
-            -- controlled, and the ceiling above still lets a wheelie be blown.
-            ------------------------------------------------------------------
-            local ahead = C.Chassis.massCenterExpected.x + C.Wheel.wheelbase * 0.5
-            local cz    = C.Chassis.massCenterExpected.z
-            torque = torque + C.Chassis.mass * gravity() *
-                (ahead * math.cos(st.pitch) - cz * math.sin(st.pitch))
-
-            -- AND THE INERTIA IS NOT THE FREE-BODY ONE. The bike is pivoting on
-            -- its rear contact patch, so the PD's commanded acceleration costs
-            -- I_pitch + m*d^2 = 72,574 rather than I_pitch = 11,837, a factor of
-            -- 6.1. Using the free-body figure for a constrained body is the same
-            -- mistake docs/TUNING.md withdrew a note for.
-            local d = math.sqrt(ahead * ahead + cz * cz)
-            local iEff = BMX.IPitch(ent) + C.Chassis.mass * d * d
-
             local alpha = P.holdKp * (target - st.pitch) - P.holdKd * st.pitchRate
-            torque = torque + BMX.TorqueFor(iEff, alpha)
+            torque = torque + BMX.TorqueFor(BMX.IPitch(ent), alpha)
         end
     elseif rearUp and not frontUp and inp.pitch < 0 then
         ------------------------------------------------------------------

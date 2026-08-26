@@ -737,3 +737,32 @@ function(ctx)
         "an empty bike is still pickup-able")
     SafeRemoveEntity(spare)
 end)
+
+--------------------------------------------------------------------------
+T.Case("removed_under_rider", { timeout = 20,
+    desc = "deleting a bike out from under its rider does not strand them" },
+function(ctx)
+    -- The scenario is not exotic: an admin cleanup, a prop limit, a map reset,
+    -- or someone pointing the remover tool at a bike somebody is riding. The
+    -- seat is a parented pod that is removed with the bike, and a player whose
+    -- vehicle vanishes mid-frame is the classic way to end up welded in place
+    -- with no way out but suicide.
+    if not ctx:ok(IsValid(ctx.bot) and ctx.bike:GetDriver() == ctx.bot,
+        "the rider is aboard to begin with") then return end
+
+    local pod = ctx.bike:GetPod()
+    ctx:ok(IsValid(pod), "and the seat exists")
+
+    SafeRemoveEntity(ctx.bike)
+    ctx:wait(0.5)
+
+    ctx:ok(not IsValid(ctx.bike), "the bike is gone")
+    ctx:ok(not IsValid(pod), "the seat went with it rather than being orphaned")
+
+    if IsValid(ctx.bot) then
+        ctx:ok(not IsValid(ctx.bot:GetVehicle()),
+            "the rider is not still in a vehicle that no longer exists")
+        ctx:ok(ctx.bot:GetMoveType() ~= MOVETYPE_NONE,
+            "and can move again rather than being frozen where the bike was")
+    end
+end)

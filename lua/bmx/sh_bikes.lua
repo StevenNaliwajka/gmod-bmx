@@ -17,6 +17,12 @@ BMX = BMX or {}
 BMX.Bikes = BMX.Bikes or {}
 
 local pending = {}
+local derived = false
+
+-- Forward declaration. RegisterBike is defined above the body of this and calls
+-- it, and a `local function` declared later would not be the same name: the
+-- earlier reference would resolve as a global and be nil at call time.
+local deriveOne
 
 --------------------------------------------------------------------------
 -- Register a bike.
@@ -66,7 +72,17 @@ function BMX.RegisterBike(id, def)
     -- "stock" IS bmx_base rather than a derivative, so the base class stays
     -- spawnable on its own and a broken registry still leaves something to ride.
     if id ~= "stock" then
-        pending[#pending + 1] = id
+        -- REGISTERING AFTER LOAD HAS TO WORK. The deferred pass below runs once
+        -- on a timer at load, so a bike registered later -- by another addon, by
+        -- a test fixture, from the console -- used to go on a queue that had
+        -- already been drained. BMX.ClassFor would hand back "bmx_<id>" for a
+        -- class that scripted_ents had never heard of, and the only symptom was
+        -- ents.Create returning nothing.
+        if derived and scripted_ents.GetStored("bmx_base") then
+            deriveOne(id)
+        else
+            pending[#pending + 1] = id
+        end
     end
 
     list.Set("SpawnableEntities", BMX.ClassFor(id), {
@@ -99,6 +115,21 @@ end
 -- rely on: scripted_ents.Get("bmx_base") has to already exist. One timer at
 -- load is cheaper than a fragile ordering assumption.
 --------------------------------------------------------------------------
+function deriveOne(id)
+    -- A MINIMAL table, not a copy of the base. Setting Base is what makes
+    -- inheritance happen; copying the base's methods on top of that gives
+    -- every derived bike its own frozen snapshot of them, so a later fix to
+    -- bmx_base silently does not reach the derived classes.
+    scripted_ents.Register({
+        Type      = "anim",
+        Base      = "bmx_base",
+        BikeID    = id,
+        PrintName = BMX.Bikes[id].printName,
+        Category  = "BMX",
+        Spawnable = true,
+    }, "bmx_" .. id)
+end
+
 local function derive()
     local base = scripted_ents.GetStored("bmx_base")
     if not base then
@@ -107,21 +138,11 @@ local function derive()
     end
 
     for _, id in ipairs(pending) do
-        -- A MINIMAL table, not a copy of the base. Setting Base is what makes
-        -- inheritance happen; copying the base's methods on top of that gives
-        -- every derived bike its own frozen snapshot of them, so a later fix to
-        -- bmx_base silently does not reach the derived classes.
-        scripted_ents.Register({
-            Type      = "anim",
-            Base      = "bmx_base",
-            BikeID    = id,
-            PrintName = BMX.Bikes[id].printName,
-            Category  = "BMX",
-            Spawnable = true,
-        }, "bmx_" .. id)
+        deriveOne(id)
     end
 
     pending = {}
+    derived = true
 end
 
 timer.Simple(0, derive)

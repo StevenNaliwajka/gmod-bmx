@@ -231,10 +231,21 @@ function(ctx)
     -- anything.
     local peak, cadence = 0, 0
     local mark, markSpeed = CurTime(), 0
+    local start, ranOut = ctx.bike:GetPos(), false
 
     local grounded = ctx:runUntil(9, function()
         local st = ctx:st()
         if st.speed > peak then peak, cadence = st.speed, st.cadence end
+
+        -- Stop before the edge rather than at it. Terminal speed is an
+        -- asymptote and chasing the last few u/s costs a lot of ground, so on a
+        -- short runway this case reports the best it could actually reach and
+        -- says the run was cut short -- which is a far more useful answer than
+        -- the speed of a bike falling into a pit.
+        if ctx.runway > 0 and ctx.bike:GetPos():Distance(start) > ctx.runway then
+            ranOut = true
+            return true
+        end
 
         -- Terminal speed is an asymptote, so stop when the approach to it has
         -- gone flat. MEASURED OVER HALF A SECOND, not per tick: the gain
@@ -254,6 +265,11 @@ function(ctx)
 
     -- Said first, because every number below is meaningless without it.
     ctx:ok(grounded, "the bike stayed on the ground for the whole run")
+    if ranOut then
+        ctx:log(string.format(
+            "run stopped at %.0f units, the runway this map could offer -- top " ..
+            "speed below is a floor, not the terminal speed", ctx.runway))
+    end
 
     -- ~350 u/s is the design target: 120 rpm crank * 2.78 gear * 10u radius.
     -- The band is deliberately generous; it catches a gearing or torque error
@@ -308,8 +324,16 @@ function(ctx)
     -- The core claim of the whole design: steering is an output of lean. A
     -- single-direction test would pass with the sign inverted, so this measures
     -- both and asserts they are opposites.
+    -- 150 u/s, not 230. What these cases actually require is that the balance
+    -- assist be at FULL authority, and that happens at Balance.fadeInHigh, which
+    -- is 110 -- so 150 is comfortable margin and everything above it is just
+    -- distance. 230 was an arbitrary number that cost a thousand extra units of
+    -- runway, and once the bike could really accelerate that bought a turn taken
+    -- past the edge of the map.
+    local ENOUGH = 150
+
     local function sweep(lean)
-        if not ctx:accelerateTo(230, 14) then return nil end
+        if not ctx:accelerateTo(ENOUGH, 14) then return nil end
         local yaw0 = ctx.bike:GetAngles().y
         ctx:input({ throttle = 0.6, lean = lean })
         ctx:wait(2.5)
@@ -348,7 +372,10 @@ end)
 T.Case("lean_tracks_target", { timeout = 30,
     desc = "the balance PD actually holds the lean it was asked for" },
 function(ctx)
-    if not ctx:accelerateTo(280, 14) then return end
+    -- 150 rather than 280, for the reason spelled out in lean_steers: the
+    -- assist is at full authority from 110 u/s (Balance.fadeInHigh) and the
+    -- extra speed only bought runway this map does not have.
+    if not ctx:accelerateTo(150, 14) then return end
 
     ctx:input({ throttle = 0.7, lean = 0.6 })
     ctx:wait(2.5)

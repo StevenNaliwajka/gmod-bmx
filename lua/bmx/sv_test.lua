@@ -152,7 +152,7 @@ local function findTestGround()
                 -- a cliff.
                 if spread <= MAX_SPREAD then
                     local runway = runwayFrom(hits[1])
-                    if runway >= WANT_RUNWAY then return hits[1], nil end
+                    if runway >= WANT_RUNWAY then return hits[1], nil, runway end
                     if runway > bestRunway then
                         bestRunway, bestRunwayAt = runway, hits[1]
                     end
@@ -169,12 +169,13 @@ local function findTestGround()
     if bestRunwayAt then
         return bestRunwayAt, string.format(
             "only %d units of runway (want %d): the fast cases will run out of " ..
-            "ground before they finish", bestRunway, WANT_RUNWAY)
+            "ground before they finish", bestRunway, WANT_RUNWAY), bestRunway
     end
 
     if best then
         return best, string.format(
-            "ground is not level: %.1f units of variation across 400u", bestSpread)
+            "ground is not level: %.1f units of variation across 400u", bestSpread),
+            runwayFrom(best)
     end
     return nil, "no ground found under any spawn point"
 end
@@ -347,7 +348,7 @@ local function teardown(ctx)
 end
 
 local function setupCase(case)
-    local ground, groundNote = findTestGround()
+    local ground, groundNote, runway = findTestGround()
     if not ground then
         return nil, (groundNote or "no ground") .. " on " .. game.GetMap()
     end
@@ -374,6 +375,9 @@ local function setupCase(case)
     local ctx = setmetatable({
         bike = bike, checks = {}, lines = {}, failed = false,
         ground = ground,
+        -- How far this spot can be ridden before the world runs out, minus a
+        -- margin so a case stops on its own terms rather than off a cliff.
+        runway = math.max((runway or 0) - 250, 0),
     }, Ctx)
 
     -- Not fatal, but every number below assumes level ground, so say it out

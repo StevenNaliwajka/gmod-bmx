@@ -259,9 +259,44 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
     local vFwd = velAt:Dot(fwdDir)
     local vLat = velAt:Dot(rightDir)
 
+    ----------------------------------------------------------------------
+    -- SPIN THE WHEEL FIRST, THEN SOLVE THE TYRE AGAINST WHAT THAT LEAVES.
+    --
+    -- The drive and brake torques are applied here, before the slip is
+    -- measured, and the tyre force is solved for afterwards as the reaction to
+    -- the slip they produced. That ordering is the whole difference between a
+    -- tyre that hooks up and one that spins.
+    --
+    -- Do it the other way round -- measure slip, apply a capped force, then
+    -- integrate the wheel against drive MINUS that force -- and the drive
+    -- torque is regenerating slip that the force is only ever answering one
+    -- step late. The wheel wins, because the cap below is sized against the
+    -- wheel's own tiny rotational inertia (I/r^2 is about 1.1 kg). It spins up
+    -- to the cadence ceiling, the falling torque curve in sv_physics then reads
+    -- a rider spinning out and cuts crank torque to nearly nothing, and the
+    -- bike tops out at a third of walking pace with its rear wheel screaming.
+    -- Measured: 75 u/s against a 210 u/s floor, cadence pinned at 0.99.
+    ----------------------------------------------------------------------
+    local omegaFree = self.omega + (driveTorque / WC.inertia) * dt
+
+    -- A brake-LOCKED wheel is a different constraint, not a stiffer one: the
+    -- tyre force reacts into the brake and through it into the chassis, rather
+    -- than spinning the wheel. Detected the same way the brake itself decides,
+    -- so the two can never disagree.
+    local locked = false
+    if brakeTorque > 0 then
+        local dOmega = brakeTorque / WC.inertia * dt
+        if abs(omegaFree) <= dOmega then
+            omegaFree = 0                 -- locked: the slip becomes -vFwd,
+            locked    = true              -- the tyre saturates, and you skid
+        else
+            omegaFree = omegaFree - dOmega * (omegaFree > 0 and 1 or -1)
+        end
+    end
+
     -- Slip VELOCITY, not slip ratio. See the note in sh_config.lua: slip ratio
     -- divides by ground speed and a BMX spends a lot of its life at zero.
-    local slipLong = self.omega * radius - vFwd
+    local slipLong = omegaFree * radius - vFwd
     local slipLat  = -vLat
 
     local Fmax  = WC.grip * N
@@ -301,15 +336,30 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
     -- problems downstream of a sixth.
     --
     -- The cure is the damper's, one block up: cap the force at the one that
-    -- exactly nulls the slip over this dt. The longitudinal slip closes
-    -- through the chassis AND through the wheel spinning up, so its compliance
-    -- carries the extra r^2/I term; the lateral one has no such path. Below
-    -- the stability limit the linear stiffness is untouched, so this is a
-    -- ceiling rather than a retune, and it holds for any stiffness, any
-    -- tickrate and any contact geometry.
+    -- exactly nulls the slip over this dt. Below the stability limit the linear
+    -- stiffness is untouched, so this is a ceiling rather than a retune, and it
+    -- holds for any stiffness, any tickrate and any contact geometry.
+    --
+    -- WHICH COMPLIANCE, though, is the part that is easy to get wrong. Slip is
+    -- the difference between two speeds, so the force closes it through
+    -- whichever of them can actually move. A rolling wheel spins up, so its
+    -- r^2/I term joins the chassis term -- and dominates it, because a 20-inch
+    -- wheel is only about 1.1 kg of equivalent mass at the contact patch. A
+    -- LOCKED wheel cannot, so that path is gone and only the chassis remains.
+    --
+    -- Getting that second case wrong is not subtle: with the wheel term wrongly
+    -- included, a wheel skidding at 200 u/s was capped at about 14,000 against
+    -- a grip limit of 37,800, so the friction circle could never bind and the
+    -- suite measured a peak saturation of 0.00 during a full-lock skid. The
+    -- tyre had been given a numerical ceiling below its physical one, which
+    -- quietly deletes the friction model.
     ----------------------------------------------------------------------
-    local capLong = abs(slipLong) /
-        (dt * (1 / effectiveMass(ent, phys, contact, fwdDir) + radius * radius / WC.inertia))
+    local invCompLong = 1 / effectiveMass(ent, phys, contact, fwdDir)
+    if not locked then
+        invCompLong = invCompLong + radius * radius / WC.inertia
+    end
+
+    local capLong = abs(slipLong) / (dt * invCompLong)
     if abs(Flong) > capLong then
         Flong = capLong * (Flong >= 0 and 1 or -1)
     end
@@ -340,21 +390,17 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
     ----------------------------------------------------------------------
     -- Wheel rotation
     --
-    -- The tyre force reacts back on the wheel through the contact patch, which
-    -- is what makes a locked wheel stay locked and a spun-up wheel hook up.
+    -- The drive and brake torques were already integrated above, into
+    -- omegaFree, so all that is left here is the tyre's reaction -- which is
+    -- what makes a spun-up wheel hook up. A brake-locked wheel takes that
+    -- reaction through the brake instead and stays put, which is what makes a
+    -- skid a skid rather than a wheel that quietly starts rolling again.
     ----------------------------------------------------------------------
-    local wheelTorque = driveTorque - Flong * radius
-
-    if brakeTorque > 0 then
-        local dOmega = brakeTorque / WC.inertia * dt
-        if abs(self.omega) <= dOmega then
-            self.omega = 0        -- locked: slipLong becomes -vFwd, tyre saturates, you skid
-        else
-            self.omega = self.omega - dOmega * (self.omega > 0 and 1 or -1)
-        end
+    if locked then
+        self.omega = 0
+    else
+        self.omega = omegaFree - (Flong * radius / WC.inertia) * dt
     end
-
-    self.omega = self.omega + (wheelTorque / WC.inertia) * dt
 
     -- Freewheel: a BMX cassette cannot be driven backwards by the ground, so a
     -- coasting rider feels no engine braking. Fixed-gear bikes skip this.

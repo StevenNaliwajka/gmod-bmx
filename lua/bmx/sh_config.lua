@@ -73,10 +73,23 @@ C.Chassis = {
     -- handler, not from hull friction.
     surfaceProp = "gmod_ice",
 
-    -- Moments of inertia used by the balance/pitch controllers, kg*units^2.
-    -- Deliberately NOT read from PhysObj:GetInertia(): VPhysics derives that
-    -- from the collision hull, and our hull is a stand-in for a frame, not a
-    -- mass distribution. Computed as m * k^2 with a radius of gyration k:
+    -- FALLBACK moments of inertia, kg*units^2. THESE ARE NOT WHAT RUNS.
+    --
+    -- The live values come from PhysObj:GetInertia() via BMX.CacheInertia, and
+    -- these are only reached if that returns nothing usable -- which would also
+    -- print an error. Tuning them does nothing on a healthy bike.
+    --
+    -- The comment here used to say the opposite: "deliberately NOT read from
+    -- GetInertia, because VPhysics derives it from the collision hull and our
+    -- hull is a stand-in for a frame, not a mass distribution". That argument is
+    -- still a real one, and it lost, for a reason worth keeping: the invented
+    -- constants below are roughly 2.2x the measured figures (9,299 / 11,837 /
+    -- 7,353), every controller converts a commanded angular acceleration with
+    -- T = I*alpha, and being 2.2x out scaled EVERY torque in the addon. A
+    -- defensible model that is wrong by a factor loses to a measurement.
+    --
+    -- Left as m * k^2 with a radius of gyration k, so the shape of the estimate
+    -- survives even though the numbers are dormant:
     --   roll  k ~ 16u  (rider is tall and narrow: hardest axis to flick)
     --   pitch k ~ 17u  (wheelbase dominates)
     --   yaw   k ~ 16u
@@ -251,22 +264,30 @@ C.Balance = {
     --
     -- Sized against the gravity torque the assist has to beat at full lean:
     --   T_gravity = m * g * h * sin(maxLean)
-    --             = 86 * 600 * 20 * sin(42) = 690,000
-    --   alpha_min = T_gravity / I_roll = 690000 / 9299 = 74 rad/s^2
+    --             = 86 * 600 * 30 * sin(42) = 1,035,800
+    --   alpha_min = T_gravity / I_roll = 1035800 / 9299 = 111 rad/s^2
     --
-    -- NOTE THE DENOMINATOR. This was originally derived against the invented
-    -- inertia of 22,016, which gave 31 and made 45 look like a 1.4x margin. The
-    -- REAL roll inertia is 9,299 (VPhysics, measured), so 45 was in fact well
-    -- BELOW the requirement: the balance controller could not hold the bike up
-    -- at any lean worth having, at full authority, and the bike fell over while
-    -- every diagnostic said the assist was working perfectly.
+    -- BOTH OF THOSE HAVE BEEN WRONG ONCE, WHICH IS WHY THE WORKING IS SHOWN.
     --
-    -- 110 leaves ~1.5x margin over the 74 needed. Most of that requirement is
-    -- now met by the gravity feed-forward in sv_balance.lua rather than by the
-    -- PD, so this is a ceiling on total authority rather than the working value.
-    -- It still needs to be finite: it is the only thing that lets a bad landing
-    -- beat the assist.
-    maxAssistAccel = 110,
+    -- The DENOMINATOR was originally the invented inertia of 22,016, giving 31
+    -- and making 45 look like a 1.4x margin. The real roll inertia is 9,299
+    -- (VPhysics, measured), so 45 was well BELOW the requirement: the balance
+    -- controller could not hold the bike up at any lean worth having, at full
+    -- authority, while every diagnostic said the assist was working perfectly.
+    --
+    -- The LEVER ARM was then wrong the same way. It used massCenterExpected.z,
+    -- 20, which is the mass centre above the AXLE LINE -- but the bike topples
+    -- about its CONTACT PATCH, a further Wheel.radius down, so the arm is 30.
+    -- That put the requirement at 74 where it is really 111, and made a ceiling
+    -- of 110 look like a comfortable 1.5x margin when it was actually BELOW the
+    -- requirement at full lean. Same failure, same controller, second factor.
+    --
+    -- 165 restores the ~1.5x this was always meant to have. Most of the
+    -- requirement is met by the gravity feed-forward in sv_balance.lua rather
+    -- than by the PD, so this is a ceiling on total authority and not the
+    -- working value. It still needs to be finite: it is the only thing that lets
+    -- a bad landing beat the assist.
+    maxAssistAccel = 165,
 
     -- Assist authority against speed, u/s. Below fadeInLow the bike is on its
     -- own and will fall over (correct: a stationary bike does). Full authority

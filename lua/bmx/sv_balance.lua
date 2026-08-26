@@ -153,7 +153,26 @@ function BMX.Balance(ent, phys, dt, inp, st, wheels, groundNormal, speed)
     -- entitled to make. Every alternative above trades the error for a bike on
     -- its side, which is a much worse answer than leaning 14 degrees shy.
     ----------------------------------------------------------------------
-    local h      = C.Chassis.massCenterExpected.z
+    -- THE LEVER ARM IS TO THE CONTACT PATCH, NOT TO THE AXLE LINE.
+    --
+    -- This block applies a pure couple about the centre of mass, so `topple` has
+    -- to be the net roll torque about the COM from the external forces. Gravity
+    -- acts AT the COM and contributes none. The normal force acts at the CONTACT
+    -- PATCH, and its torque is N times the patch's lateral offset from the COM.
+    --
+    -- massCenterExpected.z is measured from the chassis origin, which sits on
+    -- the AXLE LINE. The patch is a further Wheel.radius below that. So the
+    -- COM-to-patch distance is 30 units and the lateral offset under roll is
+    -- 30*sin(roll) -- half again what this used to use.
+    --
+    -- Understating it by a third left a residual destabilising term in the
+    -- plant, and it under-sized the ceiling this alpha is clamped to: see the
+    -- derivation next to Balance.maxAssistAccel, which was computed against the
+    -- same wrong 20 and came out at 74 rad/s^2 for a requirement that is really
+    -- 111. That is the second time a number in this controller has been sized
+    -- against a quantity that was itself wrong -- the first was the inertia, and
+    -- the note beside maxAssistAccel records it.
+    local h      = C.Chassis.massCenterExpected.z + C.Wheel.radius
     local topple = (C.Chassis.mass * gravity() * h * math.sin(roll)) / BMX.IRoll(ent)
 
     -- Reported, not used. The debug overlay earns its keep by showing what the

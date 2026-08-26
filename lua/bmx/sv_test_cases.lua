@@ -456,15 +456,29 @@ function(ctx)
     ctx:ok(lifted, "front wheel lifts under power")
 
     if lifted then
-        ctx:wait(1.2)
+        -- runUntil, not wait, so the hold inherits the edge guard. A plain wait
+        -- had this case reading +15 degrees on one run and -50 on the next with
+        -- nothing changed in between, because the bike was riding off the map
+        -- mid-wheelie and the second number was a nose-dive into a pit. It also
+        -- gives "it is a wheelie, not a jump" for free: a wheelie keeps the rear
+        -- wheel down, so a bike that goes fully airborne fails the run itself.
+        local held = ctx:runUntil(1.2)
+
         local st = ctx:st()
-        local f, r = ctx:wheels()
+        local _, r = ctx:wheels()
         ctx:log(string.format("pitch %.0f deg after 1.2s", math.deg(st.pitch)))
-        ctx:ok(r.onGround, "rear wheel still down (it is a wheelie, not a jump)")
-        -- The hold assist has a ceiling on purpose, so a wheelie can still be
-        -- blown. Past holdMax plus a margin it has looped out.
-        ctx:between(math.deg(st.pitch), 5, math.deg(BMX.Config.Pitch.holdMax) + 30,
-            "wheelie pitch", "deg")
+
+        if not held then
+            ctx:ok(false, "the bike went fully airborne: that is a jump, not a wheelie")
+        elseif ctx.stoppedAtEdge then
+            ctx:ok(false, "the bike reached the edge of the test ground mid-wheelie")
+        else
+            ctx:ok(r.onGround, "rear wheel still down (it is a wheelie, not a jump)")
+            -- The hold assist has a ceiling on purpose, so a wheelie can still be
+            -- blown. Past holdMax plus a margin it has looped out.
+            ctx:between(math.deg(st.pitch), 5, math.deg(BMX.Config.Pitch.holdMax) + 30,
+                "wheelie pitch", "deg")
+        end
     end
 end)
 

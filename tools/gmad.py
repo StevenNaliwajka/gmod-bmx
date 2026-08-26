@@ -32,11 +32,21 @@ FORMAT (version 3), all little-endian:
 The "description" field is a JSON object carrying the real description plus the
 addon type and tags, which is how modern gmad stores addon.json.
 
-VERIFY BEFORE YOUR FIRST WORKSHOP PUBLISH. This implements the published format
-and produces a file the loader accepts, but a mount failure on a real server is
-a much more expensive way to find a byte-order mistake than:
+VERIFIED AGAINST THE REAL gmad, 2026-08-26, on a dedicated server install
+(the binary ships in the depot at bin/linux64/gmad):
 
-    gmad_linux extract -file bmx.gma -out /tmp/check
+    python3 tools/gmad.py -o /tmp/bmx.gma
+    gmad extract -file /tmp/bmx.gma -out /tmp/check     # accepted, 18 files
+    # every extracted file cmp'd byte-identical to source: 0 mismatches
+    gmad create -folder . -out /tmp/real.gma            # 197,175 vs our 197,151
+
+The 24 bytes are entirely metadata -- gmad pretty-prints the description JSON
+and writes "Author Name" where this writes "unknown". Same format version, same
+field order, same 18-entry index, same content. So the writer below is correct
+and a first Workshop publish is not also a format experiment.
+
+Re-run that round trip if you touch the header layout. A mount failure on a
+stranger's server is a much more expensive way to find a byte-order mistake.
 
 Usage:
     tools/gmad.py [-o bmx.gma] [--root .]

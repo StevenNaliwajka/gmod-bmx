@@ -173,6 +173,18 @@ Docker) and rewrites GLua's three extensions to 5.1 equivalents for the
 duration. Run it before opening a PR. It does not execute anything, so it
 catches syntax errors and not typo'd API names.
 
+`bmx_test` runs the headless regression suite on any dedicated server: no
+client, no GPU, a bot for a rider. It catches regressions and it cannot tell you
+the bike is fun. See [docs/TESTING.md](docs/TESTING.md).
+
+## Docs
+
+- [Design](docs/DESIGN.md) - why steering is an output, and eight traps found by
+  running it rather than by reading it
+- [Tuning](docs/TUNING.md) - the order to tune in, and the two things still open
+- [Testing](docs/TESTING.md) - getting it in front of a server, and in what order
+- [Publishing](docs/PUBLISHING.md) - the `.gma`, the icon, and the Workshop
+
 ## Licence and content
 
 Code is MIT, see [LICENSE](LICENSE).

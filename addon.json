@@ -1,5 +1,6 @@
 {
     "title":       "BMX",
+    "description": "BMX bikes with lean-driven handling. Two wheels, a real tyre model, and steering that is an OUTPUT of how far you are leaning rather than a key you press -- which is what makes a bike feel like a bike instead of a car with two wheels hidden.\n\nWheelies, stoppies, manuals, bunny hops, air control and flips. Hold RMB to shift your weight back: RMB + W is a wheelie under power, because that is how a wheelie actually works. Grabbing the front brake shifts your weight forward on its own, whether you meant it or not, which is what makes a stoppie something you can hold.\n\nRaycast wheels and a slip-velocity tyre model, both forces clamped to a friction circle, so a bike that is braking has less grip left for cornering. Lean too far for your speed and the front washes out, because the tyre says so and not because a script decided you should crash.\n\nNo content dependencies: base Garry's Mod only, nothing to mount, nothing ripped from another game. Server-authoritative.\n\n  bmx_spawn       spawn a bike (or find BMX in the Entities tab)\n  bmx_debug 1     live telemetry overlay\n  bmx_selftest    check the physics assumptions on this build\n\nMIT licensed.",
     "type":        "vehicle",
     "tags":        ["fun", "realism"],
     "ignore": [
@@ -9,6 +10,7 @@
         "tools/*",
         "*.md",
         "LICENSE",
-        ".gitignore"
+        ".gitignore",
+        "workshop/*"
     ]
 }

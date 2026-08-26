@@ -271,11 +271,16 @@ end
 -- A wheel unloads for a substep or two over any real bump, which is why air
 -- mode has a debounce; half a second of no contact at all is a bike that has
 -- left the world, not a bike on a kerb.
+-- Look this far ahead of the bike for ground. About a second of travel at the
+-- design terminal speed, which is enough warning to stop on our own terms.
+local LOOKAHEAD = 320
+
 function Ctx:runUntil(seconds, fn, input)
     if input then self:input(input) end
 
     local deadline = CurTime() + seconds
     local airborneSince = nil
+    self.stoppedAtEdge = false
 
     while CurTime() < deadline do
         if not self.bike.st.grounded then
@@ -283,7 +288,27 @@ function Ctx:runUntil(seconds, fn, input)
             if CurTime() - airborneSince > 0.5 then return false end
         else
             airborneSince = nil
+
+            -- STOP BEFORE THE EDGE, not at it. findTestGround measures runway
+            -- as a straight line in +X from the spawn point, and that is
+            -- optimistic in exactly the way a straight line always is: the bike
+            -- drifts, and a turning case leaves the line entirely. Asking the
+            -- world what is under the bike RIGHT NOW, one second ahead, needs no
+            -- prediction and cannot be wrong about the path actually taken.
+            local ahead = self.bike:GetPos() + self.bike:GetForward() * LOOKAHEAD
+            local tr = util.TraceLine({
+                start  = ahead + Vector(0, 0, 32),
+                endpos = ahead - Vector(0, 0, 400),
+                filter = self.bike.traceFilter,
+                mask   = MASK_SOLID,
+            })
+            if not tr.Hit then
+                self.stoppedAtEdge = true
+                self:input({})
+                return true
+            end
         end
+
         if fn and fn() then return true end
         coroutine.yield()
     end

@@ -273,10 +273,13 @@ function(ctx)
 
     -- Said first, because every number below is meaningless without it.
     ctx:ok(grounded, "the bike stayed on the ground for the whole run")
-    if ranOut then
+
+    local cut = ranOut or ctx.stoppedAtEdge
+    if cut then
         ctx:log(string.format(
-            "run stopped at %.0f units, the runway this map could offer -- top " ..
-            "speed below is a floor, not the terminal speed", ctx.runway))
+            "run cut short after %.0f units by the edge of the test ground: the " ..
+            "speed below is a FLOOR, not the terminal speed",
+            ctx.bike:GetPos():Distance(start)))
     end
 
     -- ~350 u/s is the design target: 120 rpm crank * 2.78 gear * 10u radius.
@@ -290,8 +293,18 @@ function(ctx)
     -- It is not a redundant check on the line above: a bike held back by drag
     -- reaches a perfectly plausible top speed with the rider barely turning the
     -- cranks, which is exactly how an 18x drag error survived unnoticed.
-    ctx:between(cadence / BMX.Config.Drive.maxCadence, 0.75, 1.05,
-        "cadence / maxCadence")
+    --
+    -- Only assertable on a run that finished, though. A bike still pulling hard
+    -- when it reaches the edge of the map has cadence in hand BY DEFINITION, and
+    -- failing it for that is reporting the size of gm_flatgrass as a bug in the
+    -- drivetrain. The top-speed floor above still catches a factor-level change.
+    local ratio = cadence / BMX.Config.Drive.maxCadence
+    if cut then
+        ctx:log(string.format("cadence / maxCadence = %.2f, not asserted: the " ..
+            "run never reached terminal speed", ratio))
+    else
+        ctx:between(ratio, 0.75, 1.05, "cadence / maxCadence")
+    end
 
     local _, r = ctx:wheels()
     ctx:ok(r.onGround, "rear wheel still driving on the ground")

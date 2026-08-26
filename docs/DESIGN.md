@@ -303,10 +303,11 @@ symptoms.
 | 6 | First live bring-up: six engine traps found and fixed | done |
 | 6b | Tyre integration, drag, and a harness that measured falling bikes | done |
 | 6c | Balance and pitch gains that could not meet their own spec | done |
-| 7 | Tuning pass with a human rider, per-bike physics, real model | **next** |
+| 6d | Per-bike physics: a bike carries its own config overrides | done |
+| 7 | Tuning pass with a human rider, real model | **next** |
 | 8 | Rider animation, Workshop release | icon and packer done |
 
-Phases 0 to 6c are done and **the suite passes 12 of 12** on a real dedicated
+Phases 0 to 6d are done and **the suite passes 13 of 13** on a real dedicated
 server, repeatably. The bike rides, brakes, skids, steers from lean, hops, holds
 a wheelie at 34-45 degrees, and tracks a commanded lean to within 11 degrees.
 
@@ -318,12 +319,12 @@ headless and continuously on a server with no graphics hardware, so the only
 thing a human client is needed for is feel. See `lua/bmx/sv_test.lua` for what
 it can and cannot see.
 
-### Phase 5: per-bike physics, and why it is not half-built
+### Per-bike physics, and the option that was not on the list
 
-Bike entries in `sh_bikes.lua` describe appearance and mount points. They carry
-no physics overrides, because the simulation reads `BMX.Config` as a global.
+A bike entry in `sh_bikes.lua` can carry a `physics` table of config overrides,
+grouped exactly as `BMX.Config` is. Anything omitted comes from the base.
 
-Making it per-bike is a real refactor with a real choice in it:
+This section used to describe a choice between two options:
 
 - **Thread a `cfg` table through every function** in `sv_wheel`, `sv_balance`,
   `sv_air` and `sv_physics`. Explicit, no global state, touches every signature.
@@ -331,8 +332,35 @@ Making it per-bike is a real refactor with a real choice in it:
   its substep.** Two lines, safe because `PhysicsStep` is never re-entrant, and
   a form of global mutation that will surprise the next reader.
 
-The first is correct. It is not done yet, and a `physics = {}` field that
-silently does nothing would be worse than no field at all.
+There is a third that is better than both, and it was invisible until someone
+listed the call sites: **every function in the simulation that needs the config
+already receives the entity.** So the config does not have to be threaded from
+anywhere or stashed in a global for a while -- it can travel with the bike it
+belongs to. `ENT:Cfg()` resolves it, `PhysicsStep` resolves it once per substep
+and passes it down the hot path, and the cold paths ask the entity directly.
+
+That keeps the explicitness of the first option and most of the brevity of the
+second, and it has a property neither has: at any point in a stack trace, the
+config in scope provably belongs to the bike in scope.
+
+**A bike with no overrides shares `BMX.Config` by reference.** No copy, no
+merge, and live convar tuning reaches it for free. A bike WITH overrides gets a
+merged copy, cached against `BMX.ConfigRevision`, which `ApplyConVars` bumps
+only when a convar has actually moved -- so tuning still reaches every bike on
+the next tick without rebuilding tables twenty times a second for nothing.
+
+**Overrides are validated at registration**, against the real config, and a key
+that does not exist is a loud error. That check is the entire reason this field
+did not exist for six phases: a `physics = {}` that silently does nothing is
+worse than no field at all, and the only difference between the two is whether
+it validates.
+
+Two things fell out of doing it. `init.lua` had a file-scope
+`local C = BMX.Config`, which bound the base table once at LOAD time -- so an
+override could never have reached the hull, the mass or the wheel mounts however
+much was threaded through everything else. And a bike registered *after* load
+never got an entity class at all, because the pass that derives `bmx_<id>` runs
+once on a timer and anything later joined a queue that had already been drained.
 
 ## 8. Content and licensing
 

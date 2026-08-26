@@ -7,7 +7,7 @@ are leaning rather than a key you press. Wheelies, stoppies, bunny hops, air
 control and flips.
 
 **Status: v0.1.0, pre-alpha.** The simulation runs on a real dedicated server
-and **all 12 headless cases pass**, repeatably: it holds its designed ride
+and **all 13 headless cases pass**, repeatably: it holds its designed ride
 height through a full-throttle run, brakes, skids, steers from lean, hops, and
 holds a wheelie at 34-45 degrees. **It has never been ridden by a human**, so
 nothing is known about how it feels, and every number in it is derived or
@@ -162,9 +162,27 @@ BMX.RegisterBike("cruiser", {
 ```
 
 That registers entity class `bmx_cruiser`, derived from `bmx_base`, and adds it
-to the spawn menu. Entries currently describe appearance and mount points only:
-per-bike *physics* is Phase 5, and the reason it is not a half-working field
-today is written down in `sh_bikes.lua`.
+to the spawn menu.
+
+A bike can also carry its own **physics**, as overrides on the shared config:
+
+```lua
+BMX.RegisterBike("cruiser", {
+    printName = "Cruiser",
+    physics = {
+        Chassis = { mass = 94 },
+        Wheel   = { radius = 12, wheelbase = 43 },
+        Drive   = { crankTorque = 260000 },
+    },
+})
+```
+
+Anything omitted comes from the base, and a bike with no `physics` table shares
+the base by reference rather than copying it. Overrides are checked against the
+real config at registration, so a typo is a loud error rather than a value that
+goes nowhere. Note that overriding a field which has a convar opts that bike out
+of *live* tuning for that one field, because an explicit override is meant to
+win.
 
 ## Contributing
 

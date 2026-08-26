@@ -605,36 +605,61 @@ function(ctx)
         "a bike with no overrides shares the base table rather than copying it")
 
     ----------------------------------------------------------------------
-    -- And now the part that plumbing cannot fake.
+    -- And now the part that plumbing cannot fake: two bikes, same server, same
+    -- moment, different numbers. Both are spawned at THEIR OWN resting height
+    -- (radius - sag, with sag = m*g/2 / spring) rather than at a shared one,
+    -- because dropping a bike thirty units onto its own suspension measures the
+    -- bump stop and not the spring.
     ----------------------------------------------------------------------
-    local tall = ents.Create(BMX.ClassFor("testtall"))
-    if not ctx:ok(IsValid(tall), "the test bike spawned") then return end
+    local g = physenv.GetGravity():Length()
+    local function restingHeight(mass, radius)
+        return radius - (mass * g * 0.5) / BMX.Config.Wheel.spring
+    end
 
-    tall:SetPos(ctx.ground + Vector(0, 140, 40))
-    tall:SetAngles(Angle(0, 0, 0))
-    tall:Spawn()
-    tall:Activate()
+    local function drop(class, y, mass, radius)
+        local e = ents.Create(class)
+        if not IsValid(e) then return nil end
+        e:SetPos(ctx.ground + Vector(0, y, restingHeight(mass, radius) + 1))
+        e:SetAngles(Angle(0, 0, 0))
+        e:Spawn()
+        e:Activate()
+        return e
+    end
+
+    local tall  = drop(BMX.ClassFor("testtall"), 140, 120, 16)
+    local stock = drop("bmx_base", -140, BMX.Config.Chassis.mass, BMX.Config.Wheel.radius)
+
+    if not ctx:ok(IsValid(tall) and IsValid(stock), "both bikes spawned") then
+        SafeRemoveEntity(tall) SafeRemoveEntity(stock)
+        BMX.Bikes.testtall = nil
+        return
+    end
 
     ctx:ok(tall:Cfg().Wheel.radius == 16,
         "the spawned entity resolves its own config, not the base")
 
-    ctx:wait(1.0)
+    -- Long enough to settle, short enough that neither has toppled: both are
+    -- riderless, and a riderless bike falling over is the design.
+    ctx:wait(0.6)
 
-    -- Bigger wheels stand it higher, heavier mass sags it further, and the two
-    -- do not cancel: radius - sag, with sag = m*g/2 / spring.
-    local h = tall:GetPos().z - ctx.ground.z
-    local sag = (120 * physenv.GetGravity():Length() * 0.5) / BMX.Config.Wheel.spring
-    ctx:log(string.format("16u wheels and 120kg -> predicted ride height %.2f u", 16 - sag))
-    ctx:between(h, 16 - sag - 2, 16 - sag + 2, "test bike ride height", "u")
+    local hTall  = tall:GetPos().z  - ctx.ground.z
+    local hStock = stock:GetPos().z - ctx.ground.z
+    ctx:log(string.format("predicted: tall %.2f u, stock %.2f u",
+        restingHeight(120, 16), restingHeight(BMX.Config.Chassis.mass, BMX.Config.Wheel.radius)))
+    ctx:log(string.format("measured:  tall %.2f u, stock %.2f u", hTall, hStock))
 
-    -- The stock bike, on the same server at the same moment, is unaffected.
-    local stockH = ctx.bike:GetPos().z - ctx.ground.z
-    local stockSag = (BMX.Config.Chassis.mass * physenv.GetGravity():Length() * 0.5)
-        / BMX.Config.Wheel.spring
-    ctx:between(stockH, BMX.Config.Wheel.radius - stockSag - 2,
-        BMX.Config.Wheel.radius - stockSag + 2,
-        "and the stock bike beside it is unchanged", "u")
+    ctx:between(hTall, restingHeight(120, 16) - 2, restingHeight(120, 16) + 2,
+        "test bike ride height", "u")
+    ctx:between(hStock,
+        restingHeight(BMX.Config.Chassis.mass, BMX.Config.Wheel.radius) - 2,
+        restingHeight(BMX.Config.Chassis.mass, BMX.Config.Wheel.radius) + 2,
+        "and the stock bike beside it is unaffected", "u")
+
+    -- The claim in one number: they are not the same bike.
+    ctx:between(hTall - hStock, 3, 7,
+        "difference between the two, which is the whole point", "u")
 
     SafeRemoveEntity(tall)
+    SafeRemoveEntity(stock)
     BMX.Bikes.testtall = nil
 end)

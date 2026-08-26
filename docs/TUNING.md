@@ -149,26 +149,71 @@ order of usefulness:
 
 `gm_flatgrass` covers 1 and 2 and ships with the game.
 
-## Known state, 2026-08-20
+## Known state, 2026-08-26
 
-The headless suite passes 7-8 of 12 on a real server. `forces` and `torque` both
-pass, which means the linear and rotational force paths are calibrated exactly:
-a commanded impulse and a commanded angular acceleration each produce what they
-say. Suspension, braking, hops, air rotation and crashes all behave.
+The headless suite passes **10 of 12** on a real server, and the bike rides:
+eight seconds of full throttle holds a ride height of 7.3-7.5 units against a
+designed 7.0, both wheels down, pitch under 2.5 degrees and roll under 1.
 
-**The open problem is the static pitch balance, and everything else follows from
-it.** At rest the front wheel carries ~21% of the weight where the geometry says
-45% (front compression 0.91 against a rear 3.36). A lightly loaded front wheel
-resists far less pitch torque than it should, so full throttle produces a
-violent wheelie (measured 74 degrees of pitch) instead of acceleration, the rear
-tyre spends its time either unloaded or spinning up, and the bike never reaches
-the speed the lean cases need. Four of the five remaining failures are
-downstream of that one fact.
+`forces` and `torque` both pass, so the linear and rotational force paths are
+calibrated exactly. Suspension, braking, steering, hops, air rotation and
+crashes all behave.
 
-Start there. Useful next measurements: the settled front/rear load split with a
-rider aboard, whether the bike sits nose-high at equilibrium, and whether
-`Pitch.torque` (1,050,000 against a real I_pitch of 11,837, so ~89 rad/s^2)
-should be roughly halved.
+### What the previous version of this section got wrong
+
+It said the open problem was the static pitch balance, with the front wheel
+carrying 21% of the weight where the geometry says 45%, and four other failures
+downstream of it. The 45% was right and the diagnosis was not. Zeroing the two
+tyre stiffnesses and letting the same bike settle gives **45.1% front / 54.9%
+rear**, so the geometry was correct all along; the 21% was a symptom of a tyre
+model that was shaking the chassis, and the "violent wheelie under full
+throttle" was the same thing. Three bugs, none of them where the notes pointed:
+
+1. Both slip stiffnesses were integrated explicitly and neither was stable at
+   66 Hz (dt/tau of 37.6 and 4.3, against a limit of 2). The friction circle
+   clamped the resulting divergence every tick, which hid it, and then
+   rectified it, because the clamp radius grip\*N oscillated in phase with the
+   force. A riderless bike with no throttle accelerated to 296 u/s in two
+   seconds.
+2. The tyre force was solved before the drive torque was applied, so a driven
+   wheel could only ever spin.
+3. `dragArea` was 18x too strong, which capped the bike at 198 u/s. That one
+   was invisible until 1 and 2 were fixed, because until then the bike never
+   reached a speed where drag mattered.
+
+The generalisable half: **a measurement taken while something upstream is
+unstable is not evidence about the thing you are measuring.** Every number in
+the old paragraph was real, correctly measured, and about the wrong subsystem.
+
+### The two that remain, both tuning
+
+**Lean tracking is 13-15 degrees short of target**, reproducibly, at full
+assist authority (`lean_tracks_target` wants 12). The bike under-leans: a
+commanded 42 degrees settles near 17. The gravity feed-forward in
+`sv_balance.lua` cancels `m*g*h*sin(roll)`, but a cornering bike also gets a
+righting moment from the lateral tyre force acting at a contact patch offset
+from the centre of mass, and nothing cancels that. Either the feed-forward
+should account for the cornering reaction, or `leanKp` should rise to cover it.
+That is a handling-model decision, so it wants a human on the bike.
+
+**A full-input wheelie always loops out**, and the geometry says why:
+
+```
+COM sits 17.5u ahead of the rear contact and 20.0u above it
+balance point = atan(17.5 / 20.0)               = 41.2 deg
+Pitch.holdMax                                   = 48   deg
+```
+
+The hold assist aims **6.8 degrees past the point where gravity stops resisting
+the wheelie and starts driving it**, so it drives the bike through the balance
+point every time. `Pitch.torque` itself is fine and the old note suggesting it
+be halved was measuring the wrong thing: 1,050,000 is 1.16x the 903,000 needed
+to lift the front, and pitching about the rear contact (I_eff = I_pitch + m\*d^2
+= 72,574, not I_pitch = 11,837) gives an initial lift of 2.0 rad/s^2, which is a
+gentle, realistic lift rather than the ~89 rad/s^2 the old note computed by
+using the free-body inertia for a bike that is not a free body.
+
+So `holdMax` wants to sit below 41.2 degrees, and how far below is feel.
 
 ## Known-untuned
 

@@ -6,9 +6,12 @@ Two wheels, a real tyre model, and steering that is an *output* of how far you
 are leaning rather than a key you press. Wheelies, stoppies, bunny hops, air
 control and flips.
 
-**Status: v0.1.0, pre-alpha.** The simulation is complete and parses clean, but
-it has not yet been ridden on a live server. Numbers are derived-from-reality
-starting points, not playtested ones. See [Tuning](docs/TUNING.md).
+**Status: v0.1.0, pre-alpha.** The simulation runs on a real dedicated server
+and 10 of its 12 headless cases pass: it holds its designed ride height through
+an eight-second full-throttle run, brakes, skids, steers from lean and hops.
+**It has never been ridden by a human**, so nothing is known about how it feels,
+and the two remaining cases are tuning numbers rather than defects. See
+[Tuning](docs/TUNING.md).
 
 ---
 

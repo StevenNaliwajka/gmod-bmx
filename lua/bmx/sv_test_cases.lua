@@ -121,35 +121,75 @@ end)
 T.Case("rest", { timeout = 15,
     desc = "settles on both wheels at the designed ride height" },
 function(ctx)
-    -- Measured EARLY on purpose. With no speed there is no balance authority by
-    -- design, so a stationary bike is in unstable equilibrium and will tip given
-    -- long enough. This case is about the suspension, not the balance.
-    ctx:wait(0.75)
+    -- READ THE SUSPENSION WHILE THE BIKE IS STILL UPRIGHT.
+    --
+    -- With no speed there is no balance authority, by design -- and that gate is
+    -- on SPEED (Balance.fadeInLow), not on whether anyone is aboard, so a
+    -- stationary RIDDEN bike topples exactly like a riderless one. It does it
+    -- quickly, too: the roll time constant is sqrt(I_roll / m*g*h) = 95 ms, so
+    -- it is a good way over inside a second.
+    --
+    -- This case used to read at a flat 0.75s and call that "early". It was, back
+    -- when a tyre bug shook the bike hard enough to keep it moving and therefore
+    -- upright. With that fixed, the bike honestly topples, and reading
+    -- compression and load off one that is already 27 degrees over measures the
+    -- geometry of a falling bike rather than the spring: it reported 0.64 of the
+    -- bike's weight supported, with both wheels legitimately on the ground and
+    -- the suspension behaving perfectly.
+    local UPRIGHT = math.rad(5)
+    local t0, snap = CurTime(), nil
 
-    local f, r = ctx:wheels()
-    ctx:ok(f.onGround, "front wheel found ground")
-    ctx:ok(r.onGround, "rear wheel found ground")
+    ctx:runUntil(2.5, function()
+        -- Skip the spawn transient: the bike is dropped one unit and bounces.
+        if CurTime() - t0 < 0.35 then return false end
+        if math.abs(ctx:st().roll) > UPRIGHT then return true end
+
+        local f, r = ctx:wheels()
+        snap = {
+            fg = f.onGround, rg = r.onGround,
+            fc = f.compression, rc = r.compression,
+            load = f.load + r.load,
+            h = ctx.bike:GetPos().z - ctx.ground.z,
+            at = CurTime() - t0,
+        }
+        return false
+    end)
+
+    if not ctx:ok(snap ~= nil,
+        "the bike was upright and settled at some point in the first 2.5s") then
+        return
+    end
+    ctx:log(string.format("read at t=%.2fs, still within %.0f deg of upright",
+        snap.at, math.deg(UPRIGHT)))
+
+    ctx:ok(snap.fg, "front wheel found ground")
+    ctx:ok(snap.rg, "rear wheel found ground")
 
     local WC = BMX.Config.Wheel
-    ctx:between(f.compression, 0.15, WC.restLength, "front compression", "u")
-    ctx:between(r.compression, 0.15, WC.restLength, "rear compression", "u")
+    ctx:between(snap.fc, 0.15, WC.restLength, "front compression", "u")
+    ctx:between(snap.rc, 0.15, WC.restLength, "rear compression", "u")
 
     -- Both wheels carrying load, and between them roughly the whole bike.
-    local total = f.load + r.load
     local weight = BMX.Config.Chassis.mass * physenv.GetGravity():Length()
-    ctx:between(total / weight, 0.75, 1.35, "supported weight / actual weight")
+    ctx:between(snap.load / weight, 0.75, 1.35, "supported weight / actual weight")
 
     -- Ride height: the origin sits on the design axle line, so at rest it sits
     -- one wheel radius up MINUS the static sag. Derived from the config rather
     -- than hardcoded, so retuning the spring does not "break" this test.
-    local sag = (BMX.Config.Chassis.mass * physenv.GetGravity():Length() * 0.5)
-        / WC.spring
-    local h = ctx.bike:GetPos().z - ctx.ground.z
+    local sag = (weight * 0.5) / WC.spring
     ctx:log(string.format("predicted sag %.2f u -> ride height %.2f u",
         sag, WC.radius - sag))
-    ctx:between(h, WC.radius - sag - 2, WC.radius - sag + 2, "ride height", "u")
+    ctx:between(snap.h, WC.radius - sag - 2, WC.radius - sag + 2, "ride height", "u")
 
-    ctx:between(math.deg(math.abs(ctx:st().roll)), 0, 12, "roll after 0.75s", "deg")
+    -- And then it falls over, which is the DESIGN and not a bug. Asserted here
+    -- so that someone "fixing" a stationary bike that will not stand up trips a
+    -- test rather than shipping a hovering prop. riderless_falls makes the same
+    -- claim without a rider; this one is the half people assume is different.
+    local fell = ctx:waitUntil(function()
+        return math.abs(ctx:st().roll) > math.rad(35)
+    end, 4, "the ridden stationary bike to topple")
+    ctx:ok(fell, "a RIDDEN bike at a standstill topples too (the assist gate " ..
+        "is on speed, not on having a rider)")
 end)
 
 --------------------------------------------------------------------------
@@ -182,20 +222,89 @@ end)
 T.Case("accelerate", { timeout = 25,
     desc = "pedalling reaches a plausible speed, capped by cadence not drag" },
 function(ctx)
-    ctx:input({ throttle = 1 })
-    ctx:wait(9)
+    -- RUN UNTIL THE SPEED STOPS RISING, not for a fixed number of seconds. A
+    -- fixed wait is really a DISTANCE, and the test ground is finite: nine
+    -- seconds at terminal speed is about 2,800 units against roughly 1,300 of
+    -- runway on gm_flatgrass. The old version of this case rode off the edge at
+    -- eight seconds and then reported the speed of a bike falling down a pit --
+    -- 453 u/s, comfortably inside the band, from a bike that was not touching
+    -- anything.
+    local peak, cadence = 0, 0
+    local mark, markSpeed = CurTime(), 0
+    local start, ranOut = ctx.bike:GetPos(), false
 
-    local st = ctx:st()
+    local grounded = ctx:runUntil(9, function()
+        local st = ctx:st()
+
+        -- ONLY WHILE A WHEEL IS ON THE GROUND. runUntil tolerates half a second
+        -- of no contact before it gives up, because a bump unloads both wheels
+        -- for a substep or two -- and half a second of free fall is 300 u/s of
+        -- vertical velocity, which `speed` (a magnitude, not a ground speed)
+        -- happily counts. That grace period was quietly feeding the peak: the
+        -- case reported 467 u/s while also, correctly, reporting that the bike
+        -- had left the ground.
+        if st.grounded and st.speed > peak then peak, cadence = st.speed, st.cadence end
+
+        -- Stop before the edge rather than at it. Terminal speed is an
+        -- asymptote and chasing the last few u/s costs a lot of ground, so on a
+        -- short runway this case reports the best it could actually reach and
+        -- says the run was cut short -- which is a far more useful answer than
+        -- the speed of a bike falling into a pit.
+        if ctx.runway > 0 and ctx.bike:GetPos():Distance(start) > ctx.runway then
+            ranOut = true
+            return true
+        end
+
+        -- Terminal speed is an asymptote, so stop when the approach to it has
+        -- gone flat. MEASURED OVER HALF A SECOND, not per tick: the gain
+        -- between two consecutive substeps at 66 Hz is 1/66th of the
+        -- acceleration, so comparing it against a threshold written in u/s
+        -- declares victory at 33 u/s^2 and walks away with the bike still
+        -- pulling hard. That stopped the run at 237 u/s of a 312 u/s terminal,
+        -- which is inside the speed band and therefore looked fine -- except
+        -- the cadence check, which reads the throttle the rider still has left,
+        -- failed at exactly the boundary and gave it away.
+        if CurTime() - mark >= 0.5 then
+            if st.speed - markSpeed < 1 then return true end
+            mark, markSpeed = CurTime(), st.speed
+        end
+        return false
+    end, { throttle = 1 })
+
+    -- Said first, because every number below is meaningless without it.
+    ctx:ok(grounded, "the bike stayed on the ground for the whole run")
+
+    local cut = ranOut or ctx.stoppedAtEdge
+    if cut then
+        ctx:log(string.format(
+            "run cut short after %.0f units by the edge of the test ground: the " ..
+            "speed below is a FLOOR, not the terminal speed",
+            ctx.bike:GetPos():Distance(start)))
+    end
+
     -- ~350 u/s is the design target: 120 rpm crank * 2.78 gear * 10u radius.
     -- The band is deliberately generous; it catches a gearing or torque error
     -- of the kind that changes the answer by a factor, not by 10%.
-    ctx:between(st.speed, 210, 460, "top speed", "u/s")
-    ctx:log(string.format("that is %.1f km/h", BMX.ToKMH(st.speed)))
+    ctx:between(peak, 210, 460, "top speed", "u/s")
+    ctx:log(string.format("that is %.1f km/h", BMX.ToKMH(peak)))
 
     -- Cadence, not drag, is what caps speed. If this is well short of the
     -- ceiling then something else is limiting and the model has changed shape.
-    ctx:between(st.cadence / BMX.Config.Drive.maxCadence, 0.75, 1.05,
-        "cadence / maxCadence")
+    -- It is not a redundant check on the line above: a bike held back by drag
+    -- reaches a perfectly plausible top speed with the rider barely turning the
+    -- cranks, which is exactly how an 18x drag error survived unnoticed.
+    --
+    -- Only assertable on a run that finished, though. A bike still pulling hard
+    -- when it reaches the edge of the map has cadence in hand BY DEFINITION, and
+    -- failing it for that is reporting the size of gm_flatgrass as a bug in the
+    -- drivetrain. The top-speed floor above still catches a factor-level change.
+    local ratio = cadence / BMX.Config.Drive.maxCadence
+    if cut then
+        ctx:log(string.format("cadence / maxCadence = %.2f, not asserted: the " ..
+            "run never reached terminal speed", ratio))
+    else
+        ctx:between(ratio, 0.75, 1.05, "cadence / maxCadence")
+    end
 
     local _, r = ctx:wheels()
     ctx:ok(r.onGround, "rear wheel still driving on the ground")
@@ -236,8 +345,16 @@ function(ctx)
     -- The core claim of the whole design: steering is an output of lean. A
     -- single-direction test would pass with the sign inverted, so this measures
     -- both and asserts they are opposites.
+    -- 150 u/s, not 230. What these cases actually require is that the balance
+    -- assist be at FULL authority, and that happens at Balance.fadeInHigh, which
+    -- is 110 -- so 150 is comfortable margin and everything above it is just
+    -- distance. 230 was an arbitrary number that cost a thousand extra units of
+    -- runway, and once the bike could really accelerate that bought a turn taken
+    -- past the edge of the map.
+    local ENOUGH = 150
+
     local function sweep(lean)
-        if not ctx:accelerateTo(230, 14) then return nil end
+        if not ctx:accelerateTo(ENOUGH, 14) then return nil end
         local yaw0 = ctx.bike:GetAngles().y
         ctx:input({ throttle = 0.6, lean = lean })
         ctx:wait(2.5)
@@ -276,7 +393,10 @@ end)
 T.Case("lean_tracks_target", { timeout = 30,
     desc = "the balance PD actually holds the lean it was asked for" },
 function(ctx)
-    if not ctx:accelerateTo(280, 14) then return end
+    -- 150 rather than 280, for the reason spelled out in lean_steers: the
+    -- assist is at full authority from 110 u/s (Balance.fadeInHigh) and the
+    -- extra speed only bought runway this map does not have.
+    if not ctx:accelerateTo(150, 14) then return end
 
     ctx:input({ throttle = 0.7, lean = 0.6 })
     ctx:wait(2.5)
@@ -336,15 +456,29 @@ function(ctx)
     ctx:ok(lifted, "front wheel lifts under power")
 
     if lifted then
-        ctx:wait(1.2)
+        -- runUntil, not wait, so the hold inherits the edge guard. A plain wait
+        -- had this case reading +15 degrees on one run and -50 on the next with
+        -- nothing changed in between, because the bike was riding off the map
+        -- mid-wheelie and the second number was a nose-dive into a pit. It also
+        -- gives "it is a wheelie, not a jump" for free: a wheelie keeps the rear
+        -- wheel down, so a bike that goes fully airborne fails the run itself.
+        local held = ctx:runUntil(1.2)
+
         local st = ctx:st()
-        local f, r = ctx:wheels()
+        local _, r = ctx:wheels()
         ctx:log(string.format("pitch %.0f deg after 1.2s", math.deg(st.pitch)))
-        ctx:ok(r.onGround, "rear wheel still down (it is a wheelie, not a jump)")
-        -- The hold assist has a ceiling on purpose, so a wheelie can still be
-        -- blown. Past holdMax plus a margin it has looped out.
-        ctx:between(math.deg(st.pitch), 5, math.deg(BMX.Config.Pitch.holdMax) + 30,
-            "wheelie pitch", "deg")
+
+        if not held then
+            ctx:ok(false, "the bike went fully airborne: that is a jump, not a wheelie")
+        elseif ctx.stoppedAtEdge then
+            ctx:ok(false, "the bike reached the edge of the test ground mid-wheelie")
+        else
+            ctx:ok(r.onGround, "rear wheel still down (it is a wheelie, not a jump)")
+            -- The hold assist has a ceiling on purpose, so a wheelie can still be
+            -- blown. Past holdMax plus a margin it has looped out.
+            ctx:between(math.deg(st.pitch), 5, math.deg(BMX.Config.Pitch.holdMax) + 30,
+                "wheelie pitch", "deg")
+        end
     end
 end)
 

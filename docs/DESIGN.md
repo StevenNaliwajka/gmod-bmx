@@ -209,11 +209,13 @@ w ~= 1/2 * (f_prev x f_now + r_prev x r_now + u_prev x u_now) / dt
 Exact in the limit, accurate to well under a degree at substep sizes, three
 cross products, and no ambiguity about what the components mean.
 
-## 6b. Six GMod traps, all found by running it
+## 6b. Eight traps, all found by running it
 
 Every one of these produced correct-looking code, no error, and a symptom
 several steps from its cause. They are written down because none of them is
-guessable and all of them cost real time.
+guessable and all of them cost real time. The first six are engine traps; the
+last two are traps in the physics and in the harness, and they are the ones that
+made six of twelve cases fail while pointing at five different subsystems.
 
 **1. `PhysObj:SetMassCenter` does not exist.** `GetMassCenter` does; there is no
 setter. Calling it throws *inside* `Initialize`, which silently abandons the
@@ -248,6 +250,27 @@ treated as an HTTP probe, and so is any packet of exactly 26 wire bytes, which
 is a 12-character command. Both drop the connection and count toward a ban.
 Only relevant if you drive the server remotely, which a headless loop must.
 
+**7. A stiffness is a timestep decision, and a clamp can hide a divergence.**
+Both tyre slip stiffnesses were relaxation rates integrated explicitly, and both
+were far past the point where that is stable at 66 Hz. That should have been a
+NaN, which is loud. Instead the friction circle clamped the runaway every tick,
+so it presented as a bounded oscillation with no error -- and because the clamp
+radius is `grip*N` and `N` was oscillating in phase with the force, the clamp
+RECTIFIED it. The bike made free energy: 0 to 296 u/s in two seconds, no rider,
+no throttle. Anything that limits a value is also capable of hiding the fact
+that the value was diverging, and of turning a symmetric oscillation into a net
+force.
+
+**8. An assumption that holds only because something else is broken comes due
+the moment you fix the other thing.** The harness picked test ground by
+flatness, with a note that an acceleration run travels about 1,200 units. True
+at the time -- while the tyre bug held the bike to a third of its speed. With
+that fixed, runs went off the edge of the flat area at 1,310 units, and four
+cases started taking their measurements on a bike in free fall: lean, steering,
+pitch and top speed, all reported against the controller, none of them its
+fault. `st.speed` is a velocity magnitude, so a falling bike reports a top speed
+that climbs forever and passes any band you give it.
+
 **The generalisable lesson** is in trap 5. Five separate cases were failing --
 acceleration, lean, test speed, wheelies, braking -- and each read like a tuning
 problem in a different subsystem. They had one cause. The measurement that found
@@ -267,12 +290,17 @@ symptoms.
 | 4 | Crash and ejection, damage, sound | done, placeholder sounds |
 | 5 | Headless regression harness (bot rider, no client) | done |
 | 6 | First live bring-up: six engine traps found and fixed | done |
+| 6b | Tyre integration, drag, and a harness that measured falling bikes | done |
 | 7 | Tuning pass with a human rider, per-bike physics, real model | **next** |
 | 8 | Rider animation, CI packing, Workshop release | not started |
 
-Phases 0 to 6 are done and the simulation runs correctly on a real dedicated
-server. **It has still never been ridden by a human**, so nothing is known about
-how it feels; that is phase 7 and it is the only thing a harness cannot answer.
+Phases 0 to 6b are done and the simulation runs correctly on a real dedicated
+server: 10 of 12 headless cases pass, and the bike holds its designed ride
+height for an eight-second full-throttle run. The two that remain are tuning
+numbers with derivations written down in `docs/TUNING.md`, not defects.
+
+**It has still never been ridden by a human**, so nothing is known about how it
+feels; that is phase 7 and it is the only thing a harness cannot answer.
 
 The harness in phase 5 is what makes that split workable: correctness runs
 headless and continuously on a server with no graphics hardware, so the only

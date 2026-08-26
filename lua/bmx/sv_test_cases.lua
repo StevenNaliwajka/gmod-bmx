@@ -235,7 +235,15 @@ function(ctx)
 
     local grounded = ctx:runUntil(9, function()
         local st = ctx:st()
-        if st.speed > peak then peak, cadence = st.speed, st.cadence end
+
+        -- ONLY WHILE A WHEEL IS ON THE GROUND. runUntil tolerates half a second
+        -- of no contact before it gives up, because a bump unloads both wheels
+        -- for a substep or two -- and half a second of free fall is 300 u/s of
+        -- vertical velocity, which `speed` (a magnitude, not a ground speed)
+        -- happily counts. That grace period was quietly feeding the peak: the
+        -- case reported 467 u/s while also, correctly, reporting that the bike
+        -- had left the ground.
+        if st.grounded and st.speed > peak then peak, cadence = st.speed, st.cadence end
 
         -- Stop before the edge rather than at it. Terminal speed is an
         -- asymptote and chasing the last few u/s costs a lot of ground, so on a

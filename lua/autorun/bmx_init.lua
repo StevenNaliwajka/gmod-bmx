@@ -15,6 +15,20 @@
     reason: the order is a design decision, so it should be written down.
 ----------------------------------------------------------------------------]]
 
+-- SEND THIS FILE ITSELF. Everything below is careful to AddCSLuaFile the shared
+-- and client lists, and then the loader that does the sending was the one file
+-- not on either of them.
+--
+-- Whether lua/autorun/*.lua reaches clients on its own is exactly the kind of
+-- engine detail that is easy to be confident about and wrong about, and the
+-- failure mode is brutally asymmetric: if it does, this line costs nothing, and
+-- if it does not, the entire client half -- HUD, chase camera, the procedural
+-- wheels -- is simply absent in multiplayer while working perfectly in
+-- singleplayer, which is where all the testing happens.
+--
+-- A headless suite structurally cannot catch this. It has no client.
+if SERVER then AddCSLuaFile() end
+
 BMX = BMX or {}
 BMX.Version = "0.1.0"
 

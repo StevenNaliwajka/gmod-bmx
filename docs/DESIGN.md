@@ -304,10 +304,11 @@ symptoms.
 | 6b | Tyre integration, drag, and a harness that measured falling bikes | done |
 | 6c | Balance and pitch gains that could not meet their own spec | done |
 | 6d | Per-bike physics: a bike carries its own config overrides | done |
+| 6e | Duplicator, grab guards, client-file delivery | done |
 | 7 | Tuning pass with a human rider, real model | **next** |
 | 8 | Rider animation, Workshop release | icon and packer done |
 
-Phases 0 to 6d are done and **the suite passes 13 of 13** on a real dedicated
+Phases 0 to 6e are done and **the suite passes 15 of 15** on a real dedicated
 server, repeatably. The bike rides, brakes, skids, steers from lean, hops, holds
 a wheelie at 34-45 degrees, and tracks a commanded lean to within 11 degrees.
 

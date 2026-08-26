@@ -7,7 +7,7 @@ are leaning rather than a key you press. Wheelies, stoppies, bunny hops, air
 control and flips.
 
 **Status: v0.1.0, pre-alpha.** The simulation runs on a real dedicated server
-and **all 13 headless cases pass**, repeatably: it holds its designed ride
+and **all 15 headless cases pass**, repeatably: it holds its designed ride
 height through a full-throttle run, brakes, skids, steers from lean, hops, and
 holds a wheelie at 34-45 degrees. **It has never been ridden by a human**, so
 nothing is known about how it feels, and every number in it is derived or
@@ -99,9 +99,13 @@ It covers the force-units assumption, ride height and suspension load, the fact
 that a riderless bike is *supposed* to fall over, acceleration and the cadence
 ceiling, rear-brake lockup and friction-circle saturation, lean-derives-steering
 in **both** directions, whether the balance PD actually holds its target, bunny
-hops, wheelies, air mode, and crash ejection. Every case ends with a NaN check,
-because one NaN inside a `PhysObj` is unrecoverable and its symptoms look
-nothing like its cause.
+hops, wheelies, air mode, and crash ejection. It also covers the things a public
+server finds first: that a bike survives a duplicator copy/paste with exactly
+one seat, that nobody can physgun or gravgun a bike with a rider on it (and that
+an empty one still picks up normally), that deleting a bike out from under its
+rider does not strand them, and that a bike's per-bike physics overrides really
+reach the simulation. Every case ends with a NaN check, because one NaN inside a
+`PhysObj` is unrecoverable and its symptoms look nothing like its cause.
 
 It cannot cover the client half: the camera, the HUD and the wheel drawing never
 execute on a dedicated server. Nor can it tell you the bike is fun. Those need a

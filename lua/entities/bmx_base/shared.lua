@@ -33,6 +33,35 @@ ENT.BikeID = "stock"
 -- flag rather than a class name keeps derived bikes and third-party ones working.
 ENT.IsBMX = true
 
+--------------------------------------------------------------------------
+-- THIS BIKE'S CONFIG, which is the seam the whole per-bike physics design
+-- hangs on.
+--
+-- A bike registered with a `physics` table gets the base config with those
+-- values merged over it; a bike without one gets BMX.Config itself, by
+-- reference, so the common case costs a table lookup and no copying at all.
+--
+-- Resolved here rather than threaded from a global because EVERY function in
+-- the simulation that needs the config already receives the entity. That makes
+-- the config travel with the bike it belongs to, which is the property the
+-- alternative -- pointing BMX.Config at the active bike for the duration of a
+-- substep -- specifically does not have. See the note in sh_config.lua.
+--
+-- Shared, not server-only: the client draws wheels and a HUD off the same
+-- numbers, and a wheel radius that differed between the realms would show up
+-- as wheels that do not touch the ground.
+--
+-- Cached against BMX.ConfigRevision, so a convar moving the base reaches this
+-- bike on the next call without rebuilding anything the other 19 times a
+-- second the tuner is not touching it.
+--------------------------------------------------------------------------
+function ENT:Cfg()
+    local rev = BMX.ConfigRevision
+    if self._cfg and self._cfgRev == rev then return self._cfg end
+    self._cfg, self._cfgRev = BMX.ConfigFor(self:Bike()), rev
+    return self._cfg
+end
+
 function ENT:SetupDataTables()
     -- Identity / state the client needs to draw and to build a HUD.
     self:NetworkVar("Entity", 0, "Driver")
@@ -55,7 +84,7 @@ function ENT:SetupDataTables()
     if SERVER then
         self:SetSteer(0)
         self:SetSpeedUPS(0)
-        self:SetStamina(BMX.Config.Drive.staminaMax)
+        self:SetStamina(self:Cfg().Drive.staminaMax)
     end
 end
 
@@ -65,7 +94,7 @@ end
 -- cosmetic detail is how vehicle addons end up eating a server's bandwidth.
 function ENT:VisualWheelSpin(dt)
     self.spinAngle = (self.spinAngle or 0)
-        + (self:GetSpeedUPS() / BMX.Config.Wheel.radius) * dt
+        + (self:GetSpeedUPS() / self:Cfg().Wheel.radius) * dt
     return self.spinAngle
 end
 

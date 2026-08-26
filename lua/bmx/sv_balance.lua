@@ -49,8 +49,8 @@ end
 -- ordering is ambiguous enough across builds that differentiating an angle we
 -- computed ourselves is both simpler and more portable.
 --------------------------------------------------------------------------
-function BMX.Balance(ent, phys, dt, inp, st, wheels, groundNormal, speed)
-    local C  = BMX.Config
+function BMX.Balance(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
+    local C  = cfg
     local B  = C.Balance
 
     local roll, pitch = BMX.Attitude(ent, groundNormal)
@@ -236,8 +236,8 @@ end
 -- front. What does NOT emerge is a wheelie you can HOLD, because the balance
 -- point is unstable. The hold assist below is that skill, modelled.
 --------------------------------------------------------------------------
-function BMX.PitchControl(ent, phys, dt, inp, st, wheels)
-    local C = BMX.Config
+function BMX.PitchControl(ent, phys, cfg, dt, inp, st, wheels)
+    local C = cfg
     local P = C.Pitch
 
     local front, rear
@@ -271,7 +271,7 @@ function BMX.PitchControl(ent, phys, dt, inp, st, wheels)
         -- no ceiling is what turns "wheelie" into "the bike cannot fall".
         ------------------------------------------------------------------
         -- Aim SHORT OF THE BALANCE POINT, not past it. See Pitch.holdAim.
-        local target = inp.pitch * BMX.WheelieBalance() * P.holdAim
+        local target = inp.pitch * BMX.WheelieBalance(C) * P.holdAim
         if st.pitch < P.holdMax then
             ------------------------------------------------------------------
             -- HAND THE YANK OVER TO THE HOLD, rather than switching between

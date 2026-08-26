@@ -514,6 +514,8 @@ end
 -- and a lean limit that differs between the two would show up as a camera that
 -- disagrees with the bike.
 function BMX.ApplyConVars()
+    local changed = false
+
     for _, row in ipairs(C.ConVars) do
         local name, _, path, isDegrees = row[1], row[2], row[3], row[4]
         local cv = GetConVar(name)
@@ -521,7 +523,100 @@ function BMX.ApplyConVars()
             local v = cv:GetFloat()
             if isDegrees then v = math.rad(v) end
             local group, key = string.match(path, "^(%w+)%.(%w+)$")
-            if group and C[group] then C[group][key] = v end
+            if group and C[group] and C[group][key] ~= v then
+                C[group][key] = v
+                changed = true
+            end
         end
     end
+
+    -- Bikes with physics overrides hold a MERGED copy of this table, and they
+    -- need to know when the thing they were merged from has moved. Bumping a
+    -- counter is enough: they compare it against the revision they built at and
+    -- rebuild lazily, so live tuning still reaches every bike on the next tick
+    -- without rebuilding a table 20 times a second for nothing.
+    if changed then BMX.ConfigRevision = BMX.ConfigRevision + 1 end
+end
+
+--------------------------------------------------------------------------
+-- PER-BIKE PHYSICS
+--
+-- A bike registered with a `physics` table gets the base config with those
+-- values merged over the top. A bike without one SHARES this table by
+-- reference -- no copy, no merge, and live convar tuning reaches it for free.
+--
+-- WHY MERGE INSTEAD OF SWAPPING BMX.Config FOR THE DURATION OF A SUBSTEP.
+-- The swap is two lines and it works, because PhysicsSimulate is never
+-- re-entrant. It is also a global that means something different depending on
+-- who is on the stack, which is a thing to inflict on a reader only if the
+-- alternative is worse. It is not: every function that needs the config
+-- already receives the entity, so the config can travel WITH the entity.
+-- See ENT:Cfg() in entities/bmx_base/shared.lua.
+--
+-- A NOTE FOR TUNERS. Overriding a field that has a convar (see the ConVars
+-- block above) opts that bike out of live tuning for that one field, because
+-- an explicit override is meant to win. That is the correct behaviour and it
+-- is also surprising at 2am, so it is written here.
+--------------------------------------------------------------------------
+BMX.ConfigRevision = 0
+
+local GROUPS = { "Chassis", "Wheel", "Drive", "Balance", "Pitch", "Air", "Hop", "Crash" }
+
+-- Check a physics override table against the base BEFORE anything runs, so a
+-- typo is a loud error at registration rather than a bike that quietly handles
+-- like every other one. This is the whole reason the field did not exist until
+-- now: `physics = {}` that silently does nothing is worse than no field at all.
+function BMX.ValidatePhysics(id, phys)
+    if not phys then return true end
+    local bad = {}
+
+    for group, over in pairs(phys) do
+        if not C[group] then
+            bad[#bad + 1] = string.format("no config group %q", tostring(group))
+        elseif not istable(over) then
+            bad[#bad + 1] = string.format("%s is not a table", tostring(group))
+        else
+            for key in pairs(over) do
+                if C[group][key] == nil then
+                    bad[#bad + 1] = string.format("%s.%s does not exist", group, tostring(key))
+                end
+            end
+        end
+    end
+
+    if #bad > 0 then
+        ErrorNoHalt(string.format("[BMX] bike %q has physics overrides that go " ..
+            "nowhere: %s. They would have been silently ignored.\n",
+            tostring(id), table.concat(bad, ", ")))
+        return false
+    end
+    return true
+end
+
+-- The effective config for a bike definition. Cached on the def and rebuilt
+-- only when a convar has actually moved the base.
+function BMX.ConfigFor(def)
+    local phys = def and def.physics
+    if not phys then return C end
+
+    if def._cfg and def._cfgRev == BMX.ConfigRevision then return def._cfg end
+
+    local out = { ConVars = C.ConVars }
+    for _, g in ipairs(GROUPS) do
+        local base = C[g]
+        if base then
+            local t = {}
+            for k, v in pairs(base) do t[k] = v end
+            local over = phys[g]
+            if over then
+                for k, v in pairs(over) do
+                    if base[k] ~= nil then t[k] = v end
+                end
+            end
+            out[g] = t
+        end
+    end
+
+    def._cfg, def._cfgRev = out, BMX.ConfigRevision
+    return out
 end

@@ -9,12 +9,16 @@ include("shared.lua")
     OnLanded and Crash.
 ----------------------------------------------------------------------------]]
 
-local C = BMX.Config
-
 util.AddNetworkString("bmx_tricks")
 
 function ENT:Initialize()
     local bike = self:Bike()
+
+    -- THIS BIKE'S config, not the base. There used to be a `local C =
+    -- BMX.Config` at file scope, which bound the base table once at LOAD time --
+    -- so a per-bike override could never have reached the hull, the mass, or
+    -- the wheel mounts no matter what else was threaded through.
+    local C = self:Cfg()
 
     self:SetModel(bike.model)
     self:SetMoveType(MOVETYPE_VPHYSICS)
@@ -86,7 +90,7 @@ function ENT:Initialize()
     -- Use the REAL moments of inertia, not the estimates in config. The
     -- controllers command an angular acceleration and convert with T = I*alpha,
     -- so a wrong I scales every torque in the addon by the same factor.
-    local I, measured = BMX.CacheInertia(self, phys)
+    local I, measured = BMX.CacheInertia(self, phys, C)
     if not measured then
         ErrorNoHalt("[BMX] GetInertia returned nothing usable; " ..
             "falling back to the config estimates. Rotation will be off.\n")
@@ -114,7 +118,7 @@ function ENT:Initialize()
         BMX.NewWheel(Vector(-half, 0, lift), false),  -- rear
     }
 
-    self.st    = BMX.NewState()
+    self.st    = BMX.NewState(C)
     self.input = BMX.BlankInput()
 
     self.hopCharge  = 0
@@ -141,6 +145,7 @@ end
 --------------------------------------------------------------------------
 function ENT:CreateSeat()
     local bike = self:Bike()
+    local C    = self:Cfg()
 
     local pod = ents.Create("prop_vehicle_prisoner_pod")
     if not IsValid(pod) then return end
@@ -236,7 +241,7 @@ function ENT:Think()
         self:SetCadence(st.cadence)
         self:SetSprinting(st.sprinting or false)
         self:SetHopCharge(self.hopHeld
-            and math.min(1, (self.hopCharge or 0) / C.Hop.chargeTime) or 0)
+            and math.min(1, (self.hopCharge or 0) / self:Cfg().Hop.chargeTime) or 0)
     end
 
     -- Live tuning. Reading a dozen convars 20 times a second is free and it
@@ -294,7 +299,7 @@ end
 
 -- Was that a landing or an accident?
 function ENT:JudgeLanding(front, rear)
-    local CR = BMX.Config.Crash
+    local CR = self:Cfg().Crash
     if not CR.enabled then return false end
     if CurTime() - (self.spawnTime or 0) < CR.grace then return false end
 
@@ -330,7 +335,7 @@ function ENT:Crash(reason, severity)
 
     severity = BMX.Clamp(severity or 0.5, 0, 1)
 
-    local CR   = BMX.Config.Crash
+    local CR   = self:Cfg().Crash
     local phys = self:GetPhysicsObject()
     local vel  = IsValid(phys) and phys:GetVelocity() or Vector()
 
@@ -363,7 +368,7 @@ end
 -- Hitting something hard enough that the landing check is beside the point.
 --------------------------------------------------------------------------
 function ENT:PhysicsCollide(data, phys)
-    local CR = BMX.Config.Crash
+    local CR = self:Cfg().Crash
     if not CR.enabled then return end
     if data.Speed < CR.maxImpactSpeed then return end
     if CurTime() - (self.spawnTime or 0) < CR.grace then return end
@@ -384,7 +389,7 @@ function ENT:SpawnFunction(ply, tr, class)
 
     local ang = Angle(0, ply:EyeAngles().y, 0)
     local ent = ents.Create(class)
-    ent:SetPos(tr.HitPos + tr.HitNormal * 16 + Vector(0, 0, BMX.Config.Wheel.radius))
+    ent:SetPos(tr.HitPos + tr.HitNormal * 16 + Vector(0, 0, ent:Cfg().Wheel.radius))
     ent:SetAngles(ang)
     ent:Spawn()
     ent:Activate()

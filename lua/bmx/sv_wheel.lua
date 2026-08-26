@@ -101,7 +101,7 @@ end
 -- is deliberate: the damper was fixed for this in isolation once, and the tyre,
 -- which has exactly the same problem, was left behind for a month.
 --------------------------------------------------------------------------
-local function effectiveMass(ent, phys, contact, dir)
+local function effectiveMass(ent, phys, cfg, contact, dir)
     local com = phys:LocalToWorld(phys:GetMassCenter())
     local rxd = (contact - com):Cross(dir)
 
@@ -115,7 +115,7 @@ local function effectiveMass(ent, phys, contact, dir)
                + ly * ly / BMX.IPitch(ent)
                + lz * lz / BMX.IYaw(ent)
 
-    return 1 / (1 / BMX.Config.Chassis.mass + invI)
+    return 1 / (1 / cfg.Chassis.mass + invI)
 end
 
 --------------------------------------------------------------------------
@@ -128,8 +128,8 @@ end
 -- Returns nothing; forces are applied directly and diagnostic state is left on
 -- the wheel for the caller.
 --------------------------------------------------------------------------
-function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
-    local C     = BMX.Config
+function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
+    local C     = cfg
     local WC    = C.Wheel
     local radius = WC.radius
     local maxLen = WC.restLength + radius
@@ -225,7 +225,7 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
     local damperF = WC.damper * compVel
 
     if compVel > 0 then
-        local cap = effectiveMass(ent, phys, contact, normal) * compVel / dt
+        local cap = effectiveMass(ent, phys, cfg, contact, normal) * compVel / dt
         if damperF > cap then damperF = cap end
     end
 
@@ -239,7 +239,7 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
     -- anything real. VPhysics faithfully applies it and the bike leaves the
     -- map. A ceiling costs nothing in normal riding (a hard landing peaks
     -- around 5-8x static) and turns "launched into orbit" into "landed hard".
-    local maxN = WC.maxLoadFactor * BMX.Config.Chassis.mass
+    local maxN = WC.maxLoadFactor * C.Chassis.mass
         * physenv.GetGravity():Length()
     if N > maxN then N = maxN end
 
@@ -357,7 +357,7 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
     -- tyre had been given a numerical ceiling below its physical one, which
     -- quietly deletes the friction model.
     ----------------------------------------------------------------------
-    local invCompLong = 1 / effectiveMass(ent, phys, contact, fwdDir)
+    local invCompLong = 1 / effectiveMass(ent, phys, cfg, contact, fwdDir)
     if not locked then
         invCompLong = invCompLong + radius * radius / WC.inertia
     end
@@ -367,7 +367,7 @@ function Wheel:Simulate(ent, phys, dt, driveTorque, brakeTorque, filter)
         Flong = capLong * (Flong >= 0 and 1 or -1)
     end
 
-    local capLat = abs(slipLat) * effectiveMass(ent, phys, contact, rightDir) / dt
+    local capLat = abs(slipLat) * effectiveMass(ent, phys, cfg, contact, rightDir) / dt
     if abs(Flat) > capLat then
         Flat = capLat * (Flat >= 0 and 1 or -1)
     end
@@ -437,8 +437,8 @@ end
 -- Where to draw the wheel, chassis space. The suspension travel means this is
 -- NOT simply the mount point.
 --------------------------------------------------------------------------
-function Wheel:VisualOffset()
-    local WC = BMX.Config.Wheel
+function Wheel:VisualOffset(cfg)
+    local WC = (cfg or BMX.Config).Wheel
     local drop = self.onGround
         and (WC.restLength - math.min(self.compression, WC.restLength))
         or WC.restLength

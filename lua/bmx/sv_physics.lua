@@ -28,7 +28,7 @@ local abs, min, max, sqrt = math.abs, math.min, math.max, math.sqrt
 --------------------------------------------------------------------------
 -- Fresh controller state for a bike.
 --------------------------------------------------------------------------
-function BMX.NewState()
+function BMX.NewState(cfg)
     return {
         lastRoll = 0, lastPitch = 0,
         roll = 0, pitch = 0,
@@ -46,7 +46,7 @@ function BMX.NewState()
 
         spinPitch = 0, spinRoll = 0, spinYaw = 0, airTime = 0,
 
-        stamina = BMX.Config.Drive.staminaMax,
+        stamina = (cfg or BMX.Config).Drive.staminaMax,
         speed = 0,
         cadence = 0,
     }
@@ -78,8 +78,8 @@ end
 --------------------------------------------------------------------------
 -- Drivetrain: rider legs -> rear wheel torque.
 --------------------------------------------------------------------------
-local function drivetrain(ent, dt, inp, st, rear)
-    local D = BMX.Config.Drive
+local function drivetrain(ent, cfg, dt, inp, st, rear)
+    local D = cfg.Drive
 
     -- Stamina gates the sprint, so the sprint is a resource rather than a
     -- permanent 55% power bonus that everyone simply holds down forever.
@@ -121,7 +121,10 @@ function BMX.PhysicsStep(ent, phys, dt)
     if dt <= 0 or dt > 0.25 then return end     -- a stalled server hands out
                                                 -- absurd dt; integrating it
                                                 -- launches the bike into orbit
-    local C   = BMX.Config
+    -- THIS BIKE'S config, resolved once per substep and threaded from here
+    -- down. Everything below reads `C`, so a bike with per-bike physics
+    -- overrides gets its own numbers without a single global changing meaning.
+    local C   = ent:Cfg()
     local st  = ent.st
     local inp = ent.input
     local wheels = ent.wheels
@@ -159,7 +162,7 @@ function BMX.PhysicsStep(ent, phys, dt)
         if w.isFront then front = w else rear = w end
     end
 
-    local driveTorque = hasDriver and drivetrain(ent, dt, inp, st, rear) or 0
+    local driveTorque = hasDriver and drivetrain(ent, C, dt, inp, st, rear) or 0
     local brakeRear   = inp.brakeRear  * C.Drive.rearBrake
     local brakeFront  = inp.brakeFront * C.Drive.frontBrake
 
@@ -170,8 +173,8 @@ function BMX.PhysicsStep(ent, phys, dt)
     -- 4. Wheels
     ----------------------------------------------------------------------
     local filter = ent.traceFilter
-    front:Simulate(ent, phys, dt, 0,           brakeFront, filter)
-    rear:Simulate (ent, phys, dt, driveTorque, brakeRear,  filter)
+    front:Simulate(ent, phys, C, dt, 0,           brakeFront, filter)
+    rear:Simulate (ent, phys, C, dt, driveTorque, brakeRear,  filter)
 
     ----------------------------------------------------------------------
     -- 5. Ground state
@@ -209,8 +212,8 @@ function BMX.PhysicsStep(ent, phys, dt)
         end
         st.airSince = 0
 
-        BMX.Balance(ent, phys, dt, inp, st, wheels, st.groundNormal, speed)
-        BMX.PitchControl(ent, phys, dt, inp, st, wheels)
+        BMX.Balance(ent, phys, C, dt, inp, st, wheels, st.groundNormal, speed)
+        BMX.PitchControl(ent, phys, C, dt, inp, st, wheels)
     else
         st.airSince = st.airSince + dt
         if not st.airMode and st.airSince >= C.Air.engageDelay then
@@ -218,7 +221,7 @@ function BMX.PhysicsStep(ent, phys, dt)
             BMX.AirReset(st)
         end
         if st.airMode then
-            BMX.AirControl(ent, phys, dt, inp, st)
+            BMX.AirControl(ent, phys, C, dt, inp, st)
         end
         -- Attitude still needs measuring in the air, for the HUD and for the
         -- landing check that is about to use it.

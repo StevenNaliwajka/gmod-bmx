@@ -151,7 +151,7 @@ concommand.Add("bmx_spawn", function(ply, _, args)
     local ent = ents.Create(class)
     if not IsValid(ent) then return end
 
-    ent:SetPos(tr.HitPos + tr.HitNormal * 16 + Vector(0, 0, BMX.Config.Wheel.radius))
+    ent:SetPos(tr.HitPos + tr.HitNormal * 16 + Vector(0, 0, ent:Cfg().Wheel.radius))
     ent:SetAngles(Angle(0, ply:EyeAngles().y, 0))
     ent:Spawn()
     ent:Activate()

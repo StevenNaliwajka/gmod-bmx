@@ -560,3 +560,81 @@ function(ctx)
 
     ctx:ok(ejected, "a hard inverted impact ejects the rider")
 end)
+
+--------------------------------------------------------------------------
+T.Case("per_bike_physics", { rider = false, timeout = 20,
+    desc = "a bike's physics overrides actually reach the simulation" },
+function(ctx)
+    -- THE POINT OF THIS CASE. `physics = {}` that silently does nothing is
+    -- worse than no field at all -- that sentence is why per-bike physics did
+    -- not exist for the first six phases of this addon. So the field is not
+    -- considered to work because the merge function returns the right table;
+    -- it is considered to work when a bike built from it SITS AT A DIFFERENT
+    -- RIDE HEIGHT on a real server, which is a number no amount of plumbing
+    -- can fake.
+    --
+    -- Registered here rather than shipped in sh_bikes.lua, because a test
+    -- fixture in the spawn menu is a different thing from a bike.
+    BMX.RegisterBike("testtall", {
+        printName = "BMX (test fixture)",
+        physics = {
+            Wheel   = { radius = 16 },
+            Chassis = { mass = 120 },
+        },
+    })
+
+    local def = BMX.Bikes.testtall
+    if not ctx:ok(def ~= nil, "the test bike registered") then return end
+
+    ----------------------------------------------------------------------
+    -- The merge itself: overridden keys change, untouched ones do not, and
+    -- the BASE is not modified -- which is the failure that would make every
+    -- other bike on the server quietly inherit this one's numbers.
+    ----------------------------------------------------------------------
+    local cfg = BMX.ConfigFor(def)
+    ctx:between(cfg.Wheel.radius, 16, 16, "override reached Wheel.radius", "u")
+    ctx:between(cfg.Chassis.mass, 120, 120, "override reached Chassis.mass", "kg")
+    ctx:between(cfg.Wheel.wheelbase, BMX.Config.Wheel.wheelbase,
+        BMX.Config.Wheel.wheelbase, "untouched key still comes from the base", "u")
+    ctx:between(BMX.Config.Wheel.radius, 10, 10,
+        "the BASE config was not modified by the merge", "u")
+
+    -- A bike with no overrides shares the base by reference, so the common
+    -- case costs nothing.
+    ctx:ok(BMX.ConfigFor(BMX.Bikes.stock) == BMX.Config,
+        "a bike with no overrides shares the base table rather than copying it")
+
+    ----------------------------------------------------------------------
+    -- And now the part that plumbing cannot fake.
+    ----------------------------------------------------------------------
+    local tall = ents.Create(BMX.ClassFor("testtall"))
+    if not ctx:ok(IsValid(tall), "the test bike spawned") then return end
+
+    tall:SetPos(ctx.ground + Vector(0, 140, 40))
+    tall:SetAngles(Angle(0, 0, 0))
+    tall:Spawn()
+    tall:Activate()
+
+    ctx:ok(tall:Cfg().Wheel.radius == 16,
+        "the spawned entity resolves its own config, not the base")
+
+    ctx:wait(1.0)
+
+    -- Bigger wheels stand it higher, heavier mass sags it further, and the two
+    -- do not cancel: radius - sag, with sag = m*g/2 / spring.
+    local h = tall:GetPos().z - ctx.ground.z
+    local sag = (120 * physenv.GetGravity():Length() * 0.5) / BMX.Config.Wheel.spring
+    ctx:log(string.format("16u wheels and 120kg -> predicted ride height %.2f u", 16 - sag))
+    ctx:between(h, 16 - sag - 2, 16 - sag + 2, "test bike ride height", "u")
+
+    -- The stock bike, on the same server at the same moment, is unaffected.
+    local stockH = ctx.bike:GetPos().z - ctx.ground.z
+    local stockSag = (BMX.Config.Chassis.mass * physenv.GetGravity():Length() * 0.5)
+        / BMX.Config.Wheel.spring
+    ctx:between(stockH, BMX.Config.Wheel.radius - stockSag - 2,
+        BMX.Config.Wheel.radius - stockSag + 2,
+        "and the stock bike beside it is unchanged", "u")
+
+    SafeRemoveEntity(tall)
+    BMX.Bikes.testtall = nil
+end)

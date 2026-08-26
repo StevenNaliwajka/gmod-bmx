@@ -33,7 +33,7 @@ end
 -- ground. Same geometry as Wheel:Simulate, forces omitted.
 --------------------------------------------------------------------------
 local function axlePos(ent, mountLocal)
-    local WC     = BMX.Config.Wheel
+    local WC     = self:Cfg().Wheel
     local maxLen = WC.restLength + WC.radius
     local up     = ent:GetUp()
     local mount  = ent:LocalToWorld(mountLocal)
@@ -79,7 +79,7 @@ end
 
 function ENT:Draw()
     local bike = self:Bike()
-    local WC   = BMX.Config.Wheel
+    local WC   = self:Cfg().Wheel
     local half = WC.wheelbase * 0.5
 
     ----------------------------------------------------------------------

@@ -26,8 +26,8 @@ local TAU = math.pi * 2
 -- sv_physics.lua from successive orientations, not from
 -- PhysObj:GetAngleVelocity(). See the note there for why.
 --------------------------------------------------------------------------
-function BMX.AirControl(ent, phys, dt, inp, st)
-    local C = BMX.Config
+function BMX.AirControl(ent, phys, cfg, dt, inp, st)
+    local C = cfg
     local A = C.Air
 
     local fwd, right, up = ent:GetForward(), ent:GetRight(), ent:GetUp()

@@ -56,7 +56,7 @@ hook.Add("Think", "BMX.DebugStream", function()
         net.Start("bmx_debug", true)   -- unreliable: a dropped debug frame is
                                        -- not worth a retransmit
             net.WriteFloat(st.roll)
-            net.WriteFloat(inp.lean * BMX.Config.Balance.maxLean)
+            net.WriteFloat(inp.lean * bike:Cfg().Balance.maxLean)
             net.WriteFloat(st.rollRate)
             net.WriteFloat(st.leanAuthority)
             net.WriteFloat(st.steer)
@@ -161,6 +161,13 @@ end)
 --------------------------------------------------------------------------
 -- Dump the whole live config to console. When a tuning session lands on
 -- something good, this is how it gets back into sh_config.lua.
+--
+-- THE BASE, DELIBERATELY, not the config of whatever bike you were last on. It
+-- is the base that convars move and the base that this text is going to be
+-- pasted back into, and a bike with per-bike overrides would dump its merged
+-- values -- which would then be written into sh_config.lua as everybody's
+-- defaults. Per-bike overrides live in that bike's `physics` table in
+-- sh_bikes.lua and are not a tuning-session output.
 --------------------------------------------------------------------------
 concommand.Add("bmx_dump_config", function(ply)
     local function out(s)

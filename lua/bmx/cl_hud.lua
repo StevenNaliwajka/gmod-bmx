@@ -129,7 +129,7 @@ local function drawRiderHUD(bike)
     -- Cadence: how close the rider is to spinning out. This is what actually
     -- caps top speed, so showing it explains why pedalling stopped helping.
     ----------------------------------------------------------------------
-    local cadFrac = bike:GetCadence() / BMX.Config.Drive.maxCadence
+    local cadFrac = bike:GetCadence() / bike:Cfg().Drive.maxCadence
     bar(x + 14, y + 54, w - 28, 6, cadFrac,
         cadFrac > 0.95 and COL_WARN or COL_GOOD)
     label("cadence", x + 14, y + 62, "BMX.Small", COL_DIM)
@@ -137,7 +137,7 @@ local function drawRiderHUD(bike)
     ----------------------------------------------------------------------
     -- Stamina, only once it has been spent: a permanently full bar is chrome.
     ----------------------------------------------------------------------
-    local stam = bike:GetStamina() / BMX.Config.Drive.staminaMax
+    local stam = bike:GetStamina() / bike:Cfg().Drive.staminaMax
     if stam < 0.999 then
         bar(x + 14, y + 80, w - 28, 6, stam,
             stam < 0.2 and COL_BAD or (bike:GetSprinting() and COL_WARN or COL_DIM))
@@ -210,8 +210,8 @@ local function drawDebug()
     head("DRIVE")
     row("speed", string.format("%6.1f u/s  (%.1f km/h)", dbg.speed, BMX.ToKMH(dbg.speed)))
     row("forward speed", string.format("%+6.1f u/s", dbg.fwdSpeed))
-    row("cadence", string.format("%5.2f / %.2f rad/s", dbg.cadence, BMX.Config.Drive.maxCadence),
-        dbg.cadence > BMX.Config.Drive.maxCadence * 0.95 and COL_WARN or COL_FG)
+    row("cadence", string.format("%5.2f / %.2f rad/s", dbg.cadence, bike:Cfg().Drive.maxCadence),
+        dbg.cadence > bike:Cfg().Drive.maxCadence * 0.95 and COL_WARN or COL_FG)
     row("throttle", string.format("%5.2f", dbg.throttle))
     row("stamina", string.format("%5.1f", dbg.stamina))
 
@@ -239,7 +239,7 @@ local function drawDebug()
             (wd.saturation > 0.8 and COL_WARN or COL_GOOD))
         row("slip long / lat", string.format("%+6.1f / %+6.1f u/s", wd.slipLong, wd.slipLat))
         row("compression", string.format("%5.2f / %.2f u", wd.compression,
-            BMX.Config.Wheel.restLength))
+            bike:Cfg().Wheel.restLength))
     end
 
     wheel("FRONT WHEEL", dbg.front)

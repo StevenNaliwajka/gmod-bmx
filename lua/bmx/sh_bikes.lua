@@ -3,13 +3,14 @@
 
     The bike registry. Adding a bike is one table in here plus its model files.
 
-    SCOPE, stated plainly: entries currently describe a bike's APPEARANCE and
-    its mount points. They do NOT yet carry per-bike physics, because the
-    simulation reads BMX.Config as a global and making it per-bike means
-    threading a config table through every function in sv_wheel / sv_balance /
-    sv_air / sv_physics. That refactor is Phase 5 in docs/DESIGN.md and is
-    written down there rather than half-implemented here: a `physics = {}` field
-    that silently does nothing is worse than no field at all.
+    An entry describes a bike's APPEARANCE, its mount points, and -- since the
+    per-bike physics work -- an optional `physics` table of config overrides.
+
+    THE OVERRIDES ARE CHECKED AT REGISTRATION, against the real config, and a
+    key that does not exist is a loud error rather than a value that goes
+    nowhere. That check is the reason the field did not exist for so long: a
+    `physics = {}` that silently does nothing is worse than no field at all, and
+    the difference between the two is entirely whether it validates.
 ----------------------------------------------------------------------------]]
 
 BMX = BMX or {}
@@ -31,6 +32,20 @@ local pending = {}
 --   def.forkModel optional, drawn steered with the front wheel.
 --   def.frameOffset / def.frameAngles  model alignment against the axle line
 --   def.scale     model scale, for stand-in props that are not bike-sized
+--   def.physics   optional per-bike config overrides, grouped exactly as
+--                 BMX.Config is. Anything omitted comes from the base, and a
+--                 bike with no `physics` at all shares the base table by
+--                 reference rather than copying it:
+--
+--                     physics = {
+--                         Chassis = { mass = 94 },
+--                         Wheel   = { radius = 12, wheelbase = 43 },
+--                         Drive   = { crankTorque = 260000 },
+--                     }
+--
+--                 Overriding a field that has a convar opts this bike out of
+--                 LIVE tuning for that one field, because an explicit override
+--                 is meant to win. See the note in sh_config.lua.
 --------------------------------------------------------------------------
 function BMX.RegisterBike(id, def)
     id = string.lower(id)
@@ -42,6 +57,9 @@ function BMX.RegisterBike(id, def)
     def.frameOffset = def.frameOffset or Vector(0, 0, 0)
     def.frameAngles = def.frameAngles or Angle(0, 0, 0)
     def.scale     = def.scale or 1
+
+    -- Loudly, and before anything can ride it.
+    BMX.ValidatePhysics(id, def.physics)
 
     BMX.Bikes[id] = def
 

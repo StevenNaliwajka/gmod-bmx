@@ -130,8 +130,8 @@ end
 --
 -- With the shipped geometry (COM 17.5u ahead of the rear contact, 20u above it)
 -- it is atan(17.5/20) = 41.2 degrees.
-function BMX.WheelieBalance()
-    local C = BMX.Config
+function BMX.WheelieBalance(cfg)
+    local C = cfg or BMX.Config
     local ahead = C.Chassis.massCenterExpected.x + C.Wheel.wheelbase * 0.5
     return math.atan(ahead / C.Chassis.massCenterExpected.z)
 end
@@ -154,11 +154,11 @@ BMX.M2U2 = (1 / 0.0254) ^ 2      -- 1550.0
 --
 -- Cached on the entity at spawn: GetInertia does not change unless the physics
 -- object is rebuilt, and this is read several times per substep.
-function BMX.CacheInertia(ent, phys)
+function BMX.CacheInertia(ent, phys, cfg)
     local i = phys:GetInertia()
     if not i or not BMX.FiniteVec(i) or i:Length() <= 0 then
         -- Fall back to the documented estimates rather than dividing by zero.
-        local C = BMX.Config.Chassis
+        local C = (cfg or BMX.Config).Chassis
         ent.I = Vector(C.inertiaRoll, C.inertiaPitch, C.inertiaYaw)
         return ent.I, false
     end
@@ -167,9 +167,13 @@ function BMX.CacheInertia(ent, phys)
 end
 
 -- Accessors, with a fallback so a controller can never index a nil.
-function BMX.IRoll(ent)  return (ent.I and ent.I.x) or BMX.Config.Chassis.inertiaRoll  end
-function BMX.IPitch(ent) return (ent.I and ent.I.y) or BMX.Config.Chassis.inertiaPitch end
-function BMX.IYaw(ent)   return (ent.I and ent.I.z) or BMX.Config.Chassis.inertiaYaw   end
+-- The fallbacks read the BIKE's config, not the base, so a heavier bike whose
+-- GetInertia failed still falls back to its own estimates rather than the
+-- stock bike's.
+local function fallback(ent) return (ent.Cfg and ent:Cfg() or BMX.Config).Chassis end
+function BMX.IRoll(ent)  return (ent.I and ent.I.x) or fallback(ent).inertiaRoll  end
+function BMX.IPitch(ent) return (ent.I and ent.I.y) or fallback(ent).inertiaPitch end
+function BMX.IYaw(ent)   return (ent.I and ent.I.z) or fallback(ent).inertiaYaw   end
 
 -- True if a number is finite. Every value that reaches a PhysObj goes through
 -- this: one NaN entering VPhysics corrupts the object permanently, and the

@@ -264,7 +264,24 @@ end
 -- Landing
 --------------------------------------------------------------------------
 function ENT:OnLanded(tricks, front, rear)
-    -- Trick scoring first: a trick that ends in a crash should still be
+    -- TYRES FIRST, because the landing is heard before it is judged.
+    --
+    -- An event, not a state, so it is a server-side one-shot rather than
+    -- anything in cl_sound.lua: it happens once, at a moment only the server
+    -- knows. Soft or hard is chosen by how fast the bike was coming down, which
+    -- is the same number JudgeLanding is about to use to decide whether this
+    -- was a landing at all.
+    local phys = self:GetPhysicsObject()
+    local fall = IsValid(phys) and math.abs(math.min(phys:GetVelocity().z, 0)) or 0
+
+    if fall > 40 then
+        local key = fall > 320 and "land_hard" or "land_soft"
+        local L   = BMX.Sounds[key]
+        self:EmitSound(BMX.SoundFile(key), L.level, math.random(94, 106),
+            L.vol * math.Clamp(fall / 600, 0.25, 1))
+    end
+
+    -- Trick scoring: a trick that ends in a crash should still be
     -- reported, it just should not pay.
     local crashed, severity, reason = self:JudgeLanding(front, rear)
 
@@ -365,8 +382,8 @@ function ENT:Crash(reason, severity)
         end
     end)
 
-    self:EmitSound("physics/metal/metal_box_impact_hard" ..
-        math.random(1, 3) .. ".wav", 80, 100, 1)
+    local CS = BMX.Sounds.crash
+    self:EmitSound(BMX.SoundFile("crash"), CS.level, 100, CS.vol)
 end
 
 --------------------------------------------------------------------------

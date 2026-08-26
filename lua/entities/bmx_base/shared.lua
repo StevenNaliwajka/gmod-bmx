@@ -70,6 +70,13 @@ function ENT:SetupDataTables()
     self:NetworkVar("Bool",  0, "Grounded")
     self:NetworkVar("Bool",  1, "Sprinting")
 
+    -- Skidding is networked because the CLIENT cannot derive it. Whether a
+    -- tyre is sliding is a property of the friction circle -- grip*N against
+    -- the force the tyre is being asked for -- and the client has neither the
+    -- load nor the slip. One bool beats sending two floats it would only use
+    -- to recompute a bool.
+    self:NetworkVar("Bool",  2, "Skidding")
+
     -- Steer is networked because the fork and bars have to point somewhere the
     -- client cannot derive: it is an OUTPUT of the balance controller, not a
     -- function of the rider's key. Radians.

@@ -36,6 +36,7 @@ local SHARED = {
     "bmx/sh_config.lua",
     "bmx/sh_util.lua",
     "bmx/sh_bikes.lua",
+    "bmx/sh_sound.lua",
 }
 
 local SERVER_FILES = {
@@ -57,6 +58,7 @@ local SERVER_FILES = {
 local CLIENT_FILES = {
     "bmx/cl_view.lua",
     "bmx/cl_hud.lua",
+    "bmx/cl_sound.lua",
 }
 
 if SERVER then

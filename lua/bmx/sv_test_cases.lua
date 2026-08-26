@@ -766,3 +766,71 @@ function(ctx)
             "and can move again rather than being frozen where the bike was")
     end
 end)
+
+--------------------------------------------------------------------------
+T.Case("sounds_exist", { rider = false, timeout = 15,
+    desc = "every sound the addon references actually ships with the game" },
+function(ctx)
+    -- The addon deliberately carries no audio of its own, so every path in
+    -- BMX.Sounds is a bet that the file is in base Garry's Mod. A wrong bet is
+    -- SILENT for the player and noisy in their console, and neither end of that
+    -- tells you which line referenced it. This is the only check that can.
+    local missing, checked = {}, 0
+
+    for key, s in pairs(BMX.Sounds) do
+        for i = 1, (s.variants or 1) do
+            local path = s.variants and string.format(s.path, i) or s.path
+            checked = checked + 1
+            if not file.Exists("sound/" .. path, "GAME") then
+                missing[#missing + 1] = key .. " -> " .. path
+            end
+        end
+    end
+
+    ctx:log(string.format("checked %d files across %d sound families",
+        checked, table.Count(BMX.Sounds)))
+    for _, m in ipairs(missing) do ctx:log("MISSING: " .. m) end
+
+    ctx:between(checked, 8, 64, "sound files referenced")
+    ctx:ok(#missing == 0, "every referenced sound file exists in mounted content")
+
+    -- SoundFile has to return a real path for every family, including the ones
+    -- with numbered variants -- a %d left unsubstituted is a path that will
+    -- never resolve.
+    local bad = {}
+    for key in pairs(BMX.Sounds) do
+        local p = BMX.SoundFile(key)
+        if not p or string.find(p, "%%d") then bad[#bad + 1] = key end
+    end
+    ctx:ok(#bad == 0, "BMX.SoundFile resolves every family to a concrete path")
+end)
+
+--------------------------------------------------------------------------
+T.Case("skid_is_networked", { timeout = 30,
+    desc = "the client is told when a tyre is actually sliding" },
+function(ctx)
+    -- The skid sound is client-side, and whether a tyre is sliding is something
+    -- the client cannot work out: it is grip*N against the force the tyre was
+    -- asked for, and the client has neither the load nor the slip. So the
+    -- server sets a bool, and this is the check that the bool means something.
+    ctx:ok(ctx.bike:GetSkidding() == false, "not skidding while sitting still")
+
+    if not ctx:accelerateTo(150, 14) then return end
+
+    -- Lock the rear under brakes. brake_locks already proves this saturates the
+    -- friction circle; the question here is only whether it reaches the client.
+    local sawSkid = false
+    ctx:runUntil(3, function()
+        if ctx.bike:GetSkidding() then sawSkid = true return true end
+        return false
+    end, { brakeRear = 1 })
+
+    ctx:ok(sawSkid, "locking the rear wheel sets the networked skid flag")
+
+    -- And it has to CLEAR, or the sound loops forever on a stationary bike.
+    ctx:input({})
+    local cleared = ctx:waitUntil(function()
+        return not ctx.bike:GetSkidding()
+    end, 6, "the skid flag to clear once the bike stops sliding")
+    ctx:ok(cleared, "and clears again when it stops")
+end)

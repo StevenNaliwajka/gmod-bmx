@@ -177,6 +177,21 @@ function BMX.PhysicsStep(ent, phys, dt)
     rear:Simulate (ent, phys, C, dt, driveTorque, brakeRear,  filter)
 
     ----------------------------------------------------------------------
+    -- Skid state, for the client's tyre sound. A tyre is skidding when it is
+    -- ON the ground, at the limit of its friction circle, AND actually sliding
+    -- -- saturation alone is not enough, because a wheel sitting still under a
+    -- locked brake is saturated and silent.
+    ----------------------------------------------------------------------
+    local skid = false
+    for _, w in ipairs(wheels) do
+        if w.onGround and w.saturation > 0.98
+            and (abs(w.slipLong) + abs(w.slipLat)) > 45 then
+            skid = true
+        end
+    end
+    if skid ~= ent:GetSkidding() then ent:SetSkidding(skid) end
+
+    ----------------------------------------------------------------------
     -- 5. Ground state
     ----------------------------------------------------------------------
     local wasGrounded = st.grounded
@@ -277,8 +292,8 @@ function BMX.PhysicsStep(ent, phys, dt)
                 BMX.TorqueFor(BMX.IPitch(ent), H.pitchImpulse / dt), dt)
 
             ent.hopReady = CurTime() + H.cooldown
-            ent:EmitSound("physics/body/body_medium_impact_soft" ..
-                math.random(1, 4) .. ".wav", 65, 110, 0.4)
+            local H = BMX.Sounds.hop
+            ent:EmitSound(BMX.SoundFile("hop"), H.level, 110, H.vol)
         end
         ent.hopCharge = 0
     end

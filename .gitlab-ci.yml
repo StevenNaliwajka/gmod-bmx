@@ -1,0 +1,42 @@
+# CI/CD template — dev (sen2) --auto--> prod twin (sen1, manual gate).
+#
+# THIS FILE USED TO BE THE WHOLE PIPELINE. It carried the stages, the job bodies and a
+# hard-coded `pct exec`, and core/push_ci.py rendered all of it into every service repo.
+# That meant the mechanics were COPIED into ~25 repos, so changing how a deploy works
+# meant re-pushing every one of them — and in practice nobody did, which is how repos
+# ended up on different vintages of the same pipeline.
+#
+# The mechanics now live once, in root/ci-templates /deploy.yml, and each repo INCLUDES
+# them. A service repo declares only what is true of that service. The shared template
+# resolves container-vs-VM itself (deploy-guard reads /etc/pve), SHA-pins the deploy,
+# and offers a health gate with rollback.
+#
+# WHAT A REPO STILL DECIDES
+#   DEV_CT / PROD_CT  the guests to deploy to. THE ONLY VALUES MOST REPOS NEED.
+#   APP_DIR           the checkout inside the guest, /opt/<name> by convention.
+#   ENTRYPOINT        install.sh (the shared default) or setup.sh.
+#   HEALTH_CMD        optional. Empty means deploy-only, still SHA-pinned. Set it to a
+#                     command that proves the service SERVES, not merely that it
+#                     started: data-api passed a unit-active-and-port-listening check
+#                     while unable to answer a single query, because it binds its socket
+#                     before it touches PostgreSQL.
+#
+# WHY THE VMIDs ARE THE DANGEROUS FIELD. Nothing in GitLab checks that a VMID is a guest
+# that still serves. On 2026-08-25, 22 of 28 repos were deploying to containers their v2
+# guests had replaced — successfully, greenly, and to no effect. core/ci_target_audit.py
+# grades these against the live fleet and the nightly registry-audit reports it.
+#
+# This file is a TEMPLATE. core/push_ci.py substitutes the __TOKENS__ and commits the
+# rendered .gitlab-ci.yml onto each service repo's DEFAULT branch. Do not hand-edit a
+# deployed .gitlab-ci.yml — edit here and re-push, or the copies drift again.
+include:
+  - project: 'root/ci-templates'
+    ref: main
+    file: '/deploy.yml'
+
+variables:
+  DEV_CT: "149"
+  PROD_CT: ""
+  APP_DIR: "/opt/gmod/garrysmod/addons/gmod-bmx"
+  ENTRYPOINT: "install.sh"
+  HEALTH_CMD: "systemctl is-active --quiet gmod"

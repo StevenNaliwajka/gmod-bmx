@@ -299,6 +299,7 @@ symptoms.
 | 2 | Lean PD, derived steering, balance assist | done |
 | 3 | Wheelies, stoppies, bunny hop, air mode, tricks | done |
 | 4 | Crash and ejection, damage, sound | done, placeholder sounds |
+| 6f | Rolling, skid, freewheel and landing sound | done, base-game placeholders |
 | 5 | Headless regression harness (bot rider, no client) | done |
 | 6 | First live bring-up: six engine traps found and fixed | done |
 | 6b | Tyre integration, drag, and a harness that measured falling bikes | done |
@@ -308,7 +309,7 @@ symptoms.
 | 7 | Tuning pass with a human rider, real model | **next** |
 | 8 | Rider animation, Workshop release | icon and packer done |
 
-Phases 0 to 6e are done and **the suite passes 15 of 15** on a real dedicated
+Phases 0 to 6f are done and **the suite passes 17 of 17** on a real dedicated
 server, repeatably. The bike rides, brakes, skids, steers from lean, hops, holds
 a wheelie at 34-45 degrees, and tracks a commanded lean to within 11 degrees.
 
@@ -379,3 +380,17 @@ line, which is where the entity origin sits.
 anything extracted from another game, is the fastest way to have the repository
 taken down. Original or CC0 only, licensed separately from the code and stated
 explicitly.
+
+**That includes audio, and audio is where the temptation is worst**, because a
+sound file is small, easy to extract and feels less like theft than a model.
+It is not: a Workshop item with lifted game audio gets the item removed and the
+account warned, and the repository behind it follows.
+
+So the addon ships no audio either. Everything in `sh_sound.lua` is a base-game
+path, which means zero content dependency, nothing to license, and not one byte
+in the `.gma` -- and the suite walks every entry to prove the file is really
+there, because a wrong path is silent for the player and noisy in their console.
+They are placeholders, and each one records what it stands in for so replacing
+it is a one-line edit rather than a guess. If real audio is ever recorded or
+sourced CC0, it lands beside the model with the same rules: stated licence,
+separate from the code.

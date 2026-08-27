@@ -7,7 +7,7 @@ are leaning rather than a key you press. Wheelies, stoppies, bunny hops, air
 control and flips.
 
 **Status: v0.1.0, pre-alpha.** The simulation runs on a real dedicated server
-and **all 15 headless cases pass**, repeatably: it holds its designed ride
+and **all 17 headless cases pass**, repeatably: it holds its designed ride
 height through a full-throttle run, brakes, skids, steers from lean, hops, and
 holds a wheelie at 34-45 degrees. **It has never been ridden by a human**, so
 nothing is known about how it feels, and every number in it is derived or
@@ -18,7 +18,8 @@ measured rather than played. See [Tuning](docs/TUNING.md).
 ## Install
 
 Clone straight into your addons folder. There is nothing to build and no
-content dependency beyond base Garry's Mod.
+content dependency beyond base Garry's Mod -- including the audio, which is all
+base-game paths rather than shipped files.
 
 ```
 cd garrysmod/addons

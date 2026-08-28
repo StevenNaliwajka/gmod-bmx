@@ -35,7 +35,7 @@ include:
     file: '/deploy.yml'
 
 variables:
-  DEV_CT: "149"
+  DEV_CT: "110149"
   PROD_CT: ""
   APP_DIR: "/opt/gmod/garrysmod/addons/gmod-bmx"
   ENTRYPOINT: "install.sh"

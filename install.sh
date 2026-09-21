@@ -16,11 +16,23 @@ OWNER="${GMOD_USER:-gmod}"
 # not load, and the server looks healthy while missing the thing just deployed.
 if id "$OWNER" >/dev/null 2>&1; then
   chown -R "$OWNER":"$OWNER" "$HERE"
-  echo "  owner: $OWNER"
+  # AND ITS PARENT. addons/ was left drwx------ root:root by a rebuild in August
+  # 2026, so the gmod user could not traverse into it; this script chowned the
+  # checkout inside it, reported "owner: gmod", and the addon still did not load
+  # for three weeks. The server was healthy the whole time -- that is the point.
+  chmod 0755 "$HERE" "$(dirname "$HERE")"
+  echo "  owner: $OWNER (checkout and addons/)"
 else
   echo "  WARNING: user '$OWNER' does not exist -- leaving ownership alone."
   echo "  This guest is not a provisioned Garry's Mod server; the addon is checked"
   echo "  out but nothing will load it."
+fi
+
+# The server-side test tooling travels with the commit. Installing it here rather
+# than once by hand is what stops a new suite being run by an old harness -- the
+# two then disagree and nothing on the box says why.
+if [ -x "$HERE/tools/server/install-server-tools.sh" ]; then
+  "$HERE/tools/server/install-server-tools.sh" || echo "  WARNING: server tooling not installed"
 fi
 
 # RESTART ONLY IF IT IS ALREADY RUNNING. Garry's Mod loads addons at startup, so a

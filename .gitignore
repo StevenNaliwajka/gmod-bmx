@@ -11,3 +11,7 @@ Thumbs.db
 # Local tuning dumps: bmx_dump_config output lands here by convention before it
 # is folded back into lua/bmx/sh_config.lua
 tuning/*.local.lua
+
+# python bytecode from tools/
+__pycache__/
+*.pyc

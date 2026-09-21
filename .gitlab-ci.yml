@@ -40,3 +40,51 @@ variables:
   APP_DIR: "/opt/gmod/garrysmod/addons/gmod-bmx"
   ENTRYPOINT: "install.sh"
   HEALTH_CMD: "systemctl is-active --quiet gmod"
+
+# ---------------------------------------------------------------------------
+# THE HEADLESS SIMULATION SUITE.
+#
+# The shared template gives validate -> deploy-dev -> deploy-prod. This adds a
+# stage between the first two that does the thing this repo actually needs: run
+# the addon's 17 physics cases on a REAL Garry's Mod server and fail the
+# pipeline if the bike stops behaving.
+#
+# WHY IT CANNOT LIVE IN validate. The suite is not a unit test. It seats a bot on
+# a bike and measures ride height, tyre saturation, lean tracking and wheelie
+# pitch against a running VPhysics -- so it needs srcds, a map and a tick, none
+# of which exist on the runner. The box is VM 110149; there is no prod twin and
+# there must not be one (PROD_CT is empty above, so deploy-prod does not exist).
+#
+# WHY IT RUNS ON EVERY BRANCH while deploy-dev only runs on the default branch.
+# Those are different jobs answering different questions. deploy-dev publishes
+# the default branch to the dev box and is the estate's deploy rule. This job
+# BORROWS the box for one run: it checks the pipeline's own commit out, tests
+# it, and leaves it there. A physics addon whose branches are only tested after
+# merging is a physics addon that is tested too late.
+#
+# resource_group SERIALISES those borrows. There is exactly one game server, and
+# two pipelines restarting it at once would interleave into a result that
+# describes neither commit.
+stages: [validate, deploy-dev, headless, deploy-prod]
+
+headless:
+  stage: headless
+  tags: [deploy]
+  resource_group: gmod-dev
+  timeout: 40m
+  # Not `needs: [deploy-dev]`: that job does not exist on a feature branch, and a
+  # needs on a job that was never created skips this one silently. Stage order
+  # already gives the sequencing on the default branch.
+  script:
+    - |
+      set -eu
+      SSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new root@${DEV_NODE}"
+      EXEC="guest-exec ${DEV_CT} --"
+      echo "▶ ${CI_COMMIT_SHORT_SHA} -> guest ${DEV_CT}"
+      # Two steps, and the order is the point. The first puts BOTH the addon and
+      # its test runner on the box at this exact commit -- a new suite run by an
+      # old harness is the failure mode this avoids. The second then tests what
+      # is on disk, so the runner and the code it runs are never different
+      # vintages.
+      $SSH "$EXEC 'git config --global --add safe.directory ${APP_DIR} && cd ${APP_DIR} && git fetch -q origin && git checkout -f ${CI_COMMIT_SHA} && bash install.sh'"
+      $SSH "$EXEC '/usr/local/bin/bmx-test'"

@@ -119,6 +119,65 @@ you actually get thrown off: a bike you cannot crash has no failure state, and
 the balance assist cap is the only thing standing between this and a rail
 shooter.
 
+## Headless, and automatic
+
+Everything above is a human looking at a bike. This section is the part that
+runs without one.
+
+`bmx_test` drives the whole simulation from a bot on a real dedicated server:
+seventeen cases covering the tyre model, the balance PD, derived steering, air
+mode, the duplicator and the sound table. It writes `data/bmx_test_results.txt`
+and prints the same report to console. On a provisioned server:
+
+```
+bmx-test                     # restart, run every case, report, exit 0/1/2
+bmx-test --ref my-branch     # check that out first
+bmx-test --case lean_steers  # same run, just show one case
+```
+
+Exit 0 is a clean run, 1 is a failing case, and **2 is the harness itself being
+broken** -- the server never came up, the addon never loaded, the suite wedged.
+Keeping those apart matters: a pipeline that reports "the bike is wrong" when it
+means "I could not measure the bike" is a pipeline people learn to ignore.
+
+`tools/server/install-server-tools.sh` puts `bmx-test` and its RCON client on
+the box, and `install.sh` runs it on every deploy so the harness and the code
+under test are always the same commit.
+
+### In CI
+
+`.gitlab-ci.yml` runs two gates. `ci-test.sh` parses every Lua file on the
+runner, on every branch, in about two seconds. The `headless` stage then checks
+the pipeline's commit out on the game server and runs the suite there, also on
+every branch, serialised by `resource_group` because there is only one server.
+
+### Four things that have to be true, and were each not true once
+
+**The server must not hibernate.** A Source dedicated server with no players
+idles its tick loop, and the harness is driven from the `Think` hook. Without
+`sv_hibernate_think 1` the suite accepts `bmx_test`, answers "a run is already
+in progress" to everything after it, and never advances: no results, no error,
+no progress. A headless box is empty by definition, so this is not optional.
+
+**The addon must be readable by the user the server runs as.** If it is not, the
+addon does not load and *nothing says so* -- srcds starts, answers RCON and
+reports itself healthy. On this estate `addons/` itself was left `drwx------
+root:root` by a rebuild, and three weeks of "the server is up" meant nothing.
+`bmx-test` waits for the addon's own load line before it believes anything.
+
+**RCON has to be reachable, which means srcds needs `-ip`.** It picks its TCP
+bind address by resolving the hostname, and a cloud-init `/etc/hosts` maps that
+to `127.0.1.1`. The UDP game port still binds `0.0.0.0`, so players connect
+fine and only the test loop is dead -- and it fails as "connection refused",
+which reads like a firewall.
+
+**`bmx_test_onboot` cannot be armed from outside.** It looks like the obvious
+way to start a run, and there is no moment to set it: the addon creates the
+convar when its Lua loads, so a `+bmx_test_onboot 1` on the command line is
+"Unknown command", and `server.cfg` is exec'd *after* the `InitPostEntity` hook
+that reads it. It is useful when set from inside Lua and useless to a script.
+RCON after the load line is the trigger that works.
+
 ## Getting tuning numbers back into the repo
 
 ```

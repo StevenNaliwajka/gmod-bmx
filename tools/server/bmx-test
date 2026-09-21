@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+# Run the BMX headless suite on this box and report what happened.
+#
+#   bmx-test                     test whatever the addon checkout is on now
+#   bmx-test --ref <git-ref>     check that commit/branch out first, then test
+#   bmx-test --case lean_steers  show only that case's lines in the report
+#
+# Exit 0  every case passed
+# Exit 1  at least one case failed  (the report says which)
+# Exit 2  the run never produced a result -- the server did not come up, the
+#         addon did not load, or the suite wedged. Deliberately a DIFFERENT code
+#         from a failing test: one means the bike is wrong, the other means the
+#         harness is, and a pipeline that cannot tell them apart teaches you to
+#         ignore it.
+#
+# WHY THIS RESTARTS THE SERVER EVERY TIME. Garry's Mod loads addons at startup
+# and there is no reload: re-running a Lua file leaves the old entity and hook
+# registrations behind, and the half-old half-new state that produces is its own
+# category of wasted afternoon. A restart is the only honest way to test code
+# that has changed, so this does it unconditionally rather than guessing.
+#
+# WHY RCON AND NOT THE bmx_test_onboot CONVAR, which exists for exactly this and
+# looks like the obvious answer: there is no moment at which an outside process
+# can set it. The addon CREATES the convar when its Lua loads, so a `+bmx_test_onboot 1`
+# on the command line is executed too early ("Unknown command") -- and server.cfg
+# is exec'd too LATE, after the InitPostEntity hook that reads it has already
+# run. Both were measured on this box, in that order. RCON has neither problem:
+# by the time we send it we have already seen the addon announce itself.
+#
+# THE TWO TRAPS THIS EXISTS TO NOT FALL INTO AGAIN, both found 2026-09-21:
+#
+#  1. An empty Source server HIBERNATES. The tick loop idles, the Think hook
+#     that drives the harness stops firing, and `bmx_test` therefore accepts the
+#     command and then never advances: no progress file, no results, no error,
+#     and every later attempt answered "a run is already in progress". A
+#     headless test box is empty by definition, so `sv_hibernate_think 1` is
+#     load-bearing here. It lives in server.cfg; this checks it is actually
+#     there rather than trusting that it is.
+#
+#  2. The server can be perfectly healthy with the addon not loaded at all. The
+#     addons directory was drwx------ root:root for three weeks, so the gmod
+#     user could not traverse into it; srcds started, answered RCON, and
+#     reported nothing wrong. So this waits for the addon's OWN load line before
+#     it believes anything is ready, and says so plainly if it never appears.
+set -uo pipefail
+
+SERVER_DIR="${GMOD_DIR:-/opt/gmod}"
+ADDON_DIR="${BMX_DIR:-$SERVER_DIR/garrysmod/addons/gmod-bmx}"
+CFG="$SERVER_DIR/garrysmod/cfg/server.cfg"
+DATA_DIR="$SERVER_DIR/garrysmod/data"
+RESULTS="$DATA_DIR/bmx_test_results.txt"
+PROGRESS="$DATA_DIR/bmx_test_progress.txt"
+CONSOLE="$SERVER_DIR/garrysmod/console.log"
+RCON="${GMOD_RCON:-/usr/local/lib/gmod/rcon.py}"
+UNIT="${GMOD_UNIT:-gmod}"
+OWNER="${GMOD_USER:-gmod}"
+
+BOOT_TIMEOUT="${BMX_BOOT_TIMEOUT:-240}"   # server up, addon loaded, RCON answering
+RUN_TIMEOUT="${BMX_RUN_TIMEOUT:-900}"     # suite start to results file
+REF=""
+CASE=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --ref)  REF="${2:-}"; shift 2 ;;
+    --case) CASE="${2:-}"; shift 2 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    *) echo "bmx-test: unknown argument '$1'" >&2; exit 2 ;;
+  esac
+done
+
+say() { echo "  $*"; }
+die() { echo "bmx-test: $*" >&2; exit 2; }
+
+[ -d "$ADDON_DIR" ] || die "no addon checkout at $ADDON_DIR"
+[ -f "$RCON" ]      || die "no RCON client at $RCON (the recipe installs it)"
+
+# --- 1. the commit under test ------------------------------------------------
+if [ -n "$REF" ]; then
+  say "checking out $REF"
+  git config --global --add safe.directory "$ADDON_DIR" >/dev/null 2>&1 || true
+  git -C "$ADDON_DIR" fetch -q origin || die "git fetch failed"
+  git -C "$ADDON_DIR" checkout -q -f "$REF" 2>/dev/null \
+    || git -C "$ADDON_DIR" checkout -q -f "origin/$REF" \
+    || die "cannot check out '$REF'"
+fi
+# The checkout arrives owned by whoever did it; srcds runs as $OWNER and Lua it
+# cannot read is not an error the server reports -- the addon simply does not
+# load. Fix it here so a hand-run test cannot differ from a pipeline one. The
+# PARENT matters as much as the checkout: addons/ itself was the directory that
+# was unreadable, and chowning only the checkout inside it changes nothing.
+if id "$OWNER" >/dev/null 2>&1; then
+  chown -R "$OWNER":"$OWNER" "$ADDON_DIR" 2>/dev/null || true
+  chmod 0755 "$ADDON_DIR" "$(dirname "$ADDON_DIR")" 2>/dev/null || true
+fi
+say "under test: $(git -C "$ADDON_DIR" log --oneline -1 2>/dev/null || echo 'unknown commit')"
+
+# --- 2. the hibernation guard ------------------------------------------------
+grep -qs '^[[:space:]]*sv_hibernate_think[[:space:]]\+1' "$CFG" || die \
+"sv_hibernate_think is not set to 1 in server.cfg.
+       An empty server hibernates, the Think hook stops firing, and the suite
+       will start and then silently never advance. Refusing to run a test that
+       cannot report a real answer."
+
+# The RCON password lives in server.cfg and nowhere else on this box, which is
+# what keeps it out of the pipeline: CI runs this script, it never holds a
+# credential. Extracted rather than echoed -- it goes straight into the child's
+# environment and is never printed, not even on failure.
+PW="$(sed -n 's/^[[:space:]]*rcon_password[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$CFG" | head -1)"
+[ -n "$PW" ] || die "no rcon_password in $CFG -- the server cannot be driven"
+IP="$(ip -4 -o route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')"
+[ -n "$IP" ] || IP="$(hostname -I | awk '{print $1}')"
+
+rcon() { GMOD_RCON_PASSWORD="$PW" python3 "$RCON" --host "$IP" "$@" 2>&1; }
+
+# --- 3. restart ---------------------------------------------------------------
+rm -f "$RESULTS" "$PROGRESS"
+: > "$CONSOLE" 2>/dev/null || true
+say "restarting $UNIT"
+systemctl restart "$UNIT" || die "systemctl restart $UNIT failed"
+
+# --- 4. wait for the addon to actually load ----------------------------------
+waited=0
+until grep -qas '\[BMX\].*loaded (server)' "$CONSOLE"; do
+  sleep 2; waited=$((waited + 2))
+  systemctl is-active --quiet "$UNIT" || die "$UNIT died during startup -- journalctl -u $UNIT"
+  [ "$waited" -lt "$BOOT_TIMEOUT" ] || die \
+"the addon never announced itself within ${BOOT_TIMEOUT}s.
+       The server may be up with the addon unreadable (check ownership of
+       $(dirname "$ADDON_DIR")) or not parsing (tools/syntax-check.sh)."
+done
+say "addon loaded after ${waited}s"
+
+# RCON comes up a little after the addon does; a refused connect here is a race,
+# not a fault, so retry rather than failing the run on it.
+until rcon "echo ping" >/dev/null 2>&1; do
+  sleep 2; waited=$((waited + 2))
+  [ "$waited" -lt "$BOOT_TIMEOUT" ] || die "RCON never answered within ${BOOT_TIMEOUT}s"
+done
+
+# --- 5. run it ---------------------------------------------------------------
+reply="$(rcon "bmx_test")"
+case "$reply" in
+  *"a run is already in progress"*)
+    die "a run was already in progress on a server we just restarted, which
+       should be impossible. Something else is driving this box." ;;
+  *"refusing to run"*)
+    die "the suite refused to run: ${reply}" ;;
+  *"no such case"*)
+    die "${reply}" ;;
+esac
+
+waited=0
+last=""
+until [ -f "$RESULTS" ]; do
+  sleep 5; waited=$((waited + 5))
+  systemctl is-active --quiet "$UNIT" || die "$UNIT died mid-run -- journalctl -u $UNIT"
+  now="$(head -1 "$PROGRESS" 2>/dev/null || true)"
+  if [ -n "$now" ] && [ "$now" != "$last" ]; then say "$now"; last="$now"; fi
+  if [ "$waited" -ge "$RUN_TIMEOUT" ]; then
+    die "no results after ${RUN_TIMEOUT}s (last progress: ${last:-none}).
+       The suite was started but did not finish. journalctl -u $UNIT."
+  fi
+done
+
+# --- 6. the report -----------------------------------------------------------
+echo
+if [ -n "$CASE" ]; then
+  awk -v c="$CASE" '/^\[(PASS|FAIL)\]/ {p = ($0 ~ "\\] " c "$")} p' "$RESULTS"
+else
+  cat "$RESULTS"
+fi
+
+summary="$(grep -E '^[0-9]+ passed, [0-9]+ failed' "$RESULTS" | tail -1)"
+[ -n "$summary" ] || die "the results file has no summary line -- report() did not finish"
+failed="$(echo "$summary" | sed -E 's/.*[, ]([0-9]+) failed.*/\1/')"
+
+echo
+if [ "$failed" = "0" ]; then
+  echo "bmx-test: PASS -- $summary"
+  exit 0
+fi
+echo "bmx-test: FAIL -- $summary" >&2
+grep -E '^\[FAIL\]' "$RESULTS" >&2 || true
+exit 1

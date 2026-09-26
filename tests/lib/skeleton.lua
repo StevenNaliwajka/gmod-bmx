@@ -104,6 +104,20 @@ M.BONES = {
     { B .. "L_Forearm",  B .. "L_UpperArm", Vector(12, 0, 0),  Angle(-20, 0, 0) },
     { B .. "L_Hand",     B .. "L_Forearm", Vector(11, 0, 0),   Angle(0, 0, 0) },
 }
+-- Toes, and a hand's fingers: four of three segments along the hand's +X,
+-- and a thumb on the PALM side (-Z), so curling a finger (turning it toward
+-- -Z) closes it on the thumb and bending it back opens it.
+for _, s in ipairs({ "R", "L" }) do
+    M.BONES[#M.BONES + 1] = { B .. s .. "_Toe0", B .. s .. "_Foot", Vector(6, 0, 0), Angle(0, 0, 0) }
+    local hand = B .. s .. "_Hand"
+    M.BONES[#M.BONES + 1] = { B .. s .. "_Finger0", hand, Vector(1.5, 0, -1.6), Angle(0, 0, 0) }
+    for i, y in ipairs({ 0.9, 0.3, -0.3, -0.9 }) do
+        local f = B .. s .. "_Finger" .. i
+        M.BONES[#M.BONES + 1] = { f, hand, Vector(3.5, y, 0), Angle(0, 0, 0) }
+        M.BONES[#M.BONES + 1] = { f .. "1", f, Vector(1.6, 0, 0), Angle(0, 0, 0) }
+        M.BONES[#M.BONES + 1] = { f .. "2", f .. "1", Vector(1.3, 0, 0), Angle(0, 0, 0) }
+    end
+end
 M.INDEX = {}
 for i, b in ipairs(M.BONES) do M.INDEX[b[1]] = i end
 

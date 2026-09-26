@@ -545,6 +545,11 @@ function M.Realm(world, which)
     function Ent:SetNWVector(k, v) self._nw["nw_" .. k] = v end
     function Ent:GetNWVector(k, d) local v = self._nw["nw_" .. k]; if v == nil then return d end return v end
     function Ent:SetNWEntity(k, v) self._nw["nw_" .. k] = v end
+    function Ent:GetNWEntity(k, d)
+        local v = self._nw["nw_" .. k]
+        if v == nil then return d end
+        return v
+    end
     -- ON A PHYSICS ENTITY THE BODY IS THE AUTHORITY, as in the engine: once
     -- it has a physics object, Entity:SetPos / SetAngles are overwritten by
     -- the body on the next step, so only PhysObj:SetPos / SetAngles move it.
@@ -933,6 +938,12 @@ function M.Realm(world, which)
     function Pod:IsVehicle() return true end
 
     function Ply:IsPlayer() return true end
+    -- Seated, a player is where their vehicle is, as in the engine.
+    function Ply:GetPos()
+        local v = self._vehicle
+        if v and v.IsValid and v:IsValid() then return v:GetPos() end
+        return Vector(self._pos)
+    end
     -- Enough of a living player for a crash to take apart and put back:
     -- health, armour, weapons (the gamemode's loadout on every Spawn), ammo,
     -- spectating, and a stock skeleton to read bone positions from.
@@ -1167,6 +1178,9 @@ function M.Realm(world, which)
         env.ScrW = function() return 1920 end
         env.ScrH = function() return 1080 end
         env.LocalPlayer = function() return R.localPlayer or NULL end
+        env.EyePos = function()
+            return R.eyePos or (R.localPlayer and R.localPlayer:GetPos()) or Vector()
+        end
 
         -- Clientside models: RECORDED, with where they were drawn, so a test
         -- can ask whether a tyre is round and on its axle. `R.missingModels`

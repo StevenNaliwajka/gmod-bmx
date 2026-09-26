@@ -155,3 +155,133 @@ T.test("getting off, or bmx_rider_anim 0, puts every bone back", function()
         T.ok(a.p == 0 and a.y == 0 and a.r == 0, name .. " reset with animation off")
     end
 end)
+
+local function P(ply, name)
+    return ply:GetBoneMatrix(ply:LookupBone(name)):GetTranslation()
+end
+
+T.test("IK: knees bend forward and stay above the feet, all the way round", function()
+    local cl, bike, ply = seated()
+    bike:SetCadence(0)
+    for _ = 1, 40 do frame(cl, bike, ply) end
+    bike:SetCadence(8)
+    local fwd = bike:GetForward()
+    local worstFwd, minBend, maxBend, below = math.huge, 180, 0, false
+    for i = 1, 66 do
+        frame(cl, bike, ply)
+        ply:InvalidateBoneCache(); ply:SetupBones()
+        for _, s in ipairs({ "R", "L" }) do
+            local H = P(ply, "ValveBiped.Bip01_" .. s .. "_Thigh")
+            local K = P(ply, "ValveBiped.Bip01_" .. s .. "_Calf")
+            local F = P(ply, "ValveBiped.Bip01_" .. s .. "_Foot")
+            -- The knee's offset from the hip-foot line, along the bike's forward.
+            local line = (F - H):GetNormalized()
+            local off = (K - H) - line * (K - H):Dot(line)
+            worstFwd = math.min(worstFwd, off:Dot(fwd))
+            local b = math.deg(math.acos(math.Clamp((K - H):GetNormalized():Dot((F - K):GetNormalized()), -1, 1)))
+            minBend, maxBend = math.min(minBend, b), math.max(maxBend, b)
+            if K.z < F.z then below = true end
+        end
+    end
+    T.ok(worstFwd > 0, "the knee is always in front of the hip-foot line: " .. worstFwd)
+    T.ok(not below, "never below its own foot")
+    T.between(minBend, 14, 180, "the knee never locks straight, deg")
+    T.between(maxBend, 0, 156, "or folds past the limit, deg")
+end)
+
+T.test("IK: soles flat on the pedals, toes forward", function()
+    local cl, bike, ply = seated()
+    for _ = 1, 40 do frame(cl, bike, ply) end
+    ply:InvalidateBoneCache(); ply:SetupBones()
+    for _, s in ipairs({ "R", "L" }) do
+        local d = (P(ply, "ValveBiped.Bip01_" .. s .. "_Toe0") - P(ply, "ValveBiped.Bip01_" .. s .. "_Foot")):GetNormalized()
+        T.ok(d:Dot(bike:GetForward()) > 0.9, s .. " toes point forward: " .. d:Dot(bike:GetForward()))
+    end
+end)
+
+T.test("IK: the hands close round the grips, curling the right way", function()
+    local cl, bike, ply = seated()
+    local function gap(s)
+        return (P(ply, "ValveBiped.Bip01_" .. s .. "_Finger12") - P(ply, "ValveBiped.Bip01_" .. s .. "_Finger0")):Length()
+    end
+    ply:InvalidateBoneCache(); ply:SetupBones()
+    local openR = gap("R")
+    for _ = 1, 10 do frame(cl, bike, ply) end
+    ply:InvalidateBoneCache(); ply:SetupBones()
+    T.ok(gap("R") < openR * 0.75, string.format("right fingertips close on the thumb (%.2f -> %.2f)", openR, gap("R")))
+    T.ok(gap("L") < openR * 0.75, "and the left")
+    local ax = cl.env.BMX.RiderCurlAxis[ply:GetModel()][1]
+    -- The rig curls about its pitch axis. WHICH WAY depends on the engine's
+    -- rotation convention, which is why it is measured, so only the axis is
+    -- checked here (the gap above is the behaviour, either way).
+    T.ok(ax and math.abs(ax.y) > 0.99, "calibrated onto the rig's pitch axis: " .. tostring(ax))
+    for _, f in ipairs({ "2", "3", "4" }) do
+        local b = ply:LookupBone("ValveBiped.Bip01_R_Finger" .. f .. "1")
+        T.ok(ply._manip[b], "finger " .. f .. " curled too")
+    end
+end)
+
+T.test("IK: getting off opens the hands and straightens everything", function()
+    local cl, bike, ply = seated()
+    for _ = 1, 10 do frame(cl, bike, ply) end
+    ply._vehicle = nil
+    cl.env.hook.Run("PrePlayerDraw", ply)
+    for b, a in pairs(ply._manip) do
+        T.ok(a.p == 0 and a.y == 0 and a.r == 0, "bone " .. b .. " reset")
+    end
+end)
+
+T.test("IK: a leg that starts twisted is brought back, knee forward (the pole)", function()
+    local cl, bike, ply = seated()
+    -- Twist the right thigh a quarter turn about its own length, so the knee
+    -- points out sideways: what an unconstrained solve, or a model with other
+    -- rest axes, can start from.
+    local b = ply:LookupBone("ValveBiped.Bip01_R_Thigh")
+    ply.bmxIK = { [b] = cl.env.Angle(0, 0, 90) }
+    ply:ManipulateBoneAngles(b, ply.bmxIK[b])
+    for _ = 1, 60 do frame(cl, bike, ply) end
+    ply:InvalidateBoneCache(); ply:SetupBones()
+    local H = P(ply, "ValveBiped.Bip01_R_Thigh")
+    local K = P(ply, "ValveBiped.Bip01_R_Calf")
+    local F = P(ply, "ValveBiped.Bip01_R_Foot")
+    local line = (F - H):GetNormalized()
+    local off = ((K - H) - line * (K - H):Dot(line)):GetNormalized()
+    T.ok(off:Dot(bike:GetForward()) > 0.5, "knee back to forward: " .. off:Dot(bike:GetForward()))
+    T.ok(math.abs(off:Dot(bike:GetRight())) < 0.6, "not out to the side: " .. off:Dot(bike:GetRight()))
+end)
+
+T.test("IK: a rider far from the view keeps their pose instead of re-solving", function()
+    local cl, bike, ply = seated()
+    cl.eyePos = bike:GetPos() + cl.env.Vector(5000, 0, 0)
+    cl.setupBones = 0
+    for _ = 1, 5 do frame(cl, bike, ply) end
+    T.eq(cl.setupBones, 0, "no solving across the map")
+    cl.eyePos = bike:GetPos() + cl.env.Vector(200, 0, 0)
+    frame(cl, bike, ply)
+    T.ok(cl.setupBones > 0, "solving again up close")
+end)
+
+T.test("IK: no limb is wrung: twist stays within limits through pedalling and steering", function()
+    local cl, bike, ply = seated()
+    bike:SetCadence(8)
+    local worst = {}
+    for i = 1, 90 do
+        bike:SetSteer(math.rad(20 * math.sin(i / 10)))
+        frame(cl, bike, ply)
+        for _, limb in ipairs(cl.env.BMX.RiderLimbs) do
+            for kind, name in pairs({ root = limb.root, hinge = limb.hinge }) do
+                local a = ply.bmxIK[ply:LookupBone(name)]
+                if a then worst[kind] = math.max(worst[kind] or 0, math.abs(a.r)) end
+            end
+        end
+    end
+    T.between(worst.root or 0, 0, 30.001, "worst hip/shoulder twist, deg")
+    T.between(worst.hinge or 0, 0, 8.001, "worst knee/elbow twist, deg")
+    -- And still doing the job while limited, once the bars stop moving (a
+    -- sweeping bar is a target the hand follows a frame behind).
+    bike:SetSteer(math.rad(10))
+    for _ = 1, 20 do frame(cl, bike, ply) end
+    ply:InvalidateBoneCache(); ply:SetupBones()
+    T.between(reach(cl, ply, "ValveBiped.Bip01_R_Foot", bike.ikTargets.rFoot), 0, 3, "foot on its pedal")
+    T.between(reach(cl, ply, "ValveBiped.Bip01_R_Hand", bike.ikTargets.rHand), 0, 3, "hand on its grip")
+end)

@@ -124,20 +124,28 @@ end
 -- engine's RotateAroundAxis turns: the first steps that go well fix the sign.
 --------------------------------------------------------------------------
 local LIMBS = {
-    { eff = "ValveBiped.Bip01_R_Foot", target = "rFoot",
-      chain = { "ValveBiped.Bip01_R_Calf", "ValveBiped.Bip01_R_Thigh" } },
-    { eff = "ValveBiped.Bip01_L_Foot", target = "lFoot",
-      chain = { "ValveBiped.Bip01_L_Calf", "ValveBiped.Bip01_L_Thigh" } },
-    { eff = "ValveBiped.Bip01_R_Hand", target = "rHand",
-      chain = { "ValveBiped.Bip01_R_Forearm", "ValveBiped.Bip01_R_UpperArm" } },
-    { eff = "ValveBiped.Bip01_L_Hand", target = "lHand",
-      chain = { "ValveBiped.Bip01_L_Forearm", "ValveBiped.Bip01_L_UpperArm" } },
+    { eff = "ValveBiped.Bip01_R_Foot", target = "rFoot", side = 1, leg = true,
+      hinge = "ValveBiped.Bip01_R_Calf", root = "ValveBiped.Bip01_R_Thigh" },
+    { eff = "ValveBiped.Bip01_L_Foot", target = "lFoot", side = -1, leg = true,
+      hinge = "ValveBiped.Bip01_L_Calf", root = "ValveBiped.Bip01_L_Thigh" },
+    { eff = "ValveBiped.Bip01_R_Hand", target = "rHand", side = 1,
+      hinge = "ValveBiped.Bip01_R_Forearm", root = "ValveBiped.Bip01_R_UpperArm" },
+    { eff = "ValveBiped.Bip01_L_Hand", target = "lHand", side = -1,
+      hinge = "ValveBiped.Bip01_L_Forearm", root = "ValveBiped.Bip01_L_UpperArm" },
 }
 BMX.RiderLimbs = LIMBS
 
+local IK_RANGE  = 1200     -- units from the view; further riders keep their pose
 local MAX_STEP  = 25       -- degrees per joint per frame
 local MAX_TOTAL = 150      -- degrees, any component of a joint's correction
-local ikSign, ikVotes = nil, 0
+-- TWIST, the roll of a bone about its own length, is what wrings a limb's
+-- mesh like a sweet wrapper. A manipulation angle is yaw, then pitch, then
+-- roll about the bone's own length, so its ROLL is exactly that twist, and
+-- clamping it limits the twist without changing where the bone points.
+-- Hinges barely twist at all (a knee cannot), hips and shoulders a little.
+local TWIST = { root = 30, hinge = 8, tip = 35 }
+local MIN_BEND  = 15       -- a knee or elbow never straightens past this...
+local MAX_BEND  = 155      -- ...or folds past this, degrees
 
 local function refresh(ply)
     ply:InvalidateBoneCache()
@@ -149,8 +157,13 @@ local function bonePos(ply, b)
     return m and m:GetTranslation()
 end
 
+-- A world axis, in a bone's own frame (GMod matrices: -Y is GetRight).
+local function toLocal(M, axis)
+    return Vector(axis:Dot(M:GetForward()), -axis:Dot(M:GetRight()), axis:Dot(M:GetUp()))
+end
+
 -- manip * R(axisLocal, deg): a turn in the bone's own frame, after the pose.
-local function turned(manip, axisLocal, deg)
+local function turned(manip, axisLocal, deg, twist)
     local d = Angle(0, 0, 0)
     d:RotateAroundAxis(axisLocal, deg)
     local m = Matrix()
@@ -158,7 +171,8 @@ local function turned(manip, axisLocal, deg)
     m:Rotate(d)
     local a = m:GetAngles()
     if a.p ~= a.p or a.y ~= a.y or a.r ~= a.r then return nil end
-    if math.abs(a.p) > MAX_TOTAL or math.abs(a.r) > MAX_TOTAL then return nil end
+    if math.abs(a.p) > MAX_TOTAL then return nil end
+    if twist then a.r = math.Clamp(a.r, -twist, twist) end
     return a
 end
 
@@ -167,68 +181,232 @@ local function setManip(ply, b, a)
     ply:ManipulateBoneAngles(b, a)
 end
 
-function BMX.SolveRiderIK(ply, targets)
+-- Signed angle from u to v about unit axis h, both first flattened onto the
+-- plane square to h. Degrees.
+local function planeAngle(u, v, h)
+    u = u - h * u:Dot(h)
+    v = v - h * v:Dot(h)
+    if u:Length() < 1e-4 or v:Length() < 1e-4 then return 0 end
+    u:Normalize(); v:Normalize()
+    return math.deg(math.atan2(u:Cross(v):Dot(h), u:Dot(v)))
+end
+
+-- Turn bone `b` about WORLD axis `h` by `deg`, keeping the change only if
+-- `better()` says it helped. The engine's rotation sign is not assumed: if the
+-- turn made things worse the opposite one is tried, and the first answers fix
+-- the sign for good (ikSign). Tested converging under both conventions.
+local ikSign, ikVotes = nil, 0
+local function tryTurn(ply, b, h, deg, better, twist)
+    local M = ply:GetBoneMatrix(b)
+    if not M or math.abs(deg) < 0.05 then return false end
+    local axisLocal = toLocal(M, h)
+    local old = ply.bmxIK[b] or Angle(0, 0, 0)
+    for _, sign in ipairs(ikSign and { ikSign } or { 1, -1 }) do
+        local cand = turned(old, axisLocal, deg * sign, twist)
+        if cand then
+            setManip(ply, b, cand)
+            refresh(ply)
+            if better() then
+                if not ikSign then
+                    ikVotes = ikVotes + sign
+                    if math.abs(ikVotes) >= 6 then ikSign = ikVotes > 0 and 1 or -1 end
+                end
+                return true
+            end
+        end
+    end
+    setManip(ply, b, old)
+    refresh(ply)
+    return false
+end
+
+local function bend(ply, root, hinge, eff)
+    local H, K, F = bonePos(ply, root), bonePos(ply, hinge), bonePos(ply, eff)
+    local u, v = (K - H):GetNormalized(), (F - K):GetNormalized()
+    return math.deg(math.acos(math.Clamp(u:Dot(v), -1, 1))), H, K, F
+end
+
+--------------------------------------------------------------------------
+-- One limb: hinge, then root, then the pole.
+--
+-- THE KNEE AND ELBOW ARE HINGES. The first version turned every joint freely
+-- in 3D, and a solver free to twist a shin sideways or fold a knee backwards
+-- will do it to reach a pedal: riders' legs "deformed and contorted below the
+-- bike". So the hinge only turns about the axis the limb already bends
+-- around, and stays between MIN_BEND and MAX_BEND. Then THE POLE: spinning
+-- the thigh (or upper arm) about the hip-to-foot line moves the knee without
+-- moving the foot, and it is turned until the knee points forward and up
+-- (the elbow out and down), where a rider's are.
+--------------------------------------------------------------------------
+local function solveLimb(ply, limb, T, pole)
+    local rb, hb, eb = ply:LookupBone(limb.root), ply:LookupBone(limb.hinge),
+        ply:LookupBone(limb.eff)
+    if not (rb and hb and eb) then return end
+    local function err() return (bonePos(ply, eb) - T):Length() end
+
+    -- Hinge. Its axis is the normal of the plane the limb bends in now,
+    -- remembered so a nearly straight limb does not lose it.
+    refresh(ply)
+    local _, H, K, F = bend(ply, rb, hb, eb)
+    ply.bmxHinge = ply.bmxHinge or {}
+    local h = (K - H):Cross(F - K)
+    if h:Length() > 1e-3 then
+        h:Normalize()
+        ply.bmxHinge[hb] = h
+    else
+        h = ply.bmxHinge[hb]
+    end
+    if h then
+        local deg = math.Clamp(planeAngle(F - K, T - K, h), -MAX_STEP, MAX_STEP)
+        local e0 = err()
+        tryTurn(ply, hb, h, deg, function()
+            local b1 = bend(ply, rb, hb, eb)
+            return err() < e0 and b1 >= MIN_BEND and b1 <= MAX_BEND
+        end, TWIST.hinge)
+    end
+
+    -- Root: a ball joint, pointing the whole limb at the target.
+    refresh(ply)
+    local R = bonePos(ply, rb)
+    local a, c = (bonePos(ply, eb) - R), (T - R)
+    if a:Length() > 1e-3 and c:Length() > 1e-3 then
+        a:Normalize(); c:Normalize()
+        local axis = a:Cross(c)
+        local sn = axis:Length()
+        if sn > 1e-4 then
+            axis = axis / sn
+            local deg = math.min(math.deg(math.atan2(sn, a:Dot(c))), MAX_STEP)
+            local e0 = err()
+            tryTurn(ply, rb, axis, deg, function() return err() < e0 end, TWIST.root)
+        end
+    end
+
+    -- Pole: spin about root-to-effector, which leaves the effector where it is.
+    refresh(ply)
+    local _, H2, K2, F2 = bend(ply, rb, hb, eb)
+    local line = F2 - H2
+    if line:Length() > 1e-3 then
+        line:Normalize()
+        local deg = math.Clamp(planeAngle(K2 - H2, pole, line), -MAX_STEP, MAX_STEP)
+        local function poleErr()
+            local _, h3, k3, f3 = bend(ply, rb, hb, eb)
+            return math.abs(planeAngle(k3 - h3, pole, (f3 - h3):GetNormalized()))
+        end
+        local p0 = poleErr()
+        tryTurn(ply, rb, line, deg, function() return poleErr() < p0 end, TWIST.root)
+    end
+end
+
+-- Turn bone `b` so the direction from bone `fromB` to bone `toB` points along
+-- `want`. Used to put a sole flat on a pedal and knuckles over a bar.
+local function aim(ply, b, fromB, toB, want)
+    refresh(ply)
+    local a = bonePos(ply, toB) - bonePos(ply, fromB)
+    if a:Length() < 1e-3 then return end
+    a:Normalize()
+    local axis = a:Cross(want)
+    local sn = axis:Length()
+    if sn < 1e-4 then return end
+    axis = axis / sn
+    local deg = math.min(math.deg(math.atan2(sn, a:Dot(want))), MAX_STEP)
+    local function off()
+        local d = (bonePos(ply, toB) - bonePos(ply, fromB)):GetNormalized()
+        return math.acos(math.Clamp(d:Dot(want), -1, 1))
+    end
+    local o0 = off()
+    tryTurn(ply, b, axis, deg, function() return off() < o0 end, TWIST.tip)
+end
+
+--------------------------------------------------------------------------
+-- CLOSED HANDS. Which way a finger curls into the palm is a property of the
+-- skeleton, and guessing wrong bends fingers backwards. So it is MEASURED,
+-- once per model on this client: the index finger's base is turned a little
+-- about each of its axes, both ways, and the turn that brings its tip closest
+-- to the thumb's base is the curl (curling closes that gap; bending back or
+-- spreading does not). Every finger is then curled about that axis. The
+-- server cannot do this for us: SetupBones is client-only, and the server's
+-- bones do not see manipulations (measured, 2026-09-26).
+--------------------------------------------------------------------------
+local FINGERS = { "1", "2", "3", "4" }
+local CURL = 55                    -- degrees at each finger joint: round a grip
+local curlAxis = {}                -- model -> side -> local axis, or false
+BMX.RiderCurlAxis = curlAxis
+
+local function fingerBones(ply, side, f)
+    local p = "ValveBiped.Bip01_" .. (side == 1 and "R" or "L") .. "_Finger" .. f
+    return ply:LookupBone(p), ply:LookupBone(p .. "1"), ply:LookupBone(p .. "2")
+end
+
+local function calibrateCurl(ply, side)
+    local base, _, tip = fingerBones(ply, side, "1")
+    local thumb = ply:LookupBone("ValveBiped.Bip01_" .. (side == 1 and "R" or "L") .. "_Finger0")
+    if not (base and tip and thumb) then return nil end
+    local best, bestD
+    local old = ply:GetManipulateBoneAngles(base)
+    for _, ax in ipairs({ Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1) }) do
+        for _, sg in ipairs({ 1, -1 }) do
+            local d = Angle(0, 0, 0)
+            d:RotateAroundAxis(ax, 40 * sg)
+            ply:ManipulateBoneAngles(base, d)
+            refresh(ply)
+            local dist = (bonePos(ply, tip) - bonePos(ply, thumb)):Length()
+            if not bestD or dist < bestD then best, bestD = ax * sg, dist end
+        end
+    end
+    ply:ManipulateBoneAngles(base, old)
+    refresh(ply)
+    return best
+end
+
+local function closeHand(ply, side)
+    local model = ply:GetModel()
+    curlAxis[model] = curlAxis[model] or {}
+    local ax = curlAxis[model][side]
+    if ax == nil then
+        ax = calibrateCurl(ply, side) or false
+        curlAxis[model][side] = ax
+    end
+    if not ax then return end
+    local curl = Angle(0, 0, 0)
+    curl:RotateAroundAxis(ax, CURL)
+    for _, f in ipairs(FINGERS) do
+        for _, b in ipairs({ fingerBones(ply, side, f) }) do
+            ply.bmxIK[b] = curl
+            ply:ManipulateBoneAngles(b, curl)
+        end
+    end
+end
+
+function BMX.SolveRiderIK(ply, targets, bike)
     ply.bmxIK = ply.bmxIK or {}
+    local fwd, up, right = bike:GetForward(), bike:GetUp(), bike:GetRight()
     for _, limb in ipairs(LIMBS) do
         local T = targets[limb.target]
-        local eb = ply:LookupBone(limb.eff)
-        if T and eb then
-            for _, name in ipairs(limb.chain) do
-                local jb = ply:LookupBone(name)
-                if jb then
-                    refresh(ply)
-                    local E = bonePos(ply, eb)
-                    local J = ply:GetBoneMatrix(jb)
-                    if E and J then
-                        local P = J:GetTranslation()
-                        local a, c = E - P, T - P
-                        if a:Length() > 1e-3 and c:Length() > 1e-3 then
-                            a:Normalize(); c:Normalize()
-                            local axis = a:Cross(c)
-                            local s = axis:Length()
-                            if s > 1e-4 then
-                                axis = axis / s
-                                local deg = math.min(math.deg(math.atan2(s, a:Dot(c))), MAX_STEP)
-                                local axisLocal = Vector(axis:Dot(J:GetForward()),
-                                    -axis:Dot(J:GetRight()), axis:Dot(J:GetUp()))
-                                local old = ply.bmxIK[jb] or Angle(0, 0, 0)
-                                local before = (E - T):Length()
+        if T then
+            -- Knees forward and up; elbows out, down and back.
+            local pole = limb.leg and (fwd + up * 0.6)
+                or (right * limb.side - up * 0.6 - fwd * 0.3)
+            solveLimb(ply, limb, T, pole:GetNormalized())
 
-                                -- Try the sign we believe in (or +, before we know).
-                                local sign = ikSign or 1
-                                local cand = turned(old, axisLocal, deg * sign)
-                                local ok = false
-                                if cand then
-                                    setManip(ply, jb, cand)
-                                    refresh(ply)
-                                    ok = (bonePos(ply, eb) - T):Length() < before
-                                end
-                                if not ok and not ikSign then
-                                    cand = turned(old, axisLocal, -deg)
-                                    if cand then
-                                        setManip(ply, jb, cand)
-                                        refresh(ply)
-                                        ok = (bonePos(ply, eb) - T):Length() < before
-                                        if ok then sign = -1 end
-                                    end
-                                end
-                                if ok and not ikSign then
-                                    if sign == (ikVotes >= 0 and 1 or -1) or ikVotes == 0 then
-                                        ikVotes = ikVotes + sign
-                                    else
-                                        ikVotes = 0
-                                    end
-                                    if math.abs(ikVotes) >= 6 then ikSign = ikVotes > 0 and 1 or -1 end
-                                end
-                                if not ok then setManip(ply, jb, old) end
-                            end
-                        end
-                    end
-                end
+            local s = limb.side == 1 and "R" or "L"
+            local eb = ply:LookupBone(limb.eff)
+            if limb.leg then
+                -- Toes forward, sole on the pedal.
+                local toe = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Toe0")
+                -- Twice: the leg solve just turned the foot with the shin.
+                if eb and toe then aim(ply, eb, eb, toe, fwd); aim(ply, eb, eb, toe, fwd) end
+            else
+                -- Knuckles forward over the bar, then the fingers closed round it.
+                local knuck = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Finger2")
+                if eb and knuck then aim(ply, eb, eb, knuck, (fwd - up * 0.3):GetNormalized()) end
+                closeHand(ply, limb.side)
             end
         end
     end
 end
+
+--------------------------------------------------------------------------
+-- Layer 1: the base pose.
 --------------------------------------------------------------------------
 hook.Add("CalcMainActivity", "BMX.RiderPose", function(ply)
     local bike = BMX.LocalBike(ply)
@@ -252,7 +430,7 @@ local function clear(ply)
         if b then ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
     end
     for b in pairs(ply.bmxIK or {}) do ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
-    ply.bmxIK = nil
+    ply.bmxIK, ply.bmxHinge = nil, nil
     animated[ply] = nil
 end
 BMX.ClearRiderPose = clear
@@ -282,7 +460,12 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
             if b then ply:ManipulateBoneAngles(b, ang) end
         end
     end
-    if useIK then BMX.SolveRiderIK(ply, bike.ikTargets) end
+    -- The solve re-poses the skeleton a few dozen times, which is nothing for
+    -- the riders near you and waste for one across the map, so a rider far
+    -- from the view keeps the pose they last had (manipulations persist).
+    if useIK and EyePos():Distance(ply:GetPos()) < IK_RANGE then
+        BMX.SolveRiderIK(ply, bike.ikTargets, bike)
+    end
     animated[ply] = true
 end)
 
@@ -302,12 +485,23 @@ end)
 -- proxy calls ent:GetPlayerColor(), which only players have, so the ragdoll
 -- (BMX.Tumble) carries the colour in a networked var and is given the method.
 --------------------------------------------------------------------------
+--
+-- LOOKED UP WHEN DRAWN, not when created. The first version read the
+-- networked colour a tick after the ragdoll appeared, and it had often not
+-- arrived yet, so the ragdoll kept the default colour: a rider in red tumbled
+-- off in the stock grey-blue. Every ragdoll now answers GetPlayerColor
+-- itself, from the networked value or, failing that, from its rider.
+local function ragdollColour(self)
+    local col = self:GetNWVector("BMXPlayerColor", nil)
+    if col then return col end
+    local rider = self:GetNWEntity("BMXRider", NULL)
+    if IsValid(rider) and rider.GetPlayerColor then return rider:GetPlayerColor() end
+end
+
 hook.Add("OnEntityCreated", "BMX.RagdollColour", function(e)
-    timer.Simple(0, function()
-        if not IsValid(e) or e:GetClass() ~= "prop_ragdoll" then return end
-        local col = e:GetNWVector("BMXPlayerColor", nil)
-        if col then e.GetPlayerColor = function() return col end end
-    end)
+    if IsValid(e) and e:GetClass() == "prop_ragdoll" and not e.GetPlayerColor then
+        e.GetPlayerColor = ragdollColour
+    end
 end)
 
 --------------------------------------------------------------------------

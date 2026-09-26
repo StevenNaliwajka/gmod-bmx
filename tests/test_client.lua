@@ -532,3 +532,21 @@ T.test("at speed the bars are drawn turned more than the physics steer, never pa
     T.ok(math.abs(math.AngleDifference(barYaw(), straight)) <= math.deg(C.Balance.maxSteer) + 0.5,
         "never drawn past the steering lock")
 end)
+
+T.test("a crash ragdoll shows its rider's colour even if the colour arrives late", function()
+    local s = scene()
+    local E = s.cl.env
+    local rag = s.cl.makeEntity("prop_ragdoll")
+    E.hook.Run("OnEntityCreated", rag)          -- created before any networked vars
+    T.ok(rag.GetPlayerColor, "the ragdoll can answer the PlayerColor proxy")
+    T.eq(rag:GetPlayerColor(), nil, "nothing yet")
+    local red = E.Vector(0.9, 0.1, 0.1)
+    rag:SetNWVector("BMXPlayerColor", red)      -- arrives a moment later
+    T.ok(rag:GetPlayerColor() == red, "and shows it once it arrives")
+
+    local rag2 = s.cl.makeEntity("prop_ragdoll")
+    E.hook.Run("OnEntityCreated", rag2)
+    s.me.GetPlayerColor = function() return E.Vector(0.1, 0.9, 0.1) end
+    rag2:SetNWEntity("BMXRider", s.me)
+    T.ok(rag2:GetPlayerColor().y > 0.8, "or asks its rider")
+end)

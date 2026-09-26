@@ -636,6 +636,7 @@ C.Crash = {
     tipRoll  = math.rad(65),
     tipPitch = math.rad(75),
     tipTime  = 0.15,
+    tipMaxVz = 80,          -- u/s: moving vertically faster than this is flight
 }
 
 --------------------------------------------------------------------------

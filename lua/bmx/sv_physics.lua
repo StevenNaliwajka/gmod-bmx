@@ -195,7 +195,12 @@ function BMX.PhysicsStep(ent, phys, dt)
     -- 4b. STICKING A LANDING (Crash.soakSpeed). The substep a wheel first
     -- touches down out of the air, with a rider aboard.
     ----------------------------------------------------------------------
-    if hasDriver and st.airMode and (front.onGround or rear.onGround) then
+    -- A hard landing can meet the ground with a wheel BOX before either
+    -- suspension ray registers it (at landing speed the bike moves ~12 units
+    -- a tick); PhysicsCollide marks that as a touchdown too (ent.bmxTouchdown).
+    local touchdown = st.airMode and (front.onGround or rear.onGround or ent.bmxTouchdown)
+    ent.bmxTouchdown = nil
+    if hasDriver and touchdown then
         local CR = C.Crash
         local v = phys:GetVelocity()
         if v.z < -CR.soakSpeed then
@@ -296,6 +301,11 @@ function BMX.PhysicsStep(ent, phys, dt)
         local CR = C.Crash
         local over = abs(st.roll) > CR.tipRoll or abs(st.pitch) > CR.tipPitch
         if (st.recoverUntil or 0) > CurTime() then over = false end
+        -- AT REST ON ITS SIDE, not falling past it. A barrel roll coming down
+        -- passes within reach of the ground at 100 degrees of roll, and this
+        -- rule threw its rider there, in mid-air, before the landing (which
+        -- judges itself) had even happened. Measured on the live server.
+        if abs(vel.z) > CR.tipMaxVz then over = false end
         local near = false
         if over then
             local com = phys:LocalToWorld(phys:GetMassCenter())

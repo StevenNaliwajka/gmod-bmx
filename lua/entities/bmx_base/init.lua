@@ -501,6 +501,9 @@ function ENT:PhysicsCollide(data, phys)
         local roll, pitch = BMX.Attitude(self, vector_up)
         if loc.z < body[1].z and math.abs(roll) < C.Crash.maxLandAngle
             and math.abs(pitch) < C.Crash.maxLandAngle then
+            -- A landing, found by the collision before the suspension saw
+            -- it: let the next substep stick it (sv_physics.lua, 4b).
+            if self.st and self.st.airMode then self.bmxTouchdown = true end
             return
         end
     end

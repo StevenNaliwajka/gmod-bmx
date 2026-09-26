@@ -542,27 +542,34 @@ function(ctx)
     -- pitch inertia for a bike pivoting on its FRONT axle, which is 7.3x too
     -- small (the wheelie's old mistake, in its mirror image). Nothing tested
     -- a stoppie at all until then.
-    if not ctx:accelerateTo(200, 12) then return end
+    -- 160, not 200: every extra u/s is runway, and a run that reaches the
+    -- edge has its input zeroed by runUntil, which lets go of the brake.
+    if not ctx:accelerateTo(160, 12) then return end
 
     -- What StartCommand writes for LMB: the front brake, and the weight
     -- shift forward that comes with it.
     ctx:input({ brakeFront = 1, pitch = -0.6 })
 
-    local lifted, deepest = false, 0
+    -- The SLOWEST it got while braking, not the speed at the end. The first
+    -- live run read 55 u/s at the end of a stoppie that had already happened:
+    -- the case had reached the edge of the test ground, runUntil zeroed the
+    -- input, and a bike with no brake held coasts.
+    local lifted, deepest, slowest = false, 0, math.huge
     ctx:runUntil(2.5, function()
         local f, r = ctx:wheels()
         if f.onGround and not r.onGround then lifted = true end
         deepest = math.min(deepest, ctx:st().pitch)
+        slowest = math.min(slowest, ctx:st().speed)
         return false
     end)
 
-    ctx:log(string.format("deepest %.0f deg, speed now %.0f u/s",
-        math.deg(deepest), ctx:st().speed))
+    ctx:log(string.format("deepest %.0f deg, slowest %.0f u/s%s",
+        math.deg(deepest), slowest, ctx.stoppedAtEdge and " (reached the edge)" or ""))
     ctx:ok(lifted, "the rear wheel came up with the front still down")
     -- Over the bars would be past the stoppie balance point, ~47 degrees.
     ctx:between(math.deg(deepest), -45, -5, "deepest stoppie pitch", "deg")
     ctx:ok(IsValid(ctx.bike:GetDriver()), "the rider is still aboard")
-    ctx:between(ctx:st().speed, 0, 40, "the front brake stopped the bike", "u/s")
+    ctx:between(slowest, 0, 40, "the front brake stopped the bike", "u/s")
 end)
 
 --------------------------------------------------------------------------

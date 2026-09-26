@@ -572,12 +572,43 @@ C.Hop = {
 C.Crash = {
     enabled = true,
 
-    -- On regaining ground contact, the landing is bad if the bike is further
-    -- than this off the surface normal.
-    maxLandAngle = math.rad(52),
+    -- LAND ON YOUR WHEELS AND YOU STAY ON. A landing is judged the moment a
+    -- wheel touches the ground again, and it throws the rider only past this
+    -- far off the surface: at 75 degrees the frame or bars reach the ground
+    -- before the tyres, so it was not a landing on the wheels at all. It was
+    -- 52, which threw riders off flips that came down nose-first on the front
+    -- wheel, from any height, whatever their momentum.
+    maxLandAngle = math.rad(75),
 
-    -- ...or if it is moving sideways faster than this at the contact patch.
-    maxLandLateral = 210,
+    -- A sideways landing only slides the tyres; nil turns the check off. It
+    -- was 210 u/s of sideways slip, which ejected riders off landings that
+    -- were on both wheels.
+    maxLandLateral = nil,
+
+    -- AFTER A LANDING, THE BIKE IS HELPED BACK UP. For recoverTime the lean
+    -- assist works at full authority whatever the speed, with recoverBoost
+    -- times its usual ceiling, a pitch assist levels a nose-down or nose-up
+    -- touchdown, and the tip-over rule below waits. So a landing that is on
+    -- the wheels but crooked rights itself under the rider instead of falling
+    -- over a moment later and throwing them anyway.
+    recoverTime  = 0.6,
+    -- How far toward the mass centre, fore and aft, a landing's push is moved
+    -- (0 = at the tyre, 1 = straight under the mass centre). Sideways it is
+    -- always moved all the way. See Wheel:Simulate.
+    soakPitch    = 0.7,
+
+    -- STICKING IT. On the touchdown substep of a landing with a rider aboard,
+    -- downward speed beyond soakSpeed is taken off at the mass centre (no
+    -- lever arm, so it tips nothing), and soakSpin of the bike's pitch and
+    -- roll spin with it: the rider's legs and arms absorbing the blow.
+    -- Without it a big drop crossed the 8 units of travel in under a tick
+    -- and met the ground on the wheel boxes, whose corner levered a
+    -- nose-down landing end over end. An arcade assist, and it says so.
+    soakSpeed = 250,
+    soakSpin  = 0.75,
+    recoverBoost = 2.0,
+    recoverPitchKp = 40,
+    recoverPitchKd = 9,
 
     -- Impact into geometry: chassis hull collision above this speed throws the
     -- rider regardless of angle.

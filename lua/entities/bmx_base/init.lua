@@ -362,6 +362,9 @@ function ENT:OnLanded(tricks, front, rear)
 
     if crashed then
         self:Crash(reason, severity)
+    else
+        -- Landed on the wheels: help it back up (Crash.recoverTime).
+        self.st.recoverUntil = CurTime() + self:Cfg().Crash.recoverTime
     end
 end
 
@@ -419,7 +422,7 @@ function ENT:JudgeLanding(front, rear)
     -- misses entirely: a perfectly upright bike arriving with all its velocity
     -- across the tyres.
     local lat = math.max(math.abs(front.slipLat or 0), math.abs(rear.slipLat or 0))
-    if lat > CR.maxLandLateral then
+    if CR.maxLandLateral and lat > CR.maxLandLateral then
         return true, BMX.Clamp((lat - CR.maxLandLateral) / CR.maxLandLateral, 0, 1), "sideways"
     end
 
@@ -496,8 +499,8 @@ function ENT:PhysicsCollide(data, phys)
         local loc = self:WorldToLocal(data.HitPos)
         local body = BMX.CollisionBoxes(C)[1]
         local roll, pitch = BMX.Attitude(self, vector_up)
-        if loc.z < body[1].z and math.abs(roll) < C.Stand.maxRoll
-            and math.abs(pitch) < C.Stand.maxRoll then
+        if loc.z < body[1].z and math.abs(roll) < C.Crash.maxLandAngle
+            and math.abs(pitch) < C.Crash.maxLandAngle then
             return
         end
     end

@@ -77,6 +77,15 @@ function BMX.Balance(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
     -- as a hovering prop.
     local authority = BMX.Ramp(speed, B.fadeInLow, B.fadeInHigh)
 
+    -- Just landed on the wheels (Crash.recoverTime): full authority at any
+    -- speed and a higher ceiling, so a crooked landing rights itself.
+    local recovering = (st.recoverUntil or 0) > CurTime() and IsValid(ent:GetDriver())
+    local ceiling = B.maxAssistAccel
+    if recovering then
+        authority = 1
+        ceiling = ceiling * C.Crash.recoverBoost
+    end
+
     ----------------------------------------------------------------------
     -- GRAVITY FEED-FORWARD.
     --
@@ -186,7 +195,7 @@ function BMX.Balance(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
 
     local err   = targetRoll - roll
     local alpha = -topple + B.leanKp * err - B.leanKd * st.rollRate
-    alpha = BMX.Clamp(alpha, -B.maxAssistAccel, B.maxAssistAccel) * authority
+    alpha = BMX.Clamp(alpha, -ceiling, ceiling) * authority
 
     ----------------------------------------------------------------------
     -- THE SLOW END: kickstand or foot. See C.Stand. Weighted by the authority
@@ -385,6 +394,15 @@ function BMX.PitchControl(ent, phys, cfg, dt, inp, st, wheels)
             torque = torque - BMX.TorqueFor(BMX.IPitch(ent),
                 P.groundDamping * st.pitchRate)
         end
+    end
+
+    -- Just landed on the wheels: level a nose-down or nose-up touchdown about
+    -- the axle it is on, so a flip landed on one wheel comes down onto both
+    -- instead of going over the bars or looping out.
+    if (st.recoverUntil or 0) > CurTime() and IsValid(ent:GetDriver()) and inp.pitch == 0 then
+        local CR = C.Crash
+        local alpha = -CR.recoverPitchKp * st.pitch - CR.recoverPitchKd * st.pitchRate
+        torque = torque + BMX.TorqueFor(BMX.PivotInertia(ent, C, st.pitch < 0), alpha)
     end
 
     BMX.ApplyTorque(phys, ent, axisR, torque, dt)

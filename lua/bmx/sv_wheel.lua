@@ -432,7 +432,30 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     ----------------------------------------------------------------------
     local force = normal * N + fwdDir * Flong + rightDir * Flat
 
-    if BMX.FiniteVec(force) then
+    if self.soak then
+        ------------------------------------------------------------------
+        -- LANDING SOAK (see sv_physics.lua): the suspension's push goes in
+        -- directly beneath the mass centre SIDEWAYS, so it cannot lever a
+        -- leaned bike further over. A landing leaned 45 degrees took ~10x
+        -- the bike's weight at the contact patch, 20-odd units to the side,
+        -- and rolled the bike from 44 to 112 degrees in a tenth of a second.
+        -- Fore and aft it is unchanged, so pitch still behaves. The tyre
+        -- forces stay at the patch.
+        ------------------------------------------------------------------
+        local com = phys:LocalToWorld(phys:GetMassCenter())
+        local soakAt = contact + rightDir * (com - contact):Dot(rightDir)
+        -- ...and most of the way under it fore and aft (Crash.soakPitch), so
+        -- a big nose-first landing does not throw the bike end over end
+        -- off its front wheel. Not all the way: a nose-down landing should
+        -- still come down like one.
+            + fwdDir * ((com - contact):Dot(fwdDir) * C.Crash.soakPitch)
+        local up = normal * N
+        local rest = fwdDir * Flong + rightDir * Flat
+        if BMX.FiniteVec(up) and BMX.FiniteVec(rest) then
+            phys:ApplyForceOffset(up * dt, soakAt)
+            phys:ApplyForceOffset(rest * dt, contact)
+        end
+    elseif BMX.FiniteVec(force) then
         phys:ApplyForceOffset(force * dt, contact)
     end
 

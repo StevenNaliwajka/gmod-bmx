@@ -180,9 +180,33 @@ function BMX.PhysicsStep(ent, phys, dt)
     ----------------------------------------------------------------------
     -- 4. Wheels
     ----------------------------------------------------------------------
+    -- LANDING SOAK: coming down out of the air (air mode is still set on the
+    -- touchdown substep, which is the one that carries the blow) or just
+    -- landed, with a rider aboard, the suspension's push is taken through the
+    -- rider's legs rather than levered at the tyre. See Wheel:Simulate.
+    local soak = hasDriver and (st.airMode or (st.recoverUntil or 0) > CurTime())
+    front.soak, rear.soak = soak, soak
+
     local filter = ent.traceFilter
     front:Simulate(ent, phys, C, dt, 0,           brakeFront, filter)
     rear:Simulate (ent, phys, C, dt, driveTorque, brakeRear,  filter)
+
+    ----------------------------------------------------------------------
+    -- 4b. STICKING A LANDING (Crash.soakSpeed). The substep a wheel first
+    -- touches down out of the air, with a rider aboard.
+    ----------------------------------------------------------------------
+    if hasDriver and st.airMode and (front.onGround or rear.onGround) then
+        local CR = C.Crash
+        local v = phys:GetVelocity()
+        if v.z < -CR.soakSpeed then
+            phys:ApplyForceCenter(Vector(0, 0, (-CR.soakSpeed - v.z) * phys:GetMass()))
+        end
+        local w = st.angVel or vector_origin
+        local r, f = ent:GetRight(), ent:GetForward()
+        local k = CR.soakSpin
+        BMX.ApplyTorque(phys, ent, r, BMX.TorqueFor(BMX.IPitch(ent), -w:Dot(r) * k / dt), dt)
+        BMX.ApplyTorque(phys, ent, f, BMX.TorqueFor(BMX.IRoll(ent),  -w:Dot(f) * k / dt), dt)
+    end
 
     ----------------------------------------------------------------------
     -- Skid state, for the client's tyre sound. A tyre is skidding when it is
@@ -270,6 +294,7 @@ function BMX.PhysicsStep(ent, phys, dt)
     if hasDriver and C.Crash.enabled and CurTime() - (ent.spawnTime or 0) >= C.Crash.grace then
         local CR = C.Crash
         local over = abs(st.roll) > CR.tipRoll or abs(st.pitch) > CR.tipPitch
+        if (st.recoverUntil or 0) > CurTime() then over = false end
         local near = false
         if over then
             local com = phys:LocalToWorld(phys:GetMassCenter())

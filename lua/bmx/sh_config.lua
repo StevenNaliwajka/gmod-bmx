@@ -264,6 +264,16 @@ C.Drive = {
     -- cranks backwards, so no engine braking. Set to true for a fixed gear.
     fixedGear = false,
 
+    -- Uphill help, as a fraction of the slope's pull (m*g*sin(slope)) added to
+    -- the crank while pedalling up. 1 means the rider carries the slope and
+    -- still has the flat's full push to accelerate with. 0 is the honest
+    -- 12-degree bike. See the climbing note in sv_physics.lua.
+    climbAssist = 1.0,
+    -- ...full up to climbMax, fading to none at climbWall. Past that is a
+    -- quarter pipe's vert, which you get up on speed, not on the pedals.
+    climbMax  = math.rad(40),
+    climbWall = math.rad(55),
+
     -- Brake torques, kg*units^2/s^2, at the wheel. Most street BMXs run a rear
     -- brake only; the front is here because stoppies are half the point.
     rearBrake  = 95000,

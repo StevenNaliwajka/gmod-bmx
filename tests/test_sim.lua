@@ -743,3 +743,78 @@ T.test("getting off at a standstill: beside the bike, facing it, and it stays up
     T.between(math.deg(bike.st.roll), -13, -4, "on its stand")
     T.ok((bike.st.pushedUntil or 0) <= sv.world.time, "nobody leaning on it")
 end)
+
+--------------------------------------------------------------------------
+-- RAMPS. The skatepark's half pipes and funboxes are 20-40 degree slopes,
+-- and pedalling stalled on anything past ~12: the drivetrain was sized for
+-- the flat, where a full-power start is 10,800 of wheel force against 51,600
+-- of weight, which is sin(12 deg) of it and no more.
+--------------------------------------------------------------------------
+-- A bike standing on a `deg` ramp (rising toward +x), facing up it, ridden.
+local function onRamp(deg)
+    local sv, world = F.server({ groundSlope = deg })
+    local E = sv.env
+    local bike = F.bike(sv)
+    local ply = F.scripted(sv, bike)
+    local a = math.rad(deg)
+    local h = F.restHeight(sv)
+    -- Up the plane's normal by the ride height, pitched nose-up to lie on it.
+    F.place(bike, E.Vector(-math.sin(a) * h, 0, math.cos(a) * h), E.Angle(-deg, 0, 0))
+    return sv, bike, ply, world
+end
+
+-- Distance up the slope, and the speed along it, after `secs` of pedalling.
+local function climb(deg, secs, inp)
+    local sv, bike, ply = onRamp(deg)
+    F.input(bike, inp or { throttle = 1 })
+    local a = math.rad(deg)
+    local up = sv.env.Vector(math.cos(a), 0, math.sin(a))
+    local start = bike:GetPos()
+    sv:run(secs)
+    local along = (bike:GetPos() - start):Dot(up)
+    local v = bike:GetPhysicsObject():GetVelocity():Dot(up)
+    return along, v, bike, sv, ply
+end
+
+T.test("ramp: pedalling climbs 15-40 degree slopes from a standstill, front wheel down", function()
+    for _, d in ipairs({ 15, 25, 35, 40 }) do
+        local sv, bike = onRamp(d)
+        F.input(bike, { throttle = 1 })
+        local a = math.rad(d)
+        local up = sv.env.Vector(math.cos(a), 0, math.sin(a))
+        local start = bike:GetPos()
+        local frontDown, n, worstPitch = 0, 0, 0
+        sv:run(3, function()
+            local f = F.wheels(bike)
+            n = n + 1
+            if f.onGround then frontDown = frontDown + 1 end
+            worstPitch = math.max(worstPitch, bike.st.pitch)
+        end)
+        local along = (bike:GetPos() - start):Dot(up)
+        local v = bike:GetPhysicsObject():GetVelocity():Dot(up)
+        T.ok(sv.env.IsValid(bike:GetDriver()), d .. " deg: the rider is still aboard")
+        T.between(along, 100, 400, d .. " deg: units climbed in 3 s")
+        T.between(v, 40, 250, d .. " deg: still climbing, u/s")
+        T.between(frontDown / n, 0.9, 1, d .. " deg: share of the climb on the front wheel")
+        T.between(math.deg(worstPitch), -5, 15, d .. " deg: worst pitch off the slope, deg")
+    end
+end)
+
+T.test("ramp: a vert wall is not pedalled up from rest; it takes a run", function()
+    local along, v = climb(60, 1.5)
+    T.ok(v < 0, "rolls back down a 60-degree wall: " .. v)
+end)
+
+T.test("ramp: no push without pedalling, none downhill, none on the flat", function()
+    local _, v, bike = climb(20, 1.5, { throttle = 0 })
+    T.ok(v < 0, "coasting rolls back down: " .. v)
+    T.eq(bike.st.climbAccel, 0, "no climbing push while coasting")
+    local sv, bike2 = onRamp(-20)             -- facing downhill
+    F.input(bike2, { throttle = 1 })
+    sv:run(1)
+    T.eq(bike2.st.climbAccel, 0, "no climbing push facing downhill")
+    local sv3, bike3 = ridden()
+    F.input(bike3, { throttle = 1 })
+    sv3:run(1)
+    T.eq(bike3.st.climbAccel, 0, "no climbing push on the flat")
+end)

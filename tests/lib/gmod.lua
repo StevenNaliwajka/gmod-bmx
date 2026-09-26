@@ -128,6 +128,9 @@ function M.World(opts)
         -- The ground is a square of this half-width about the origin. Anything
         -- outside it is a drop, which is how "ran off the edge" gets tested.
         groundHalf = opts.groundHalf or 1e6,
+        -- A RAMP: the ground can be an inclined plane through (0, 0, groundZ)
+        -- rising toward +x at this many degrees. 0 is the flat plane.
+        groundSlope = opts.groundSlope or 0,
         convars  = {},
         wire     = {},
     }
@@ -136,6 +139,18 @@ end
 local function groundAt(world, p)
     return math.abs(p.x) <= world.groundHalf and math.abs(p.y) <= world.groundHalf
 end
+
+-- The ground plane's unit normal and a point's height above it (negative
+-- below). Plain numbers, so it works on either realm's Vector.
+local function groundNormal(world)
+    local a = math.rad(world.groundSlope or 0)
+    return -math.sin(a), 0, math.cos(a)
+end
+local function groundHeight(world, p)
+    local nx, ny, nz = groundNormal(world)
+    return p.x * nx + p.y * ny + (p.z - world.groundZ) * nz
+end
+M.groundNormal, M.groundHeight = groundNormal, groundHeight
 
 --------------------------------------------------------------------------
 -- A convar. Shared between realms through the world, which is what
@@ -437,16 +452,16 @@ function M.Realm(world, which)
     ----------------------------------------------------------------------
     local function trace(t)
         local s, e = t.start, t.endpos
-        local g = world.groundZ
-        local res = { Hit = false, Fraction = 1, HitPos = e, HitNormal = Vector(0, 0, 1),
+        local res = { Hit = false, Fraction = 1, HitPos = e, HitNormal = Vector(groundNormal(world)),
                       StartPos = s, HitWorld = false }
-        if s.z < g and groundAt(world, s) then
+        local hs, he = groundHeight(world, s), groundHeight(world, e)
+        if hs < 0 and groundAt(world, s) then
             res.Hit, res.Fraction, res.HitPos, res.StartSolid = true, 0, s, true
             res.HitWorld = true
             return res
         end
-        if s.z >= g and e.z <= g and s.z ~= e.z then
-            local f = (s.z - g) / (s.z - e.z)
+        if hs >= 0 and he <= 0 and hs ~= he then
+            local f = hs / (hs - he)
             local p = s + (e - s) * f
             if groundAt(world, p) then
                 res.Hit, res.Fraction, res.HitPos = true, f, p
@@ -866,7 +881,7 @@ function M.Realm(world, which)
 
     local function contact(p, dt)
         local e = p.ent
-        local g = world.groundZ
+        local n = Vector(groundNormal(world))
         local deepest, impact, impactAt = 0, 0, nil
         local pts = {}
         for _, b in ipairs(p.boxes) do
@@ -878,20 +893,21 @@ function M.Realm(world, which)
         end
         for _, lc in ipairs(pts) do
             local wc = e:LocalToWorld(lc)
-            if wc.z < g and groundAt(world, wc) then
-                deepest = math.max(deepest, g - wc.z)
+            local h = groundHeight(world, wc)
+            if h < 0 and groundAt(world, wc) then
+                deepest = math.max(deepest, -h)
                 local r  = wc - p:COM()
                 local vp = p.v + p.w:Cross(r)
-                if vp.z < 0 then
-                    if -vp.z > impact then impact, impactAt = -vp.z, wc end
-                    local n = Vector(0, 0, 1)
+                local vn = vp:Dot(n)
+                if vn < 0 then
+                    if -vn > impact then impact, impactAt = -vn, wc end
                     local rn = r:Cross(n)
                     local k = 1 / p.mass + rn:Dot(p:invI(rn))
-                    local j = -vp.z * 1.1 / k
+                    local j = -vn * 1.1 / k
                     p.v = p.v + n * (j / p.mass)
                     p.w = p.w + p:invI(r:Cross(n * j))
                     -- Friction, capped by the normal impulse.
-                    local vt = vp - n * vp.z
+                    local vt = vp - n * vn
                     local vtl = vt:Length()
                     if vtl > 1e-3 then
                         local t = vt / vtl
@@ -907,7 +923,7 @@ function M.Realm(world, which)
                 end
             end
         end
-        if deepest > 0 then e._pos = e._pos + Vector(0, 0, deepest) end
+        if deepest > 0 then e._pos = e._pos + n * deepest end
         return impact, impactAt
     end
 

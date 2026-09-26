@@ -110,6 +110,46 @@ local function drivetrain(ent, cfg, dt, inp, st, rear)
     -- contributes nothing, which is what caps top speed on the flat: no drag
     -- term is doing that job, the legs are.
     local spin  = BMX.Clamp(crankOmega / cad, 0, 1)
+
+    -- CLIMBING: the rider stands, leans over the bars and mashes. The legs
+    -- above are sized for the flat, where a full-power start is ~10,800 of
+    -- wheel force against ~51,600 of weight: sin(12 deg) of it. Every half
+    -- pipe and funbox in a skatepark is steeper than that, and pedalling up
+    -- one stalled and rolled back down.
+    --
+    -- So on an uphill the rider also carries climbAssist of the slope's pull,
+    -- m*g*sin(slope), through the same falling curve: the bike climbs at a
+    -- lower cadence, the way a lower gear would, instead of not at all.
+    --
+    -- IT IS A PUSH AT THE MASS CENTRE, NOT MORE CRANK TORQUE. Drive at the
+    -- rear tyre acts at the contact patch, ~20 units below the mass centre,
+    -- and pitches the nose up in proportion. On a slope the bike is already
+    -- leaning back toward its balance point, so as crank torque the help
+    -- looped the bike over backwards from 25 degrees up and threw the rider
+    -- (measured in tests/test_sim.lua). A rider climbing keeps their weight
+    -- forward exactly so that does not happen; applying the help where the
+    -- weight is says the same thing. Applied in PhysicsStep, only while the
+    -- rear tyre is on the ground.
+    st.climbAccel, st.climbDir = 0, nil
+    if D.climbAssist and D.climbAssist > 0 and rear.onGround and inp.throttle > 0 then
+        local n = st.groundNormal or vector_up
+        local f = ent:GetForward()
+        f = f - n * f:Dot(n)
+        local len = f:Length()
+        if len > 1e-3 then
+            f = f / len
+            if f.z > 0 then
+                st.climbDir = f
+                -- Up to climbMax the help is whole; by climbWall it is gone.
+                -- A vert wall is ridden on momentum, not pedalled up.
+                local wall = 1 - BMX.Ramp(math.asin(math.min(f.z, 1)),
+                    D.climbMax or math.rad(40), D.climbWall or math.rad(55))
+                st.climbAccel = D.climbAssist * physenv.GetGravity():Length()
+                    * f.z * (1 - spin) * inp.throttle * wall
+            end
+        end
+    end
+
     local crank = tq * (1 - spin) * inp.throttle
 
     -- Paddling backwards. A rider at a standstill holding the "brake" key
@@ -190,6 +230,11 @@ function BMX.PhysicsStep(ent, phys, dt)
     local filter = ent.traceFilter
     front:Simulate(ent, phys, C, dt, 0,           brakeFront, filter)
     rear:Simulate (ent, phys, C, dt, driveTorque, brakeRear,  filter)
+
+    -- The climbing push (see drivetrain): at the mass centre, along the slope.
+    if hasDriver and st.climbDir and st.climbAccel > 0 and rear.onGround then
+        phys:ApplyForceCenter(st.climbDir * (st.climbAccel * phys:GetMass() * dt))
+    end
 
     ----------------------------------------------------------------------
     -- 4b. STICKING A LANDING (Crash.soakSpeed). The substep a wheel first

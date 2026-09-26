@@ -205,7 +205,8 @@ function BMX.PhysicsStep(ent, phys, dt)
         local r, f = ent:GetRight(), ent:GetForward()
         local k = CR.soakSpin
         BMX.ApplyTorque(phys, ent, r, BMX.TorqueFor(BMX.IPitch(ent), -w:Dot(r) * k / dt), dt)
-        BMX.ApplyTorque(phys, ent, f, BMX.TorqueFor(BMX.IRoll(ent),  -w:Dot(f) * k / dt), dt)
+        BMX.ApplyTorque(phys, ent, f, BMX.TorqueFor(BMX.IRoll(ent),
+            -w:Dot(f) * (CR.soakRollSpin or k) / dt), dt)
     end
 
     ----------------------------------------------------------------------

@@ -605,7 +605,12 @@ C.Crash = {
     -- and met the ground on the wheel boxes, whose corner levered a
     -- nose-down landing end over end. An arcade assist, and it says so.
     soakSpeed = 250,
-    soakSpin  = 0.75,
+    soakSpin  = 0.75,      -- of the pitch spin
+    -- ALL of the roll spin. A barrel roll landed with the tyres flat (roll
+    -- -18, measured on the live server) still carried a quarter of its spin
+    -- after soakSpin and rolled on over onto the bars. Sideways spin has no
+    -- business surviving a landing on the wheels.
+    soakRollSpin = 1.0,
     recoverBoost = 2.0,
     recoverPitchKp = 40,
     recoverPitchKd = 9,

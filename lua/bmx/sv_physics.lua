@@ -216,6 +216,33 @@ function BMX.PhysicsStep(ent, phys, dt)
         phys:Wake()
         return
     end
+    -- JUST OFF A RAIL: no faster than it left. If the rail it was on still
+    -- overlaps the hull anywhere, VPhysics resolves that as a shove on the
+    -- first free substep, and a shove of any size reads as being launched.
+    -- The pose check in sv_grind.lua is meant to make this never fire; this
+    -- is what keeps a map it did not foresee from throwing the rider.
+    local ex = st.grindExit
+    if ex then
+        if CurTime() > ex.untilT then
+            st.grindExit = nil
+        else
+            local v = phys:GetVelocity()
+            local capZ = max(ex.vel.z, 0) + 40
+            local capH = Vector(ex.vel.x, ex.vel.y, 0):Length() + 40
+            local vh = Vector(v.x, v.y, 0)
+            local fix = false
+            if v.z > capZ then v.z, fix = capZ, true end
+            if vh:Length() > capH then
+                vh = vh:GetNormalized() * capH
+                v.x, v.y, fix = vh.x, vh.y, true
+            end
+            if fix then
+                phys:SetVelocity(v)
+                st.grindExitClamped = (st.grindExitClamped or 0) + 1
+            end
+            vel = phys:GetVelocity()
+        end
+    end
     if hasDriver and BMX.TryGrind and BMX.TryGrind(ent, phys, C, st, vel) then
         phys:Wake()
         return

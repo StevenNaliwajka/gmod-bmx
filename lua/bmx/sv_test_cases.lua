@@ -936,6 +936,7 @@ T.Case("grind_pipe", { timeout = 25,
     desc = "hopping onto a pipe along it locks into a crank grind, and lets go at the end" },
 function(ctx)
     ctx:input({})
+    ctx:st().grindExitClamped = 0
     local pole, lo, hi = railProp(ctx, "models/props_c17/signpole001.mdl",
         ctx.ground + Vector(0, 0, 45), Angle(90, 0, 0))
     local long = hi.x - lo.x
@@ -958,6 +959,7 @@ function(ctx)
     ctx:between(worstUp, 0, 1.5, "chainring kept on the pipe's top", "u")
     ctx:between(worstSide, 0, 2.5, "and on its line", "u")
     ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+    ctx:ok((ctx:st().grindExitClamped or 0) == 0, "let go without being shoved out of the pipe")
     SafeRemoveEntity(pole)
 end)
 
@@ -965,6 +967,7 @@ T.Case("grind_ledge", { timeout = 25,
     desc = "hopping onto a ledge's edge along it locks into a double peg grind" },
 function(ctx)
     ctx:input({})
+    ctx:st().grindExitClamped = 0
     local box, lo, hi = railProp(ctx, "models/hunter/blocks/cube1x8x1.mdl",
         ctx.ground + Vector(0, 0, 24), Angle(0, 90, 0))
     ctx:log(string.format("ledge %.0f long, top at +%.0f", hi.x - lo.x, hi.z - ctx.ground.z))
@@ -979,9 +982,67 @@ function(ctx)
     ctx:ok(started == "peg", "locked into a peg grind: " .. tostring(started))
     ctx:ok(code == 2, "pegs on the left, the ledge's side: " .. code)
     ctx:ok(dropSide, "the wheels hung off the drop side the whole way")
+    ctx:ok((ctx:st().grindExitClamped or 0) == 0, "let go without being shoved out of the ledge")
     if ended then ctx:log(string.format("ended by %s after %.2fs", ended.why, ended.t)) end
     ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
     SafeRemoveEntity(box)
+end)
+
+T.Case("grind_hop_on", { timeout = 30,
+    desc = "a rider rolling beside a beam hops up onto it, grinds it, and comes off without being launched" },
+function(ctx)
+    -- The whole move on the real engine: rolling on the ground, a real hop
+    -- (the preload and the pop), the lock-on in mid-air, the grind, and the
+    -- beam ending under it. Nothing is placed but the start.
+    ctx:st().grindExitClamped = 0
+    local b = ctx.bike
+    local phys = b:GetPhysicsObject()
+    local start = ctx.ground + Vector(0, 0, BMX.RestHeight(b:Cfg()))
+    -- An 11.9-unit square beam, 380 long, its top 30 up: wider than a pipe,
+    -- so a peg grind on its near edge.
+    local beam, lo, hi = railProp(ctx, "models/hunter/blocks/cube025x8x025.mdl",
+        ctx.ground + Vector(290, 0, 30 - 5.93), Angle(0, 90, 0))
+    ctx:log(string.format("beam x %.0f..%.0f, y %.1f..%.1f, top +%.0f",
+        lo.x - ctx.ground.x, hi.x - ctx.ground.x, lo.y - ctx.ground.y, hi.y - ctx.ground.y,
+        hi.z - ctx.ground.z))
+    phys:SetAngles(Angle(0, 0, 0))
+    phys:SetPos(Vector(start.x, lo.y - 4.5, start.z))
+    phys:SetVelocity(Vector(260, 0, 0))
+    phys:SetAngleVelocity(Vector(0, 0, 0))
+    ctx:input({ throttle = 1 })
+    ctx:wait(0.05)
+
+    local out, worstUp, worstFast = nil, -math.huge, -math.huge
+    hook.Add("BMX_GrindEnded", "BMX.TestHopOn", function(e)
+        if e == b and not out then out = b.st.grindExit and b.st.grindExit.vel end
+    end)
+    local started
+    hook.Add("BMX_GrindStarted", "BMX.TestHopOn", function(e, kind)
+        if e == b then started = started or kind end
+    end)
+    ctx:hop()
+    ctx:waitUntil(function()
+        if out then
+            if b.st.grounded then return true end
+            local v = phys:GetVelocity()
+            worstUp = math.max(worstUp, v.z - math.max(out.z, 0))
+            worstFast = math.max(worstFast, v:Length() - out:Length())
+        end
+        return false
+    end, 5, "grind, exit and landing")
+    hook.Remove("BMX_GrindEnded", "BMX.TestHopOn")
+    hook.Remove("BMX_GrindStarted", "BMX.TestHopOn")
+    ctx:input({})
+
+    ctx:ok(started == "peg", "hopped onto the beam into a peg grind: " .. tostring(started))
+    ctx:ok(out ~= nil, "and came off it")
+    if out then
+        ctx:between(worstUp, -1e9, 10, "climbing faster than it left the beam", "u/s")
+        ctx:between(worstFast, -1e9, 40, "going faster than it left the beam", "u/s")
+    end
+    ctx:ok((b.st.grindExitClamped or 0) == 0, "let go without being shoved out of the beam")
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+    SafeRemoveEntity(beam)
 end)
 
 --------------------------------------------------------------------------

@@ -250,6 +250,39 @@ function BMX.GrindPose(g, cfg)
     return g.point + UP * G.clearance - offset, ang
 end
 
+--------------------------------------------------------------------------
+-- IS THERE ROOM FOR THE BIKE THERE? A grind pose that overlaps the world is
+-- the launch: while grinding, the bike is set in place every substep and the
+-- overlap does nothing, but the moment it lets go VPhysics pushes the hull
+-- out of whatever it is inside, all at once, and the bike is thrown. The
+-- first version put the rear wheel's collision box 0.2 units below a pipe's
+-- top and 1.4 off its centre line, so any pipe thicker than a signpole was
+-- inside it for the whole grind.
+--
+-- Every collision box of the bike (sh_util.lua, BMX.CollisionBoxes) is
+-- checked in the pose: a line down each of its four vertical edges and its
+-- middle. Anything in the way and the pose is refused: a grind is not
+-- started there, and one under way ends at the last pose that was clear.
+--------------------------------------------------------------------------
+function BMX.GrindPoseClear(pos, ang, cfg, filter)
+    local fa, ra, ua = ang:Forward(), ang:Right(), ang:Up()
+    local function world(v) return pos + fa * v.x - ra * v.y + ua * v.z end
+    for _, b in ipairs(BMX.CollisionBoxes(cfg)) do
+        local lo, hi = b[1], b[2]
+        local cx, cy = (lo.x + hi.x) * 0.5, (lo.y + hi.y) * 0.5
+        for _, xy in ipairs({ { lo.x, lo.y }, { lo.x, hi.y }, { hi.x, lo.y },
+                               { hi.x, hi.y }, { cx, cy } }) do
+            local tr = util.TraceLine({
+                start  = world(Vector(xy[1], xy[2], hi.z)),
+                endpos = world(Vector(xy[1], xy[2], lo.z)),
+                filter = filter, mask = MASK_SOLID,
+            })
+            if tr.Hit or tr.StartSolid then return false end
+        end
+    end
+    return true
+end
+
 local function place(ent, phys, g, cfg)
     local pos, ang = BMX.GrindPose(g, cfg)
     phys:SetAngles(ang)
@@ -302,7 +335,11 @@ function BMX.TryGrind(ent, phys, cfg, st, vel)
     local g = { kind = rail.kind, point = rail.point, dir = rail.dir, n = rail.n,
                 side = rail.side, speed = along, started = CurTime() }
     if rail.kind == "crank" then
-        g.localPoint = crank
+        -- The pipe meets the chainring, or the wheel boxes' floor if that is
+        -- lower: the boxes then clear the pipe instead of sitting in it.
+        local CH, W = cfg.Chassis, cfg.Wheel
+        local floor = CH.wheelHullBottom or -(W.radius - W.restLength)
+        g.localPoint = Vector(crank.x, crank.y, math.min(crank.z, floor))
         -- Turn the way the bike is already turned off the pipe.
         local f = ent:GetForward()
         g.yawSide = (dh.x * f.y - dh.y * f.x) >= 0 and 1 or -1
@@ -315,6 +352,9 @@ function BMX.TryGrind(ent, phys, cfg, st, vel)
     end
     g.n = perp(dh)
 
+    local pos, ang = BMX.GrindPose(g, cfg)
+    if not BMX.GrindPoseClear(pos, ang, cfg, ent.traceFilter) then return false end
+
     -- Landed a trick onto it: that trick is paid now, the grind on its own
     -- when it ends.
     if st.airMode then
@@ -322,6 +362,7 @@ function BMX.TryGrind(ent, phys, cfg, st, vel)
         local tricks = BMX.ScoreAir(st)
         if #tricks > 0 and ent.AwardTricks then ent:AwardTricks(tricks) end
     end
+
     ent.bmxTouchdown = nil
     st.airSince = 0
     st.grind = g
@@ -349,6 +390,7 @@ function BMX.EndGrind(ent, phys, cfg, st, why, charge)
     end
     phys:SetVelocity(vel)
     phys:SetAngleVelocity(Vector(0, 0, 0))
+    st.grindExit = { vel = vel, untilT = CurTime() + G.exitGuard }
 
     st.grindReady = CurTime() + G.cooldown
     st.grindEnded = CurTime()
@@ -401,6 +443,10 @@ function BMX.GrindStep(ent, phys, cfg, dt, inp, st)
     local p = locate(g, look + g.dir * (v * dt), guess.z, G, ent.traceFilter)
     if not p then return BMX.EndGrind(ent, phys, cfg, st, "end") end
     if g.kind == "peg" then p = p + g.side * G.pegInset end
+    -- A rail does not jump. A top found well above or below where this one
+    -- was going is something else -- a step, a wall, the ground under the end
+    -- of it -- and following it would put the bike inside it.
+    if abs(p.z - guess.z) > G.maxStepZ then return BMX.EndGrind(ent, phys, cfg, st, "end") end
 
     -- Follow the rail round a bend and up or down a slope, smoothly: the
     -- measured line is noisy by a fraction of a unit per step.
@@ -416,7 +462,14 @@ function BMX.GrindStep(ent, phys, cfg, dt, inp, st)
             end
         end
     end
+    local oldPoint, oldDir, oldN, oldSide = g.point, g.dir, g.n, g.side
     g.point = p
+    local pos, ang = BMX.GrindPose(g, cfg)
+    if not BMX.GrindPoseClear(pos, ang, cfg, ent.traceFilter) then
+        -- No room further on: let go from the last pose that had it.
+        g.point, g.dir, g.n, g.side = oldPoint, oldDir, oldN, oldSide
+        return BMX.EndGrind(ent, phys, cfg, st, "blocked")
+    end
 
     st.speed, st.fwdSpeed = v, v
     st.grindTime = CurTime() - g.started

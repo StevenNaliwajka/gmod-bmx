@@ -748,6 +748,12 @@ C.Grind = {
     minHop   = 0.6,      -- of hopSpeed, for a tap of the key
     hopAway  = 60,       -- u/s off the ledge side of a peg grind
     cooldown = 0.4,      -- s before the same bike can lock on again
+    -- A rail's top moves this little per substep; a bigger jump is some
+    -- other surface, and the grind ends rather than follow it.
+    maxStepZ = 2,
+    -- For this long after letting go the bike may go no faster than it left
+    -- (sv_physics.lua): the backstop for a pose the room check missed.
+    exitGuard = 0.3,
 
     minTime      = 0.3,  -- s: shorter was a brush, not a grind
     pointsPerSec = 140,

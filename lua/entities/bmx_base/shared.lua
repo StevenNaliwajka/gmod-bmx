@@ -77,6 +77,11 @@ function ENT:SetupDataTables()
     -- to recompute a bool.
     self:NetworkVar("Bool",  2, "Skidding")
 
+    -- The kickstand: down only when a rider put it down (got off at a slow
+    -- stop) or the bike was spawned parked. Networked so it is drawn only
+    -- when it is really there. See C.Stand.deploySpeed.
+    self:NetworkVar("Bool",  3, "StandDown")
+
     -- Steer is networked because the fork and bars have to point somewhere the
     -- client cannot derive: it is an OUTPUT of the balance controller, not a
     -- function of the rider's key. Radians.
@@ -92,6 +97,7 @@ function ENT:SetupDataTables()
 
     if SERVER then
         self:SetColorIndex(self:Bike().colorIndex or 1)
+        self:SetStandDown(true)             -- spawned parked
         self:SetSteer(0)
         self:SetSpeedUPS(0)
         self:SetStamina(self:Cfg().Drive.staminaMax)

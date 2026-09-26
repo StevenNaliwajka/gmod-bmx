@@ -59,7 +59,7 @@ T.test("parked: a bike knocked flat stays down (a stand does not stand it up)", 
     local E = sv.env
     local bike = F.bike(sv)
     sv:run(1)
-    F.place(bike, bike:GetPos() + E.Vector(0, 0, 8), E.Angle(0, 0, 80))
+    F.layDown(sv, bike)
     sv:run(3)
     T.ok(math.abs(bike.st.roll) > bike:Cfg().Stand.maxRoll, "still lying down")
 end)
@@ -69,7 +69,7 @@ T.test("getting on a fallen bike picks it up, facing the way it pointed", functi
     local E = sv.env
     local bike = F.bike(sv)
     sv:run(1)
-    F.place(bike, bike:GetPos() + E.Vector(0, 0, 8), E.Angle(0, 30, 80))
+    F.layDown(sv, bike, 30)
     sv:run(2)
     -- Where it points NOW, lying down: it slides about on its side before
     -- anybody picks it up, and that is the heading a rider would pick up.
@@ -499,7 +499,7 @@ T.test("a fallen bike grips the ground with its frame instead of skating", funct
     sv:run(1)
     local p = bike:GetPhysicsObject()
     -- Down on its side, sliding at a running pace.
-    F.place(bike, bike:GetPos() + E.Vector(0, 0, 6), E.Angle(0, 0, 85))
+    F.layDown(sv, bike)
     p:SetVelocity(E.Vector(200, 0, 0))
     local start = bike:GetPos()
     sv:run(2.5)
@@ -527,7 +527,7 @@ T.test("the collision shape keeps the mass centre where the balance was tuned", 
     T.near(mc.x, C.massCenterExpected.x, 1e-6, "COM x")
     T.near(mc.z, C.massCenterExpected.z, 1e-6, "COM z")
     T.eq(#sv.errors, 0, "no mass-centre complaint at spawn")
-    T.eq(#bike:GetPhysicsObject().boxes, 3, "a body and two wheel boxes")
+    T.eq(#bike:GetPhysicsObject().boxes, 6, "a body, two wheel boxes, two peg boxes and the bars")
 end)
 
 T.test("hard landings: the wheels never go through the ground", function()
@@ -576,4 +576,76 @@ T.test("a barrel roll high in the air is not a tip-over crash", function()
     bike:GetPhysicsObject():SetVelocity(E.Vector(0, 0, 0))
     sv:run(0.4)
     T.ok(E.IsValid(bike:GetDriver()), "far above the ground, upside down, still riding")
+end)
+
+T.test("getting off at a slow stop puts the kickstand down", function()
+    local sv, bike, ply = ridden()
+    T.ok(not bike:GetStandDown(), "up while riding")
+    sv:run(0.5)
+    ply:ExitVehicle()
+    T.ok(bike:GetStandDown(), "down: they got off at a standstill")
+    sv:run(3)
+    T.between(math.deg(bike.st.roll), -13, -4, "and it stands on it")
+end)
+
+T.test("getting off at speed leaves the stand up: it rolls on and falls over", function()
+    local sv, bike, ply = ridden()
+    T.ok(F.accelerateTo(sv, bike, 220), "at speed")
+    F.input(bike, {})
+    ply:ExitVehicle()
+    T.ok(not bike:GetStandDown(), "the stand stays up")
+    -- The nudge a real surface gives: without one the plant's riderless bike
+    -- balances on a perfect straight line forever, which no bike does.
+    local p = bike:GetPhysicsObject()
+    p:ApplyForceOffset(bike:GetRight() * (p:GetMass() * 3), bike:LocalToWorld(sv.env.Vector(0, 0, 30)))
+    local rolledOn = bike.st.speed
+    -- Within seconds: Stand.riderlessDecel scrubs it down. Before, drag and
+    -- rolling resistance alone left it coasting upright for over a minute.
+    local fell = sv:run(10, function() return math.abs(bike.st.roll) > bike:Cfg().Stand.maxRoll end)
+    T.ok(rolledOn > 150, "it kept going without them: " .. rolledOn)
+    T.ok(fell, "and fell over when it slowed")
+    T.ok(not bike:GetStandDown(), "no stand appeared on the way")
+end)
+
+T.test("a rider thrown off in a crash leaves no stand down", function()
+    local sv, bike, ply = ridden()
+    sv:run(1.2)
+    F.layDown(sv, bike)
+    sv:run(1, function() return not sv.env.IsValid(bike:GetDriver()) end)
+    T.ok(not sv.env.IsValid(bike:GetDriver()), "thrown")
+    T.ok(not bike:GetStandDown(), "and the stand is up")
+end)
+
+T.test("a bike lying on its side draws nothing below the ground, bars included", function()
+    local sv, world = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    sv:run(1)
+    local cl = F.client(world)
+    local worst = math.huge
+    for _, yaw in ipairs({ 0, 90 }) do
+        for _, side in ipairs({ 88, -88 }) do
+            F.place(bike, E.Vector(0, 0, F.restHeight(sv) + 24), E.Angle(0, yaw, side))
+            sv:run(3)
+            local cb = cl:clientEntity("bmx_base")
+            cb:SetPos(bike:GetPos())
+            cb._f, cb._l, cb._u = bike._f, bike._l, bike._u   -- the pose, as networked
+            cb:SetStandDown(false)
+            cl.beams = {}
+            cb:Draw()
+            for _, b in ipairs(cl.beams) do
+                if b.cylinder then
+                    worst = math.min(worst, b.a.z - b.w / 2, b.b.z - b.w / 2)
+                end
+            end
+            for _, d in ipairs(cl.drawnCS) do
+                if d.model:find("cube025") or d.model:find("sphere025") then
+                    worst = math.min(worst, d.pos.z - (d.scale.z * 12.3) / 2)
+                end
+            end
+            T.ok(math.abs(bike.st.roll) > bike:Cfg().Stand.maxRoll,
+                "it really is lying down: " .. math.deg(bike.st.roll))
+        end
+    end
+    T.ok(worst > -1.0, string.format("lowest drawn point %.2f (the ground is 0)", worst))
 end)

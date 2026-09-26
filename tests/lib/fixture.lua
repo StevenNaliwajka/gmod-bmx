@@ -76,6 +76,14 @@ function F.place(bike, pos, ang)
     if pos then p:SetPos(pos) end
 end
 
+-- Knock a bike over: dropped onto its side from high enough that nothing
+-- starts inside the ground. (Placing it on its side at ride height put the
+-- lower bar end inside the floor, and resolving that flicked it upright.)
+function F.layDown(sv, bike, yaw)
+    local E = sv.env
+    F.place(bike, bike:GetPos() + E.Vector(0, 0, 24), E.Angle(0, yaw or 0, 88))
+end
+
 function F.wheels(bike)
     local f, r
     for _, w in ipairs(bike.wheels) do

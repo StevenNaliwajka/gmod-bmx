@@ -311,6 +311,16 @@ function BMX.PhysicsStep(ent, phys, dt)
     end
 
     ----------------------------------------------------------------------
+    -- 7a'. Nobody aboard, rolling: scrub it down (Stand.riderlessDecel), so a
+    -- bike let go of at speed rolls on for a few seconds and then falls,
+    -- instead of coasting across the map balanced by an assist with no rider.
+    ----------------------------------------------------------------------
+    if not hasDriver and grounded and fwdSpeed ~= 0 then
+        local dv = math.min(abs(fwdSpeed), C.Stand.riderlessDecel * dt)
+        phys:ApplyForceCenter(fwd * (-(fwdSpeed > 0 and 1 or -1) * dv * phys:GetMass()))
+    end
+
+    ----------------------------------------------------------------------
     -- 7c. PARKED: held where it stands.
     --
     -- A bike on its stand is held by STATIC friction, which a slip-velocity

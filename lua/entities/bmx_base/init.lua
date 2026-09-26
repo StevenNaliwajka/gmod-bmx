@@ -443,6 +443,7 @@ function ENT:Crash(reason, severity)
     -- opinion about what a crash is, and a deathrun server will have another.
     if hook.Run("BMX_Crash", self, ply, reason, severity) == false then return end
 
+    self.bmxCrashing = true             -- a thrown rider puts no stand down
     ply:ExitVehicle()
 
     local throw = vel + Vector(0, 0, CR.ejectLift * severity)

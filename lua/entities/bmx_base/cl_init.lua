@@ -528,16 +528,18 @@ function ENT:Draw()
         local pedal = root + arm
         ik[side == 1 and "rFoot" or "lFoot"] = pedal + right * (1.8 * k * side) + up * (0.9 * k)
         tube(root, pedal, 0.9 * k, COL_PART)
+        -- Matte: pedals are grippy plastic and pins, not polished metal.
         solid("box", pedal + right * (1.8 * k * side), self:GetAngles(),
-            Vector(3.6, 3.6, 1.0) * k, COL_PART)
+            Vector(3.6, 3.6, 1.0) * k, COL_PART, MAT.matte)
     end
     tube(bb - right * (Q * k), bb + right * (Q * k), 1.3 * k, COL_PART)     -- spindle
 
     ----------------------------------------------------------------------
-    -- Kickstand, when parked. Drawn from the bottom bracket to the ground on
-    -- the LEFT, which is the side the parked bike leans on (Stand.standLean).
+    -- Kickstand, when it is DOWN (networked: put down by a rider stopping, or
+    -- a bike spawned parked). Drawn from the bottom bracket to the ground on
+    -- the LEFT, the side a parked bike leans on (Stand.standLean).
     ----------------------------------------------------------------------
-    if not IsValid(self:GetDriver()) and self:GetSpeedUPS() < 20 then
+    if self:GetStandDown() then
         local from = bb - right * (2 * k)
         local want = from - up * (16 * k) - right * (7 * k)
         local tr = util.TraceLine({ start = from, endpos = want,

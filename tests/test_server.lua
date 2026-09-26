@@ -234,7 +234,7 @@ T.test("E mounts a bike lying on its side, and stands it up", function()
     local E = sv.env
     local bike = F.bike(sv)
     sv:run(1)
-    F.place(bike, bike:GetPos() + E.Vector(0, 0, 8), E.Angle(0, 0, 80))
+    F.layDown(sv, bike)
     sv:run(2)
     local ply = sv:player("Walker")
     ply:SetPos(bike:GetPos() + E.Vector(0, 40, 0))       -- standing beside it
@@ -361,7 +361,7 @@ local function tipOver(sv)
     ply:SetAmmo(90, 4)
     ply:SetArmor(35)
     sv:run(1.2)                                        -- past the grace period
-    F.place(bike, bike:GetPos() + E.Vector(0, 0, 4), E.Angle(0, 0, 75))
+    F.layDown(sv, bike)
     return bike, ply
 end
 
@@ -423,7 +423,7 @@ T.test("picking up a fallen bike is visible: held still, swung up, gesture playe
     local E = sv.env
     local bike = F.bike(sv)
     sv:run(1)
-    F.place(bike, bike:GetPos() + E.Vector(0, 0, 6), E.Angle(0, 0, 85))
+    F.layDown(sv, bike)
     sv:run(2)
     local ply = sv:player("Walker")
     ply:SetPos(bike:GetPos() + E.Vector(0, 40, 0))
@@ -451,7 +451,7 @@ T.test("walking away mid pick-up leaves the bike standing, without its rider", f
     local E = sv.env
     local bike = F.bike(sv)
     sv:run(1)
-    F.place(bike, bike:GetPos() + E.Vector(0, 0, 6), E.Angle(0, 0, 85))
+    F.layDown(sv, bike)
     sv:run(2)
     local ply = sv:player("Walker")
     ply:SetPos(bike:GetPos() + E.Vector(0, 40, 0))

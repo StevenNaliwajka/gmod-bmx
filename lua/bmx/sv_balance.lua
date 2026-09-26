@@ -197,8 +197,12 @@ function BMX.Balance(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
     local S = C.Stand
     local support = 1 - authority
     st.onStand = false
-    if support > 0 and abs(roll) < S.maxRoll then
-        local ridden = IsValid(ent:GetDriver())
+    local ridden = IsValid(ent:GetDriver())
+    -- HELD BY A FOOT OR A STAND, or by nothing. No rider and the stand up is
+    -- nothing: a bike let go of at speed rolls on, balanced only by its speed,
+    -- and falls over when it slows, rather than growing a kickstand on the way.
+    local held = ridden or ent:GetStandDown()
+    if support > 0 and abs(roll) < S.maxRoll and held then
         local want = ridden and (inp.lean * S.footLean) or S.standLean
         local a = -topple + S.kp * (want - roll) - S.kd * st.rollRate
         a = BMX.Clamp(a, -B.maxAssistAccel, B.maxAssistAccel)

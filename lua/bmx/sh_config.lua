@@ -82,6 +82,22 @@ C.Chassis = {
     wheelHullHalfWidth = 1.6,
     wheelHullBottom    = -4,
 
+    -- AND THE BARS. They reach 14.5 units out each side, against 4 for the
+    -- body box, so a bike lying on its side put its lower bar end 10 units
+    -- into the floor. A slim box across them, where cl_init draws them (at
+    -- the stock wheelbase; scaled with it), is what it lies on instead. High
+    -- enough never to touch while riding: at full lean the bar ends are ~17
+    -- units off the ground.
+    barHullCentre = Vector(10.5, 0, 29),
+    barHullHalf   = Vector(2.5, 14.8, 1.5),
+
+    -- ...AND THE PEGS, which stick out 6.6 units each side of each axle: past
+    -- the wheel box, so a bike on its side had them 2.6 units into the floor.
+    -- Their own small box per axle, from the axle line UP. The wheel box
+    -- could not simply be widened: its bottom corners would then touch down
+    -- in a hard corner. This one clears the ground by a unit at full lean.
+    pegHullHalfWidth = 6.6,
+
     massCenterExpected = Vector(-2, 0, 20),
 
     -- Low-friction so the frame slides off geometry it clips instead of
@@ -395,6 +411,19 @@ C.Stand = {
     standLean = math.rad(-9),      -- parked: leaning LEFT onto the stand
     footLean  = math.rad(6),       -- ridden: how far A/D lean at a standstill
     maxRoll   = math.rad(50),      -- beyond this it has fallen over
+
+    -- The stand goes down only when a rider gets off slower than this, u/s
+    -- (walking pace). Get off at speed and it stays up: the bike rolls on by
+    -- itself and falls over when it stops, as a real one does.
+    deploySpeed = 45,
+
+    -- A riderless bike on the ground loses this much speed a second, u/s^2,
+    -- on top of drag. Nothing else slowed it but drag and rolling
+    -- resistance, and the lean assist kept it balanced at speed with nobody
+    -- on it, so a bike let go of at 220 u/s was still rolling at 120 a
+    -- minute later. A real one wobbles, scrubs and goes down in seconds:
+    -- from 220 this is ~4 s and ~400 units, then it falls over.
+    riderlessDecel = 60,
 
     -- Parked: the nudge that sets the bike down onto its stand from upright,
     -- rad/s^2 per rad of gap. Loses to gravity about 2 degrees right of

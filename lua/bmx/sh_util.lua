@@ -156,6 +156,20 @@ function BMX.CollisionBoxes(cfg)
     for _, x in ipairs({ half, -half }) do
         wheels[#wheels + 1] = { Vector(x - r, -hw, bot), Vector(x + r, hw, r) }
     end
+    -- The pegs (Chassis.pegHullHalfWidth): a box across each axle.
+    if CH.pegHullHalfWidth then
+        local pw = CH.pegHullHalfWidth
+        for _, x in ipairs({ half, -half }) do
+            wheels[#wheels + 1] = { Vector(x - 1.2, -pw, 0), Vector(x + 1.2, pw, 6) }
+        end
+    end
+    -- The bars (Chassis.barHullCentre): counted with the wheels, since the
+    -- body is shifted to balance whatever is added to it.
+    if CH.barHullCentre then
+        local k = W.wheelbase / 39
+        local c, h = CH.barHullCentre * k, CH.barHullHalf * k
+        wheels[#wheels + 1] = { c - h, c + h }
+    end
 
     local function vol(b) local d = b[2] - b[1] return d.x * d.y * d.z end
     local function mid(b) return (b[1] + b[2]) * 0.5 end

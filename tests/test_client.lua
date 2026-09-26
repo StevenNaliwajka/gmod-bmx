@@ -158,7 +158,7 @@ T.test("the pedals are geared to the rear wheel: still with it, forward with it,
     T.ok(s.cb.crankAngle < back0, "rolling back: pedals back")
 end)
 
-T.test("the kickstand shows only when the bike is parked", function()
+T.test("the kickstand is drawn exactly when it is down", function()
     local s = scene()
     local function standDrawn()
         draw(s)
@@ -167,11 +167,10 @@ T.test("the kickstand shows only when the bike is parked", function()
         end
         return false
     end
-    T.ok(not standDrawn(), "not with a rider")
-    s.cb:SetDriver(s.cl.NULL)
-    T.ok(standDrawn(), "parked: stand down")
-    s.cb:SetSpeedUPS(100)
-    T.ok(not standDrawn(), "rolling away riderless: stand up")
+    s.cb:SetStandDown(false)
+    T.ok(not standDrawn(), "up: not drawn")
+    s.cb:SetStandDown(true)
+    T.ok(standDrawn(), "down: drawn")
 end)
 
 T.test("red tyres off the ground are a bmx_debug aid, not the normal look", function()

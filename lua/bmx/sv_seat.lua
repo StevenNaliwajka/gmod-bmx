@@ -17,6 +17,7 @@ local function bind(ply, bike)
 
     bike:SetDriver(ply)
     ply.BMXBike = bike
+    bike:SetStandDown(false)            -- a rider kicks it up to ride
 
     -- A fresh input table per rider. Reusing the old one hands the new rider
     -- the previous one's half-held brake, which is a bug that only shows up on
@@ -281,6 +282,14 @@ local function unbind(ply, bike)
     if IsValid(ply) then ply.BMXBike = nil end
 
     if IsValid(bike) then
+        -- THE STAND GOES DOWN ONLY AT A SLOW STOP. Get off at speed and it
+        -- stays up, so the bike rolls on and falls over when it stops. A
+        -- rider THROWN off (Crash sets bmxCrashing) never put it down either.
+        local st = bike.st
+        local slow = st and (st.speed or 0) < bike:Cfg().Stand.deploySpeed
+        bike:SetStandDown(slow and not bike.bmxCrashing or false)
+        bike.bmxCrashing = nil
+
         bike:SetDriver(NULL)
         bike.input = BMX.BlankInput()
         bike.hopHeld, bike.hopRelease, bike.hopCharge = false, false, 0

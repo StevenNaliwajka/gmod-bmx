@@ -776,3 +776,53 @@ T.test("cinematic mode letterboxes the screen, hides the HUD, and ends when you 
     E.hook.Run("Think")
     T.ok(not E.GetConVar("bmx_cinematic"):GetBool(), "off once they get off")
 end)
+
+T.test("cinematic mode keeps filming through a crash, until the rider is back up", function()
+    local s = scene()
+    local E = cine(s)
+    E.GetConVar("bmx_cinematic"):SetBool(true)
+    E.hook.Run("CalcView", s.me, E.Vector(), E.Angle(), 90)          -- riding shot
+    local ridingFrom = E.BMX.CinematicState.shot.lastOrigin
+
+    -- Thrown off: out of the seat, spectating their own ragdoll.
+    local rag = s.cl.makeEntity("prop_ragdoll")
+    rag:SetPos(s.cb:GetPos() + E.Vector(40, 0, 10))
+    rag:SetNWEntity("BMXRider", s.me)
+    s.me._vehicle = nil
+    s.me._spectating, s.me._spectatee = E.OBS_MODE_CHASE, rag
+
+    E.hook.Run("Think")
+    T.ok(E.GetConVar("bmx_cinematic"):GetBool(), "still on while they tumble")
+    local v = E.hook.Run("CalcView", s.me, E.Vector(), E.Angle(), 90)
+    T.ok(v, "the cinematic camera still has the view")
+    local target = rag:GetPos() + E.Vector(0, 0, 8)
+    T.ok(v.angles:Forward():Dot((target - v.origin):GetNormalized()) > 0.999, "looking at the ragdoll")
+    T.ok(v.origin:Distance(ridingFrom) < 1, "from where the ride was being filmed")
+    s.cl.rects = {}
+    E.hook.Run("HUDPaint")
+    T.eq(#s.cl.rects, 2, "letterbox still up")
+
+    -- The body tumbles on: the shot holds and pans.
+    rag:SetPos(rag:GetPos() + E.Vector(120, 60, 0))
+    local v2 = E.hook.Run("CalcView", s.me, E.Vector(), E.Angle(), 90)
+    T.ok(v2.origin:Distance(v.origin) < 1e-6, "held, not cut")
+    T.ok(v2.angles:Forward():Dot((rag:GetPos() + E.Vector(0, 0, 8) - v2.origin):GetNormalized()) > 0.999,
+        "panning with the body")
+
+    -- Back on their feet.
+    s.me._spectating, s.me._spectatee = nil, nil
+    E.hook.Run("Think")
+    T.ok(not E.GetConVar("bmx_cinematic"):GetBool(), "off once they are up")
+end)
+
+T.test("someone else's crash ragdoll does not keep your cinematic camera on", function()
+    local s = scene()
+    local E = cine(s)
+    E.GetConVar("bmx_cinematic"):SetBool(true)
+    local rag = s.cl.makeEntity("prop_ragdoll")
+    rag:SetNWEntity("BMXRider", s.cl:player("SomeoneElse"))
+    s.me._vehicle = nil
+    s.me._spectating, s.me._spectatee = E.OBS_MODE_CHASE, rag
+    E.hook.Run("Think")
+    T.ok(not E.GetConVar("bmx_cinematic"):GetBool(), "off: that is not their crash")
+end)

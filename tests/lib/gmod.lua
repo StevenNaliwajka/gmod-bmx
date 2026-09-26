@@ -1017,6 +1017,8 @@ function M.Realm(world, which)
         return m:GetTranslation(), m:GetAngles()
     end
     function Ply:GetGroundEntity() return self._groundEnt or NULL end
+    function Ply:GetObserverTarget() return self._spectatee or NULL end
+    function Ply:GetObserverMode() return self._spectating or 0 end
     function Ply:AnimRestartGesture(slot, act) self._gesture = act end
     function Ply:Nick() return self._nick end
     function Ply:Name() return self._nick end

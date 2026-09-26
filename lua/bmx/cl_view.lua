@@ -83,6 +83,12 @@ function BMX.LocalBike(ply)
 end
 
 hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
+    -- Thrown off in cinematic mode: keep filming, now the crash ragdoll.
+    local rag = BMX.CinematicTumbling and BMX.CinematicTumbling(ply)
+    if rag and BMX.CinematicActive(ply) then
+        return BMX.CinematicTumbleView(rag, FrameTime(), CurTime())
+    end
+
     local bike = BMX.LocalBike(ply)
     if not bike then sBike = nil return end
 

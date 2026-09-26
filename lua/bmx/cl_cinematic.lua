@@ -208,8 +208,53 @@ function BMX.CinematicView(bike, dt, now, rng)
     return { origin = origin, angles = ang, fov = fov, drawviewer = true }
 end
 
+--------------------------------------------------------------------------
+-- THROUGH A CRASH. Being thrown off is getting off, and cinematic mode used
+-- to end there: the view snapped back to the player for the moment before the
+-- tumble took over, and the shot was lost at the one moment worth filming.
+-- While the player is watching their own crash ragdoll (BMX.Tumble puts them
+-- in chase-spectate on it, and the ragdoll carries BMXRider), cinematic mode
+-- stays on and films the ragdoll instead. It ends when they get up.
+--------------------------------------------------------------------------
+function BMX.CinematicTumbling(ply)
+    if not IsValid(ply) or not ply.GetObserverTarget then return nil end
+    local rag = ply:GetObserverTarget()
+    if IsValid(rag) and rag:GetClass() == "prop_ragdoll"
+        and rag:GetNWEntity("BMXRider", NULL) == ply then
+        return rag
+    end
+    return nil
+end
+
 function BMX.CinematicActive(ply)
-    return cv:GetBool() and BMX.LocalBike(ply) ~= nil
+    return cv:GetBool() and (BMX.LocalBike(ply) ~= nil or BMX.CinematicTumbling(ply) ~= nil)
+end
+
+-- The crash shot: one held shot, no cuts. It starts from where the camera
+-- already was (so the crash is seen from the angle the ride was), falling
+-- back to a side-on spot if that is blocked, and it pans and zooms with the
+-- tumbling body.
+function BMX.CinematicTumbleView(rag, dt, now)
+    local at = rag:GetPos() + Vector(0, 0, 8)
+    local shot = state.shot
+    if not shot or shot.kind ~= "tumble" then
+        local from = shot and shot.lastOrigin
+        if not from or from:Distance(at) > 700 then
+            local v = rag:GetVelocity()
+            v.z = 0
+            local side = (v:Length() > 10 and v:GetNormalized() or Vector(1, 0, 0)):Cross(Vector(0, 0, 1))
+            from = at + side * 220 + Vector(0, 0, 60)
+        end
+        local tr = util.TraceHull({ start = at, endpos = from, mins = -HULL, maxs = HULL,
+            filter = { rag }, mask = MASK_SOLID_BRUSHONLY })
+        shot = { kind = "tumble", pos = tr.HitPos }
+        state.shot = shot
+    end
+    local d = shot.pos:Distance(at)
+    local ang = (at - shot.pos):Angle()
+    shot.lastOrigin, shot.lastAng = shot.pos, ang
+    return { origin = shot.pos, angles = ang, fov = math.Clamp(8000 / math.max(d, 1), 25, 75),
+             drawviewer = false }
 end
 
 --------------------------------------------------------------------------
@@ -224,10 +269,12 @@ hook.Add("PlayerButtonDown", "BMX.CinematicKey", function(ply, button)
     state.shot = nil
 end)
 
--- Getting off ends it, so the next ride starts on the normal camera.
+-- Getting off ends it, so the next ride starts on the normal camera. Being
+-- thrown off does not, until the player is back on their feet.
 hook.Add("Think", "BMX.CinematicOff", function()
     local ply = LocalPlayer()
-    if cv:GetBool() and IsValid(ply) and not BMX.LocalBike(ply) then
+    if cv:GetBool() and IsValid(ply) and not BMX.LocalBike(ply)
+        and not BMX.CinematicTumbling(ply) then
         cv:SetBool(false)
         state.shot = nil
     end

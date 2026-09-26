@@ -135,16 +135,27 @@ T.test("the bars turn with the steer angle", function()
     T.near(math.abs(math.AngleDifference(turned, straight)), 20, 1.5, "bars rotated by the steer")
 end)
 
-T.test("the cranks turn with the cadence and stop when coasting", function()
+T.test("the pedals are geared to the rear wheel: still with it, forward with it, back with it", function()
     local s = scene()
-    s.cb:SetCadence(0)
+    local C = s.cb:Cfg()
+    s.cb:SetCadence(12)                    -- the rider's legs are not what turns them
+    s.cb._vel = s.cb:GetForward() * 0
     draw(s)
     local a0 = s.cb.crankAngle
     draw(s)
-    T.eq(s.cb.crankAngle, a0, "coasting: cranks still")
-    s.cb:SetCadence(10)
+    T.eq(s.cb.crankAngle, a0, "wheel still: pedals still, whatever the cadence says")
+
+    s.cb._vel = s.cb:GetForward() * 200
     draw(s)
-    T.near(s.cb.crankAngle - a0, 10 * s.world.dt, 1e-9, "pedalling: turned by cadence*dt")
+    T.near(s.cb.crankAngle, s.cb.spin.rear.angle / C.Drive.gearRatio, 1e-9,
+        "crank angle is the rear wheel's through the gear")
+    local fwdA = s.cb.crankAngle
+    draw(s)
+    T.ok(s.cb.crankAngle > fwdA, "rolling forward: pedals forward")
+    local back0 = s.cb.crankAngle
+    s.cb._vel = s.cb:GetForward() * -60
+    draw(s)
+    T.ok(s.cb.crankAngle < back0, "rolling back: pedals back")
 end)
 
 T.test("the kickstand shows only when the bike is parked", function()
@@ -571,11 +582,11 @@ T.test("the frame is solid 3D tubes in glossy paint, with round joints", functio
     for _, d in ipairs(s.cl.drawnCS) do
         if d.model == "models/xqm/cylinderx1.mdl" then cyl = cyl + 1 end
         if d.model == "models/hunter/misc/sphere025x025.mdl" then sph = sph + 1 end
-        if d.material == "models/shiny" then painted = painted + 1 end
+        if d.material and d.material ~= "" then painted = painted + 1 end
     end
     T.ok(cyl >= 25, "tubes are cylinders: " .. cyl)
     T.ok(sph >= 5, "joints and saddle are spheres: " .. sph)
-    T.eq(painted, #s.cl.drawnCS - #tyreDraws(s), "every shape in glossy paint")
+    T.eq(painted, #s.cl.drawnCS - #tyreDraws(s), "every shape has a material")
     -- The top tube runs seat cluster to head tube, and is the frame's colour.
     local red = 0
     for _, b in ipairs(s.cl.beams) do
@@ -627,4 +638,25 @@ T.test("a recolour arrives as a puff of smoke in the new colour", function()
         if p.color and p.color.r == blue.r and p.color.b == blue.b then coloured = coloured + 1 end
     end
     T.ok(coloured > #s.cl.particles / 2, "mostly in the new colour")
+end)
+
+T.test("materials by part: metallic paint frame, chrome metal, matte saddle and grips", function()
+    local s = scene()
+    local M = s.cl.env.BMX.BikeMaterials
+    s.cl.drawnCS = {}
+    draw(s)
+    local byMat = {}
+    for _, d in ipairs(s.cl.drawnCS) do
+        if d.material then byMat[d.material] = (byMat[d.material] or 0) + 1 end
+    end
+    T.ok((byMat[M.paint] or 0) >= 10, "the frame in metallic paint")
+    T.ok((byMat[M.chrome] or 0) >= 3, "seat post, spindle and pegs in chrome")
+    T.ok((byMat[M.satin] or 0) >= 5, "bars, fork and cranks anodised")
+    T.ok((byMat[M.matte] or 0) >= 3, "saddle and grips matte")
+    local saddle
+    for _, d in ipairs(s.cl.drawnCS) do
+        if d.model:find("sphere025") and d.scale.x > d.scale.y * 2 then saddle = d end
+    end
+    T.ok(saddle and saddle.material == M.matte, "the saddle is not shiny")
+    T.ok(not byMat["models/shiny"], "nothing left in the old mirror finish")
 end)

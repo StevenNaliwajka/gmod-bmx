@@ -106,7 +106,9 @@ T.test("IK: pedalling, the feet stay on the pedals all the way round", function(
     local cl, bike, ply = seated()
     bike:SetCadence(0)
     for _ = 1, 40 do frame(cl, bike, ply) end
-    bike:SetCadence(8)                             -- about a turn a second
+    -- Pedals turn with the rear wheel now: roll at 180 u/s, about a crank
+    -- turn a second.
+    bike._vel = bike:GetForward() * 180
     local worst = 0
     for i = 1, 66 do
         frame(cl, bike, ply)
@@ -132,7 +134,7 @@ end)
 T.test("IK off: the simple swing still pedals in time with the cranks", function()
     local cl, bike, ply = seated()
     cl.env.GetConVar("bmx_rider_ik"):SetString("0")
-    bike:SetCadence(10)
+    bike._vel = bike:GetForward() * 200
     for _ = 1, 5 do frame(cl, bike, ply) end
     local want = math.sin(bike.crankAngle) * cl.env.BMX.RiderAmplitudes.thighSwing
     T.near(ply._bones["ValveBiped.Bip01_R_Thigh"].y, want, 1e-9, "thigh on the crank angle")
@@ -162,9 +164,8 @@ end
 
 T.test("IK: knees bend forward and stay above the feet, all the way round", function()
     local cl, bike, ply = seated()
-    bike:SetCadence(0)
     for _ = 1, 40 do frame(cl, bike, ply) end
-    bike:SetCadence(8)
+    bike._vel = bike:GetForward() * 180
     local fwd = bike:GetForward()
     local worstFwd, minBend, maxBend, below = math.huge, 180, 0, false
     for i = 1, 66 do
@@ -263,7 +264,7 @@ end)
 
 T.test("IK: no limb is wrung: twist stays within limits through pedalling and steering", function()
     local cl, bike, ply = seated()
-    bike:SetCadence(8)
+    bike._vel = bike:GetForward() * 180
     local worst = {}
     for i = 1, 90 do
         bike:SetSteer(math.rad(20 * math.sin(i / 10)))

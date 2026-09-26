@@ -98,7 +98,20 @@ local PRIM = {
     box = { model = "models/hunter/blocks/cube025x025x025.mdl", size = 12.3125 },
 }
 BMX.BikePrimitives = PRIM
-local PAINT = "models/shiny"
+
+--------------------------------------------------------------------------
+-- MATERIALS BY WHAT THE PART IS, all base Garry's Mod. It was one glossy
+-- paint for everything, and a mirror-finish saddle read as plastic, not
+-- leather. Each is a light, neutral base, so the colour modulation still
+-- tints it.
+--------------------------------------------------------------------------
+local MAT = {
+    paint  = "phoenix_storms/mat/mat_phx_metallic",  -- the frame: metallic paint
+    chrome = "phoenix_storms/fender_chrome",         -- post, pegs, spindle: the rims' chrome
+    satin  = "phoenix_storms/mat/mat_phx_plastic",   -- bars, fork, cranks: anodised black
+    matte  = "models/debug/debugwhite",              -- saddle, grips: leather and rubber
+}
+BMX.BikeMaterials = MAT
 
 local drawing       -- the bike being drawn, for the shape cache
 
@@ -116,12 +129,22 @@ local function primModel(kind)
         return nil
     end
     m:SetNoDraw(true)
-    m:SetMaterial(PAINT)
     ent.prims[kind] = m
     return m
 end
 
-local function drawPrim(m, pos, ang, scale, col)
+-- Which material a part gets, from the colour it is drawn in: the chrome and
+-- black-part colours are fixed, so anything else is the frame's paint.
+local function roleMaterial(col, override)
+    if override then return override end
+    if col == COL_CHROME or col == COL_RIM then return MAT.chrome end
+    if col == COL_PART then return MAT.satin end
+    if col == COL_TYRE or col == COL_TREAD then return MAT.matte end
+    return MAT.paint
+end
+
+local function drawPrim(m, pos, ang, scale, col, material)
+    m:SetMaterial(roleMaterial(col, material))
     local mat = Matrix()
     mat:Scale(scale)
     m:EnableMatrix("RenderMultiply", mat)
@@ -155,13 +178,13 @@ local function joint(p, dia, col)
 end
 
 -- A box or an ellipsoid, centred on `p`, `dims` long/wide/tall in `ang`.
-local function solid(kind, p, ang, dims, col)
+local function solid(kind, p, ang, dims, col, material)
     local m = primModel(kind)
     if not m then
         render.DrawBox(p, ang, dims * -0.5, dims * 0.5, col)
         return
     end
-    drawPrim(m, p, ang, dims / PRIM[kind].size, col)
+    drawPrim(m, p, ang, dims / PRIM[kind].size, col, material)
 end
 
 -- A circle in the plane spanned by e1/e2, as a closed chain of beams. Each
@@ -450,7 +473,7 @@ function ENT:Draw()
     -- Seat post and seat: a padded saddle, not a brick.
     tube(seatJ, seat, 1.0 * k, COL_CHROME)
     solid("sph", seat + up * (0.8 * k) - fwd * (0.5 * k), self:GetAngles(),
-        Vector(9.5, 4.0, 2.0) * k, COL_PART)
+        Vector(9.5, 4.0, 2.0) * k, COL_PART, MAT.matte)
 
     ----------------------------------------------------------------------
     -- Fork, stem and bars. The fork runs from the head tube to the front
@@ -485,7 +508,11 @@ function ENT:Draw()
     -- Drivetrain. The cranks turn at the networked cadence, so pedalling is
     -- visible, and coasting (the freewheel ticking) shows them still.
     ----------------------------------------------------------------------
-    self.crankAngle = (self.crankAngle or 0) + self:GetCadence() * dt
+    -- THE CRANKS TURN WITH THE REAR WHEEL, through the gearing: wheel still,
+    -- pedals still; rolling forward (or back), pedals forward (or back). They
+    -- used to follow the rider's networked cadence, which was only loosely the
+    -- same thing and read as pedals with a mind of their own.
+    self.crankAngle = rSpin / C.Drive.gearRatio
 
     local cr = right * (-CHAINY * k)             -- -Y local is +right world
     local ringC = bb + cr

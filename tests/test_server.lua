@@ -695,3 +695,30 @@ T.test("someone else's colour choice is not yours", function()
     T.eq(a.BMXColor, 2, "A chose orange")
     T.eq(b.BMXColor, nil, "B chose nothing")
 end)
+
+T.test("riding someone else's bike does not change the colour you spawn in", function()
+    local sv = F.server()
+    local E = sv.env
+    local B = E.BMX
+    local me = sv:player("Me")
+    me:SetPos(E.Vector(0, 0, 0))
+    me._eyeTrace = { Hit = true, HitPos = E.Vector(100, 0, 0), HitNormal = E.Vector(0, 0, 1) }
+    me._info = { bmx_color_default = "green" }
+
+    -- Somebody else's bike, painted pink by them.
+    local other = sv:player("Other")
+    local theirs = F.bike(sv, nil, E.Vector(300, 300, F.restHeight(sv)))
+    B.SetBikeColor(theirs, B.PaletteIndex("pink"), false, other)
+
+    -- I ride it, and get off.
+    theirs:Use(me, me, 1, 0)
+    sv:run(0.5)
+    me:ExitVehicle()
+
+    sv.world.time = sv.world.time + 2
+    sv:command("bmx_spawn", me)
+    local all = E.ents.FindByClass("bmx_base")
+    T.eq(all[#all]:GetColorIndex(), B.PaletteIndex("green"), "still my green")
+    T.eq(me.BMXColor, nil, "nothing remembered from their bike")
+    T.eq(me._concommands, nil, "and nothing written to my settings")
+end)

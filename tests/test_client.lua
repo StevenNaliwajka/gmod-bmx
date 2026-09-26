@@ -680,3 +680,99 @@ T.test("the camera eases through a landing instead of stopping dead with the bik
     local lagged = B.CameraFollowHeight(z0 - 100, 1 / 66)
     T.ok(lagged <= z0 - 100 + 12.001, "and never lags more than 12 units")
 end)
+
+-- Cinematic mode (cl_cinematic.lua).
+local function cine(s)
+    local E = s.cl.env
+    s.cb:SetGrounded(true)
+    s.cb._vel = s.cb:GetForward() * 250
+    return E
+end
+
+local function seq(vals)
+    local i = 0
+    return function() i = i + 1; return vals[((i - 1) % #vals) + 1] end
+end
+
+T.test("L toggles the cinematic camera while riding, and not on foot", function()
+    local s = scene()
+    local E = cine(s)
+    E.hook.Run("PlayerButtonDown", s.me, E.KEY_L)
+    T.ok(E.BMX.CinematicActive(s.me), "L: on")
+    local view = E.hook.Run("CalcView", s.me, E.Vector(), E.Angle(), 90)
+    local subject = s.cb:LocalToWorld(E.Vector(0, 0, 30))
+    T.ok((view.origin - subject):Length() > 50, "the camera is off the bike, outside")
+    T.ok(view.angles:Forward():Dot((subject - view.origin):GetNormalized()) > 0.999,
+        "and looking straight at the rider")
+    E.hook.Run("PlayerButtonDown", s.me, E.KEY_L)
+    T.ok(not E.BMX.CinematicActive(s.me), "L again: off")
+    s.me._vehicle = nil
+    E.hook.Run("PlayerButtonDown", s.me, E.KEY_L)
+    T.ok(not E.GetConVar("bmx_cinematic"):GetBool(), "on foot, L does nothing")
+end)
+
+T.test("a trackside shot holds still, pans with the bike and zooms as it goes", function()
+    local s = scene()
+    local E = cine(s)
+    E.BMX.CinematicState.shot = nil
+    local rng = seq({ 0.0, 0.3, 0.5, 0.2, 0.9 })
+    local v1 = E.BMX.CinematicView(s.cb, 1 / 66, 0, rng)
+    T.eq(E.BMX.CinematicState.shot.kind, "trackside", "riding along, it opens trackside")
+    -- The bike rides past the camera.
+    s.cb:SetPos(s.cb:GetPos() + s.cb:GetForward() * 300)
+    local v2 = E.BMX.CinematicView(s.cb, 1 / 66, 0.2, rng)
+    T.ok((v2.origin - v1.origin):Length() < 1e-6, "the camera did not move")
+    T.ok(math.abs(math.AngleDifference(v2.angles.y, v1.angles.y)) > 5, "it panned to follow")
+    s.cb:SetPos(s.cb:GetPos() + s.cb:GetForward() * 400)
+    local v3 = E.BMX.CinematicView(s.cb, 1 / 66, 0.4, rng)
+    if E.BMX.CinematicState.shot.kind == "trackside" then
+        T.ok(v3.fov < v2.fov, "and tightened the lens as the bike went away")
+    end
+end)
+
+T.test("shots cut on a timer, and at once when the bike leaves the frame", function()
+    local s = scene()
+    local E = cine(s)
+    E.BMX.CinematicState.shot = nil
+    E.BMX.CinematicState.cuts = 0
+    local rng = seq({ 0.6, 0.1, 0.4, 0.8 })
+    E.BMX.CinematicView(s.cb, 1 / 66, 0, rng)
+    local first = E.BMX.CinematicState.shot
+    E.BMX.CinematicView(s.cb, 1 / 66, 1, rng)
+    T.ok(E.BMX.CinematicState.shot == first, "no cut after a second")
+    E.BMX.CinematicView(s.cb, 1 / 66, 10, rng)
+    T.ok(E.BMX.CinematicState.shot ~= first, "a cut after the shot's time")
+    local second = E.BMX.CinematicState.shot
+    -- Turn the camera to face directly AWAY from the rider.
+    local sh = E.BMX.CinematicState.shot
+    sh.lastAng = (sh.lastOrigin - s.cb:LocalToWorld(E.Vector(0, 0, 30))):Angle()
+    E.BMX.CinematicView(s.cb, 1 / 66, 10.1, rng)
+    T.ok(E.BMX.CinematicState.shot ~= second, "a cut when the bike is out of frame")
+end)
+
+T.test("in the air it cuts to the air shot; standing still, it orbits", function()
+    local s = scene()
+    local E = cine(s)
+    E.BMX.CinematicState.shot = nil
+    s.cb:SetGrounded(false)
+    E.BMX.CinematicView(s.cb, 1 / 66, 0, seq({ 0.3 }))
+    T.eq(E.BMX.CinematicState.shot.kind, "air", "airborne: the air shot")
+    s.cb:SetGrounded(true)
+    s.cb._vel = E.Vector()
+    E.BMX.CinematicView(s.cb, 1 / 66, 0.1, seq({ 0.3 }))
+    T.eq(E.BMX.CinematicState.shot.kind, "orbit", "landed and stopped: an orbit")
+end)
+
+T.test("cinematic mode letterboxes the screen, hides the HUD, and ends when you get off", function()
+    local s = scene()
+    local E = cine(s)
+    s.cb:SetSpeedUPS(250)
+    E.GetConVar("bmx_cinematic"):SetBool(true)
+    s.cl.rects, s.cl.texts = {}, {}
+    E.hook.Run("HUDPaint")
+    T.eq(#s.cl.rects, 2, "two letterbox bars")
+    for _, t in ipairs(s.cl.texts) do T.ok(not t:find("km/h"), "no rider HUD: " .. t) end
+    s.me._vehicle = nil
+    E.hook.Run("Think")
+    T.ok(not E.GetConVar("bmx_cinematic"):GetBool(), "off once they get off")
+end)

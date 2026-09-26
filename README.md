@@ -7,7 +7,7 @@ are leaning rather than a key you press. Wheelies, stoppies, bunny hops, air
 control and flips.
 
 **Status: v0.1.0, pre-alpha.** Two test suites gate every commit: an
-**offline suite** of 208 tests that executes the addon (client half included)
+**offline suite** of 213 tests that executes the addon (client half included)
 against a Garry's Mod shim in a stock Lua 5.1, and a **headless suite** of 19
 cases on a real dedicated server. The bike rides, brakes, skids, steers from
 lean, hops and lands, holds a wheelie and a stoppie, and scores tricks. **It
@@ -61,6 +61,12 @@ disagrees with either.
 | `SHIFT` | sprint (drains stamina) | - |
 | `CTRL` | tuck: less drag | tuck: faster rotation |
 | `K` | next paint colour, in a puff of smoke | same |
+| `L` | cinematic camera on/off | same |
+
+**Cinematic camera.** `L` while riding (or `bmx_cinematic 1`): the camera cuts
+between GTA-style external shots, trackside cameras you ride past, a low chase,
+a side dolly, a front shot looking back, a wide air shot while you are airborne
+and a slow orbit when you stop, with letterbox bars. Getting off ends it.
 
 **Colour.** Fourteen, red to pink plus white and black. `K` while riding cycles
 them; hold `C` and right-click a bike for **Bike colour** to pick one; or

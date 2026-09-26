@@ -86,6 +86,12 @@ hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
     local bike = BMX.LocalBike(ply)
     if not bike then sBike = nil return end
 
+    -- Cinematic mode (cl_cinematic.lua, L) takes the whole view.
+    if BMX.CinematicActive and BMX.CinematicActive(ply) then
+        sBike = nil
+        return BMX.CinematicView(bike, FrameTime(), CurTime())
+    end
+
     local speed = bike:GetSpeedUPS()
     local frac  = BMX.Ramp(speed, 0, 340)      -- 340 u/s is about top speed
 

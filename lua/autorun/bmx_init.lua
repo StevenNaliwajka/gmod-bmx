@@ -61,6 +61,7 @@ local CLIENT_FILES = {
     "bmx/cl_hud.lua",
     "bmx/cl_sound.lua",
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
+    "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
 }
 
 if SERVER then

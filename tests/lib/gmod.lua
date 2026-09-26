@@ -202,6 +202,8 @@ function M.Realm(world, which)
     env.SIM_NOTHING = 0
     env.SIMPLE_USE = 1
     env.KEY_K = 21
+    env.KEY_L = 22
+    env.IsFirstTimePredicted = function() return true end
     function env.VectorRand()
         return Vector(math.random() * 2 - 1, math.random() * 2 - 1, math.random() * 2 - 1)
     end
@@ -1191,7 +1193,10 @@ function M.Realm(world, which)
     ----------------------------------------------------------------------
     if not SERVER then
         env.surface = { CreateFont = function() end, SetFont = function() end,
-                        GetTextSize = function() return 10, 10 end }
+                        GetTextSize = function() return 10, 10 end,
+                        SetDrawColor = function() end,
+                        DrawRect = function(x, y, w, h) R.rects = R.rects or {}
+                            R.rects[#R.rects + 1] = { x = x, y = y, w = w, h = h } end }
         env.draw = {
             RoundedBox = function() R.boxes = (R.boxes or 0) + 1 end,
             SimpleText = function(t) R.texts[#R.texts + 1] = tostring(t) end,

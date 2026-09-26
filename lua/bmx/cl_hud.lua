@@ -263,7 +263,9 @@ hook.Add("HUDPaint", "BMX.HUD", function()
     -- from what the server is actually simulating.
     BMX.ApplyConVars()
 
-    if cv_hud:GetBool() then drawRiderHUD(bike) end
+    -- The cinematic camera hides the rider HUD, as GTA's does.
+    local cinematic = BMX.CinematicActive and BMX.CinematicActive(ply)
+    if cv_hud:GetBool() and not cinematic then drawRiderHUD(bike) end
     if GetConVar("bmx_debug"):GetInt() > 0 then drawDebug(bike) end
 end)
 

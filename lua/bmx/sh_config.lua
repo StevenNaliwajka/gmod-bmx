@@ -545,6 +545,13 @@ C.Crash = {
     -- Grace period after spawning or entering, so a bike dropped by the spawn
     -- menu does not immediately eject its first rider.
     grace = 1.0,
+
+    -- Tipped over on the ground with a rider aboard: past this lean (or this
+    -- pitch, a looped wheelie) near the ground for tipTime, the rider is thrown.
+    -- Full lean in a corner is Balance.maxLean, 42 degrees, well short.
+    tipRoll  = math.rad(65),
+    tipPitch = math.rad(75),
+    tipTime  = 0.15,
 }
 
 --------------------------------------------------------------------------

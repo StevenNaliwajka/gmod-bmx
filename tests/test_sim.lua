@@ -413,6 +413,7 @@ T.test("crash: an inverted drop throws the rider, hurts them, and plays the cras
     local ejected = sv:run(4, function() return not sv.env.IsValid(bike:GetDriver()) end)
     T.ok(ejected, "rider ejected")
     T.ok(not sv.env.IsValid(ply.BMXBike), "and unbound from the bike")
+    sv:run(sv.env.BMX.TumbleTime + 0.2)                 -- hurt when they get up
     T.ok((ply._damage or 0) > 0, "and hurt")
     local heard = false
     for _, s in ipairs(sv.sounds) do if s.name:find("metal_box_impact_hard") then heard = true end end
@@ -565,4 +566,14 @@ T.test("a hop out of a wheelie does not become a backflip", function()
     T.ok(start > 10, "it really was in a wheelie: " .. start)
     T.between(maxp, 0, 50, "highest pitch after hopping out of it, deg")
     T.ok(sv.env.IsValid(bike:GetDriver()), "and the rider stays on")
+end)
+
+T.test("a barrel roll high in the air is not a tip-over crash", function()
+    local sv, bike = ridden()
+    local E = sv.env
+    sv:run(1.2)
+    F.place(bike, bike:GetPos() + E.Vector(0, 0, 600), E.Angle(0, 0, 110))
+    bike:GetPhysicsObject():SetVelocity(E.Vector(0, 0, 0))
+    sv:run(0.4)
+    T.ok(E.IsValid(bike:GetDriver()), "far above the ground, upside down, still riding")
 end)

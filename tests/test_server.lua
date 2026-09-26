@@ -237,8 +237,11 @@ T.test("E mounts a bike lying on its side, and stands it up", function()
     F.place(bike, bike:GetPos() + E.Vector(0, 0, 8), E.Angle(0, 0, 80))
     sv:run(2)
     local ply = sv:player("Walker")
-    bike:Use(ply, ply, 1, 0)
+    ply:SetPos(bike:GetPos() + E.Vector(0, 40, 0))       -- standing beside it
     ply.BMXScripted = true
+    bike:Use(ply, ply, 1, 0)
+    T.ok(not E.IsValid(bike:GetDriver()), "not on yet: it is picked up first")
+    T.ok(bike.pickingUp, "being picked up")
     sv:run(1.5)
     T.ok(bike:GetDriver() == ply, "on")
     T.between(math.deg(math.abs(bike.st.roll)), 0, 4, "upright")
@@ -345,4 +348,146 @@ T.test("the seat faces the way the bike goes, not across it", function()
     local facing = -pod:GetRight()
     T.near(facing:Dot(bike:GetForward()), 1, 1e-6, "rider faces forward")
     T.near(pod:GetUp():Dot(bike:GetUp()), 1, 1e-6, "and sits upright")
+end)
+
+-- A rider on a bike that has fallen over at a standstill.
+local function tipOver(sv)
+    local E = sv.env
+    local bike = F.bike(sv)
+    sv:run(0.5)
+    local ply = F.scripted(sv, bike)
+    ply:Give("weapon_crowbar"); ply:Give("weapon_smg1")
+    ply:SelectWeapon("weapon_smg1")
+    ply:SetAmmo(90, 4)
+    ply:SetArmor(35)
+    sv:run(1.2)                                        -- past the grace period
+    F.place(bike, bike:GetPos() + E.Vector(0, 0, 4), E.Angle(0, 0, 75))
+    return bike, ply
+end
+
+T.test("a ridden bike that falls over throws its rider as a ragdoll", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike, ply = tipOver(sv)
+    T.ok(sv:run(1, function() return not E.IsValid(bike:GetDriver()) end), "thrown off")
+    local rag = ply.BMXTumbling
+    T.ok(E.IsValid(rag) and rag:GetClass() == "prop_ragdoll", "as a ragdoll")
+    T.eq(ply._spectatee, rag, "the camera follows it")
+    T.eq(rag._group, E.COLLISION_GROUP_WEAPON, "which does not collide with the bike or players")
+end)
+
+T.test("getting up from the tumble gives back everything the player had", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike, ply = tipOver(sv)
+    sv:run(1, function() return not E.IsValid(bike:GetDriver()) end)
+    local rag = ply.BMXTumbling
+    sv:run(E.BMX.TumbleTime + 0.2)
+    T.ok(not ply.BMXTumbling and not E.IsValid(rag), "back up, ragdoll gone")
+    T.eq(ply._spectating, nil, "not spectating")
+    local have = {}
+    for _, w in ipairs(ply:GetWeapons()) do have[w:GetClass()] = true end
+    T.ok(have.weapon_crowbar and have.weapon_smg1, "their weapons")
+    T.ok(not have.gmod_tool, "and not the gamemode's respawn loadout")
+    T.eq(ply._activeWep, "weapon_smg1", "holding what they held")
+    T.eq(ply._ammo[4], 90, "their ammo")
+    T.eq(ply:Armor(), 35, "their armour")
+    T.ok((ply._damage or 0) >= 0 and ply:Health() <= 100, "health carried over, less any crash damage")
+end)
+
+T.test("bmx_crash_ragdoll 0 keeps the plain shove", function()
+    local sv = F.server()
+    local E = sv.env
+    E.GetConVar("bmx_crash_ragdoll"):SetString("0")
+    local bike, ply = tipOver(sv)
+    sv:run(1, function() return not E.IsValid(bike:GetDriver()) end)
+    T.ok(not ply.BMXTumbling, "no ragdoll")
+    T.eq(ply._spectating, nil, "never spectating")
+end)
+
+T.test("a hard landing square on the wheels is a landing, not an impact crash", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    sv:run(0.5)
+    local ply = F.scripted(sv, bike)
+    sv:run(1.2)
+    F.place(bike, E.Vector(0, 0, F.restHeight(sv) + 250), E.Angle(0, 0, 0))
+    bike:GetPhysicsObject():SetVelocity(E.Vector(0, 0, -250))
+    sv:run(2)
+    T.ok(bike:GetDriver() == ply, "still riding after bottoming out onto the wheel boxes")
+end)
+
+T.test("picking up a fallen bike is visible: held still, swung up, gesture played", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    sv:run(1)
+    F.place(bike, bike:GetPos() + E.Vector(0, 0, 6), E.Angle(0, 0, 85))
+    sv:run(2)
+    local ply = sv:player("Walker")
+    ply:SetPos(bike:GetPos() + E.Vector(0, 40, 0))
+    ply.BMXScripted = true
+    local sent = #sv.world.wire
+    bike:Use(ply, ply, 1, 0)
+    local g = sv.world.wire[sent + 1]
+    T.ok(g and g.name == "bmx_gesture" and g.items[1].value == ply, "the reach-down gesture is sent")
+    T.ok(not bike:GetPhysicsObject().motion, "the bike is held while it is lifted")
+    local rolls = {}
+    sv:run(E.BMX.PickupTime * 0.5)
+    rolls[1] = math.abs(bike:GetAngles().r)
+    T.between(rolls[1], 20, 70, "halfway through, halfway up")
+    sv:run(E.BMX.PickupTime * 0.6)
+    T.ok(bike:GetDriver() == ply, "and then they are on")
+    T.ok(bike:GetPhysicsObject().motion, "with the bike live again")
+    -- No bounce: it was set down at its resting height.
+    local worst = 0
+    sv:run(1, function() worst = math.max(worst, math.abs(bike:GetPhysicsObject():GetVelocity().z)) end)
+    T.between(worst, 0, 12, "vertical speed after the pick-up, u/s")
+end)
+
+T.test("walking away mid pick-up leaves the bike standing, without its rider", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    sv:run(1)
+    F.place(bike, bike:GetPos() + E.Vector(0, 0, 6), E.Angle(0, 0, 85))
+    sv:run(2)
+    local ply = sv:player("Walker")
+    ply:SetPos(bike:GetPos() + E.Vector(0, 40, 0))
+    bike:Use(ply, ply, 1, 0)
+    sv:run(0.2)
+    ply:SetPos(E.Vector(5000, 5000, 0))
+    sv:run(0.5)
+    T.ok(not bike.pickingUp and bike:GetPhysicsObject().motion, "finished, live")
+    T.ok(not E.IsValid(bike:GetDriver()), "nobody on it")
+end)
+
+T.test("someone standing ON a parked bike does not release its hold", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    sv:run(3)
+    local ply = sv:player("Climber")
+    ply:SetPos(bike:GetPos() + E.Vector(0, 0, 38))
+    ply._groundEnt = bike
+    sv:run(0.3)
+    T.ok((bike.st.pushedUntil or 0) <= sv.world.time, "standing on it is not pushing it")
+    ply._groundEnt = nil
+    ply:SetPos(bike:GetPos() + E.Vector(0, 10, 10))
+    sv:run(0.1)
+    T.ok((bike.st.pushedUntil or 0) > sv.world.time, "leaning on its side is")
+end)
+
+T.test("tipping over throws the rider even when no landing is ever judged", function()
+    -- The landing check only runs for a bike that went through air mode. A
+    -- bike that tips over slowly on the ground never does, and that is the
+    -- case the tip-over rule exists for: with air mode unable to engage,
+    -- nothing else can throw the rider.
+    local sv = F.server()
+    local E = sv.env
+    local bike, ply = tipOver(sv)
+    bike:Cfg().Air.engageDelay = 1e9
+    T.ok(sv:run(1, function() return not E.IsValid(bike:GetDriver()) end), "thrown off")
+    T.ok(not bike.st.airMode, "and it was never a landing")
 end)

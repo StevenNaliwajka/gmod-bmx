@@ -50,39 +50,203 @@ end
 -- substep does not read the righting as a roll rate of hundreds of degrees a
 -- second.
 --------------------------------------------------------------------------
-function BMX.PickUp(bike)
-    if not IsValid(bike) or not bike.st then return false end
+function BMX.IsFallen(bike)
     local roll, pitch = BMX.Attitude(bike, vector_up)
     local S = bike:Cfg().Stand
-    if math.abs(roll) < S.maxRoll and math.abs(pitch) < S.maxRoll then return false end
+    return math.abs(roll) > S.maxRoll or math.abs(pitch) > S.maxRoll
+end
 
-    local phys = bike:GetPhysicsObject()
+-- Where a picked-up bike ends: upright, facing the way it pointed, standing on
+-- the ground under it AT ITS RESTING HEIGHT. It used to be put down a wheel
+-- radius and 4 units up, and dropped, so every pick-up ended in a bounce.
+local function uprightPose(bike)
     local fwd = bike:GetForward()
     local yaw = (math.abs(fwd.x) + math.abs(fwd.y) > 1e-3)
         and math.deg(math.atan2(fwd.y, fwd.x)) or bike:GetAngles().y
+    local from = bike:GetPos() + Vector(0, 0, 40)
+    local tr = util.TraceLine({ start = from, endpos = from - Vector(0, 0, 200),
+        filter = { bike, bike:GetPod() }, mask = MASK_SOLID })
+    local ground = tr.Hit and tr.HitPos or (bike:GetPos() - Vector(0, 0, 20))
+    return ground + Vector(0, 0, BMX.RestHeight(bike:Cfg())), Angle(0, yaw, 0)
+end
 
-    -- THE PHYSICS OBJECT, not only the entity. On a VPhysics entity the
-    -- physics object is the authority: Entity:SetAngles alone was measured on
-    -- the live server to read -1 degrees a quarter second after being told 85,
-    -- so a pick-up done that way silently left the bike lying down.
-    local ang = Angle(0, yaw, 0)
-    local pos = bike:GetPos() + Vector(0, 0, bike:Cfg().Wheel.radius + 4)
+-- THE PHYSICS OBJECT, not only the entity. On a VPhysics entity the physics
+-- object is the authority: Entity:SetAngles alone was measured on the live
+-- server to read -1 degrees a quarter second after being told 85.
+local function setPose(bike, pos, ang)
     bike:SetAngles(ang)
     bike:SetPos(pos)
+    local phys = bike:GetPhysicsObject()
     if IsValid(phys) then
         phys:SetAngles(ang)
         phys:SetPos(pos, true)
         phys:SetVelocity(vector_origin)
         phys:SetAngleVelocity(vector_origin)
-        phys:Wake()
     end
+end
 
+local function resetController(bike)
     local st = bike.st
-    st.lastRoll, st.lastPitch, st.roll, st.pitch = 0, 0, 0, 0
+    if not st then return end
+    local roll, pitch = BMX.Attitude(bike, vector_up)
+    st.lastRoll, st.lastPitch, st.roll, st.pitch = roll, pitch, roll, pitch
     st.rollRate, st.pitchRate = 0, 0
     st.prevF, st.prevR, st.prevU = nil, nil, nil
+end
+
+-- Instant pick-up, for anything that seats a rider without going through Use
+-- (a script, another addon). Use goes through BMX.BeginPickUp instead.
+function BMX.PickUp(bike)
+    if not IsValid(bike) or not bike.st or not BMX.IsFallen(bike) then return false end
+    local pos, ang = uprightPose(bike)
+    setPose(bike, pos, ang)
+    local phys = bike:GetPhysicsObject()
+    if IsValid(phys) then phys:Wake() end
+    resetController(bike)
     return true
 end
+
+--------------------------------------------------------------------------
+-- PICKING A BIKE UP, where the player can see it. Pressing E on a bike lying
+-- on its side used to snap it upright and drop it, in one tick, with the
+-- rider already on: it teleported and bounced. Now the bike is held still and
+-- swung upright over PICKUP_TIME while the player plays the reach-down
+-- gesture, set down at its resting height, and only then do they get on.
+--------------------------------------------------------------------------
+local PICKUP_TIME = 0.7
+BMX.PickupTime = PICKUP_TIME
+
+util.AddNetworkString("bmx_gesture")
+
+function BMX.BeginPickUp(bike, ply)
+    if not IsValid(bike) or not IsValid(ply) or bike.pickingUp then return false end
+    local phys = bike:GetPhysicsObject()
+    if not IsValid(phys) then return false end
+
+    local pos0, ang0 = bike:GetPos(), bike:GetAngles()
+    local pos1, ang1 = uprightPose(bike)
+    bike.pickingUp = true
+    phys:EnableMotion(false)
+
+    net.Start("bmx_gesture")
+        net.WriteEntity(ply)
+        net.WriteString("pickup")
+    net.Broadcast()
+
+    local t0 = CurTime()
+    local id = "BMX.PickUp." .. bike:EntIndex()
+    hook.Add("Think", id, function()
+        local done = not IsValid(bike) or not IsValid(ply) or not ply:Alive()
+            or ply:InVehicle() or ply:GetPos():Distance(bike:GetPos()) > 160
+        local f = done and 1 or math.min(1, (CurTime() - t0) / PICKUP_TIME)
+        if IsValid(bike) then
+            -- Ease in and out: a bike is lifted, not flicked.
+            local e = f * f * (3 - 2 * f)
+            local ang = LerpAngle(e, ang0, ang1)
+            local pos = LerpVector(e, pos0, pos1)
+            local p = bike:GetPhysicsObject()
+            if IsValid(p) then p:SetAngles(ang) p:SetPos(pos, true) end
+            bike:SetAngles(ang)
+            bike:SetPos(pos)
+        end
+        if f < 1 then return end
+
+        hook.Remove("Think", id)
+        if not IsValid(bike) then return end
+        bike.pickingUp = nil
+        setPose(bike, pos1, ang1)
+        local p = bike:GetPhysicsObject()
+        if IsValid(p) then p:EnableMotion(true) p:Wake() end
+        resetController(bike)
+        if not done and IsValid(bike:GetPod()) and not IsValid(bike:GetDriver()) then
+            ply:EnterVehicle(bike:GetPod())
+        end
+    end)
+    return true
+end
+
+--------------------------------------------------------------------------
+-- THROWN OFF AS A BODY. A crash used to shove the player out of the seat
+-- standing up: a bike that fell over sideways left its rider sliding out of
+-- it upright, legs through the floor on the way. Now they are swapped for a
+-- ragdoll of themselves carrying the bike's momentum, the camera follows it,
+-- and after TUMBLE_TIME they are back on their feet where it came to rest,
+-- with the health, armour, weapons and ammo they had.
+--
+-- Returns false if it could not (no ragdoll, a dead player), and the caller
+-- falls back to the shove.
+--------------------------------------------------------------------------
+local TUMBLE_TIME = 1.6
+BMX.TumbleTime = TUMBLE_TIME
+
+CreateConVar("bmx_crash_ragdoll", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY),
+    "Throw crashed riders off as a ragdoll for a moment (0 = the old shove).")
+
+function BMX.Tumble(ply, vel, after)
+    if not IsValid(ply) or not ply:Alive() or ply.BMXTumbling then return false end
+    local rag = ents.Create("prop_ragdoll")
+    if not IsValid(rag) then return false end
+
+    rag:SetModel(ply:GetModel())
+    rag:SetPos(ply:GetPos())
+    rag:SetAngles(Angle(0, ply:EyeAngles().y, 0))
+    rag:Spawn()
+    rag:Activate()
+    -- Not into the bike it came off, nor into other players.
+    rag:SetCollisionGroup(COLLISION_GROUP_WEAPON)
+
+    -- Match the pose they were in and give every limb the throw.
+    for i = 0, rag:GetPhysicsObjectCount() - 1 do
+        local po = rag:GetPhysicsObjectNum(i)
+        if IsValid(po) then
+            local bone = rag:TranslatePhysBoneToBone(i)
+            local bp, ba = ply:GetBonePosition(bone)
+            if bp then po:SetPos(bp) end
+            if ba then po:SetAngles(ba) end
+            po:SetVelocity(vel)
+            po:Wake()
+        end
+    end
+
+    local saved = {
+        health = ply:Health(), armor = ply:Armor(),
+        weapons = {}, ammo = ply:GetAmmo(),
+        active = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or nil,
+        eyes = ply:EyeAngles(),
+    }
+    for _, w in ipairs(ply:GetWeapons()) do saved.weapons[#saved.weapons + 1] = w:GetClass() end
+
+    ply.BMXTumbling = rag
+    ply:Spectate(OBS_MODE_CHASE)
+    ply:SpectateEntity(rag)
+
+    timer.Simple(TUMBLE_TIME, function()
+        if not IsValid(ply) then SafeRemoveEntity(rag) return end
+        ply.BMXTumbling = nil
+        local at = IsValid(rag) and rag:GetPos() or ply:GetPos()
+        SafeRemoveEntity(rag)
+
+        ply:UnSpectate()
+        ply:Spawn()
+        ply:SetPos(at + Vector(0, 0, 4))
+        ply:SetEyeAngles(Angle(0, saved.eyes.y, 0))
+        ply:SetHealth(saved.health)
+        ply:SetArmor(saved.armor)
+        ply:StripWeapons()
+        ply:RemoveAllAmmo()
+        for _, class in ipairs(saved.weapons) do ply:Give(class, true) end
+        for id, n in pairs(saved.ammo or {}) do ply:SetAmmo(n, id) end
+        if saved.active then ply:SelectWeapon(saved.active) end
+
+        if after then after() end
+    end)
+    return true
+end
+
+-- A player who leaves mid-tumble takes their ragdoll with them.
+hook.Add("PlayerDisconnected", "BMX.TumbleCleanup", function(ply)
+    if IsValid(ply.BMXTumbling) then SafeRemoveEntity(ply.BMXTumbling) end
+end)
 
 local function unbind(ply, bike)
     bike = IsValid(bike) and bike or (IsValid(ply) and ply.BMXBike)

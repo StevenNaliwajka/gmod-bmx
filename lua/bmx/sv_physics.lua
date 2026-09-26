@@ -260,6 +260,33 @@ function BMX.PhysicsStep(ent, phys, dt)
     end
 
     ----------------------------------------------------------------------
+    -- 6a. FALLEN OVER WITH A RIDER ON IT. A crash used to be judged only on
+    -- landing from the air, or on a hard hit; a bike that simply tipped onto
+    -- its side on the ground kept its rider seated in it, lying sideways
+    -- with their legs through the floor. Past tipRoll (or tipPitch: a looped
+    -- wheelie) near the ground for tipTime, they come off. Near the ground,
+    -- so a barrel roll in the air is not a crash until it lands wrong.
+    ----------------------------------------------------------------------
+    if hasDriver and C.Crash.enabled and CurTime() - (ent.spawnTime or 0) >= C.Crash.grace then
+        local CR = C.Crash
+        local over = abs(st.roll) > CR.tipRoll or abs(st.pitch) > CR.tipPitch
+        local near = false
+        if over then
+            local com = phys:LocalToWorld(phys:GetMassCenter())
+            near = util.TraceLine({ start = com, endpos = com - Vector(0, 0, 45),
+                filter = ent.traceFilter, mask = MASK_SOLID }).Hit
+        end
+        if over and near then
+            st.tippedFor = (st.tippedFor or 0) + dt
+            if st.tippedFor >= CR.tipTime and ent.QueueCrash then
+                ent:QueueCrash("tipped", 0.4)
+            end
+        else
+            st.tippedFor = 0
+        end
+    end
+
+    ----------------------------------------------------------------------
     -- 6b. Ground tricks. Only with a rider: a riderless bike that bounces on
     -- its front wheel is not doing a stoppie.
     ----------------------------------------------------------------------

@@ -199,6 +199,10 @@ function M.Realm(world, which)
     env.MOVETYPE_VPHYSICS, env.SOLID_VPHYSICS = 6, 6
     env.SIM_NOTHING = 0
     env.SIMPLE_USE = 1
+    env.OBS_MODE_CHASE = 5
+    env.COLLISION_GROUP_WEAPON = 11
+    env.GESTURE_SLOT_CUSTOM = 6
+    env.ACT_GMOD_GESTURE_ITEM_PLACE = 2003
     env.ACT_DRIVE_AIRBOAT = 1996
     env.MASK_PLAYERSOLID = 33636363
     env.RENDERGROUP_OPAQUE, env.RENDERGROUP_BOTH = 7, 9
@@ -221,6 +225,11 @@ function M.Realm(world, which)
 
     function env.Color(r, g, b, a) return { r = r, g = g, b = b, a = a or 255 } end
     function env.Lerp(t, a, b) return a + (b - a) * t end
+    function env.LerpVector(t, a, b) return a + (b - a) * t end
+    function env.LerpAngle(t, a, b)
+        local function l(x, y) return x + math.AngleDifference(y, x) * t end
+        return Angle(l(a.p, b.p), l(a.y, b.y), l(a.r, b.r))
+    end
     function env.CurTime() return world.time end
     function env.RealTime() return world.time end
     function env.FrameTime() return world.dt end
@@ -579,6 +588,10 @@ function M.Realm(world, which)
         if self._class == "prop_physics" and not self._phys then
             self:PhysicsInitBox(Vector(-6, -6, -6), Vector(6, 6, 6))
         end
+        if self._class == "prop_ragdoll" and not self._phys then
+            self:PhysicsInitBox(Vector(-8, -8, 0), Vector(8, 8, 16))
+            self._phys:SetMass(80)
+        end
         if self.SetupDataTables then self:SetupDataTables() end
         if self.Initialize then self:Initialize() end
         self._spawned = true
@@ -818,7 +831,7 @@ function M.Realm(world, which)
     local function contact(p, dt)
         local e = p.ent
         local g = world.groundZ
-        local deepest, impact = 0, 0
+        local deepest, impact, impactAt = 0, 0, nil
         local pts = {}
         for _, b in ipairs(p.boxes) do
             for _, c in ipairs(CORNERS) do
@@ -834,7 +847,7 @@ function M.Realm(world, which)
                 local r  = wc - p:COM()
                 local vp = p.v + p.w:Cross(r)
                 if vp.z < 0 then
-                    impact = math.max(impact, -vp.z)
+                    if -vp.z > impact then impact, impactAt = -vp.z, wc end
                     local n = Vector(0, 0, 1)
                     local rn = r:Cross(n)
                     local k = 1 / p.mass + rn:Dot(p:invI(rn))
@@ -859,7 +872,7 @@ function M.Realm(world, which)
             end
         end
         if deepest > 0 then e._pos = e._pos + Vector(0, 0, deepest) end
-        return impact
+        return impact, impactAt
     end
 
     local function integrate(p, dt)
@@ -881,10 +894,10 @@ function M.Realm(world, which)
         end
         e._pos = com - (e._f * p.mc.x + e._l * p.mc.y + e._u * p.mc.z)
 
-        local impact = contact(p, dt)
+        local impact, at = contact(p, dt)
         if impact > 30 and e.PhysicsCollide then
             e:PhysicsCollide({ Speed = impact, HitEntity = NULL,
-                               HitPos = e:GetPos(), OurOldVelocity = Vector(p.v) }, p)
+                               HitPos = at, OurOldVelocity = Vector(p.v) }, p)
         end
     end
     R.integrate = integrate
@@ -892,6 +905,14 @@ function M.Realm(world, which)
     ----------------------------------------------------------------------
     -- Players and vehicles
     ----------------------------------------------------------------------
+    -- A ragdoll: one real body, which is enough to be thrown, fall and slide.
+    local Rag = {}
+    ENGINE.prop_ragdoll = Rag
+    function Rag:GetPhysicsObjectCount() return 1 end
+    function Rag:GetPhysicsObjectNum(i) return i == 0 and self._phys or nil end
+    function Rag:TranslatePhysBoneToBone(i) return i end
+    function Rag:SetCollisionGroup(g) self._group = g end
+
     local Ply = {}
     ENGINE.player = Ply
     local Pod = {}
@@ -901,6 +922,50 @@ function M.Realm(world, which)
     function Pod:IsVehicle() return true end
 
     function Ply:IsPlayer() return true end
+    -- Enough of a living player for a crash to take apart and put back:
+    -- health, armour, weapons (the gamemode's loadout on every Spawn), ammo,
+    -- spectating, and a stock skeleton to read bone positions from.
+    local Wep = {}
+    Wep.__index = Wep
+    function Wep:GetClass() return self.class end
+    function Wep:IsValid() return true end
+    local function wep(c) return setmetatable({ class = c }, Wep) end
+    local LOADOUT = { "weapon_physgun", "gmod_tool" }
+    function Ply:Health() return self._health or 100 end
+    function Ply:SetHealth(h) self._health = h end
+    function Ply:Armor() return self._armor or 0 end
+    function Ply:SetArmor(a) self._armor = a end
+    function Ply:GetModel() return self._model or "models/player/kleiner.mdl" end
+    function Ply:Alive() return (self._health or 100) > 0 end
+    function Ply:GetWeapons()
+        local o = {}
+        for _, c in ipairs(self._weapons or {}) do o[#o + 1] = wep(c) end
+        return o
+    end
+    function Ply:Give(c)
+        self._weapons = self._weapons or {}
+        self._weapons[#self._weapons + 1] = c
+    end
+    function Ply:StripWeapons() self._weapons, self._activeWep = {}, nil end
+    function Ply:SelectWeapon(c) self._activeWep = c end
+    function Ply:GetActiveWeapon() return self._activeWep and wep(self._activeWep) or NULL end
+    function Ply:GetAmmo() return table.Copy(self._ammo or {}) end
+    function Ply:SetAmmo(n, id) self._ammo = self._ammo or {}; self._ammo[id] = n end
+    function Ply:RemoveAllAmmo() self._ammo = {} end
+    function Ply:Spectate(mode) self._spectating = mode end
+    function Ply:SpectateEntity(e) self._spectatee = e end
+    function Ply:UnSpectate() self._spectating, self._spectatee = nil, nil end
+    function Ply:Spawn()
+        self._spawns = (self._spawns or 0) + 1
+        self._health, self._armor = 100, 0
+        self._weapons = { unpack(LOADOUT) }
+        self._activeWep = LOADOUT[1]
+        self._ammo = {}
+    end
+    function Ply:SetEyeAngles(a) self._eyeAngles = a end
+    function Ply:GetBonePosition(b) return self:GetPos() + Vector(0, 0, 40), Angle() end
+    function Ply:GetGroundEntity() return self._groundEnt or NULL end
+    function Ply:AnimRestartGesture(slot, act) self._gesture = act end
     function Ply:Nick() return self._nick end
     function Ply:Name() return self._nick end
     function Ply:IsBot() return self._bot end
@@ -923,6 +988,7 @@ function M.Realm(world, which)
     function Ply:SetVelocity(v) self._velocity = (self._velocity or Vector()) + v end
     function Ply:TakeDamageInfo(d)
         self._damage = (self._damage or 0) + d:GetDamage()
+        self._health = (self._health or 100) - d:GetDamage()
     end
     function Ply:ChatPrint(s)
         self._chat = self._chat or {}

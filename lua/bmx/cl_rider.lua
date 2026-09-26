@@ -153,5 +153,16 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     animated[ply] = true
 end)
 
+--------------------------------------------------------------------------
+-- The reach-down while a fallen bike is picked up (BMX.BeginPickUp). A
+-- gesture, layered over whatever the player is doing, from the stock set.
+--------------------------------------------------------------------------
+net.Receive("bmx_gesture", function()
+    local ply = net.ReadEntity()
+    local what = net.ReadString()
+    if not IsValid(ply) or what ~= "pickup" then return end
+    ply:AnimRestartGesture(GESTURE_SLOT_CUSTOM, ACT_GMOD_GESTURE_ITEM_PLACE, true)
+end)
+
 -- Players that leave the server take their entry with them.
 hook.Add("EntityRemoved", "BMX.RiderForget", function(e) animated[e] = nil end)

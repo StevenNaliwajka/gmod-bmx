@@ -206,6 +206,13 @@ function ENT:Use(activator)
     local pod = self:GetPod()
     if not IsValid(pod) or IsValid(self:GetDriver()) then return end
     if hook.Run("BMX_CanMount", self, activator) == false then return end
+    if activator.BMXTumbling or self.pickingUp then return end
+    -- A bike lying down is picked up first, where the player can see it
+    -- (BMX.BeginPickUp), and they get on at the end of it.
+    if BMX.IsFallen(self) then
+        BMX.BeginPickUp(self, activator)
+        return
+    end
     activator:EnterVehicle(pod)
 end
 
@@ -300,7 +307,11 @@ function ENT:Think()
         local lmin, lmax = BMX.CollisionBounds(self:Cfg())
         local mn, mx = self:BoundsWorld(lmin, lmax, 8)
         for _, e in ipairs(ents.FindInBox(mn, mx)) do
-            if e:IsPlayer() and not e:InVehicle() then
+            -- Standing ON the bike is not pushing it. Letting the hold go
+            -- then let the bike shift under their feet, and a player a prop
+            -- moves into gets stuck in it; held still, it is just something
+            -- to stand on and walk off.
+            if e:IsPlayer() and not e:InVehicle() and e:GetGroundEntity() ~= self then
                 st.pushedUntil = CurTime() + 0.6
                 break
             end
@@ -434,19 +445,30 @@ function ENT:Crash(reason, severity)
 
     ply:ExitVehicle()
 
+    local throw = vel + Vector(0, 0, CR.ejectLift * severity)
+    local dmg = math.floor(severity * vel:Length() * CR.damageScale)
+    local bike = self
+    local function hurt()
+        if not IsValid(ply) or dmg <= 1 then return end
+        local d = DamageInfo()
+        d:SetDamage(dmg)
+        d:SetDamageType(DMG_FALL)
+        d:SetAttacker(IsValid(bike) and bike or ply)
+        d:SetInflictor(IsValid(bike) and bike or ply)
+        ply:TakeDamageInfo(d)
+    end
+
     timer.Simple(0, function()
         if not IsValid(ply) then return end
-        ply:SetVelocity(vel + Vector(0, 0, CR.ejectLift * severity))
-
-        local dmg = math.floor(severity * vel:Length() * CR.damageScale)
-        if dmg > 1 then
-            local d = DamageInfo()
-            d:SetDamage(dmg)
-            d:SetDamageType(DMG_FALL)
-            d:SetAttacker(IsValid(self) and self or ply)
-            d:SetInflictor(IsValid(self) and self or ply)
-            ply:TakeDamageInfo(d)
+        -- Thrown as a RAGDOLL for a moment (BMX.Tumble, sv_seat.lua), so a
+        -- rider comes off the bike as a body rather than sliding out of it
+        -- standing up. Hurt when they get up, so the damage lands on the
+        -- player and not on a ragdoll. bmx_crash_ragdoll 0 is the old shove.
+        if GetConVar("bmx_crash_ragdoll"):GetBool() and BMX.Tumble(ply, throw, hurt) then
+            return
         end
+        ply:SetVelocity(throw)
+        hurt()
     end)
 
     local CS = BMX.Sounds.crash
@@ -462,9 +484,22 @@ function ENT:PhysicsCollide(data, phys)
     if data.Speed < CR.maxImpactSpeed then return end
     if CurTime() - (self.spawnTime or 0) < CR.grace then return end
 
-    -- Not a crash if we merely landed on our wheels hard: the wheels are
-    -- raycasts and do not generate collisions, so any hull collision at speed
-    -- is genuinely the frame or the rider hitting something.
+    -- NOT A CRASH IF IT LANDED ON ITS WHEELS. The wheels have collision
+    -- boxes now (Chassis.wheelHullBottom), and a hard landing that bottoms
+    -- the suspension out meets the ground with them, at speed. That is the
+    -- tyres doing their job. A hit below the body box with the bike upright
+    -- is a landing; anything else is the frame or the rider hitting
+    -- something.
+    local C = self:Cfg()
+    if data.HitPos then
+        local loc = self:WorldToLocal(data.HitPos)
+        local body = BMX.CollisionBoxes(C)[1]
+        local roll, pitch = BMX.Attitude(self, vector_up)
+        if loc.z < body[1].z and math.abs(roll) < C.Stand.maxRoll
+            and math.abs(pitch) < C.Stand.maxRoll then
+            return
+        end
+    end
     --
     -- NEXT TICK, NOT NOW. This is a VPhysics collision callback, and Crash
     -- takes the rider out of the vehicle: changing what collides with what
@@ -473,14 +508,19 @@ function ENT:PhysicsCollide(data, phys)
     -- of the server kind is not the crash this is modelling. One impact also
     -- reports several contacts in the same step, so the pending flag keeps it
     -- to one ejection.
+    self:QueueCrash("impact", BMX.Clamp(data.Speed / (CR.maxImpactSpeed * 3), 0, 1))
+end
+
+-- A crash decided inside a physics callback (a collision, or the substep
+-- that notices the bike has tipped over) happens on the NEXT tick, once:
+-- taking a rider out of a vehicle from inside VPhysics is how servers crash.
+function ENT:QueueCrash(reason, severity)
     if self.crashPending then return end
     self.crashPending = true
-
-    local severity = BMX.Clamp(data.Speed / (CR.maxImpactSpeed * 3), 0, 1)
     timer.Simple(0, function()
         if not IsValid(self) then return end
         self.crashPending = false
-        self:Crash("impact", severity)
+        self:Crash(reason, severity)
     end)
 end
 

@@ -120,6 +120,21 @@ rcon() { GMOD_RCON_PASSWORD="$PW" python3 "$RCON" --host "$IP" "$@" 2>&1; }
 # So the run gets its own map through a RUNTIME drop-in, named to sort last so
 # it wins, and the trap below takes it away and restarts the server onto the
 # play map again however this script ends: pass, fail, or die().
+#
+# NOT UNDER A PLAYER. The swap is two restarts, and each one throws everybody
+# on the server back to the menu and then onto a different map. A rider on the
+# skatepark saw "the reboot went to the wrong map" on 2026-09-26: a pipeline's
+# run landed them on flatgrass mid-session. So with a human connected this run
+# is SKIPPED, not failed (exit 0, and it says so): the offline suite has already
+# passed in `validate`, and a physics check is not worth a player's session.
+# BMX_TEST_FORCE=1 runs it anyway.
+humans="$(rcon "status" | sed -n 's/^players[[:space:]]*:[[:space:]]*\([0-9][0-9]*\) humans.*/\1/p' | head -1)"
+if [ "${humans:-0}" -gt 0 ] && [ "${BMX_TEST_FORCE:-0}" != 1 ]; then
+  say "SKIPPED: ${humans} player(s) on the server; not swapping the map under them."
+  say "         Run it when the server is empty, or with BMX_TEST_FORCE=1."
+  exit 0
+fi
+
 TEST_MAP="${BMX_TEST_MAP:-gm_flatgrass}"
 DROPIN_DIR="/run/systemd/system/${UNIT}.service.d"
 DROPIN="$DROPIN_DIR/zz-bmx-test-map.conf"

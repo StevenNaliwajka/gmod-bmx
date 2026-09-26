@@ -286,12 +286,7 @@ function ENT:OnLanded(tricks, front, rear)
     local crashed, severity, reason = self:JudgeLanding(front, rear)
 
     if not crashed and #tricks > 0 then
-        local total = 0
-        for _, t in ipairs(tricks) do total = total + t.points end
-        self:SetScore(self:GetScore() + total)
-
-        hook.Run("BMX_TricksLanded", self, self:GetDriver(), tricks, total)
-        self:SendTrickCallout(tricks, total)
+        self:AwardTricks(tricks)
     elseif #tricks > 0 then
         hook.Run("BMX_TricksBailed", self, self:GetDriver(), tricks)
     end
@@ -299,6 +294,20 @@ function ENT:OnLanded(tricks, front, rear)
     if crashed then
         self:Crash(reason, severity)
     end
+end
+
+-- Pay out a completed trick list, from the air (OnLanded) or the ground (a
+-- held wheelie or stoppie, see BMX.TrackManual). One path, so a gamemode
+-- listening on BMX_TricksLanded hears about both kinds the same way.
+function ENT:AwardTricks(tricks)
+    local total = 0
+    for _, t in ipairs(tricks) do total = total + t.points end
+    if total <= 0 then return 0 end
+
+    self:SetScore(self:GetScore() + total)
+    hook.Run("BMX_TricksLanded", self, self:GetDriver(), tricks, total)
+    self:SendTrickCallout(tricks, total)
+    return total
 end
 
 -- Tell the rider what they just did. Only the rider: a callout is feedback on
@@ -398,7 +407,23 @@ function ENT:PhysicsCollide(data, phys)
     -- Not a crash if we merely landed on our wheels hard: the wheels are
     -- raycasts and do not generate collisions, so any hull collision at speed
     -- is genuinely the frame or the rider hitting something.
-    self:Crash("impact", BMX.Clamp(data.Speed / (CR.maxImpactSpeed * 3), 0, 1))
+    --
+    -- NEXT TICK, NOT NOW. This is a VPhysics collision callback, and Crash
+    -- takes the rider out of the vehicle: changing what collides with what
+    -- from inside the callback is the thing GMod prints "Changing collision
+    -- rules within a callback is likely to cause crashes!" about, and a crash
+    -- of the server kind is not the crash this is modelling. One impact also
+    -- reports several contacts in the same step, so the pending flag keeps it
+    -- to one ejection.
+    if self.crashPending then return end
+    self.crashPending = true
+
+    local severity = BMX.Clamp(data.Speed / (CR.maxImpactSpeed * 3), 0, 1)
+    timer.Simple(0, function()
+        if not IsValid(self) then return end
+        self.crashPending = false
+        self:Crash("impact", severity)
+    end)
 end
 
 --------------------------------------------------------------------------

@@ -83,7 +83,16 @@ local function drivetrain(ent, cfg, dt, inp, st, rear)
 
     -- Stamina gates the sprint, so the sprint is a resource rather than a
     -- permanent 55% power bonus that everyone simply holds down forever.
-    local sprinting = inp.sprint and inp.throttle > 0.1 and st.stamina > 1
+    --
+    -- WINDED, with hysteresis. Gating on "stamina > 1" alone let a rider
+    -- holding SHIFT on an empty tank regenerate past 1 on one substep and
+    -- drain below it on the next, so the sprint flickered on alternate ticks
+    -- instead of stopping: a bonus that never ran out, at half strength. Once
+    -- empty, it stays off until staminaRecover has come back.
+    if st.stamina <= 1 then st.winded = true end
+    if st.winded and st.stamina >= D.staminaRecover then st.winded = false end
+
+    local sprinting = inp.sprint and inp.throttle > 0.1 and not st.winded
     if sprinting then
         st.stamina = max(0, st.stamina - D.staminaDrain * dt)
     else
@@ -249,6 +258,17 @@ function BMX.PhysicsStep(ent, phys, dt)
         -- a landing physics bug and is nothing of the kind.
         st.lastRoll, st.lastPitch = st.roll, st.pitch
         st.roll, st.pitch = BMX.Attitude(ent, vector_up)
+    end
+
+    ----------------------------------------------------------------------
+    -- 6b. Ground tricks. Only with a rider: a riderless bike that bounces on
+    -- its front wheel is not doing a stoppie.
+    ----------------------------------------------------------------------
+    if hasDriver then
+        local done = BMX.TrackManual(st, C, front, rear, speed, dt)
+        if done and ent.AwardTricks then ent:AwardTricks(done) end
+    else
+        st.manual = nil
     end
 
     ----------------------------------------------------------------------

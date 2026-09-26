@@ -34,55 +34,61 @@ local function writeWheel(w)
     net.WriteFloat(w.steer)
 end
 
+-- One rider's frame. A function with early returns rather than a loop body with
+-- GLua's `continue`, which was the only non-5.1 syntax in the addon: without it
+-- every file loads in a stock Lua 5.1, which is what lets tests/ execute the
+-- addon on any machine instead of only parsing it.
+local function sendDebug(ply)
+    local bike = ply.BMXBike
+    if not IsValid(bike) then return end
+    if ply:GetInfoNum("bmx_debug", 0) < 1 then return end
+
+    local st = bike.st
+    local inp = bike.input
+    if not st or not inp or not bike.wheels then return end
+
+    local front, rear
+    for _, w in ipairs(bike.wheels) do
+        if w.isFront then front = w else rear = w end
+    end
+    if not front or not rear then return end
+
+    net.Start("bmx_debug", true)   -- unreliable: a dropped debug frame is
+                                   -- not worth a retransmit
+        net.WriteFloat(st.roll)
+        net.WriteFloat(inp.lean * bike:Cfg().Balance.maxLean)
+        net.WriteFloat(st.rollRate)
+        net.WriteFloat(st.leanAuthority)
+        net.WriteFloat(st.steer)
+
+        net.WriteFloat(st.pitch)
+        net.WriteFloat(st.pitchRate)
+
+        net.WriteFloat(st.speed)
+        net.WriteFloat(st.fwdSpeed or 0)
+        net.WriteFloat(st.cadence)
+        net.WriteFloat(st.stamina)
+
+        net.WriteBool(st.airMode)
+        net.WriteFloat(st.airTime or 0)
+        net.WriteFloat(st.spinPitch or 0)
+        net.WriteFloat(st.spinRoll or 0)
+        net.WriteFloat(st.spinYaw or 0)
+
+        net.WriteFloat(inp.lean)
+        net.WriteFloat(inp.pitch)
+        net.WriteFloat(inp.throttle)
+
+        writeWheel(front)
+        writeWheel(rear)
+    net.Send(ply)
+end
+
 hook.Add("Think", "BMX.DebugStream", function()
     if CurTime() < nextSend then return end
     nextSend = CurTime() + INTERVAL
 
-    for _, ply in ipairs(player.GetHumans()) do
-        local bike = ply.BMXBike
-        if not IsValid(bike) then continue end
-        if ply:GetInfoNum("bmx_debug", 0) < 1 then continue end
-
-        local st = bike.st
-        local inp = bike.input
-        if not st or not inp then continue end
-
-        local front, rear
-        for _, w in ipairs(bike.wheels) do
-            if w.isFront then front = w else rear = w end
-        end
-        if not front or not rear then continue end
-
-        net.Start("bmx_debug", true)   -- unreliable: a dropped debug frame is
-                                       -- not worth a retransmit
-            net.WriteFloat(st.roll)
-            net.WriteFloat(inp.lean * bike:Cfg().Balance.maxLean)
-            net.WriteFloat(st.rollRate)
-            net.WriteFloat(st.leanAuthority)
-            net.WriteFloat(st.steer)
-
-            net.WriteFloat(st.pitch)
-            net.WriteFloat(st.pitchRate)
-
-            net.WriteFloat(st.speed)
-            net.WriteFloat(st.fwdSpeed or 0)
-            net.WriteFloat(st.cadence)
-            net.WriteFloat(st.stamina)
-
-            net.WriteBool(st.airMode)
-            net.WriteFloat(st.airTime or 0)
-            net.WriteFloat(st.spinPitch or 0)
-            net.WriteFloat(st.spinRoll or 0)
-            net.WriteFloat(st.spinYaw or 0)
-
-            net.WriteFloat(inp.lean)
-            net.WriteFloat(inp.pitch)
-            net.WriteFloat(inp.throttle)
-
-            writeWheel(front)
-            writeWheel(rear)
-        net.Send(ply)
-    end
+    for _, ply in ipairs(player.GetHumans()) do sendDebug(ply) end
 end)
 
 --------------------------------------------------------------------------
@@ -175,7 +181,7 @@ concommand.Add("bmx_dump_config", function(ply)
     end
 
     out("-- BMX live config, " .. os.date("%Y-%m-%d %H:%M:%S"))
-    for _, group in ipairs({ "Chassis", "Wheel", "Drive", "Balance", "Pitch", "Air", "Hop", "Crash" }) do
+    for _, group in ipairs(BMX.ConfigGroups) do
         out("C." .. group .. " = {")
         local keys = {}
         for k in pairs(BMX.Config[group]) do keys[#keys + 1] = k end

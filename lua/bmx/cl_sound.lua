@@ -84,9 +84,19 @@ local function update(ent, state, dt)
         if not playing(roll) then roll:PlayEx(0, S.pitch[1]) end
         roll:ChangeVolume(S.vol * math.min(1, frac * 2.2), 0.1)
         roll:ChangePitch(Lerp(frac, S.pitch[1], S.pitch[2]), 0.1)
+        state.rollStop = nil
     elseif playing(roll) then
-        roll:ChangeVolume(0, 0.15)
-        timer.Simple(0.2, function() if playing(roll) and not (IsValid(ent) and ent:GetGrounded()) then roll:Stop() end end)
+        -- Fade, then stop once the fade is done. A deadline in the state, not
+        -- a timer.Simple: this branch runs EVERY FRAME while the fade plays out,
+        -- and it used to queue a fresh timer each time -- a dozen closures per
+        -- jump per bike, all racing to stop the same patch.
+        if not state.rollStop then
+            roll:ChangeVolume(0, 0.15)
+            state.rollStop = CurTime() + 0.2
+        elseif CurTime() >= state.rollStop then
+            roll:Stop()
+            state.rollStop = nil
+        end
     end
 
     ----------------------------------------------------------------------
@@ -98,9 +108,15 @@ local function update(ent, state, dt)
         if not playing(skid) then skid:PlayEx(0, S.pitch[1]) end
         skid:ChangeVolume(S.vol, 0.05)
         skid:ChangePitch(Lerp(frac, S.pitch[1], S.pitch[2]), 0.08)
+        state.skidStop = nil
     elseif playing(skid) then
-        skid:ChangeVolume(0, 0.08)
-        timer.Simple(0.12, function() if playing(skid) then skid:Stop() end end)
+        if not state.skidStop then
+            skid:ChangeVolume(0, 0.08)
+            state.skidStop = CurTime() + 0.12
+        elseif CurTime() >= state.skidStop then
+            skid:Stop()
+            state.skidStop = nil
+        end
     end
 
     ----------------------------------------------------------------------

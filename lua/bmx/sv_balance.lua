@@ -303,9 +303,7 @@ function BMX.PitchControl(ent, phys, cfg, dt, inp, st, wheels)
             -- about 99,000 against a 1,050,000 lift, and the bike sailed through
             -- the target and jumped. Same mistake docs/TUNING.md withdrew an old
             -- note for, and the reason that note existed at all.
-            local ahead = C.Chassis.massCenterExpected.x + C.Wheel.wheelbase * 0.5
-            local cz    = C.Chassis.massCenterExpected.z
-            local iEff  = BMX.IPitch(ent) + C.Chassis.mass * (ahead * ahead + cz * cz)
+            local iEff  = BMX.PivotInertia(ent, C, false)
 
             local alpha = P.holdKp * (target - st.pitch) - P.holdKd * st.pitchRate
             torque = torque + BMX.TorqueFor(iEff, alpha)
@@ -317,8 +315,15 @@ function BMX.PitchControl(ent, phys, cfg, dt, inp, st, wheels)
         ------------------------------------------------------------------
         local target = inp.pitch * -P.stoppieMax
         if st.pitch > P.stoppieMax then
+            -- The wheelie's lesson, applied to its mirror image, where it had
+            -- not been. A bike on its FRONT wheel pivots about the front axle,
+            -- so a commanded angular acceleration costs I_pitch + m*d^2 with d
+            -- measured to that axle: 85,990 against the free-body 11,837. This
+            -- used the free-body figure, which made the stoppie hold 7.3x too
+            -- weak to do anything a rider would notice. BMX.PivotInertia is the
+            -- one place that knows the geometry, for both ends.
             local alpha = P.holdKp * (target - st.pitch) - P.holdKd * st.pitchRate
-            torque = torque + BMX.TorqueFor(BMX.IPitch(ent), alpha)
+            torque = torque + BMX.TorqueFor(BMX.PivotInertia(ent, C, true), alpha)
         end
     else
         -- Nothing is being held, so the rider's weight shift acts directly.

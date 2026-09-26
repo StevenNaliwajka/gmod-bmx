@@ -32,7 +32,14 @@ local cv_fp    = CreateClientConVar("bmx_cam_first", "0", true, false,
     "1 for a first-person view from the bars.")
 
 -- Smoothed state, so the camera does not snap when speed or geometry changes.
+--
+-- SEEDED ON MOUNT, not left at zero. The smoothers ease toward their targets,
+-- so starting them at 0 meant the first view after getting on a bike had a
+-- field of view of a few degrees and a camera inside the rider, zooming out
+-- over most of a second. `sBike` is the bike the state belongs to: a different
+-- bike (or the first one) starts from its targets rather than easing in.
 local sDist, sFov, sRoll = 0, 0, 0
+local sBike = nil
 
 local function approach(cur, target, rate)
     return cur + (target - cur) * math.min(1, rate * FrameTime())
@@ -56,15 +63,23 @@ end
 
 hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
     local bike = BMX.LocalBike(ply)
-    if not bike then return end
+    if not bike then sBike = nil return end
 
     local speed = bike:GetSpeedUPS()
     local frac  = BMX.Ramp(speed, 0, 340)      -- 340 u/s is about top speed
 
+    local roll = select(1, BMX.Attitude(bike, vector_up))
+
+    if sBike ~= bike then
+        sBike = bike
+        sDist = cv_dist:GetFloat() * (1 + frac * 0.35)
+        sFov  = fov + frac * 16
+        sRoll = math.deg(roll) * cv_roll:GetFloat()
+    end
+
     ----------------------------------------------------------------------
     -- Lean
     ----------------------------------------------------------------------
-    local roll = select(1, BMX.Attitude(bike, vector_up))
     sRoll = approach(sRoll, math.deg(roll) * cv_roll:GetFloat(), 9)
 
     ----------------------------------------------------------------------

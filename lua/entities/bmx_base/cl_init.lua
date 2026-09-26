@@ -32,21 +32,38 @@ end
 -- Where a wheel's axle is in world space right now, and whether it found
 -- ground. Same geometry as Wheel:Simulate, forces omitted.
 --------------------------------------------------------------------------
+--
+-- `ent`, not `self`: this is a plain local function, not a method, so there is
+-- no `self` in scope. It used to read `self:Cfg()`, which is a nil index on
+-- every frame of every bike on every client -- so the wheels, the fork and the
+-- one debugging aid this file exists for never drew once. The headless suite
+-- cannot see it (a dedicated server never calls Draw); tests/test_client.lua
+-- can, because it runs this file.
 local function axlePos(ent, mountLocal)
-    local WC     = self:Cfg().Wheel
-    local maxLen = WC.restLength + WC.radius
-    local up     = ent:GetUp()
+    local WC     = ent:Cfg().Wheel
+    local maxLen = BMX.WheelReach(WC)
+    local down   = -ent:GetUp()
     local mount  = ent:LocalToWorld(mountLocal)
 
     local tr = util.TraceLine({
         start  = mount,
-        endpos = mount - up * maxLen,
+        endpos = mount + down * maxLen,
         filter = { ent, ent:GetPod(), ent:GetDriver() },
         mask   = MASK_SOLID,
     })
 
-    local dist = tr.Hit and (maxLen * tr.Fraction) or maxLen
-    return mount - up * (dist - WC.radius), tr.Hit
+    -- The same disc geometry the server's suspension uses (BMX.DiscContact),
+    -- so a wheel is drawn where the simulation thinks it is: the whole value of
+    -- drawing them procedurally.
+    local s
+    if tr.Hit then
+        s = BMX.DiscContact(mount, down, ent:GetRight(), maxLen * tr.Fraction,
+            tr.HitNormal, WC.radius)
+    end
+    if not s or s > WC.restLength then
+        return mount + down * WC.restLength, false
+    end
+    return mount + down * math.max(s, 0), true
 end
 
 --------------------------------------------------------------------------
@@ -118,8 +135,11 @@ function ENT:Draw()
 
     render.SetColorMaterial()
 
-    local fPos, fHit = axlePos(self, Vector( half, 0, 0))
-    local rPos, rHit = axlePos(self, Vector(-half, 0, 0))
+    -- The SUSPENSION MOUNTS, exactly as ENT:Initialize places them: restLength
+    -- above the axle line. axlePos slides the axle down the strut from there.
+    local lift = WC.restLength
+    local fPos, fHit = axlePos(self, Vector( half, 0, lift))
+    local rPos, rHit = axlePos(self, Vector(-half, 0, lift))
 
     drawWheel(fPos, frontAxle, spin, WC.radius, fHit)
     drawWheel(rPos, rearAxle,  spin, WC.radius, rHit)

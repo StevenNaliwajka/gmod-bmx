@@ -358,7 +358,7 @@ end
 function Ctx:hop()
     self.bike.hopHeld   = true
     self.bike.hopCharge = 0
-    self:wait(BMX.Config.Hop.chargeTime + 0.05)
+    self:wait(self.bike:Cfg().Hop.chargeTime + 0.05)
     self.bike.hopRelease = true
 end
 

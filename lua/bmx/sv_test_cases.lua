@@ -455,6 +455,19 @@ function(ctx)
     -- popSpeed 265 against 600 u/s^2 is ~56 units of rise. Wide band because
     -- forwardBias and the ground normal both shave off some of it.
     ctx:between(peak, 18, 100, "peak hop height", "u")
+
+    -- AND IT LANDS. This case used to stop at the peak, which is how a plain
+    -- hop that rotated to 50+ degrees nose-up and threw its rider on landing
+    -- stayed green: the hop's own nose-up kick was never taken back out in
+    -- the air. The offline suite found it (tests/test_sim.lua); this is the
+    -- same claim on real VPhysics.
+    local landed = ctx:waitUntil(function() return ctx:st().grounded end, 2,
+        "the bike to come back down")
+    if landed then
+        ctx:wait(0.3)
+        ctx:ok(IsValid(ctx.bike:GetDriver()), "a plain hop lands without a crash")
+        ctx:between(math.deg(ctx:st().pitch), -12, 18, "pitch after landing", "deg")
+    end
 end)
 
 --------------------------------------------------------------------------
@@ -507,8 +520,49 @@ function(ctx)
             -- blown. Past holdMax plus a margin it has looped out.
             ctx:between(math.deg(st.pitch), 5, math.deg(BMX.Config.Pitch.holdMax) + 30,
                 "wheelie pitch", "deg")
+
+            -- Let it down, and it pays: a wheelie held this long is past
+            -- Tricks.manualMin, and ground tricks score through the same
+            -- AwardTricks path as air tricks.
+            local before = ctx.bike:GetScore()
+            ctx:input({ throttle = 0.5 })
+            local paid = ctx:waitUntil(function()
+                return ctx.bike:GetScore() > before
+            end, 2, "the wheelie to pay out on release")
+            ctx:ok(paid, "a held wheelie scores when it ends")
         end
     end
+end)
+
+--------------------------------------------------------------------------
+T.Case("stoppie", { timeout = 30,
+    desc = "the front brake lifts the rear, and the hold keeps it off the bars" },
+function(ctx)
+    -- New with the fix to the stoppie hold's inertia: it used the free-body
+    -- pitch inertia for a bike pivoting on its FRONT axle, which is 7.3x too
+    -- small (the wheelie's old mistake, in its mirror image). Nothing tested
+    -- a stoppie at all until then.
+    if not ctx:accelerateTo(200, 12) then return end
+
+    -- What StartCommand writes for LMB: the front brake, and the weight
+    -- shift forward that comes with it.
+    ctx:input({ brakeFront = 1, pitch = -0.6 })
+
+    local lifted, deepest = false, 0
+    ctx:runUntil(2.5, function()
+        local f, r = ctx:wheels()
+        if f.onGround and not r.onGround then lifted = true end
+        deepest = math.min(deepest, ctx:st().pitch)
+        return false
+    end)
+
+    ctx:log(string.format("deepest %.0f deg, speed now %.0f u/s",
+        math.deg(deepest), ctx:st().speed))
+    ctx:ok(lifted, "the rear wheel came up with the front still down")
+    -- Over the bars would be past the stoppie balance point, ~47 degrees.
+    ctx:between(math.deg(deepest), -45, -5, "deepest stoppie pitch", "deg")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "the rider is still aboard")
+    ctx:between(ctx:st().speed, 0, 40, "the front brake stopped the bike", "u/s")
 end)
 
 --------------------------------------------------------------------------

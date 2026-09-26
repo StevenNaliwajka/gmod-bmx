@@ -132,7 +132,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     local C     = cfg
     local WC    = C.Wheel
     local radius = WC.radius
-    local maxLen = WC.restLength + radius
+    local maxLen = BMX.WheelReach(WC)
 
     local mountWorld = ent:LocalToWorld(self.mount)
     local down       = -ent:GetUp()
@@ -144,10 +144,22 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
         mask   = MASK_SOLID,
     })
 
+    -- Where the DISC touches, not where the ray landed. See BMX.DiscContact:
+    -- the two agree on the level and under lean, and differ under pitch by
+    -- exactly the error that was lifting wheelies past their balance point.
+    local s, contact
+    if tr.Hit then
+        s, contact = BMX.DiscContact(mountWorld, down, ent:GetRight(),
+            maxLen * tr.Fraction, tr.HitNormal, radius)
+    end
+
     ----------------------------------------------------------------------
-    -- Airborne
+    -- Airborne: no ground in reach, or ground the disc cannot touch at full
+    -- extension. The ray is longer than the strut so that a pitched wheel can
+    -- still find the ground it is sitting on; the price is that a hit is no
+    -- longer proof of contact on its own.
     ----------------------------------------------------------------------
-    if not tr.Hit then
+    if not s or s > WC.restLength then
         self.onGround   = false
         self.load       = 0
         self.slipLong   = 0
@@ -179,15 +191,16 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     ----------------------------------------------------------------------
     -- Suspension
     ----------------------------------------------------------------------
-    local dist   = maxLen * tr.Fraction
-    local comp   = maxLen - dist                    -- >= 0
+    local comp   = WC.restLength - s                -- >= 0
     local normal = tr.HitNormal
 
-    local contact = mountWorld + down * dist
     local velAt   = phys:GetVelocityAtPoint(contact)
 
-    -- d(compression)/dt: moving along `down` compresses the spring.
-    local compVel = velAt:Dot(down)
+    -- d(compression)/dt: the contact patch approaching the ground. Measured
+    -- along the ground normal rather than the strut, since that is the axis the
+    -- force acts along and the one the damper's cap below is sized on; the two
+    -- are the same thing on the level.
+    local compVel = -velAt:Dot(normal)
 
     local springF = WC.spring * min(comp, WC.restLength)
     if comp > WC.restLength then

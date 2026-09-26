@@ -166,7 +166,11 @@ end
 --------------------------------------------------------------------------
 -- Tuning overlay
 --------------------------------------------------------------------------
-local function drawDebug()
+-- Takes the bike: the cadence and compression rows need ITS config. This used
+-- to read a global `bike` that does not exist, so turning bmx_debug on threw
+-- inside HUDPaint on every frame and the overlay the whole tuning guide leans
+-- on never drew a single row.
+local function drawDebug(bike)
     if not dbg or CurTime() - dbg.at > 0.6 then
         label("bmx_debug: waiting for server stream...", 24, 120, "BMX.Mono", COL_WARN)
         return
@@ -260,7 +264,7 @@ hook.Add("HUDPaint", "BMX.HUD", function()
     BMX.ApplyConVars()
 
     if cv_hud:GetBool() then drawRiderHUD(bike) end
-    if GetConVar("bmx_debug"):GetInt() > 0 then drawDebug() end
+    if GetConVar("bmx_debug"):GetInt() > 0 then drawDebug(bike) end
 end)
 
 --------------------------------------------------------------------------

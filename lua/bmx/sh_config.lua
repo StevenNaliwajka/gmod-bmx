@@ -206,6 +206,7 @@ C.Drive = {
     staminaMax     = 100,
     staminaDrain   = 34,   -- per second while sprinting
     staminaRegen   = 16,   -- per second while not
+    staminaRecover = 30,   -- once empty, no sprint until back to this
 
     -- Coasting: a BMX freewheel (or a fixed-gear cassette) never drives the
     -- cranks backwards, so no engine braking. Set to true for a fixed gear.
@@ -408,6 +409,15 @@ C.Air = {
     -- jump. Set to 0 for a pure simulation.
     autoLevel = 1.6,
 
+    -- The pitch half of the same cheat, applied only with NO pitch input and
+    -- not mid-flip (see AirControl), for the whole flight rather than only the
+    -- descent: it exists to take a bunny hop's own nose-up kick back out
+    -- before the landing. With the air damping above that is omega ~3.5 rad/s
+    -- at zeta ~0.65, so a full hop peaks near 20 degrees and comes down
+    -- close to level. Off whenever autoLevel is 0.
+    pitchLevelKp = 12,
+    pitchLevelKd = 3.0,
+
     -- Both wheels must be off the ground for this long before air mode engages,
     -- so a bump in the road is not a "trick".
     engageDelay = 0.08,
@@ -417,7 +427,7 @@ C.Air = {
 -- BUNNY HOP
 --------------------------------------------------------------------------
 C.Hop = {
-    -- Preload: hold IN_DUCK to compress, release to pop. Charge ramps 0 -> 1
+    -- Preload: hold IN_JUMP to compress, release to pop. (IN_DUCK is tuck.) Charge ramps 0 -> 1
     -- over chargeTime; releasing early gives a proportionally smaller hop.
     chargeTime = 0.42,
     minCharge  = 0.25,
@@ -464,6 +474,37 @@ C.Crash = {
     -- Grace period after spawning or entering, so a bike dropped by the spawn
     -- menu does not immediately eject its first rider.
     grace = 1.0,
+}
+
+--------------------------------------------------------------------------
+-- GROUND TRICKS
+--
+-- Air tricks are scored by rotation (sv_air.lua). A wheelie or a stoppie has
+-- no rotation to count, only DURATION, so it pays by the second once it has
+-- been held long enough to be deliberate.
+--------------------------------------------------------------------------
+C.Tricks = {
+    -- Held at least this long, or it was a bump and not a trick. A preloaded
+    -- hop lifts the front for about half a second on its own, so this sits
+    -- well clear of it.
+    manualMin = 1.0,
+
+    -- A stoppie is a stop: it lasts as long as the bike takes to halt, about
+    -- half a second from riding speed. Held that long, it was meant.
+    stoppieMin = 0.4,
+
+    -- A wheel leaving the ground for a substep over a bump does not end the
+    -- trick, and a rear wheel working its suspension mid-wheelie is not
+    -- "both wheels down". The trick ends only once its shape has been gone
+    -- for this long. Same reasoning as Air.engageDelay.
+    manualGrace = 0.15,
+
+    -- Below this the bike is being walked, not ridden, and no trick STARTS.
+    -- One already under way carries on down to a standstill.
+    manualMinSpeed = 30,
+
+    wheeliePerSec = 150,
+    stoppiePerSec = 200,    -- harder, and much shorter
 }
 
 --------------------------------------------------------------------------
@@ -560,7 +601,11 @@ end
 --------------------------------------------------------------------------
 BMX.ConfigRevision = 0
 
-local GROUPS = { "Chassis", "Wheel", "Drive", "Balance", "Pitch", "Air", "Hop", "Crash" }
+local GROUPS = { "Chassis", "Wheel", "Drive", "Balance", "Pitch", "Air", "Hop", "Crash", "Tricks" }
+
+-- Public, so bmx_dump_config walks the same list the merge does: two copies of
+-- it is how a new group gets merged per bike and silently left out of the dump.
+BMX.ConfigGroups = GROUPS
 
 -- Check a physics override table against the base BEFORE anything runs, so a
 -- typo is a loud error at registration rather than a bike that quietly handles

@@ -78,6 +78,65 @@ function BMX.Attitude(ent, groundNormal)
 end
 
 --------------------------------------------------------------------------
+-- Where a wheel touches the ground: the geometry of a DISC, not of a ray.
+--
+-- The suspension ray runs from the mount along the chassis's own down axis,
+-- and the axle slides along that axis. The tyre, though, is a disc of radius r
+-- in the wheel's plane, and it touches the ground at the disc's lowest point
+-- toward the ground, which is NOT where the ray hits it once the bike pitches.
+--
+-- Treating the ray hit as the contact (which is what this replaced) is exact
+-- when the bike is level and wrong in proportion to pitch: the contact slides
+-- r*sin(pitch) behind the axle, so the rear spring, carrying most of the bike,
+-- pushes up at a point behind where the tyre really is. At 35 degrees that is
+-- ~6 units and ~290,000 of nose-up torque that no real bike has, about twice
+-- the gravity torque the wheelie hold is balancing against. Wheelies were
+-- being lifted past their balance point by the geometry.
+--
+-- ROLL is different, and the ray was right about it: a thin tyre leaning over
+-- touches down IN its own plane, so the lateral offset under lean is real and
+-- the balance feed-forward depends on it. The disc model reproduces that case
+-- exactly and fixes only the in-plane one.
+--
+--   mount   world-space top of the strut
+--   down    unit vector the strut runs along (chassis -up)
+--   axle    unit vector along the wheel's axle (chassis right)
+--   dist    distance from the mount to where the ray met the ground
+--   normal  the ground's normal there
+--   radius  wheel radius
+--
+-- Returns the axle's distance along `down` from the mount at which the disc
+-- just touches the ground, and the contact point. Returns nil when the disc
+-- cannot touch at all (the ground is edge-on to the wheel).
+--------------------------------------------------------------------------
+function BMX.DiscContact(mount, down, axle, dist, normal, radius)
+    -- The ground's normal, projected into the wheel's plane: the direction
+    -- from the contact to the axle.
+    local inPlane = BMX.ProjectPerp(normal, axle)
+    if not inPlane then return nil end
+
+    local c = -down:Dot(normal)             -- cos of the strut's tilt
+    local k = inPlane:Dot(normal)           -- cos of the wheel's lean
+    if c < 0.2 or k <= 0 then return nil end
+
+    -- Height of a point on the strut above the ground falls linearly with how
+    -- far down the strut it is, reaching zero at `dist`. The disc touches when
+    -- its centre is r*k above the ground.
+    local s = dist - radius * k / c
+    local centre = mount + down * s
+    return s, centre - inPlane * radius
+end
+
+-- How far the suspension ray reaches. Past the strut's full extension plus one
+-- radius, because a pitched disc sits r/cos(pitch) down the strut from the
+-- ground rather than r: 1.6 radii covers ~51 degrees, beyond the wheelie hold's
+-- give-up angle. Shared so the client's drawing traces exactly what the server
+-- simulates.
+function BMX.WheelReach(WC)
+    return WC.restLength + WC.radius * 1.6
+end
+
+--------------------------------------------------------------------------
 -- Physics
 --------------------------------------------------------------------------
 
@@ -134,6 +193,25 @@ function BMX.WheelieBalance(cfg)
     local C = cfg or BMX.Config
     local ahead = C.Chassis.massCenterExpected.x + C.Wheel.wheelbase * 0.5
     return math.atan(ahead / C.Chassis.massCenterExpected.z)
+end
+
+-- Pitch inertia about an AXLE, kg*units^2: what a commanded angular
+-- acceleration really costs while the bike balances on one wheel. A wheelie
+-- pivots about the rear axle and a stoppie about the front one, so it is the
+-- free-body pitch inertia plus m*d^2 with d from the mass centre to that axle
+-- (parallel axis theorem).
+--
+-- One function for both ends because the wheelie hold and the stoppie hold
+-- each used to work this out for themselves, and only one of them did: the
+-- stoppie used the free-body figure, 7.3x too small. With the shipped geometry
+-- the rear is 72,574 and the front 85,990.
+function BMX.PivotInertia(ent, cfg, front)
+    local C  = cfg or BMX.Config
+    local mc = C.Chassis.massCenterExpected
+    local half = C.Wheel.wheelbase * 0.5
+    local dx = front and (half - mc.x) or (mc.x + half)
+    local dz = mc.z
+    return BMX.IPitch(ent) + C.Chassis.mass * (dx * dx + dz * dz)
 end
 
 -- VPhysics reports inertia in kg*METRES^2, while every force and length in this

@@ -64,12 +64,33 @@ function BMX.AirControl(ent, phys, cfg, dt, inp, st)
     if A.autoLevel > 0 then
         local vel = phys:GetVelocity()
         if vel.z < -40 then
-            -- Roll only. Levelling PITCH would fight every intentional flip and
-            -- would also cancel the nose-down attitude a rider wants going into
-            -- a landing.
             local roll = select(1, BMX.Attitude(ent, vector_up))
             local strength = A.autoLevel * (1 - abs(inp.lean))
             aRoll = aRoll - roll * strength
+        end
+
+        ------------------------------------------------------------------
+        -- PITCH, BUT ONLY WHEN NOBODY IS ASKING FOR IT.
+        --
+        -- This block used to level roll only, because levelling pitch "would
+        -- fight every intentional flip and cancel the nose-down attitude a
+        -- rider wants going into a landing". Both of those are a rider
+        -- HOLDING a pitch input, so gating on its absence keeps them intact.
+        --
+        -- What leaving pitch alone cost was every plain bunny hop. The pop
+        -- adds Hop.pitchImpulse of nose-up so a hop rolls into a manual, and
+        -- in the air nothing but the damping ever took it out again: with no
+        -- input a full hop rotated to 50-57 degrees, came down on the back of
+        -- the hull and threw the rider. Measured on the tests' plant; the
+        -- headless bunny_hop case only ever checked how HIGH the hop went.
+        --
+        -- Not while flipping: past a quarter turn of accumulated pitch the
+        -- rider meant it, and letting go of the stick mid-backflip must not
+        -- pull them back the way they came.
+        ------------------------------------------------------------------
+        if inp.pitch == 0 and abs(st.spinPitch or 0) < math.pi * 0.5 then
+            local pitch = select(2, BMX.Attitude(ent, vector_up))
+            aPitch = aPitch - A.pitchLevelKp * pitch - A.pitchLevelKd * wPitch
         end
     end
 
@@ -139,4 +160,69 @@ function BMX.ScoreAir(st)
     end
 
     return out
+end
+
+--------------------------------------------------------------------------
+-- Ground tricks: wheelies and stoppies, scored by how long they were held.
+--
+-- Called every substep with the wheels' fresh contact state. Returns a trick
+-- list (the same shape ScoreAir returns) on the substep a held trick ENDS, and
+-- nil otherwise, so the caller only has to act when there is something to pay.
+--
+-- The state is a small table on `st`, not on the wheels: it has to survive a
+-- wheel reporting no contact for a substep while the bike is plainly still on
+-- its back wheel, which is what `grace` is for.
+--------------------------------------------------------------------------
+local MANUAL_NAME = { wheelie = "Wheelie", stoppie = "Stoppie" }
+
+function BMX.TrackManual(st, cfg, front, rear, speed, dt)
+    local K = cfg.Tricks
+
+    local shape = nil
+    if rear.onGround and not front.onGround then
+        shape = "wheelie"
+    elseif front.onGround and not rear.onGround then
+        shape = "stoppie"
+    end
+
+    local m = st.manual
+
+    -- The speed floor is for STARTING a trick, not for keeping one. A stoppie
+    -- is a hard stop by definition and spends its second half below walking
+    -- pace; ending it there cut every stoppie off before it could count. A
+    -- bike rocking onto one wheel at a standstill still never starts one.
+    if shape and not m and speed < K.manualMinSpeed then shape = nil end
+    if shape and (not m or m.kind == shape) then
+        if not m then
+            m = { kind = shape, held = 0, gone = 0 }
+            st.manual = m
+        end
+        m.held = m.held + dt
+        m.gone = 0
+        return nil
+    end
+
+    if not m then return nil end
+
+    -- The shape is gone (or became the other one). Give it the grace period
+    -- before calling the trick over, unless it flipped straight into the other
+    -- shape, which is a new trick starting now rather than a bump.
+    m.gone = m.gone + dt
+    if shape == nil and m.gone < K.manualGrace then return nil end
+
+    st.manual = nil
+    if shape then
+        st.manual = { kind = shape, held = dt, gone = 0 }
+    end
+
+    local min = m.kind == "stoppie" and K.stoppieMin or K.manualMin
+    if m.held < min then return nil end
+
+    local per = m.kind == "wheelie" and K.wheeliePerSec or K.stoppiePerSec
+    return { {
+        name   = MANUAL_NAME[m.kind],
+        count  = 1,
+        points = math.floor(m.held * per),
+        held   = m.held,
+    } }
 end

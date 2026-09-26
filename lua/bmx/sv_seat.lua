@@ -158,6 +158,17 @@ end)
 --------------------------------------------------------------------------
 -- Spawning from the console, which is how you will actually test this.
 --------------------------------------------------------------------------
+--
+-- IT ASKS THE GAMEMODE FIRST, exactly as the spawn menu does. The spawn menu
+-- routes every entity through PlayerSpawnSENT, which is where sandbox applies
+-- sbox_maxsents and where a server's admin mod applies its restrictions. A
+-- console command that skipped it was a way round both: anyone on a public
+-- server could type bmx_spawn in a loop. PlayerSpawnedSENT afterwards is what
+-- counts the bike against that limit.
+local SPAWN_COOLDOWN = 1.0
+
+if cleanup then cleanup.Register("bmx") end
+
 concommand.Add("bmx_spawn", function(ply, _, args)
     if not IsValid(ply) then return end
 
@@ -168,6 +179,11 @@ concommand.Add("bmx_spawn", function(ply, _, args)
             " (try: " .. table.concat(BMX.BikeIDs(), ", ") .. ")")
         return
     end
+
+    if CurTime() < (ply.BMXNextSpawn or 0) then return end
+    ply.BMXNextSpawn = CurTime() + SPAWN_COOLDOWN
+
+    if hook.Run("PlayerSpawnSENT", ply, class) == false then return end
 
     local tr = ply:GetEyeTrace()
     if not tr.Hit or tr.HitPos:Distance(ply:GetPos()) > 400 then
@@ -182,6 +198,8 @@ concommand.Add("bmx_spawn", function(ply, _, args)
     ent:SetAngles(Angle(0, ply:EyeAngles().y, 0))
     ent:Spawn()
     ent:Activate()
+
+    hook.Run("PlayerSpawnedSENT", ply, ent)
 
     -- Undo history, so a tester can clean up with Z like any other spawn.
     undo.Create("BMX")

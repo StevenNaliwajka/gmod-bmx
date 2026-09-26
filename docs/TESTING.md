@@ -119,14 +119,60 @@ you actually get thrown off: a bike you cannot crash has no failure state, and
 the balance assist cap is the only thing standing between this and a rail
 shooter.
 
+## Offline, on any machine
+
+```
+tools/run-tests.sh
+```
+
+The real addon files, executed in a stock Lua 5.1 against a Garry's Mod shim
+(`tests/lib/gmod.lua`). No game, no server, no client: Lua 5.1 or Docker is
+enough, and it takes about ten seconds.
+
+It exists because the headless suite below has two blind spots by
+construction, and both had shipped bugs:
+
+- **It has no client.** The wheel drawing, the HUD, the tuning overlay, the
+  chase camera and the sound loops never run on a dedicated server. The first
+  time the shim ran them, the wheel drawing and the `bmx_debug` overlay both
+  threw on every frame they had ever drawn.
+- **It skips the usercmd decode** on purpose (its bot writes `bike.input`
+  directly), so nothing checked which key does what.
+
+What the shim gives the tests:
+
+- **Two realms**, server and client, each its own global environment, loaded
+  in the engine's order. A test fails if the client runs a file the server
+  never `AddCSLuaFile`'d, which is the bug that works in singleplayer and
+  breaks in multiplayer.
+- **A net wire** between them that checks every read against the write it
+  consumes: type, bit width, and that the receiver read exactly as many fields
+  as were sent. The debug overlay and the trick callouts are tested end to end.
+- **A rigid-body plant**: impulses at points, the inertia tensor VPhysics
+  reports for the stock hull, gravity, and hull-against-ground contact. Before
+  any test was written against it, it reproduced the live server's recorded
+  figures: ride height 7.2-7.5 u (live 7.3-7.5), the full weight carried, and a
+  right lean turning right.
+
+The plant is not VPhysics, so the closed-loop tests use the headless suite's
+bands and assert signs and orderings. When the two disagree, take it to a real
+server: the headless suite is the authority on how the bike behaves.
+
+The suite also runs the config's derivations as arithmetic (the Kp floor, the
+assist ceiling against the contact-patch lever arm, the pivot inertias, drag
+versus the cadence ceiling), and a minute of random riding checking for NaNs.
+Every bug fixed alongside it was mutation-checked: revert the fix and a test
+fails.
+
 ## Headless, and automatic
 
-Everything above is a human looking at a bike. This section is the part that
-runs without one.
+Everything above the offline section is a human looking at a bike. This
+section is the part that runs on a real server without one.
 
 `bmx_test` drives the whole simulation from a bot on a real dedicated server:
-seventeen cases covering the tyre model, the balance PD, derived steering, air
-mode, the duplicator and the sound table. It writes `data/bmx_test_results.txt`
+eighteen cases covering the tyre model, the balance PD, derived steering,
+wheelies, stoppies, hops and their landings, air mode, the duplicator and the
+sound table. It writes `data/bmx_test_results.txt`
 and prints the same report to console. On a provisioned server:
 
 ```
@@ -146,8 +192,10 @@ under test are always the same commit.
 
 ### In CI
 
-`.gitlab-ci.yml` runs two gates. `ci-test.sh` parses every Lua file on the
-runner, on every branch, in about two seconds. The `headless` stage then checks
+`.gitlab-ci.yml` runs two gates. `ci-test.sh` parses every Lua file and runs
+the offline suite on the runner, on every branch, in about fifteen seconds.
+GitHub Actions runs the same offline suite, which is the only execution
+coverage on that side, since it has no game server. The `headless` stage then checks
 the pipeline's commit out on the game server and runs the suite there, also on
 every branch, serialised by `resource_group` because there is only one server.
 

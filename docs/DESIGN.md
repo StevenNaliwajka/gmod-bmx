@@ -306,12 +306,32 @@ symptoms.
 | 6c | Balance and pitch gains that could not meet their own spec | done |
 | 6d | Per-bike physics: a bike carries its own config overrides | done |
 | 6e | Duplicator, grab guards, client-file delivery | done |
+| 6g | Offline suite: client half, wire format, usercmd decode, plant | done |
+| 6h | Disc tyre contact, stoppie inertia, hop landing, ground tricks | done |
 | 7 | Tuning pass with a human rider, real model | **next** |
 | 8 | Rider animation, Workshop release | icon and packer done |
 
-Phases 0 to 6f are done and **the suite passes 17 of 17** on a real dedicated
-server, repeatably. The bike rides, brakes, skids, steers from lean, hops, holds
-a wheelie at 34-45 degrees, and tracks a commanded lean to within 11 degrees.
+Phases 0 to 6h are done. **The offline suite (122 tests) and the headless
+suite (18 cases, on a real dedicated server) both pass.** The bike rides,
+brakes, skids, steers from lean, hops and lands, holds a wheelie and a stoppie,
+and tracks a commanded lean to within 11 degrees.
+
+### The tyre touches down below its axle, not where the ray lands
+
+The suspension is a ray from each mount along the chassis's own down axis,
+and the contact used to be wherever that ray met the ground. On the level that
+is exact. Under lean it is also right, because a thin tyre touches down inside
+its own plane, and the balance feed-forward depends on that offset. Under
+PITCH it is wrong: a round wheel touches directly below its axle, and the ray
+hit slides r*sin(pitch) behind it. At 35 degrees the rear spring, carrying most
+of the bike, pushed up about 6 units behind the tyre: roughly 290,000 of
+nose-up torque, twice the gravity torque the wheelie hold balances against.
+Wheelies were levered past their balance point by geometry.
+
+`BMX.DiscContact` models the tyre as a disc in the wheel's plane and finds its
+lowest point toward the ground. It reproduces the ray exactly on the level and
+under pure lean and differs only under pitch. The client draws the wheels from
+the same function, so they are drawn where the simulation has them.
 
 **It has still never been ridden by a human**, so nothing is known about how it
 feels; that is phase 7 and it is the only thing a harness cannot answer.

@@ -6,12 +6,14 @@ Two wheels, a real tyre model, and steering that is an *output* of how far you
 are leaning rather than a key you press. Wheelies, stoppies, bunny hops, air
 control and flips.
 
-**Status: v0.1.0, pre-alpha.** The simulation runs on a real dedicated server
-and **all 17 headless cases pass**, repeatably: it holds its designed ride
-height through a full-throttle run, brakes, skids, steers from lean, hops, and
-holds a wheelie at 34-45 degrees. **It has never been ridden by a human**, so
-nothing is known about how it feels, and every number in it is derived or
-measured rather than played. See [Tuning](docs/TUNING.md).
+**Status: v0.1.0, pre-alpha.** Two test suites gate every commit: an
+**offline suite** of 122 tests that executes the addon (client half included)
+against a Garry's Mod shim in a stock Lua 5.1, and a **headless suite** of 18
+cases on a real dedicated server. The bike rides, brakes, skids, steers from
+lean, hops and lands, holds a wheelie and a stoppie, and scores tricks. **It
+has never been ridden by a human**, so nothing is known about how it feels,
+and every number in it is derived or measured rather than played. See
+[Tuning](docs/TUNING.md).
 
 ---
 
@@ -45,6 +47,10 @@ or find **BMX** in the spawn menu's Entities tab. Press `E` to get on.
 | `SPACE` | hold to preload, release to bunny hop | - |
 | `SHIFT` | sprint (drains stamina) | - |
 | `CTRL` | tuck: less drag | tuck: faster rotation |
+
+Tricks score on the HUD. Flips, barrel rolls and big air pay on landing (not
+on a crash). A wheelie held for a second or more, or a stoppie held to a stop,
+pays by the second when it ends.
 
 Two of those are worth calling out because they are the difference between
 tricks working and tricks being an accident:
@@ -84,7 +90,27 @@ stream, the self-test and live convar tuning all work. What singleplayer cannot
 show you is latency. See [docs/TESTING.md](docs/TESTING.md) for the order to
 check things in, and [docs/TUNING.md](docs/TUNING.md) for what to change.
 
-## Headless testing
+## Testing
+
+Two suites, because each can see what the other cannot.
+
+**Offline**, on any machine with Lua 5.1 or Docker, in about ten seconds:
+
+```
+tools/run-tests.sh            every test
+tools/run-tests.sh balance    only tests whose file or name matches
+```
+
+It loads the real addon files into a server realm and a client realm against
+a Garry's Mod shim (`tests/lib/gmod.lua`), so it runs the code a dedicated
+server never does: the wheel drawing, the HUD, the tuning overlay, the chase
+camera, the sounds, and the usercmd decode. The two realms share a net wire
+that fails a read that does not match its write. A small rigid-body plant
+lets it ride the bike closed-loop. It is not VPhysics, so its bands are the
+headless suite's, and the headless suite is the authority on how the bike
+actually behaves.
+
+**Headless**, on a real dedicated server:
 
 ```
 bmx_test          run the regression suite
@@ -100,7 +126,7 @@ It covers the force-units assumption, ride height and suspension load, the fact
 that a riderless bike is *supposed* to fall over, acceleration and the cadence
 ceiling, rear-brake lockup and friction-circle saturation, lean-derives-steering
 in **both** directions, whether the balance PD actually holds its target, bunny
-hops, wheelies, air mode, and crash ejection. It also covers the things a public
+hops (and their landings), wheelies, stoppies, air mode, and crash ejection. It also covers the things a public
 server finds first: that a bike survives a duplicator copy/paste with exactly
 one seat, that nobody can physgun or gravgun a bike with a rider on it (and that
 an empty one still picks up normally), that deleting a bike out from under its
@@ -109,9 +135,9 @@ reach the simulation. Every case ends with a NaN check, because one NaN inside a
 `PhysObj` is unrecoverable and its symptoms look nothing like its cause.
 
 It cannot cover the client half: the camera, the HUD and the wheel drawing never
-execute on a dedicated server. Nor can it tell you the bike is fun. Those need a
-person on a real client, which is exactly the split that makes the rest of it
-worth automating.
+execute on a dedicated server. The offline suite covers those. Neither can tell
+you the bike is fun. That needs a person on a real client, which is exactly the
+split that makes the rest of it worth automating.
 
 Results print to console and land in `data/bmx_test_results.txt`. With
 `bmx_test_quit 1` the server exits when the run finishes, so CI can wait on the
@@ -152,6 +178,8 @@ lua/bmx/cl_view.lua           chase camera
 lua/bmx/cl_hud.lua            rider HUD and tuning overlay
 lua/entities/bmx_base/        the entity
 tools/syntax-check.sh         parse everything with a real Lua 5.1 front end
+tools/run-tests.sh            the offline suite (tests/)
+tests/lib/gmod.lua            the Garry's Mod shim it runs against
 ```
 
 ## Adding a bike
@@ -191,10 +219,11 @@ win.
 
 ## Contributing
 
-`tools/syntax-check.sh` parses every file with a real Lua 5.1 front end (via
-Docker) and rewrites GLua's three extensions to 5.1 equivalents for the
-duration. Run it before opening a PR. It does not execute anything, so it
-catches syntax errors and not typo'd API names.
+Run `tools/run-tests.sh` before opening a PR. It executes the addon, so it
+catches nil indexes and typo'd names as well as syntax errors, and it needs
+only Lua 5.1 or Docker. Keep the addon plain Lua 5.1 (no `continue`, `!=`,
+`&&`): that is what lets a stock interpreter load it. `tools/syntax-check.sh`
+still parses every file, and tolerates GLua's extensions if one slips in.
 
 `bmx_test` runs the headless regression suite on any dedicated server: no
 client, no GPU, a bot for a rider. It catches regressions and it cannot tell you

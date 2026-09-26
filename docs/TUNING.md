@@ -218,6 +218,17 @@ below requirement and both times it read as a tuning problem.
 - `Wheel.grip` 1.35 and the two slip stiffnesses, which have no real-world
   reference to derive from.
 
+### Added with the offline suite, all feel numbers
+
+- `Air.pitchLevelKp` 12 / `pitchLevelKd` 3. Takes a bunny hop's own nose-up
+  kick back out in the air, only with no pitch input and not mid-flip. Without
+  it a plain hop landed at 50+ degrees on the hull. `bmx_autolevel 0` turns it
+  off along with the roll levelling.
+- `Drive.staminaRecover` 30. Once sprint empties the tank, it stays off until
+  this much has come back.
+- `Tricks.*`. How long a wheelie (`manualMin`) or stoppie (`stoppieMin`) must
+  be held to score, and what it pays per second.
+
 ## Known-untuned
 
 Everything below the level of "it behaves correctly". v0.1.0 has never been

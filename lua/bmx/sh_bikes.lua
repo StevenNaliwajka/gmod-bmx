@@ -16,6 +16,12 @@
 BMX = BMX or {}
 BMX.Bikes = BMX.Bikes or {}
 
+-- The tyre model the client draws (cl_init.lua). Precached on the server so it
+-- is in the model table every client receives; a client-only precache of a
+-- model the server never used is what left riders looking at the fallback.
+BMX.TyreModel = "models/props_phx/wheels/moped_tire.mdl"
+if util.PrecacheModel then util.PrecacheModel(BMX.TyreModel) end
+
 local pending = {}
 local derived = false
 

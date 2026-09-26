@@ -66,6 +66,22 @@ C.Chassis = {
     hullMin = Vector(-18, -4,  2),
     hullMax = Vector( 14,  4, 38),
 
+    -- THE WHEELS HAVE VOLUME TOO, for the ground to push on when the bike is
+    -- down. The suspension is raycasts with no collision, so a bike on its
+    -- nose or side used to put its wheels into the floor: the front wheel
+    -- reaches 15 units past the body box and 12 below it. Each wheel gets a
+    -- slim box -- the tyre's width, its full diameter fore and aft, and down
+    -- to wheelHullBottom below the axle line.
+    --
+    -- -4 IS radius - restLength: the box meets flat ground exactly where the
+    -- suspension runs out of travel. So it never touches while riding (3
+    -- units clear at ride height) and it IS the hard stop on a big landing.
+    -- At -3 a 40-unit drop still overcompressed to 3.26 and the tyres were
+    -- drawn most of a unit into the ground. See BMX.CollisionBoxes: the body box is
+    -- SHIFTED so the whole shape's mass centre stays at massCenterExpected.
+    wheelHullHalfWidth = 1.6,
+    wheelHullBottom    = -4,
+
     massCenterExpected = Vector(-2, 0, 20),
 
     -- Low-friction so the frame slides off geometry it clips instead of
@@ -104,7 +120,9 @@ C.Chassis = {
     inertiaYaw   = 86 * 16 * 16,
 
     -- Where the driver's seat sits, local space.
-    seatOffset = Vector(-4, 0, 18),
+    -- Over the drawn saddle (cl_init FRAME.seat, x -10.5). At -4 the rider's
+    -- seat sat six units in front of it, in the middle of the top tube.
+    seatOffset = Vector(-10.5, 0, 18),
     -- -90 YAW, because a Source seat model faces along its own +Y, not +X.
     -- At 0 the rider sat across the bike, facing its right-hand side, with
     -- their legs pedalling in thin air. simfphys mounts its seats the same way.
@@ -481,10 +499,11 @@ C.Hop = {
     chargeTime = 0.42,
     minCharge  = 0.25,
 
-    -- Vertical velocity added at full charge, u/s. 260 u/s against 600 u/s^2
-    -- gravity is ~56 units of air = ~1.4 m. A very good rider hops ~1 m, and
-    -- this is a videogame.
-    popSpeed = 265,
+    -- Vertical velocity added at full charge, u/s. 225 u/s against 600 u/s^2
+    -- gravity is ~42 units of air, ~1.1 m: a very good rider hops about 1 m.
+    -- It was 265 (~1.5 m), and a rider on the server found it "bouncing
+    -- really high".
+    popSpeed = 225,
 
     -- Fraction of pop applied forward, so a hop clears an obstacle rather than
     -- landing on it.
@@ -492,6 +511,9 @@ C.Hop = {
 
     -- Nose-up impulse at the pop, rad/s, so hops naturally start a manual.
     pitchImpulse = 1.9,
+    -- Pitch at which that kick has faded to nothing, rad. See the hop in
+    -- sv_physics.lua: from a wheelie it used to stack into a backflip.
+    kickFade = math.rad(15),
 
     cooldown = 0.25,
 }

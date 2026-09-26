@@ -80,11 +80,15 @@ end)
 T.test("the wheelie hold is well damped against the PIVOT inertia", function()
     local C, B, sv = cfg()
     local e = F.bike(sv)
+    -- The reason this helper exists: I_pitch + m*d^2 about the axle, not the
+    -- free-body I_pitch. (The figures in the comments, 72,574 and 85,990, are
+    -- for the old single-box hull; the wheel boxes add real pitch inertia.)
+    local m, mc, half = C.Chassis.mass, C.Chassis.massCenterExpected, C.Wheel.wheelbase / 2
     local iEff = B.PivotInertia(e, C, false)
-    -- The comment's number, and the reason this helper exists: I_pitch + m*d^2
-    -- about the rear axle, not the free-body I_pitch.
-    T.near(iEff, 72574, 5, "effective pitch inertia on the rear wheel")
-    T.near(B.PivotInertia(e, C, true), 85990, 5, "and on the front")
+    T.near(iEff, B.IPitch(e) + m * ((mc.x + half) ^ 2 + mc.z ^ 2), 1e-6, "rear axle")
+    T.near(B.PivotInertia(e, C, true), B.IPitch(e) + m * ((half - mc.x) ^ 2 + mc.z ^ 2), 1e-6,
+        "front axle")
+    T.ok(iEff > B.IPitch(e) * 4, "several times the free-body figure")
     -- zeta for the hold against its own restoring gradient (15.4 1/s^2).
     local zeta = C.Pitch.holdKd / (2 * math.sqrt(15.4))
     T.between(zeta, 0.7, 1.3, "wheelie hold damping ratio")

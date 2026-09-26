@@ -105,6 +105,28 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
 
     inp.leanTarget = side
 
+    ----------------------------------------------------------------------
+    -- A KEY HELD INTO THE AIR IS NOT A FLIP COMMAND.
+    --
+    -- In the air W/S become rotation, so a rider holding W to keep pedalling
+    -- through a bunny hop was, from the moment the wheels left the ground,
+    -- commanding a front flip, and nose-dived into the landing. Whatever the
+    -- forward axis says at takeoff is latched and ignored until it changes:
+    -- let go of W (or press S) and the air controls are live. A fresh press
+    -- in the air still flips exactly as before.
+    ----------------------------------------------------------------------
+    local fsign = fwd > 0.1 and 1 or (fwd < -0.1 and -1 or 0)
+    -- The key held on the LAST GROUND COMMAND is the one carried over; a key
+    -- first pressed in the air, even on the first airborne tick, is fresh.
+    if airborne and not inp.wasAirborne then
+        local held = inp.groundFwd or 0
+        inp.airLatch = (held ~= 0 and held == fsign) and held or nil
+    end
+    if inp.airLatch and fsign ~= inp.airLatch then inp.airLatch = nil end
+    if not airborne then inp.groundFwd = fsign end
+    inp.wasAirborne = airborne
+    if airborne and inp.airLatch then fwd = 0 end
+
     if airborne then
         ------------------------------------------------------------------
         -- In the air there is no drivetrain to worry about, so W/S become

@@ -140,3 +140,27 @@ T.test("smoothing ramps the lean and returns to centre faster", function()
     B.SmoothInput(inp, 0.1)
     T.near(inp.lean, 0.35, 1e-9, "6.5/s back to centre")
 end)
+
+T.test("holding W into a hop is not a front flip; pressing it again in the air is", function()
+    local _, bike, _, send = rig()
+    send(IN.FORWARD)                                 -- pedalling on the ground
+    T.eq(bike.input.throttle, 1, "pedalling")
+    bike.st.airMode = true                           -- leaves the ground, W still held
+    send(IN.FORWARD)
+    T.eq(bike.input.pitchTarget, 0, "held-over W is ignored in the air")
+    send(IN.FORWARD)
+    T.eq(bike.input.pitchTarget, 0, "for as long as it stays held")
+    send(0)                                          -- let go...
+    send(IN.FORWARD)                                 -- ...and press again
+    T.eq(bike.input.pitchTarget, -1, "a fresh press flips")
+end)
+
+T.test("a key pressed only after takeoff works at once", function()
+    local _, bike, _, send = rig()
+    send(0)
+    bike.st.airMode = true
+    send(IN.BACK)
+    T.eq(bike.input.pitchTarget, 1, "S in the air is a backflip straight away")
+    send(IN.FORWARD)
+    T.eq(bike.input.pitchTarget, -1, "switching keys counts as a fresh press")
+end)

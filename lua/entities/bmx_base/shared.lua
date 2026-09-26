@@ -95,15 +95,8 @@ function ENT:SetupDataTables()
     end
 end
 
--- Wheel spin is NOT networked. The client derives it from SpeedUPS, which it
--- already has: a wheel rolling at ground speed is right in every case a viewer
--- can see, and networking a continuously changing float at physics rate for a
--- cosmetic detail is how vehicle addons end up eating a server's bandwidth.
-function ENT:VisualWheelSpin(dt)
-    self.spinAngle = (self.spinAngle or 0)
-        + (self:GetSpeedUPS() / self:Cfg().Wheel.radius) * dt
-    return self.spinAngle
-end
+-- Wheel spin is NOT networked: see ENT:WheelSpin in cl_init.lua, which works
+-- it out per wheel from what the client already has.
 
 --------------------------------------------------------------------------
 -- The bike definition this entity is running. Falls back to the stock table so

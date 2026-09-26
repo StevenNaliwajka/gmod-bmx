@@ -424,7 +424,9 @@ function M.Realm(world, which)
     end
     R.trace = trace
 
+    R.precached = {}
     env.util = {
+        PrecacheModel = function(m) R.precached[m] = true end,
         TraceLine = trace,
         TraceHull = trace,
         AddNetworkString = function(name) R.netStrings[name] = true end,
@@ -568,6 +570,7 @@ function M.Realm(world, which)
     end
     function Ent:DrawModel() R.drawnModels = (R.drawnModels or 0) + 1 end
     function Ent:GetVelocity()
+        if self._vel then return Vector(self._vel) end   -- a test's client copy
         return self._phys and Vector(self._phys.v) or Vector()
     end
     function Ent:Spawn()
@@ -677,17 +680,49 @@ function M.Realm(world, which)
     local SX, SY, SZ = boxI(86, 32, 8, 36)
     local KX, KY, KZ = MEASURED[1] / SX, MEASURED[2] / SY, MEASURED[3] / SZ
 
-    function Ent:PhysicsInitBox(mn, mx)
+    -- A body made of boxes. The mass centre is their VOLUME centre, as
+    -- VPhysics computes it for a uniform-density shape.
+    local function makeBody(ent, boxes)
+        local vol, m = 0, Vector()
+        local lo = Vector(math.huge, math.huge, math.huge)
+        local hi = -lo
+        for _, b in ipairs(boxes) do
+            local d = b[2] - b[1]
+            local v = d.x * d.y * d.z
+            vol, m = vol + v, m + (b[1] + b[2]) * 0.5 * v
+            lo = Vector(math.min(lo.x, b[1].x), math.min(lo.y, b[1].y), math.min(lo.z, b[1].z))
+            hi = Vector(math.max(hi.x, b[2].x), math.max(hi.y, b[2].y), math.max(hi.z, b[2].z))
+        end
         local p = setmetatable({
-            ent = self, mass = 1, mc = (mn + mx) * 0.5,
-            dims = mx - mn, mn = Vector(mn), mx = Vector(mx),
+            ent = ent, mass = 1, mc = m / vol, boxes = boxes, volume = vol,
+            dims = hi - lo, mn = lo, mx = hi,
             v = Vector(), w = Vector(),
             gravity = true, motion = true, asleep = false,
             linDamp = 0, angDamp = 0,
         }, Phys)
-        self._phys = p
+        ent._phys = p
         return true
     end
+
+    function Ent:PhysicsInitBox(mn, mx)
+        return makeBody(self, { { Vector(mn), Vector(mx) } })
+    end
+    -- Only boxes are handed in by this addon: each vertex list is read back
+    -- as its bounding box.
+    function Ent:PhysicsInitMultiConvex(meshes)
+        local boxes = {}
+        for _, verts in ipairs(meshes) do
+            local lo = Vector(math.huge, math.huge, math.huge)
+            local hi = -lo
+            for _, v in ipairs(verts) do
+                lo = Vector(math.min(lo.x, v.x), math.min(lo.y, v.y), math.min(lo.z, v.z))
+                hi = Vector(math.max(hi.x, v.x), math.max(hi.y, v.y), math.max(hi.z, v.z))
+            end
+            boxes[#boxes + 1] = { lo, hi }
+        end
+        return makeBody(self, boxes)
+    end
+    function Ent:EnableCustomCollisions() end
     function Ent:GetPhysicsObject() return self._phys or INVALID_PHYS end
     function Ent:StartMotionController() self._controller = true end
     function Ent:AddToMotionController(p) self._controlled = p end
@@ -720,10 +755,21 @@ function M.Realm(world, which)
     end
     function Phys:GetAngles() return self.ent:GetAngles() end
 
-    -- Principal moments in kg*UNITS^2, as (roll, pitch, yaw).
+    -- Principal moments in kg*UNITS^2, as (roll, pitch, yaw): every box's own
+    -- moment plus its parallel-axis term about the mass centre, scaled by the
+    -- measured-to-box ratios (exact for the old single stock box).
     function Phys:InertiaU2()
-        local x, y, z = boxI(self.mass, self.dims.x, self.dims.y, self.dims.z)
-        return Vector(x * KX, y * KY, z * KZ)
+        local X, Y, Z = 0, 0, 0
+        for _, b in ipairs(self.boxes) do
+            local d = b[2] - b[1]
+            local mi = self.mass * (d.x * d.y * d.z) / self.volume
+            local x, y, z = boxI(mi, d.x, d.y, d.z)
+            local c = (b[1] + b[2]) * 0.5 - self.mc
+            X = X + x + mi * (c.y * c.y + c.z * c.z)
+            Y = Y + y + mi * (c.x * c.x + c.z * c.z)
+            Z = Z + z + mi * (c.x * c.x + c.y * c.y)
+        end
+        return Vector(X * KX, Y * KY, Z * KZ)
     end
     -- What GetInertia returns: kg*METRES^2, as VPhysics does.
     function Phys:GetInertia() return self:InertiaU2() / ((1 / 0.0254) ^ 2) end
@@ -773,10 +819,15 @@ function M.Realm(world, which)
         local e = p.ent
         local g = world.groundZ
         local deepest, impact = 0, 0
-        for _, c in ipairs(CORNERS) do
-            local lc = Vector(c[1] == 0 and p.mn.x or p.mx.x,
-                              c[2] == 0 and p.mn.y or p.mx.y,
-                              c[3] == 0 and p.mn.z or p.mx.z)
+        local pts = {}
+        for _, b in ipairs(p.boxes) do
+            for _, c in ipairs(CORNERS) do
+                pts[#pts + 1] = Vector(c[1] == 0 and b[1].x or b[2].x,
+                                       c[2] == 0 and b[1].y or b[2].y,
+                                       c[3] == 0 and b[1].z or b[2].z)
+            end
+        end
+        for _, lc in ipairs(pts) do
             local wc = e:LocalToWorld(lc)
             if wc.z < g and groundAt(world, wc) then
                 deepest = math.max(deepest, g - wc.z)
@@ -1020,6 +1071,8 @@ function M.Realm(world, which)
         R.csModels, R.drawnCS, R.missingModels = {}, {}, {}
         env.util.IsValidModel = function(m) return not R.missingModels[m] end
         function env.ClientsideModel(model)
+            R.csAttempts = (R.csAttempts or 0) + 1
+            if R.missingModels[model] then return nil end
             local m = { model = model, removed = false }
             function m:IsValid() return not self.removed end
             function m:Remove() self.removed = true end

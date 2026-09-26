@@ -356,8 +356,16 @@ function BMX.PhysicsStep(ent, phys, dt)
 
             -- Nose-up kick, so a hop naturally rolls into a manual. Written as
             -- a torque whose dt cancels, which makes it an impulse.
-            BMX.ApplyTorque(phys, ent, ent:GetRight(),
-                BMX.TorqueFor(BMX.IPitch(ent), H.pitchImpulse / dt), dt)
+            --
+            -- ONLY FROM LEVEL. It fades out as the bike is already pitched up,
+            -- and is gone by Hop.kickFade: from a wheelie it stacked on the
+            -- wheelie's own rotation and sent the bike to 89 degrees, a
+            -- backflip nobody asked for, measured on the tests' plant.
+            local level = 1 - BMX.Ramp(st.pitch or 0, 0, H.kickFade)
+            if level > 0 then
+                BMX.ApplyTorque(phys, ent, ent:GetRight(),
+                    BMX.TorqueFor(BMX.IPitch(ent), H.pitchImpulse * level / dt), dt)
+            end
 
             ent.hopReady = CurTime() + H.cooldown
             local H = BMX.Sounds.hop

@@ -517,3 +517,52 @@ T.test("a fallen bike grips the ground with its frame instead of skating", funct
     sv:run(0.2)
     T.eq(p.material, bike:Cfg().Chassis.surfaceProp, "back to the ice hull upright")
 end)
+
+T.test("the collision shape keeps the mass centre where the balance was tuned", function()
+    local sv = F.server()
+    local bike = F.bike(sv)
+    local C = bike:Cfg().Chassis
+    local mc = bike:GetPhysicsObject():GetMassCenter()
+    T.near(mc.x, C.massCenterExpected.x, 1e-6, "COM x")
+    T.near(mc.z, C.massCenterExpected.z, 1e-6, "COM z")
+    T.eq(#sv.errors, 0, "no mass-centre complaint at spawn")
+    T.eq(#bike:GetPhysicsObject().boxes, 3, "a body and two wheel boxes")
+end)
+
+T.test("hard landings: the wheels never go through the ground", function()
+    local sv, bike = ridden()
+    local E = sv.env
+    local W = bike:Cfg().Wheel
+    -- The client draws a tyre by sliding its axle down the strut from the
+    -- mount, and never above the mount. So a tyre is drawn into the ground
+    -- exactly when a strut top comes within one radius of it: when the chassis
+    -- origin (restLength below the mounts) drops under radius - restLength.
+    -- Nothing else about the pose matters on level ground.
+    local floor = W.radius - W.restLength
+    for _, h in ipairs({ 40, 120, 250 }) do
+        F.place(bike, E.Vector(0, 0, F.restHeight(sv) + h), E.Angle(0, 0, 0))
+        bike:GetPhysicsObject():SetVelocity(E.Vector(0, 0, -100))
+        local lowest = math.huge
+        sv:run(1.5, function() lowest = math.min(lowest, bike:GetPos().z) end)
+        T.ok(lowest > floor - 0.3, string.format(
+            "dropped from %d: chassis bottomed at %.2f, tyres through the floor below %.2f",
+            h, lowest, floor))
+    end
+end)
+
+T.test("a hop out of a wheelie does not become a backflip", function()
+    local sv, bike = ridden()
+    F.accelerateTo(sv, bike, 160)
+    F.input(bike, { throttle = 1, pitch = 1 })
+    sv:run(1.2)
+    local start = math.deg(bike.st.pitch)
+    F.input(bike, { throttle = 0.5 })
+    bike.hopHeld, bike.hopCharge = true, 0
+    sv:run(0.47)
+    bike.hopRelease = true
+    local maxp = -99
+    sv:run(2, function() maxp = math.max(maxp, math.deg(bike.st.pitch)) end)
+    T.ok(start > 10, "it really was in a wheelie: " .. start)
+    T.between(maxp, 0, 50, "highest pitch after hopping out of it, deg")
+    T.ok(sv.env.IsValid(bike:GetDriver()), "and the rider stays on")
+end)

@@ -31,8 +31,12 @@ function ENT:Initialize()
     -- nothing to do with a bike, and even a finished BMX model would give a
     -- concave mesh that VPhysics would decompose into something unpredictable.
     -- One box, defined in config, is a hull we can reason about.
-    self:PhysicsInitBox(C.Chassis.hullMin, C.Chassis.hullMax)
-    self:SetCollisionBounds(C.Chassis.hullMin, C.Chassis.hullMax)
+    -- The body plus a slim box per wheel, so the ground has something to push
+    -- on when the bike is down: see Chassis.wheelHullBottom and
+    -- BMX.CollisionBoxes, which also keeps the mass centre where it was.
+    self:PhysicsInitMultiConvex(BMX.CollisionMeshes(C))
+    self:EnableCustomCollisions(true)
+    self:SetCollisionBounds(BMX.CollisionBounds(C))
 
     -- Opt into GM:ShouldCollide so the rider and the seat can be excluded from
     -- this hull. See the hook in sv_seat.lua: without it, seating a player
@@ -68,8 +72,8 @@ function ENT:Initialize()
     if want and com:Distance(want) > 1.5 then
         ErrorNoHalt(string.format(
             "[BMX] mass centre is %s but the hull was meant to put it at %s. " ..
-            "Someone changed hullMin/hullMax without updating " ..
-            "massCenterExpected; balance and wheelies are now tuned against " ..
+            "Someone changed the hull (hullMin/hullMax or the wheel boxes) without " ..
+            "updating massCenterExpected; balance and wheelies are now tuned against " ..
             "the wrong number.\n", tostring(com), tostring(want)))
     end
 
@@ -293,7 +297,8 @@ function ENT:Think()
     -- real cost, and a push lasts far longer than a twentieth of a second.
     if st and not IsValid(self:GetDriver()) then
         local C = self:Cfg().Chassis
-        local mn, mx = self:BoundsWorld(C.hullMin, C.hullMax, 8)
+        local lmin, lmax = BMX.CollisionBounds(self:Cfg())
+        local mn, mx = self:BoundsWorld(lmin, lmax, 8)
         for _, e in ipairs(ents.FindInBox(mn, mx)) do
             if e:IsPlayer() and not e:InVehicle() then
                 st.pushedUntil = CurTime() + 0.6

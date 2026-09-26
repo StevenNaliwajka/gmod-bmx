@@ -18,10 +18,11 @@ include("shared.lua")
        when the trace finds no ground.
 ----------------------------------------------------------------------------]]
 
-local TYRE_SEGMENTS = 28
+local TYRE_SEGMENTS = 48
 local SPOKES        = 12
 
 local COL_TYRE   = Color(24, 24, 27)
+local COL_TREAD  = Color(58, 58, 62)
 local COL_RIM    = Color(190, 194, 202)
 local COL_SPOKE  = Color(160, 165, 175)
 local COL_PART   = Color(34, 34, 38)       -- bars, cranks, seat, fork crown
@@ -87,13 +88,19 @@ local function tube(a, b, width, col)
     render.DrawBeam(a, b, width, 0, 1, col)
 end
 
--- A circle in the plane spanned by e1/e2, as a closed chain of beams.
+-- A circle in the plane spanned by e1/e2, as a closed chain of beams. Each
+-- segment is stretched past its ends by half the beam's width: camera-facing
+-- beams meet at a corner with a notch between them, and on a thick ring those
+-- notches were the holes that made a tyre look like a row of squares.
 local function ring(center, e1, e2, radius, width, col, segments)
     local prev
     for i = 0, segments do
         local t = (i / segments) * math.pi * 2
         local p = center + (e1 * math.cos(t) + e2 * math.sin(t)) * radius
-        if prev then tube(prev, p, width, col) end
+        if prev then
+            local d = (p - prev):GetNormalized() * (width * 0.5)
+            tube(prev - d, p + d, width, col)
+        end
         prev = p
     end
 end
@@ -109,33 +116,48 @@ end
 -- into tiles. Measured on the live server: 38.4 across and 7.3 thick, axle on
 -- the model's Z, origin on one face with the centre 4.37 up it.
 --------------------------------------------------------------------------
-local TYRE_MODEL   = "models/props_phx/wheels/moped_tire.mdl"
+local TYRE_MODEL   = BMX.TyreModel
 local TYRE_RADIUS  = 19.19          -- model units
 local TYRE_CENTREZ = 4.37           -- model units, along the axle
 local TYRE_THIN    = 0.62           -- BMX tyres are narrower than a moped's
 
 -- One clientside model per wheel, made on first draw and removed with the
 -- bike. nil if the model will not load, and the beam drawing takes over.
+--
+-- NOT GATED ON util.IsValidModel, and a failure is RETRIED. The first version
+-- asked IsValidModel first and cached a failure forever, and on a real client
+-- the riders saw the beam fallback -- "a bunch of black squares" with spokes
+-- turning inside a tyre that did not -- which is what a model that never
+-- loaded looks like. The server now precaches the model (sh_bikes.lua) so
+-- every client has it, the create is simply attempted, and a failure is tried
+-- again a few seconds later rather than never, and reported once.
+local RETRY = 3
+local warned = false
+
 local function tyreModel(ent, key, radius)
     ent.tyres = ent.tyres or {}
     local t = ent.tyres[key]
-    if t == nil then
-        t = false
-        if util.IsValidModel(TYRE_MODEL) then
-            local m = ClientsideModel(TYRE_MODEL, RENDERGROUP_OPAQUE)
-            if IsValid(m) then
-                m:SetNoDraw(true)
-                local s = radius / TYRE_RADIUS
-                local mat = Matrix()
-                mat:Scale(Vector(s, s, s * TYRE_THIN))
-                m:EnableMatrix("RenderMultiply", mat)
-                m.bmxScale = s
-                t = m
-            end
+    if t and IsValid(t) then return t end
+    if t == false and CurTime() < (ent.tyreRetry or 0) then return nil end
+
+    local m = ClientsideModel(TYRE_MODEL, RENDERGROUP_OPAQUE)
+    if not IsValid(m) then
+        ent.tyres[key] = false
+        ent.tyreRetry = CurTime() + RETRY
+        if not warned then
+            warned = true
+            MsgN("[BMX] tyre model " .. TYRE_MODEL .. " did not load; drawing tyres instead")
         end
-        ent.tyres[key] = t
+        return nil
     end
-    return t or nil
+    m:SetNoDraw(true)
+    local s = radius / TYRE_RADIUS
+    local mat = Matrix()
+    mat:Scale(Vector(s, s, s * TYRE_THIN))
+    m:EnableMatrix("RenderMultiply", mat)
+    m.bmxScale = s
+    ent.tyres[key] = m
+    return m
 end
 
 --------------------------------------------------------------------------
@@ -169,6 +191,16 @@ local function drawWheel(ent, key, center, axleDir, spin, radius, grounded, debu
         local col = (debug and not grounded) and COL_AIR or COL_TYRE
         ring(center, e1, e2, radius - tyreW * 0.5, tyreW, col, TYRE_SEGMENTS)
         ring(center, e1, e2, radius - tyreW - 0.3, 0.7, COL_RIM, TYRE_SEGMENTS)
+        -- Tread blocks, which turn with the wheel: a plain black ring looks
+        -- the same at any spin, so without these the tyre read as stationary
+        -- while the spokes inside it went round.
+        for i = 0, 15 do
+            local t = spin + (i / 16) * math.pi * 2
+            local dir = e1 * math.cos(t) + e2 * math.sin(t)
+            local tang = e1 * -math.sin(t) + e2 * math.cos(t)
+            local at = center + dir * (radius - tyreW * 0.15)
+            tube(at - tang * 0.5, at + tang * 0.5, tyreW * 0.55, COL_TREAD)
+        end
     end
 
     -- Spokes only on the beam tyre: the model has its own chrome face, and
@@ -186,6 +218,35 @@ local function drawWheel(ent, key, center, axleDir, spin, radius, grounded, debu
     tube(center - axleDir * 2.2, center + axleDir * 2.2, 1.6, COL_CHROME)
     tube(center + axleDir * 2.4, center + axleDir * 6.0, 1.3, COL_CHROME)
     tube(center - axleDir * 2.4, center - axleDir * 6.0, 1.3, COL_CHROME)
+end
+
+--------------------------------------------------------------------------
+-- How far each wheel has turned, per wheel, from what the client already has.
+--
+-- A tyre on the ground rolls at the bike's FORWARD speed (signed: backwards
+-- is backwards). Off the ground nothing drives it, so it keeps its own spin
+-- and winds down slowly on its bearings; on its side, the tyre scrubs the
+-- ground and stops quickly. This used to be one angle for both wheels driven
+-- by the bike's speed MAGNITUDE, so a crashed bike tumbling along, or falling,
+-- spun its wheels as if it were being ridden, and they never stopped while
+-- it was moving at all.
+--------------------------------------------------------------------------
+local BEARING_DRAG = 0.5     -- 1/s, a free wheel in the air
+local SCRUB        = 6.0     -- 1/s, a wheel lying against the ground
+
+function ENT:WheelSpin(key, grounded, fallen, dt)
+    self.spin = self.spin or {}
+    local w = self.spin[key] or { angle = 0, rate = 0 }
+    self.spin[key] = w
+
+    local r = self:Cfg().Wheel.radius
+    if grounded and not fallen then
+        w.rate = self:GetVelocity():Dot(self:GetForward()) / r
+    else
+        w.rate = w.rate * math.exp(-(fallen and SCRUB or BEARING_DRAG) * dt)
+    end
+    w.angle = w.angle + w.rate * dt
+    return w.angle
 end
 
 --------------------------------------------------------------------------
@@ -239,7 +300,6 @@ function ENT:Draw()
     ----------------------------------------------------------------------
     -- Wheels
     ----------------------------------------------------------------------
-    local spin = self:VisualWheelSpin(dt)
 
     local fwd       = self:GetForward()
     local up        = self:GetUp()
@@ -267,9 +327,13 @@ function ENT:Draw()
     local fPos, fHit = axlePos(self, Vector( half, 0, lift))
     local rPos, rHit = axlePos(self, Vector(-half, 0, lift))
 
+    local fallen = math.abs((BMX.Attitude(self, vector_up))) > C.Stand.maxRoll
+    local fSpin = self:WheelSpin("front", fHit, fallen, dt)
+    local rSpin = self:WheelSpin("rear",  rHit, fallen, dt)
+
     if not bike.wheelModel then
-        drawWheel(self, "front", fPos, frontAxle, spin, WC.radius, fHit, debug)
-        drawWheel(self, "rear",  rPos, rearAxle,  spin, WC.radius, rHit, debug)
+        drawWheel(self, "front", fPos, frontAxle, fSpin, WC.radius, fHit, debug)
+        drawWheel(self, "rear",  rPos, rearAxle,  rSpin, WC.radius, rHit, debug)
     end
 
     if bike.hasModel then return end

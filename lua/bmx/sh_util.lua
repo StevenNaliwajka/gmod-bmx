@@ -138,6 +138,71 @@ function BMX.RestHeight(cfg)
     return C.Wheel.radius - math.min(sag, C.Wheel.restLength)
 end
 
+-- The collision shape: a body box and one slim box per wheel, as {min, max}
+-- pairs in chassis space. See Chassis.wheelHullBottom.
+--
+-- VPhysics puts the mass centre at the volume centre of the shape it is
+-- given, and there is no setter (see the note on hullMin). Adding wheel boxes
+-- would drag it down and change every balance number derived from it, so the
+-- BODY is moved to compensate: solved so the union's volume centre lands
+-- exactly on massCenterExpected. Its size is unchanged, only where it sits.
+function BMX.CollisionBoxes(cfg)
+    local C  = cfg or BMX.Config
+    local CH, W = C.Chassis, C.Wheel
+    local half, r = W.wheelbase * 0.5, W.radius
+    local hw, bot = CH.wheelHullHalfWidth or 1.6, CH.wheelHullBottom or -3
+
+    local wheels = {}
+    for _, x in ipairs({ half, -half }) do
+        wheels[#wheels + 1] = { Vector(x - r, -hw, bot), Vector(x + r, hw, r) }
+    end
+
+    local function vol(b) local d = b[2] - b[1] return d.x * d.y * d.z end
+    local function mid(b) return (b[1] + b[2]) * 0.5 end
+
+    local size  = CH.hullMax - CH.hullMin
+    local vBody = size.x * size.y * size.z
+    local sumV, sumM = 0, Vector(0, 0, 0)
+    for _, b in ipairs(wheels) do
+        sumV = sumV + vol(b)
+        sumM = sumM + mid(b) * vol(b)
+    end
+    local want = CH.massCenterExpected
+    local bodyCentre = (want * (vBody + sumV) - sumM) / vBody
+
+    local out = { { bodyCentre - size * 0.5, bodyCentre + size * 0.5 } }
+    for _, b in ipairs(wheels) do out[#out + 1] = b end
+    return out
+end
+
+-- The whole shape's bounding box, chassis space.
+function BMX.CollisionBounds(cfg)
+    local mn = Vector(math.huge, math.huge, math.huge)
+    local mx = -mn
+    for _, b in ipairs(BMX.CollisionBoxes(cfg)) do
+        mn = Vector(math.min(mn.x, b[1].x), math.min(mn.y, b[1].y), math.min(mn.z, b[1].z))
+        mx = Vector(math.max(mx.x, b[2].x), math.max(mx.y, b[2].y), math.max(mx.z, b[2].z))
+    end
+    return mn, mx
+end
+
+local function boxMesh(mn, mx)
+    local v = {}
+    for _, x in ipairs({ mn.x, mx.x }) do
+        for _, y in ipairs({ mn.y, mx.y }) do
+            for _, z in ipairs({ mn.z, mx.z }) do v[#v + 1] = Vector(x, y, z) end
+        end
+    end
+    return v
+end
+
+-- The shape as PhysicsInitMultiConvex wants it: one vertex list per box.
+function BMX.CollisionMeshes(cfg)
+    local out = {}
+    for _, b in ipairs(BMX.CollisionBoxes(cfg)) do out[#out + 1] = boxMesh(b[1], b[2]) end
+    return out
+end
+
 -- How far the suspension ray reaches. Past the strut's full extension plus one
 -- radius, because a pitched disc sits r/cos(pitch) down the strut from the
 -- ground rather than r: 1.6 radii covers ~51 degrees, beyond the wheelie hold's

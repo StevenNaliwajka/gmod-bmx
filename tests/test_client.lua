@@ -401,7 +401,7 @@ T.test("the tyres are real round models, centred on their axles and turning abou
     end
 
     -- It rolls: the model's forward turns with the spin.
-    s.cb:SetSpeedUPS(200)
+    s.cb._vel = s.cb:GetForward() * 200
     local before = s.cl.drawnCS[1].ang:Forward()
     s.cl.drawnCS = {}
     draw(s)
@@ -417,6 +417,84 @@ T.test("without the tyre model, the beam tyre and spokes are drawn instead", fun
     T.eq(#s.cl.drawnCS, 0, "no model")
     T.eq(s.cl.lines, 24, "twelve spokes a wheel")
     T.ok(#s.cl.beams > 100, "beam tyres and rims")
+    local said = false
+    for _, l in ipairs(s.cl.log) do if l:find("did not load") then said = true end end
+    T.ok(said, "and says so in the console, once")
+end)
+
+T.test("a tyre model that failed is tried again, not given up on for good", function()
+    local s = scene()
+    local M = "models/props_phx/wheels/moped_tire.mdl"
+    s.cl.missingModels[M] = true
+    draw(s)
+    T.eq(#s.cl.drawnCS, 0, "fallback first")
+    s.cl.missingModels[M] = nil
+    s.cl.drawnCS = {}
+    draw(s)
+    T.eq(#s.cl.drawnCS, 0, "not retried every frame")
+    s.world.time = s.world.time + 4
+    s.cl.drawnCS = {}
+    draw(s)
+    T.eq(#s.cl.drawnCS, 2, "retried a few seconds later, and drawn")
+end)
+
+T.test("the server precaches the tyre model for every client", function()
+    local s = scene()
+    T.ok(s.sv.precached["models/props_phx/wheels/moped_tire.mdl"], "precached server-side")
+end)
+
+T.test("the fallback tyre has no gaps and its tread turns with the wheel", function()
+    local s = scene()
+    s.cl.missingModels["models/props_phx/wheels/moped_tire.mdl"] = true
+    s.cb._vel = s.cb:GetForward() * 200
+    draw(s)
+    -- Consecutive tyre segments overlap: each beam reaches past the next's start.
+    local tyres = {}
+    for _, b in ipairs(s.cl.beams) do
+        if b.col and b.col.r == 24 then tyres[#tyres + 1] = b end
+    end
+    T.ok(#tyres >= 96, "48 segments a tyre: " .. #tyres)
+    local a, b = tyres[1], tyres[2]
+    T.ok((a.b - b.a):Length() > a.w * 0.9, "neighbouring segments overlap by the beam width")
+    local function treadAt()
+        for _, x in ipairs(s.cl.beams) do
+            if x.col and x.col.r == 58 then return (x.a + x.b) * 0.5 end
+        end
+    end
+    local t0 = treadAt()
+    draw(s)
+    T.ok((treadAt() - t0):Length() > 0.05, "the tread moved: the tyre turns")
+end)
+
+T.test("each wheel spins from forward speed, and stops once the bike is down", function()
+    local s = scene()
+    local E = s.cl.env
+    s.cb._vel = s.cb:GetForward() * 200
+    draw(s)
+    local rate = s.cb.spin.rear.rate
+    T.near(rate, 200 / s.cb:Cfg().Wheel.radius, 1e-6, "rolling at ground speed")
+    s.cb._vel = s.cb:GetForward() * -50
+    draw(s)
+    T.ok(s.cb.spin.rear.rate < 0, "backwards is backwards")
+
+    -- Crashed: lying on its side, still sliding and tumbling.
+    s.cb._vel = s.cb:GetForward() * 200
+    draw(s)
+    s.cb:SetAngles(E.Angle(0, 0, 85))
+    s.cb._vel = E.Vector(0, 0, -300)                 -- falling: speed, not rolling
+    for _ = 1, 66 do draw(s) end                     -- a second
+    T.between(math.abs(s.cb.spin.rear.rate), 0, 0.1, "the wheels have stopped")
+end)
+
+T.test("a wheel in the air keeps turning and winds down slowly", function()
+    local s = scene()
+    local E = s.cl.env
+    s.cb._vel = s.cb:GetForward() * 200
+    draw(s)
+    s.cb:SetPos(s.cb:GetPos() + E.Vector(0, 0, 100))    -- airborne, upright
+    for _ = 1, 66 do draw(s) end
+    local r = s.cb.spin.rear.rate
+    T.between(r / (200 / s.cb:Cfg().Wheel.radius), 0.5, 0.7, "about exp(-0.5) of it after a second")
 end)
 
 T.test("tyre models are made once per wheel and removed with the bike", function()

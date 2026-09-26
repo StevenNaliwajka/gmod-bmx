@@ -605,7 +605,10 @@ C.Crash = {
     -- and met the ground on the wheel boxes, whose corner levered a
     -- nose-down landing end over end. An arcade assist, and it says so.
     soakSpeed = 250,
-    soakSpin  = 0.75,      -- of the pitch spin
+    -- ALL of the pitch spin too. At 0.75 a flip landed on a tyre (pitch 21,
+    -- live server) kept a quarter of its rotation and went on over the front
+    -- onto the bars: sticking a landing on the wheels ends the trick.
+    soakSpin  = 1.0,       -- of the pitch spin
     -- ALL of the roll spin. A barrel roll landed with the tyres flat (roll
     -- -18, measured on the live server) still carried a quarter of its spin
     -- after soakSpin and rolled on over onto the bars. Sideways spin has no

@@ -27,7 +27,7 @@ most:
 | Line | Read it as |
 |---|---|
 | `roll / target` | A persistent gap means the assist is **out of authority**, not mistuned. Raising `bmx_lean_kp` will not help; raising `maxAssistAccel` might, or the bike is simply leaning further than its speed can support and that is correct. |
-| `authority` | The speed ramp. Below about 0.2 the bike is on its own. If it falls over at a speed where it should not, this is why. |
+| `authority` | The lean assist's speed ramp. Below it the kickstand or the rider's foot (`C.Stand`) holds the bike instead; the two share the band in between. |
 | `saturation` | 1.00 means that tyre's friction circle is full. Any more braking costs cornering and vice versa. This is what explains a washed-out front end. |
 
 Everything is a replicated convar, so changes apply on the next tick with no
@@ -142,7 +142,7 @@ Anything works, but the tuning goes much faster with a map that has, in this
 order of usefulness:
 
 1. A long flat straight, for top speed and for the suspension check.
-2. A wide flat area, for the balance stage. You need room to fall over.
+2. A wide flat area, for the balance stage. You need room to lean and turn.
 3. A single kicker, for the air stage. One repeatable jump beats a skate park.
 4. A gentle bank or quarter-pipe, to check that roll measured against the ground
    normal actually works and the controller does not fight the transition.
@@ -226,6 +226,9 @@ below requirement and both times it read as a tuning problem.
   off along with the roll levelling.
 - `Drive.staminaRecover` 30. Once sprint empties the tank, it stays off until
   this much has come back.
+- `Stand.*`. The kickstand lean for a parked bike (`standLean`), how far A/D lean
+  a ridden bike at a standstill (`footLean`), and past what roll it counts as
+  fallen (`maxRoll`).
 - `Tricks.*`. How long a wheelie (`manualMin`) or stoppie (`stoppieMin`) must
   be held to score, and what it pays per second.
 

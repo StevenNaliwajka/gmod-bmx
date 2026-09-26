@@ -181,41 +181,70 @@ function(ctx)
         sag, WC.radius - sag))
     ctx:between(snap.h, WC.radius - sag - 2, WC.radius - sag + 2, "ride height", "u")
 
-    -- And then it falls over, which is the DESIGN and not a bug. Asserted here
-    -- so that someone "fixing" a stationary bike that will not stand up trips a
-    -- test rather than shipping a hovering prop. riderless_falls makes the same
-    -- claim without a rider; this one is the half people assume is different.
-    local fell = ctx:waitUntil(function()
-        return math.abs(ctx:st().roll) > math.rad(35)
-    end, 4, "the ridden stationary bike to topple")
-    ctx:ok(fell, "a RIDDEN bike at a standstill topples too (the assist gate " ..
-        "is on speed, not on having a rider)")
+    -- And then it STAYS UP. This used to assert the opposite -- that a ridden
+    -- bike at a standstill topples, "the assist gate is on speed, not on
+    -- having a rider" -- and it was the design until the first person to
+    -- ride it found a bike they could not stand on. The rider's foot
+    -- (C.Stand) now holds it below walking pace.
+    local fell = false
+    ctx:runUntil(3, function()
+        if math.abs(ctx:st().roll) > math.rad(10) then fell = true end
+        return false
+    end)
+    ctx:ok(not fell, "a ridden bike at a standstill stays upright (the rider's foot)")
 end)
 
 --------------------------------------------------------------------------
-T.Case("riderless_falls", { rider = false, timeout = 20,
-    desc = "an unattended bike tips over, which is the DESIGN not a bug" },
+T.Case("parked_on_stand", { rider = false, timeout = 20,
+    desc = "a riderless bike stands on its kickstand and stays where it was left" },
 function(ctx)
-    -- This asserts intended behaviour, so that someone "fixing" a bike that
-    -- will not stand up on its own trips a test instead of shipping a hovering
-    -- prop. See sh_config.lua, Balance.fadeInLow.
+    -- This case used to be riderless_falls, asserting that an unattended bike
+    -- tips over. That was the design until someone rode it: a bike that falls
+    -- over the moment it is spawned, and cannot be ridden once it has, is not
+    -- realism anybody wanted. See C.Stand.
+    ctx:wait(1.5)
+    local start = ctx.bike:GetPos()
+    ctx:wait(3)
+
+    local st, S = ctx:st(), ctx.bike:Cfg().Stand
+    ctx:log(string.format("roll %.1f deg", math.deg(st.roll)))
+    ctx:between(math.deg(st.roll), math.deg(S.standLean) - 4, math.deg(S.standLean) + 4,
+        "leaning onto the stand", "deg")
+    local d = ctx.bike:GetPos() - start
+    ctx:between(math.sqrt(d.x * d.x + d.y * d.y), 0, 1.5, "drift in 3 s once settled", "u")
+    local f, r = ctx:wheels()
+    ctx:ok(f.onGround and r.onGround, "both wheels on the ground")
+end)
+
+--------------------------------------------------------------------------
+T.Case("fallen_is_picked_up", { rider = false, timeout = 25,
+    desc = "a bike knocked flat stays down, and getting on stands it up" },
+function(ctx)
     ctx:wait(1)
-
-    -- Nudge it, because a perfectly upright bike sits in unstable equilibrium
-    -- and could balance there indefinitely in a noiseless simulation. A real
-    -- one gets bumped; so does this one.
     local phys = ctx.bike:GetPhysicsObject()
-    if IsValid(phys) then
-        phys:ApplyForceOffset(ctx.bike:GetRight() * (phys:GetMass() * 12),
-            ctx.bike:LocalToWorld(Vector(0, 0, 30)))
+    ctx.bike:SetAngles(Angle(0, 0, 85))
+    ctx.bike:SetPos(ctx.bike:GetPos() + Vector(0, 0, 10))
+    if IsValid(phys) then phys:Wake() end
+    ctx:wait(2.5)
+    ctx:ok(math.abs(ctx:st().roll) > ctx.bike:Cfg().Stand.maxRoll,
+        "knocked flat, it stays down")
+
+    local bot = nil
+    for _, p in ipairs(player.GetAll()) do
+        if p:IsBot() and p:Nick() == "BMXTestBot" then bot = p end
     end
+    if not bot then bot = player.CreateNextBot("BMXTestBot") end
+    if not ctx:ok(IsValid(bot), "a bot to ride it") then return end
+    ctx.bot = bot
+    bot.BMXScripted = true
+    bot:EnterVehicle(ctx.bike:GetPod())
+    ctx:input({})
+    ctx:wait(2)
 
-    local fell = ctx:waitUntil(function()
-        return math.abs(ctx:st().roll) > math.rad(45)
-    end, 12, "the bike to tip past 45 degrees")
-
-    ctx:ok(fell, "a riderless bike falls over (no balance authority at rest)")
-    ctx:log(string.format("final roll %.0f deg", math.deg(ctx:st().roll)))
+    ctx:log(string.format("roll after mounting %.1f deg", math.deg(ctx:st().roll)))
+    ctx:between(math.deg(math.abs(ctx:st().roll)), 0, 8, "upright after getting on", "deg")
+    local f, r = ctx:wheels()
+    ctx:ok(f.onGround and r.onGround, "on its wheels")
 end)
 
 --------------------------------------------------------------------------

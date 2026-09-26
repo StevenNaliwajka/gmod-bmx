@@ -147,9 +147,8 @@ function BMX.PhysicsStep(ent, phys, dt)
     if hasDriver then
         BMX.SmoothInput(inp, dt)
     else
-        -- A riderless bike coasts to a stop and falls over. No neutral-input
-        -- balancing: an unattended bike that stands up on its own reads as a
-        -- bug even when it is convenient.
+        -- A riderless bike has no input. Parked, it sits on its kickstand
+        -- (C.Stand, in BMX.Balance) and is held where it stands: see 7c.
         inp.lean, inp.pitch, inp.throttle = 0, 0, 0
         inp.brakeRear, inp.brakeFront = 0, 0
     end
@@ -282,6 +281,49 @@ function BMX.PhysicsStep(ent, phys, dt)
         local area = C.Drive.dragArea * (inp.tuck and 0.7 or 1)
         local f = vel:GetNormalized() * (-area * speed * speed * dt)
         if BMX.FiniteVec(f) then phys:ApplyForceCenter(f) end
+    end
+
+    ----------------------------------------------------------------------
+    -- 7c. PARKED: held where it stands.
+    --
+    -- A bike on its stand is held by STATIC friction, which a slip-velocity
+    -- tyre model does not have: it only ever answers a slip that already
+    -- exists. Holding a parked bike with a locked brake was tried first and
+    -- it CREPT, steadily, at 16 u/s: the locked tyre's force acts 27 units
+    -- below the centre of mass, so each substep it "stopped" the contact
+    -- patch mostly by pitching the chassis, the springs pitched it back, and
+    -- the patch's motion that the tyre kept answering was the chassis's own
+    -- settling. Measured on the tests' plant, never shipped.
+    --
+    -- So this models the stiction directly: bleed off the horizontal and yaw
+    -- motion at the centre of mass, where it cannot pitch anything. Only
+    -- while parked on the stand and slow, so a bike that is pushed hard, or
+    -- knocked off its stand, moves like anything else.
+    ----------------------------------------------------------------------
+    if not hasDriver and st.onStand and speed < C.Balance.walkSpeed then
+        -- Read NOW, after this substep's tyre forces, not the `vel` taken at
+        -- the top of the step: removing that one leaves whatever the tyres
+        -- just added, and the bike still slid at 0.2 u/s.
+        local k = 1
+        local vNow = phys:GetVelocity()
+        local vh = Vector(vNow.x, vNow.y, 0)
+        phys:ApplyForceCenter(vh * (-phys:GetMass() * k))
+        -- HEADING, not just yaw rate. The tyres' sideways forces, reacting
+        -- the stand's small steady lean error at the front and rear patches,
+        -- sit at different distances from the mass centre and add up to a
+        -- steady yaw torque. Damping the rate alone only slowed the result:
+        -- a parked bike turned on the spot at 1.6 degrees a second. So the
+        -- heading it was parked at is held, with the rate as the D term.
+        local up = ent:GetUp()
+        local f = ent:GetForward()
+        local yaw = math.atan2(f.y, f.x)
+        st.parkYaw = st.parkYaw or yaw
+        local err = math.atan2(math.sin(st.parkYaw - yaw), math.cos(st.parkYaw - yaw))
+        local wYaw = st.angVel:Dot(up)
+        local alpha = 60 * err - 16 * wYaw
+        BMX.ApplyTorque(phys, ent, up, BMX.TorqueFor(BMX.IYaw(ent), alpha), dt)
+    else
+        st.parkYaw = nil
     end
 
     ----------------------------------------------------------------------

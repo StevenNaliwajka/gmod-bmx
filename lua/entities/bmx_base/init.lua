@@ -21,6 +21,9 @@ function ENT:Initialize()
     local C = self:Cfg()
 
     self:SetModel(bike.model)
+    -- A procedurally drawn bike's model is a stand-in the client never draws;
+    -- its shadow would still be cast, as a floating square under the frame.
+    if not bike.hasModel then self:DrawShadow(false) end
     self:SetMoveType(MOVETYPE_VPHYSICS)
     self:SetSolid(SOLID_VPHYSICS)
 

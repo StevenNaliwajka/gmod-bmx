@@ -7,8 +7,8 @@ are leaning rather than a key you press. Wheelies, stoppies, bunny hops, air
 control and flips.
 
 **Status: v0.1.0, pre-alpha.** Two test suites gate every commit: an
-**offline suite** of 122 tests that executes the addon (client half included)
-against a Garry's Mod shim in a stock Lua 5.1, and a **headless suite** of 18
+**offline suite** of 132 tests that executes the addon (client half included)
+against a Garry's Mod shim in a stock Lua 5.1, and a **headless suite** of 19
 cases on a real dedicated server. The bike rides, brakes, skids, steers from
 lean, hops and lands, holds a wheelie and a stoppie, and scores tricks. **It
 has never been ridden by a human**, so nothing is known about how it feels,
@@ -123,7 +123,8 @@ result. **No client, no GPU, no human**, which means correctness regressions can
 be caught on a headless box continuously.
 
 It covers the force-units assumption, ride height and suspension load, the fact
-that a riderless bike is *supposed* to fall over, acceleration and the cadence
+that a parked bike stands on its kickstand and a fallen one is picked up by
+getting on, acceleration and the cadence
 ceiling, rear-brake lockup and friction-circle saturation, lean-derives-steering
 in **both** directions, whether the balance PD actually holds its target, bunny
 hops (and their landings), wheelies, stoppies, air mode, and crash ejection. It also covers the things a public
@@ -241,9 +242,10 @@ the bike is fun. See [docs/TESTING.md](docs/TESTING.md).
 
 Code is MIT, see [LICENSE](LICENSE).
 
-The bike model shipped here is a **placeholder** (a Hunter's plate from base
-GMod, with procedurally drawn wheels) so the addon has zero content
-dependencies and can be cloned and ridden immediately.
+The bike ships **no model**: it is drawn in code from tubes and boxes (frame,
+fork, bars, seat, cranks that turn as you pedal, chain, pegs), sized from its
+own geometry. So the addon has zero content dependencies and can be cloned and
+ridden immediately. A bike def can supply a real `model` instead.
 
 **Do not add ripped assets.** A GTA 5 BMX model, or anything extracted from
 another game, in a public repository is the fastest way to get it taken down.

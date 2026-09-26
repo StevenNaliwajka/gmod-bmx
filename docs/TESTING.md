@@ -80,13 +80,15 @@ retuning grip and crank torque to compensate for a units error.
 
 ### 3. It stands up
 
-`bmx_spawn`, then look at it without getting on. You should see two procedural
-wheel rings sitting on the ground and a placeholder frame between them. The
-rings turn red when their trace finds no ground.
+`bmx_spawn`, then look at it without getting on. You should see a BMX drawn in
+code: frame, fork, bars, seat, cranks, chain, pegs, and two tyres sitting on the
+ground. With `bmx_debug 1` the tyres turn red when their trace finds no ground.
 
-A riderless bike is *supposed* to fall over. There is no balance assist without
-a rider and no assist at all below walking pace, because a bike that stands up
-on its own reads as a hovering prop.
+A riderless bike stands on its kickstand, leaning a few degrees left, and stays
+where it was left. Knock it flat and it stays down; get on and it is picked up.
+With a rider at a standstill, the rider's foot holds it up. This used to be the
+opposite (a stationary bike fell over, by design) until the first person to ride
+it found a bike they could not get on. See `C.Stand` in `sh_config.lua`.
 
 If the wheels are floating above or sunk into the ground, that is
 `Wheel.restLength` or `Wheel.radius` disagreeing with where the entity origin
@@ -170,7 +172,7 @@ Everything above the offline section is a human looking at a bike. This
 section is the part that runs on a real server without one.
 
 `bmx_test` drives the whole simulation from a bot on a real dedicated server:
-eighteen cases covering the tyre model, the balance PD, derived steering,
+nineteen cases covering the tyre model, the balance PD, derived steering,
 wheelies, stoppies, hops and their landings, air mode, the duplicator and the
 sound table. It writes `data/bmx_test_results.txt`
 and prints the same report to console. On a provisioned server:

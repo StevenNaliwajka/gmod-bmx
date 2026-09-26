@@ -49,22 +49,136 @@ local function sync(s)
     s.cb:SetAngles(s.bike:GetAngles())
 end
 
-T.test("Draw runs to the end and draws both wheels and the fork", function()
-    local s = scene()
-    s.cl.lines = 0
+-- Where the client draws each axle: the centre of that wheel's hub beam.
+local function hubs(s)
+    local E = s.cl.env
+    local WC = s.cb:Cfg().Wheel
+    local f, r
+    for _, b in ipairs(s.cl.beams) do
+        local len = (b.a - b.b):Length()
+        if math.abs(len - 4.4) < 1e-6 then        -- the 2 x 2.2 hub
+            local mid = (b.a + b.b) * 0.5
+            local loc = s.cb:WorldToLocal(mid)
+            if loc.x > 0 then f = mid else r = mid end
+        end
+    end
+    return f, r
+end
+
+local function draw(s)
+    s.cl.lines, s.cl.beams, s.cl.drawnModels, s.cl.boxes3d = 0, {}, 0, 0
     s.cb:Draw()
-    -- Two rings of 20 segments, four spokes each, and the fork's two lines.
-    T.eq(s.cl.lines, 2 * (20 + 4) + 2, "lines drawn")
-    T.eq(s.cl.drawnModels, 1, "the frame model is drawn once")
+end
+
+T.test("the stock bike is DRAWN as a bike: frame, wheels, bars, drivetrain", function()
+    local s = scene()
+    draw(s)
+    T.eq(s.cl.drawnModels, 0, "the stand-in plate is never drawn")
+    T.ok(#s.cl.beams > 120, "tubes, tyres and rims drawn: " .. #s.cl.beams)
+    T.eq(s.cl.lines, 2 * 12, "twelve spokes a wheel")
+    T.ok(s.cl.boxes3d >= 3, "seat and two pedals")
+    local red = 0
+    for _, b in ipairs(s.cl.beams) do
+        if b.col and b.col.r == 205 and b.col.g == 35 then red = red + 1 end
+    end
+    T.ok(red >= 8, "the frame, in the bike's frameColor: " .. red .. " tubes")
 end)
 
-T.test("Draw copes with a bike in the air and a steered front wheel", function()
+T.test("the tyres sit on the ground and the frame is attached to them", function()
+    local s = scene()
+    draw(s)
+    local f, r = hubs(s)
+    T.ok(f and r, "both hubs drawn")
+    local R = s.cb:Cfg().Wheel.radius
+    T.near(f.z, R, 0.3, "front axle one radius up")
+    T.near(r.z, R, 0.3, "rear axle one radius up")
+    -- Some frame tube must end at each axle: the stays at the back, the fork
+    -- at the front. Offset sideways by half the tube spacing, so within 2.
+    local function touches(p)
+        for _, b in ipairs(s.cl.beams) do
+            if (b.a - p):Length() < 2 or (b.b - p):Length() < 2 then
+                if b.w >= 0.9 and b.w <= 1.1 then return true end
+            end
+        end
+    end
+    T.ok(touches(r), "chain/seat stays run to the rear axle")
+    T.ok(touches(f), "fork legs run to the front axle")
+end)
+
+T.test("the bars turn with the steer angle", function()
+    local s = scene()
+    local function barYaw()
+        draw(s)
+        -- The bar is the widest-spaced near-horizontal tube, high up.
+        local best, len = nil, 0
+        for _, b in ipairs(s.cl.beams) do
+            local d = b.b - b.a
+            if b.a.z > 25 and math.abs(d.z) < 1 and d:Length() > len then best, len = d, d:Length() end
+        end
+        return math.deg(math.atan2(best.y, best.x))
+    end
+    local straight = barYaw()
+    s.cb:SetSteer(math.rad(20))
+    local turned = barYaw()
+    T.near(math.abs(math.AngleDifference(turned, straight)), 20, 1.5, "bars rotated by the steer")
+end)
+
+T.test("the cranks turn with the cadence and stop when coasting", function()
+    local s = scene()
+    s.cb:SetCadence(0)
+    draw(s)
+    local a0 = s.cb.crankAngle
+    draw(s)
+    T.eq(s.cb.crankAngle, a0, "coasting: cranks still")
+    s.cb:SetCadence(10)
+    draw(s)
+    T.near(s.cb.crankAngle - a0, 10 * s.world.dt, 1e-9, "pedalling: turned by cadence*dt")
+end)
+
+T.test("the kickstand shows only when the bike is parked", function()
+    local s = scene()
+    local function standDrawn()
+        draw(s)
+        for _, b in ipairs(s.cl.beams) do
+            if math.abs(b.w - 0.8) < 1e-9 then return true end
+        end
+        return false
+    end
+    T.ok(not standDrawn(), "not with a rider")
+    s.cb:SetDriver(s.cl.NULL)
+    T.ok(standDrawn(), "parked: stand down")
+    s.cb:SetSpeedUPS(100)
+    T.ok(not standDrawn(), "rolling away riderless: stand up")
+end)
+
+T.test("red tyres off the ground are a bmx_debug aid, not the normal look", function()
     local s = scene()
     s.cb:SetPos(s.cb:GetPos() + s.cl.env.Vector(0, 0, 200))
-    s.cb:SetSteer(math.rad(25))
-    s.cl.lines = 0
-    s.cb:Draw()
-    T.eq(s.cl.lines, 50, "still draws everything off the ground")
+    local function reds()
+        draw(s)
+        local n = 0
+        for _, b in ipairs(s.cl.beams) do if b.col and b.col.r == 235 then n = n + 1 end end
+        return n
+    end
+    T.eq(reds(), 0, "normal play: black tyres in the air")
+    s.cl.env.GetConVar("bmx_debug"):SetString("1")
+    T.ok(reds() > 0, "bmx_debug 1: red when the trace finds no ground")
+end)
+
+T.test("a bike that ships a model draws the model instead of the frame", function()
+    local s = scene()
+    s.cl.env.BMX.RegisterBike("modelled", { model = "models/some/bike.mdl" })
+    local e = s.cl:clientEntity("bmx_base")
+    e.BikeID = "modelled"
+    e:SetPos(s.cb:GetPos())
+    s.cl.drawnModels, s.cl.beams = 0, {}
+    e:Draw()
+    T.eq(s.cl.drawnModels, 1, "the model")
+    for _, b in ipairs(s.cl.beams) do
+        T.ok(not (b.col and b.col.r == 205 and b.col.g == 35),
+            "no procedural frame tube on a modelled bike")
+    end
+    T.ok(#s.cl.beams > 0, "its wheels are still drawn")
 end)
 
 T.test("the rider HUD draws the speed in the chosen units", function()

@@ -308,11 +308,12 @@ symptoms.
 | 6e | Duplicator, grab guards, client-file delivery | done |
 | 6g | Offline suite: client half, wire format, usercmd decode, plant | done |
 | 6h | Disc tyre contact, stoppie inertia, hop landing, ground tricks | done |
-| 7 | Tuning pass with a human rider, real model | **next** |
+| 6i | Procedural bike body, kickstand, foot down, pick up a fallen bike | done |
+| 7 | Tuning pass with a human rider | **next** |
 | 8 | Rider animation, Workshop release | icon and packer done |
 
-Phases 0 to 6h are done. **The offline suite (122 tests) and the headless
-suite (18 cases, on a real dedicated server) both pass.** The bike rides,
+Phases 0 to 6i are done. **The offline suite (132 tests) and the headless
+suite (19 cases, on a real dedicated server) both pass.** The bike rides,
 brakes, skids, steers from lean, hops and lands, holds a wheelie and a stoppie,
 and tracks a commanded lean to within 11 degrees.
 
@@ -386,11 +387,14 @@ once on a timer and anything later joined a queue that had already been drained.
 
 ## 8. Content and licensing
 
-The shipped model is a placeholder from base GMod, with procedurally drawn
-wheels. That is a deliberate choice, not a stopgap: it means the addon has zero
-content dependencies, can be cloned and ridden immediately, and the wheel
-drawing doubles as the most useful debugging aid the project has. If the bike is
-behaving oddly, you can see where the simulation thinks its wheels are.
+The stock bike ships no model at all. `cl_init.lua` draws a 20-inch BMX from
+camera-facing beams and boxes: frame, fork, tall swept bars that turn with the
+steer angle, seat, cranks that turn at the networked cadence, chain, pegs, and a
+kickstand when parked. It is sized from the bike's own wheelbase, and the stays
+and fork run to where the wheels actually are, so the drawing still shows exactly
+where the simulation has its wheels: the debugging property the old placeholder
+(a Hunter plate with wheel rings) was kept for. Zero content dependencies, clone
+and ride.
 
 A real model needs: a frame, a fork that steers with the front wheel, two
 wheels, and cranks. `frameOffset` / `frameAngles` align it against the axle

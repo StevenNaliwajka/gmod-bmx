@@ -90,6 +90,18 @@ T.test("the wheelie hold is well damped against the PIVOT inertia", function()
     T.between(zeta, 0.7, 1.3, "wheelie hold damping ratio")
 end)
 
+T.test("the stand and foot are stiffer than the bike topples", function()
+    local C = cfg()
+    local h = C.Chassis.massCenterExpected.z + C.Wheel.radius
+    local gradient = C.Chassis.mass * 600 * h / I_ROLL      -- rad/s^2 per rad
+    T.ok(C.Stand.kp > gradient * 1.5, string.format(
+        "Stand.kp %g against a toppling gradient of %.0f", C.Stand.kp, gradient))
+    local zeta = C.Stand.kd / (2 * math.sqrt(C.Stand.kp - gradient))
+    T.between(zeta, 0.7, 1.6, "stand damping ratio")
+    T.ok(C.Stand.standLean < 0, "parked bikes lean LEFT, onto the stand")
+    T.ok(math.abs(C.Stand.standLean) < C.Stand.maxRoll, "and that is not 'fallen'")
+end)
+
 T.test("top speed is capped by cadence, not by drag", function()
     local C = cfg()
     local D = C.Drive

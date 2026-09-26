@@ -18,14 +18,27 @@ include("shared.lua")
        when the trace finds no ground.
 ----------------------------------------------------------------------------]]
 
-local SEGMENTS  = 20
-local COL_TYRE  = Color(28, 28, 32)
-local COL_SPOKE = Color(150, 155, 165)
-local COL_FORK  = Color(120, 125, 135)
-local COL_AIR   = Color(235, 90, 60)
+local TYRE_SEGMENTS = 28
+local SPOKES        = 12
+
+local COL_TYRE   = Color(24, 24, 27)
+local COL_RIM    = Color(190, 194, 202)
+local COL_SPOKE  = Color(160, 165, 175)
+local COL_PART   = Color(34, 34, 38)       -- bars, cranks, seat, fork crown
+local COL_CHROME = Color(200, 204, 212)
+local COL_AIR    = Color(235, 90, 60)
+local COL_FRAME  = Color(205, 35, 45)      -- a bike def can set frameColor
+
+-- Big enough for the frame, the bars and a rider, in chassis units at the
+-- stock wheelbase; scaled per bike. Without it the engine culls the drawing
+-- by the hidden model's bounds, and the bike vanishes at the edge of the view.
+local BOUNDS_MIN, BOUNDS_MAX = Vector(-36, -18, -14), Vector(36, 18, 72)
 
 function ENT:Initialize()
-    self.spinAngle = 0
+    self.spinAngle  = 0
+    self.crankAngle = 0
+    local k = self:Cfg().Wheel.wheelbase / 39
+    self:SetRenderBounds(BOUNDS_MIN * k, BOUNDS_MAX * k)
 end
 
 --------------------------------------------------------------------------
@@ -67,69 +80,126 @@ local function axlePos(ent, mountLocal)
 end
 
 --------------------------------------------------------------------------
--- A wheel as a ring plus four spokes. The spokes carry the spin, which is what
--- makes speed legible at a glance.
+-- Drawing primitives. Everything is a camera-facing beam or a box in the colour
+-- material: no textures, no models, nothing that is not in base Garry's Mod.
 --------------------------------------------------------------------------
-local function drawWheel(center, axleDir, spin, radius, grounded)
+local function tube(a, b, width, col)
+    render.DrawBeam(a, b, width, 0, 1, col)
+end
+
+-- A circle in the plane spanned by e1/e2, as a closed chain of beams.
+local function ring(center, e1, e2, radius, width, col, segments)
+    local prev
+    for i = 0, segments do
+        local t = (i / segments) * math.pi * 2
+        local p = center + (e1 * math.cos(t) + e2 * math.sin(t)) * radius
+        if prev then tube(prev, p, width, col) end
+        prev = p
+    end
+end
+
+--------------------------------------------------------------------------
+-- A wheel: tyre, rim, spokes, hub, and BMX pegs. The spokes carry the spin,
+-- which is what makes speed legible at a glance.
+--
+-- The tyre turns red when its trace finds no ground, but only with bmx_debug
+-- on. It used to be always, which was a debugging aid when the bike was a
+-- plate with rings around it and reads as a glitch on something that looks
+-- like a bike.
+--------------------------------------------------------------------------
+local function drawWheel(center, axleDir, spin, radius, grounded, debug)
     -- Any orthonormal basis spanning the wheel's plane. Angle():Up()/:Right()
     -- of the axle direction gives one for free.
     local a  = axleDir:Angle()
     local e1 = a:Up()
     local e2 = a:Right()
 
-    local col = grounded and COL_TYRE or COL_AIR
+    local tyreW = radius * 0.24
+    local col = (debug and not grounded) and COL_AIR or COL_TYRE
+    ring(center, e1, e2, radius - tyreW * 0.5, tyreW, col, TYRE_SEGMENTS)
+    ring(center, e1, e2, radius - tyreW - 0.3, 0.7, COL_RIM, TYRE_SEGMENTS)
 
-    local prev
-    for i = 0, SEGMENTS do
-        local t = (i / SEGMENTS) * math.pi * 2
-        local p = center + (e1 * math.cos(t) + e2 * math.sin(t)) * radius
-        if prev then render.DrawLine(prev, p, col, false) end
-        prev = p
+    local rim = radius - tyreW - 0.4
+    for i = 0, SPOKES - 1 do
+        local t = spin + (i / SPOKES) * math.pi * 2
+        local p = center + (e1 * math.cos(t) + e2 * math.sin(t)) * rim
+        render.DrawLine(center, p, COL_SPOKE, true)
     end
 
-    for i = 0, 3 do
-        local t = spin + (i / 4) * math.pi * 2
-        local p = center + (e1 * math.cos(t) + e2 * math.sin(t)) * (radius - 1)
-        render.DrawLine(center, p, COL_SPOKE, false)
-    end
+    -- Hub and pegs: the pegs are the one part a BMX has that nothing else does.
+    tube(center - axleDir * 2.2, center + axleDir * 2.2, 1.6, COL_CHROME)
+    tube(center + axleDir * 2.4, center + axleDir * 6.0, 1.3, COL_CHROME)
+    tube(center - axleDir * 2.4, center - axleDir * 6.0, 1.3, COL_CHROME)
 end
+
+--------------------------------------------------------------------------
+-- The frame, in chassis space.
+--
+-- Points are in inches, which Source units are, on a stock 20-inch BMX with a
+-- 39-unit wheelbase, measured from the design axle line. They scale with the
+-- bike's own wheelbase, so a per-bike physics override that makes the bike
+-- bigger draws a bigger bike. The two axles are NOT in this table: the stays
+-- and the fork run to where the wheels actually are, so the frame stays
+-- attached to them as the suspension (the rider's legs) works.
+--------------------------------------------------------------------------
+local FRAME = {
+    bb     = Vector(-4.5, 0,  1.5),    -- bottom bracket
+    seatJ  = Vector(-9.5, 0, 14.0),    -- where the top tube meets the seat tube
+    seat   = Vector(-10.5, 0, 18.5),   -- top of the seat post
+    headT  = Vector(12.5, 0, 17.5),    -- head tube, top
+    headB  = Vector(14.5, 0, 10.5),    -- head tube, bottom
+    bars   = Vector(10.5, 0, 26.0),    -- bar centre (BMX bars are tall and swept back)
+}
+local CRANK   = 6.8     -- 170 mm cranks
+local Q       = 3.4     -- half the distance between the pedals
+local RING    = 3.8     -- chainring radius
+local COG     = 1.3     -- rear cog radius
+local CHAINY  = -2.3    -- the drive side is the RIGHT, which is -Y in Source
 
 function ENT:Draw()
     local bike = self:Bike()
-    local WC   = self:Cfg().Wheel
+    local C    = self:Cfg()
+    local WC   = C.Wheel
     local half = WC.wheelbase * 0.5
+    local dt   = FrameTime()
+    local debug = GetConVar("bmx_debug") and GetConVar("bmx_debug"):GetInt() > 0
 
     ----------------------------------------------------------------------
-    -- Frame. Drawn through a pushed matrix rather than by moving the entity,
-    -- so the physics origin stays on the axle line where the simulation needs
-    -- it while the model sits wherever it looks right.
+    -- A bike that ships a real model draws it, through a pushed matrix so
+    -- the physics origin stays on the axle line while the model sits
+    -- wherever it looks right. The stock bike ships none and is drawn below.
     ----------------------------------------------------------------------
-    local m = Matrix()
-    m:SetTranslation(self:LocalToWorld(bike.frameOffset))
-    m:SetAngles(self:LocalToWorldAngles(bike.frameAngles))
-    m:Scale(Vector(bike.scale, bike.scale, bike.scale))
+    if bike.hasModel then
+        local m = Matrix()
+        m:SetTranslation(self:LocalToWorld(bike.frameOffset))
+        m:SetAngles(self:LocalToWorldAngles(bike.frameAngles))
+        m:Scale(Vector(bike.scale, bike.scale, bike.scale))
 
-    cam.PushModelMatrix(m)
-        self:DrawModel()
-    cam.PopModelMatrix()
+        cam.PushModelMatrix(m)
+            self:DrawModel()
+        cam.PopModelMatrix()
+    end
 
     ----------------------------------------------------------------------
     -- Wheels
     ----------------------------------------------------------------------
-    local spin = self:VisualWheelSpin(FrameTime())
+    local spin = self:VisualWheelSpin(dt)
 
+    local fwd       = self:GetForward()
     local up        = self:GetUp()
-    local rearAxle  = self:GetRight()
-    local frontAxle = rearAxle
+    local right     = self:GetRight()
+    local rearAxle  = right
+    local frontAxle = right
 
     -- Steer is networked because it is an OUTPUT of the balance controller: it
     -- is derived from the lean that actually happened, so the client has no way
     -- to work it out from anything it already holds.
     local steer = self:GetSteer()
+    local steeredFwd = fwd
     if steer ~= 0 then
         local c, s = math.cos(steer), math.sin(steer)
-        local steered = self:GetForward() * c + rearAxle * s
-        frontAxle = steered:Cross(up)
+        steeredFwd = fwd * c + right * s
+        frontAxle = steeredFwd:Cross(up)
         frontAxle:Normalize()
     end
 
@@ -141,16 +211,99 @@ function ENT:Draw()
     local fPos, fHit = axlePos(self, Vector( half, 0, lift))
     local rPos, rHit = axlePos(self, Vector(-half, 0, lift))
 
-    drawWheel(fPos, frontAxle, spin, WC.radius, fHit)
-    drawWheel(rPos, rearAxle,  spin, WC.radius, rHit)
+    if not bike.wheelModel then
+        drawWheel(fPos, frontAxle, spin, WC.radius, fHit, debug)
+        drawWheel(rPos, rearAxle,  spin, WC.radius, rHit, debug)
+    end
+
+    if bike.hasModel then return end
 
     ----------------------------------------------------------------------
-    -- Fork and bars, so the steer angle is visible on placeholder geometry.
-    -- Drops out for free once a bike ships a real forkModel.
+    -- The frame. Chassis points sit on the axle line the bike RIDES at, which
+    -- is the design line lifted by the static sag, so an unladen frame lines
+    -- up with wheels at their resting compression.
     ----------------------------------------------------------------------
-    if not bike.forkModel then
-        local head = fPos + up * 26
-        render.DrawLine(fPos, head, COL_FORK, false)
-        render.DrawLine(head - frontAxle * 9, head + frontAxle * 9, COL_FORK, false)
+    local k   = WC.wheelbase / 39
+    local g   = physenv.GetGravity():Length()
+    local sag = math.Clamp(C.Chassis.mass * g * 0.5 / WC.spring, 0, WC.restLength)
+    local lift0 = Vector(0, 0, sag)
+    local function P(v) return self:LocalToWorld(v * k + lift0) end
+
+    local col = bike.frameColor or COL_FRAME
+    local bb, seatJ, seat = P(FRAME.bb), P(FRAME.seatJ), P(FRAME.seat)
+    local headT, headB = P(FRAME.headT), P(FRAME.headB)
+
+    tube(seatJ, headT, 1.5 * k, col)            -- top tube
+    tube(headB, bb, 1.7 * k, col)               -- down tube
+    tube(bb, seatJ, 1.5 * k, col)               -- seat tube
+    tube(headT, headB, 1.9 * k, col)            -- head tube
+    for _, side in ipairs({ 1, -1 }) do
+        local off = right * (1.6 * k * side)
+        tube(bb + off, rPos + off, 0.95 * k, col)       -- chain stays
+        tube(seatJ + off, rPos + off, 0.95 * k, col)    -- seat stays
+    end
+
+    -- Seat post and seat.
+    tube(seatJ, seat, 1.0 * k, COL_CHROME)
+    render.DrawBox(seat + up * (0.8 * k), self:GetAngles(),
+        Vector(-5, -1.9, -0.8) * k, Vector(4, 1.9, 0.8) * k, COL_PART)
+
+    ----------------------------------------------------------------------
+    -- Fork, stem and bars. The fork runs from the head tube to the front
+    -- axle where it really is, so it steers and compresses with the wheel.
+    ----------------------------------------------------------------------
+    for _, side in ipairs({ 1, -1 }) do
+        local off = frontAxle * (1.7 * k * side)
+        tube(headB + off, fPos + off, 1.0 * k, COL_PART)
+    end
+    tube(headB - frontAxle * (1.9 * k), headB + frontAxle * (1.9 * k), 1.2 * k, COL_PART)
+
+    -- The bars turn about the head tube with the steer angle: the bar centre's
+    -- offset from the head tube is re-expressed along the STEERED forward.
+    local d = P(FRAME.bars) - headT
+    local barsC = headT + steeredFwd * d:Dot(fwd) + up * d:Dot(up)
+    local stemTop = headT + up * (3 * k)
+    tube(headT, stemTop, 1.4 * k, COL_PART)
+    local barL = barsC - frontAxle * (11 * k)
+    local barR = barsC + frontAxle * (11 * k)
+    tube(stemTop, barsC, 1.0 * k, COL_PART)         -- the rise of the bar
+    tube(barL, barR, 0.95 * k, COL_PART)
+    tube(barL, barL - frontAxle * (3.5 * k), 1.5 * k, COL_TYRE)    -- grips
+    tube(barR, barR + frontAxle * (3.5 * k), 1.5 * k, COL_TYRE)
+
+    ----------------------------------------------------------------------
+    -- Drivetrain. The cranks turn at the networked cadence, so pedalling is
+    -- visible, and coasting (the freewheel ticking) shows them still.
+    ----------------------------------------------------------------------
+    self.crankAngle = (self.crankAngle or 0) + self:GetCadence() * dt
+
+    local cr = right * (-CHAINY * k)             -- -Y local is +right world
+    local ringC = bb + cr
+    ring(ringC, fwd, up, RING * k, 0.6 * k, COL_CHROME, 16)
+    local cogC = rPos + cr
+    tube(ringC + up * (RING * k), cogC + up * (COG * k), 0.45 * k, COL_PART)   -- chain, top
+    tube(ringC - up * (RING * k), cogC - up * (COG * k), 0.45 * k, COL_PART)   -- chain, bottom
+
+    for _, side in ipairs({ 1, -1 }) do
+        local t = self.crankAngle + (side == 1 and 0 or math.pi)
+        local arm = (fwd * math.cos(t) - up * math.sin(t)) * (CRANK * k)
+        local root = bb + right * (Q * k * side)
+        local pedal = root + arm
+        tube(root, pedal, 0.9 * k, COL_PART)
+        render.DrawBox(pedal + right * (1.8 * k * side), self:GetAngles(),
+            Vector(-1.8, -1.8, -0.5) * k, Vector(1.8, 1.8, 0.5) * k, COL_PART)
+    end
+    tube(bb - right * (Q * k), bb + right * (Q * k), 1.3 * k, COL_PART)     -- spindle
+
+    ----------------------------------------------------------------------
+    -- Kickstand, when parked. Drawn from the bottom bracket to the ground on
+    -- the LEFT, which is the side the parked bike leans on (Stand.standLean).
+    ----------------------------------------------------------------------
+    if not IsValid(self:GetDriver()) and self:GetSpeedUPS() < 20 then
+        local from = bb - right * (2 * k)
+        local want = from - up * (16 * k) - right * (7 * k)
+        local tr = util.TraceLine({ start = from, endpos = want,
+            filter = { self, self:GetPod() }, mask = MASK_SOLID })
+        tube(from, tr.Hit and tr.HitPos or want, 0.8 * k, COL_PART)
     end
 end

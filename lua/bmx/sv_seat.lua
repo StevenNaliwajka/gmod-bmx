@@ -33,7 +33,47 @@ local function bind(ply, bike)
     local phys = bike:GetPhysicsObject()
     if IsValid(phys) then phys:Wake() end
 
+    BMX.PickUp(bike)
+
     hook.Run("BMX_RiderMounted", bike, ply)
+end
+
+--------------------------------------------------------------------------
+-- Getting on a bike that is lying on its side picks it up, as a rider would.
+--
+-- Nothing else can: the kickstand and the foot (C.Stand) only hold a bike
+-- that is still up, and the lean assist needs speed. Before this, a bike that
+-- had been knocked over or crashed was scenery for the rest of the map.
+--
+-- Stood up where it lies, facing the way it was pointing, lifted clear of
+-- the ground and stopped, with the controller's history reset so the first
+-- substep does not read the righting as a roll rate of hundreds of degrees a
+-- second.
+--------------------------------------------------------------------------
+function BMX.PickUp(bike)
+    if not IsValid(bike) or not bike.st then return false end
+    local roll, pitch = BMX.Attitude(bike, vector_up)
+    local S = bike:Cfg().Stand
+    if math.abs(roll) < S.maxRoll and math.abs(pitch) < S.maxRoll then return false end
+
+    local phys = bike:GetPhysicsObject()
+    local fwd = bike:GetForward()
+    local yaw = (math.abs(fwd.x) + math.abs(fwd.y) > 1e-3)
+        and math.deg(math.atan2(fwd.y, fwd.x)) or bike:GetAngles().y
+
+    bike:SetAngles(Angle(0, yaw, 0))
+    bike:SetPos(bike:GetPos() + Vector(0, 0, bike:Cfg().Wheel.radius + 4))
+    if IsValid(phys) then
+        phys:SetVelocity(vector_origin)
+        phys:SetAngleVelocity(vector_origin)
+        phys:Wake()
+    end
+
+    local st = bike.st
+    st.lastRoll, st.lastPitch, st.roll, st.pitch = 0, 0, 0, 0
+    st.rollRate, st.pitchRate = 0, 0
+    st.prevF, st.prevR, st.prevU = nil, nil, nil
+    return true
 end
 
 local function unbind(ply, bike)

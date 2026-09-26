@@ -316,9 +316,9 @@ C.Balance = {
     -- a bad landing beat the assist.
     maxAssistAccel = 165,
 
-    -- Assist authority against speed, u/s. Below fadeInLow the bike is on its
-    -- own and will fall over (correct: a stationary bike does). Full authority
-    -- by fadeInHigh.
+    -- Assist authority against speed, u/s. Full authority by fadeInHigh. Below
+    -- fadeInLow the LEAN assist does nothing and C.Stand holds the bike
+    -- instead; in between they share it.
     fadeInLow  = 25,
     fadeInHigh = 110,
 
@@ -331,6 +331,40 @@ C.Balance = {
     -- Trail/self-centring: mild damping on the derived steer angle so the front
     -- end does not chatter over bumps.
     steerRate = 9.0,
+}
+
+--------------------------------------------------------------------------
+-- STANDING STILL: THE KICKSTAND AND THE RIDER'S FOOT
+--
+-- The lean assist above fades in with speed (fadeInLow..fadeInHigh) and does
+-- nothing at a standstill. This used to be the whole story, on purpose: "a
+-- bike that stands up on its own reads as a hovering prop". In play it read
+-- as a bike you could not get on. Spawned, it fell over; stopped, it fell
+-- over with you on it; and on its side it could never be ridden again.
+--
+-- So the slow end now has a support of its own, weighted by exactly the
+-- authority the lean assist is NOT using, so the two hand over across the
+-- same speed band rather than stacking:
+--
+--   parked (no rider)  a kickstand. The bike leans a little onto it, to the
+--                      left, the side stands are on, and brakes itself.
+--   ridden             the rider's foot. Upright, with a small lean from
+--                      A/D so turning on the spot still looks like something.
+--
+-- Knocked past maxRoll it has fallen, and nothing holds it: a kickstand
+-- does not stand a bike back up. Getting on picks it up (sv_seat.lua).
+--------------------------------------------------------------------------
+C.Stand = {
+    standLean = math.rad(-9),      -- parked: leaning LEFT onto the stand
+    footLean  = math.rad(6),       -- ridden: how far A/D lean at a standstill
+    maxRoll   = math.rad(50),      -- beyond this it has fallen over
+
+    -- Stiff enough to beat the toppling gradient with margin: that is
+    -- m*g*h/I_roll = 86*600*30/9299 = 166 rad/s^2 per rad, so 400 holds and
+    -- 40 is zeta ~1 against it. Clamped by Balance.maxAssistAccel like the
+    -- lean assist, so a hard enough shove still knocks a parked bike over.
+    kp = 400,
+    kd = 40,
 }
 
 --------------------------------------------------------------------------
@@ -601,7 +635,8 @@ end
 --------------------------------------------------------------------------
 BMX.ConfigRevision = 0
 
-local GROUPS = { "Chassis", "Wheel", "Drive", "Balance", "Pitch", "Air", "Hop", "Crash", "Tricks" }
+local GROUPS = { "Chassis", "Wheel", "Drive", "Balance", "Stand", "Pitch", "Air", "Hop",
+                 "Crash", "Tricks" }
 
 -- Public, so bmx_dump_config walks the same list the merge does: two copies of
 -- it is how a new group gets merged per bike and silently left out of the dump.

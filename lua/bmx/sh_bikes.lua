@@ -64,7 +64,9 @@ local deriveOne
 --
 --   id            unique, lowercase. Becomes entity class "bmx_<id>".
 --   def.printName spawnmenu label
---   def.model     frame model. See the placeholder note below.
+--   def.model     frame model. Optional: without one the whole bike is drawn
+--                 procedurally, which is what the stock bike does.
+--   def.frameColor Color for the procedural frame.
 --   def.seatModel model the invisible pod uses; only its seat attachment and
 --                 sit animation matter, since it is never drawn.
 --   def.wheelModel optional. Absent, the client draws procedural wheels, which
@@ -93,7 +95,12 @@ function BMX.RegisterBike(id, def)
 
     def.id        = id
     def.printName = def.printName or id
-    def.model     = def.model or "models/hunter/plates/plate1x2.mdl"
+    -- NO MODEL MEANS DRAWN IN CODE (cl_init.lua): tubes, fork, bars, seat,
+    -- cranks and chain, sized from the bike's own geometry. The entity still
+    -- needs SOME model for the engine's bookkeeping, so it gets a small base
+    -- prop that is never drawn and casts no shadow.
+    def.hasModel  = def.model ~= nil
+    def.model     = def.model or "models/hunter/plates/plate05x05.mdl"
     def.seatModel = def.seatModel or "models/nova/airboat_seat.mdl"
     def.frameOffset = def.frameOffset or Vector(0, 0, 0)
     def.frameAngles = def.frameAngles or Angle(0, 0, 0)
@@ -193,18 +200,16 @@ registerDuplicator("bmx_base")
 -- THE BIKES
 --------------------------------------------------------------------------
 
--- The stock bike. Its model is a PLACEHOLDER: a Hunter plate, chosen because it
--- ships with base Garry's Mod, so this addon has zero content dependencies and
--- can be cloned and ridden immediately. The client draws procedural wheels
--- around it so the geometry the simulation is actually using is visible.
+-- The stock bike. It ships NO model: cl_init.lua draws a 20-inch BMX from
+-- tubes and boxes (frame, fork, tall bars, seat, cranks that turn with the
+-- rider's cadence, chain, pegs), sized from the config's own geometry. That
+-- keeps the zero-content-dependency property and the no-ripped-assets rule,
+-- and it still shows the wheels exactly where the simulation has them.
 --
--- Swapping in a real model is a one-line change here plus frameOffset /
--- frameAngles to line it up with the axle line. See docs/DESIGN.md, "Content".
+-- A real model is a `model` line here plus frameOffset / frameAngles to line
+-- it up with the axle line. See docs/DESIGN.md, "Content".
 BMX.RegisterBike("stock", {
-    printName   = "BMX (placeholder model)",
-    description = "Street BMX. Placeholder geometry until a real model lands.",
-    model       = "models/hunter/plates/plate1x2.mdl",
-    frameOffset = Vector(0, 0, 6),
-    frameAngles = Angle(0, 90, 0),
-    scale       = 0.55,
+    printName   = "BMX",
+    description = "Street BMX with lean-driven handling.",
+    frameColor  = Color(205, 35, 45),
 })

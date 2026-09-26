@@ -165,6 +165,7 @@ function M.Realm(world, which)
         log    = {},        -- every MsgN
         sounds = {},        -- every EmitSound: { ent, name, level, pitch, vol }
         lines  = 0,         -- render.DrawLine calls this frame
+        beams  = {},        -- render.DrawBeam calls: { a, b, w, col }
         texts  = {},        -- draw.SimpleText strings this frame
         csfiles = {},       -- AddCSLuaFile'd paths
         loaded  = {},       -- include()d paths, in order
@@ -515,7 +516,8 @@ function M.Realm(world, which)
     function Ent:GetModel() return self._model end
     for _, k in ipairs({ "SetMoveType", "SetSolid", "SetCollisionBounds",
             "SetCustomCollisionCheck", "SetNoDraw", "DrawShadow", "SetKeyValue",
-            "Activate", "SetRenderMode", "SetColor", "StopSound" }) do
+            "Activate", "SetRenderMode", "SetColor", "StopSound",
+            "SetRenderBounds" }) do
         Ent[k] = function() end
     end
     function Ent:SetNotSolid(b) self._notSolid = b end
@@ -680,6 +682,11 @@ function M.Realm(world, which)
     function Phys:LocalToWorld(v) return self.ent:LocalToWorld(v) end
     function Phys:GetVelocity() return Vector(self.v) end
     function Phys:SetVelocity(v) self.v = Vector(v) end
+    -- GMod's angle velocity is LOCAL and in DEGREES per second.
+    function Phys:SetAngleVelocity(v)
+        local e, r = self.ent, math.rad
+        self.w = e._f * r(v.x) + e._l * r(v.y) + e._u * r(v.z)
+    end
     function Phys:GetPos() return self.ent:GetPos() end
     function Phys:GetAngles() return self.ent:GetAngles() end
 
@@ -928,6 +935,20 @@ function M.Realm(world, which)
                 R.lines = R.lines + 1
             end,
             SetColorMaterial = function() end,
+            -- Beams and boxes are the procedural bike's whole vocabulary, so
+            -- they are RECORDED: a test can ask where the frame was drawn.
+            DrawBeam = function(a, b, w, s0, s1, col)
+                assert(VA.isvector(a) and VA.isvector(b), "render.DrawBeam wants vectors")
+                assert(a.x == a.x and b.x == b.x and a.z == a.z and b.z == b.z,
+                    "render.DrawBeam got a NaN")
+                assert(type(w) == "number" and w > 0, "render.DrawBeam width")
+                R.beams[#R.beams + 1] = { a = a, b = b, w = w, col = col }
+            end,
+            DrawBox = function(pos, ang, mn, mx, col)
+                assert(VA.isvector(pos) and VA.isangle(ang), "render.DrawBox wants pos, ang")
+                R.boxes3d = (R.boxes3d or 0) + 1
+            end,
+            DrawSphere = function() end,
         }
         env.cam = { PushModelMatrix = function() end, PopModelMatrix = function() end }
         function env.Matrix()

@@ -188,6 +188,23 @@ function BMX.Balance(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
     local alpha = -topple + B.leanKp * err - B.leanKd * st.rollRate
     alpha = BMX.Clamp(alpha, -B.maxAssistAccel, B.maxAssistAccel) * authority
 
+    ----------------------------------------------------------------------
+    -- THE SLOW END: kickstand or foot. See C.Stand. Weighted by the authority
+    -- the lean assist is not using, so the two hand over across the same
+    -- speed band instead of stacking. Not past maxRoll: a fallen bike stays
+    -- fallen until somebody gets on it.
+    ----------------------------------------------------------------------
+    local S = C.Stand
+    local support = 1 - authority
+    st.onStand = false
+    if support > 0 and abs(roll) < S.maxRoll then
+        local ridden = IsValid(ent:GetDriver())
+        local want = ridden and (inp.lean * S.footLean) or S.standLean
+        local a = -topple + S.kp * (want - roll) - S.kd * st.rollRate
+        alpha = alpha + BMX.Clamp(a, -B.maxAssistAccel, B.maxAssistAccel) * support
+        st.onStand = not ridden
+    end
+
     st.toppleAccel   = topple
     st.rightingAccel = (lat * h * math.cos(roll)) / BMX.IRoll(ent)
 

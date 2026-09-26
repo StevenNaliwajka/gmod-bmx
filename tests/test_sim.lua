@@ -669,3 +669,57 @@ T.test("a 60-unit drop lands under 26 g (it was 32 with 6 units of travel)", fun
     T.between(worst, 0, 26, "peak landing deceleration, g")
     T.ok(E.IsValid(bike:GetDriver()), "and the rider stays on")
 end)
+
+-- A rider coming down out of the air at an attitude, with momentum.
+local function landFrom(ang, vel, height)
+    local sv, bike, ply = ridden()
+    local E = sv.env
+    sv:run(0.7)
+    F.input(bike, {})
+    bike.st.airMode = true
+    F.place(bike, E.Vector(0, 0, F.restHeight(sv) + (height or 150)), E.Angle(ang[1], ang[2], ang[3]))
+    bike:GetPhysicsObject():SetVelocity(E.Vector(vel[1], vel[2], vel[3]))
+    local why
+    E.hook.Add("BMX_Crash", "t", function(b, p, reason) why = reason end)
+    sv:run(2.5)
+    return E.IsValid(bike:GetDriver()), why, bike
+end
+
+T.test("land on your wheels and stay on: nose-down, tail-first, leaned, sideways", function()
+    for _, c in ipairs({
+        { "level, fast",       { 0, 0, 0 },   { 400, 0, -300 } },
+        { "nose-down 55",      { 55, 0, 0 },  { 400, 0, -300 } },
+        { "tail-first 55",     { -55, 0, 0 }, { 400, 0, -300 } },
+        { "leaned 45",         { 0, 0, 45 },  { 400, 0, -300 } },
+        { "leaned 60, nose 30", { 30, 0, 60 }, { 400, 0, -300 } },
+        { "sideways drift",    { 0, 0, 0 },   { 150, 350, -300 } },
+    }) do
+        local on, why, bike = landFrom(c[2], c[3])
+        T.ok(on, c[1] .. ": still riding (thrown by " .. tostring(why) .. ")")
+        T.between(math.deg(math.abs(bike.st.roll)), 0, 10, c[1] .. ": upright again")
+    end
+end)
+
+T.test("from any height: a level landing from 500 units keeps its rider", function()
+    local on, why = landFrom({ 0, 0, 0 }, { 400, 0, -200 }, 500)
+    T.ok(on, "still riding (thrown by " .. tostring(why) .. ")")
+end)
+
+T.test("upside down is not a landing on the wheels: that one still throws you", function()
+    local on = landFrom({ 0, 0, 160 }, { 300, 0, -300 })
+    T.ok(not on, "thrown")
+end)
+
+T.test("the tip-over rule waits for the bike to be at rest, not falling past it", function()
+    local sv, bike = ridden()
+    local E = sv.env
+    sv:run(1.2)
+    bike.st.airMode = true
+    -- Upside down and falling fast, within reach of the ground: a barrel roll
+    -- on its way down. The rule used to throw the rider here, mid-air.
+    F.place(bike, E.Vector(0, 0, F.restHeight(sv) + 40), E.Angle(0, 0, 100))
+    bike:GetPhysicsObject():SetVelocity(E.Vector(300, 0, -400))
+    sv:tick()
+    sv:tick()
+    T.ok(E.IsValid(bike:GetDriver()), "not thrown while still falling")
+end)

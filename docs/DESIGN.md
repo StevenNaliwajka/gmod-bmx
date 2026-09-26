@@ -313,7 +313,7 @@ symptoms.
 | 7 | Tuning pass with a human rider | **in progress** |
 | 8 | Workshop release | icon and packer done |
 
-Phases 0 to 6i are done. **The offline suite (203 tests) and the headless
+Phases 0 to 6i are done. **The offline suite (208 tests) and the headless
 suite (19 cases, on a real dedicated server) both pass.** The bike rides,
 brakes, skids, steers from lean, hops and lands, holds a wheelie and a stoppie,
 and tracks a commanded lean to within 11 degrees.

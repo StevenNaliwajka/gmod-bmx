@@ -722,3 +722,22 @@ T.test("riding someone else's bike does not change the colour you spawn in", fun
     T.eq(me.BMXColor, nil, "nothing remembered from their bike")
     T.eq(me._concommands, nil, "and nothing written to my settings")
 end)
+
+T.test("a wheel-box hit while airborne is a touchdown: it sticks the landing", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    sv:run(0.5)
+    F.scripted(sv, bike)
+    sv:run(1.2)
+    bike.st.airMode = true
+    local body = E.BMX.CollisionBoxes(bike:Cfg())[1]
+    local hit = bike:LocalToWorld(E.Vector(-29, 0, body[1].z - 3))       -- a wheel box
+    bike:PhysicsCollide({ Speed = 600, HitPos = hit }, bike:GetPhysicsObject())
+    T.ok(bike.bmxTouchdown, "marked as a touchdown")
+    T.ok(E.IsValid(bike:GetDriver()), "and not an impact crash")
+    local p = bike:GetPhysicsObject()
+    p.w = E.Vector(0, 6, 0)                                            -- still flipping
+    sv:tick()
+    T.near(p.w:Length(), 0, 0.5, "the spin stops on the next substep")
+end)

@@ -7,7 +7,7 @@ are leaning rather than a key you press. Wheelies, stoppies, bunny hops, air
 control and flips.
 
 **Status: v0.1.0, pre-alpha.** Two test suites gate every commit: an
-**offline suite** of 169 tests that executes the addon (client half included)
+**offline suite** of 174 tests that executes the addon (client half included)
 against a Garry's Mod shim in a stock Lua 5.1, and a **headless suite** of 19
 cases on a real dedicated server. The bike rides, brakes, skids, steers from
 lean, hops and lands, holds a wheelie and a stoppie, and scores tricks. **It
@@ -42,9 +42,11 @@ Crash (or tip the bike over with you on it) and you are thrown off as a
 ragdoll for a moment, then back on your feet with what you had.
 `bmx_crash_ragdoll 0` (server) keeps the plain shove instead.
 
-The rider pedals in step with the cranks, tucks with speed, crouches for a hop
-and follows the bars. `bmx_rider_anim 0` leaves the plain seated pose, if your
-player model's skeleton disagrees with it.
+The rider's hands are on the grips and feet on the pedals (inverse kinematics,
+so the legs follow the pedals round), and they tuck with speed, crouch for a hop
+and lean with the bike. `bmx_rider_ik 0` falls back to a simple leg swing, and
+`bmx_rider_anim 0` leaves the plain seated pose, if your player model's skeleton
+disagrees with either.
 
 ## Controls
 

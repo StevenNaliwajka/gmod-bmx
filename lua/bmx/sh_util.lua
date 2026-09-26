@@ -203,6 +203,15 @@ function BMX.CollisionMeshes(cfg)
     return out
 end
 
+-- The steer angle to DRAW. See Balance.visualSteerGain: the real angle,
+-- turned up with speed so a leaning rider is seen to be steering.
+function BMX.VisualSteer(steer, speed, cfg)
+    local B = (cfg or BMX.Config).Balance
+    local gain = 1 + ((B.visualSteerGain or 1) - 1)
+        * BMX.Ramp(speed, B.walkSpeed, B.visualSteerFull or 250)
+    return BMX.Clamp(steer * gain, -B.maxSteer, B.maxSteer)
+end
+
 -- How far the suspension ray reaches. Past the strut's full extension plus one
 -- radius, because a pitched disc sits r/cos(pitch) down the strut from the
 -- ground rather than r: 1.6 radii covers ~51 degrees, beyond the wheelie hold's

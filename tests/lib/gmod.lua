@@ -37,6 +37,8 @@
 ----------------------------------------------------------------------------]]
 
 local VA = require("lib.vecang")
+local SK = require("lib.skeleton")
+SK.install(VA.AMT)
 local Vector, Angle = VA.Vector, VA.Angle
 
 local M = {}
@@ -976,7 +978,11 @@ function M.Realm(world, which)
         self._ammo = {}
     end
     function Ply:SetEyeAngles(a) self._eyeAngles = a end
-    function Ply:GetBonePosition(b) return self:GetPos() + Vector(0, 0, 40), Angle() end
+    function Ply:GetBonePosition(b)
+        local m = self:GetBoneMatrix(b)
+        if not m then return self:GetPos() + Vector(0, 0, 40), Angle() end
+        return m:GetTranslation(), m:GetAngles()
+    end
     function Ply:GetGroundEntity() return self._groundEnt or NULL end
     function Ply:AnimRestartGesture(slot, act) self._gesture = act end
     function Ply:Nick() return self._nick end
@@ -1010,22 +1016,46 @@ function M.Realm(world, which)
     function Ply:PrintMessage(_, s) self:ChatPrint(s) end
     function Ply:GetEyeTrace() return self._eyeTrace or { Hit = false } end
     function Ply:EyeAngles() return self._eyeAngles or Angle() end
-    -- Bones and sequences: a stock ValveBiped player model, as far as the
-    -- rider animation asks. Manipulations are RECORDED by bone name.
-    local BIPED = {}
-    for i, n in ipairs({ "ValveBiped.Bip01_R_Thigh", "ValveBiped.Bip01_R_Calf",
-        "ValveBiped.Bip01_L_Thigh", "ValveBiped.Bip01_L_Calf", "ValveBiped.Bip01_Spine2",
-        "ValveBiped.Bip01_Head1", "ValveBiped.Bip01_R_UpperArm",
-        "ValveBiped.Bip01_L_UpperArm" }) do BIPED[n] = i; BIPED[i] = n end
-    function Ply:LookupBone(name) return BIPED[name] end
+    -- Bones: the seated skeleton in lib/skeleton.lua, posed in the seat.
+    -- Manipulations compose as the engine's do, and are also RECORDED by
+    -- bone name (ply._bones) for tests that only care what was asked for.
+    function Ply:LookupBone(name) return SK.INDEX[name] end
     function Ply:LookupSequence(name)
         if self._noSequences then return -1 end
         return name == "drive_airboat" and 42 or -1
     end
     function Ply:ManipulateBoneAngles(b, a)
+        self._manip = self._manip or {}
+        self._manip[b] = Angle(a.p, a.y, a.r)
         self._bones = self._bones or {}
-        self._bones[BIPED[b]] = a
+        self._bones[SK.BONES[b][1]] = self._manip[b]
+        self._pose = nil
     end
+    function Ply:GetManipulateBoneAngles(b)
+        local a = (self._manip or {})[b]
+        return a and Angle(a.p, a.y, a.r) or Angle()
+    end
+    -- The root sits in the seat, facing where the seat faces: a seat model
+    -- seats its occupant looking down its own +Y.
+    local function rootPose(ply)
+        local v = ply._vehicle
+        if v and v.IsValid and v:IsValid() then
+            return v:GetPos(), v:LocalToWorldAngles(Angle(0, 90, 0))
+        end
+        return ply:GetPos(), Angle(0, ply:EyeAngles().y, 0)
+    end
+    function Ply:SetupBones()
+        local pos, ang = rootPose(self)
+        self._pose = SK.pose(pos, ang, self._manip or {})
+        R.setupBones = (R.setupBones or 0) + 1
+    end
+    function Ply:InvalidateBoneCache() self._pose = nil end
+    function Ply:GetBoneMatrix(b)
+        if not self._pose then self:SetupBones() end
+        local m = self._pose[b]
+        return m and m:Copy() or nil
+    end
+    function Ply:GetBoneCount() return #SK.BONES end
     function Ply:GetInfoNum(name, def)
         local cv = world.convars[name]
         return cv and cv:GetFloat() or def
@@ -1133,13 +1163,7 @@ function M.Realm(world, which)
             DrawSphere = function() end,
         }
         env.cam = { PushModelMatrix = function() end, PopModelMatrix = function() end }
-        function env.Matrix()
-            local m = {}
-            function m:SetTranslation(v) self.t = v end
-            function m:SetAngles(a) self.a = a end
-            function m:Scale(v) self.s = v end
-            return m
-        end
+        env.Matrix = SK.Matrix
         env.ScrW = function() return 1920 end
         env.ScrH = function() return 1080 end
         env.LocalPlayer = function() return R.localPlayer or NULL end

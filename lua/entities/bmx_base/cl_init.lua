@@ -310,7 +310,7 @@ function ENT:Draw()
     -- Steer is networked because it is an OUTPUT of the balance controller: it
     -- is derived from the lean that actually happened, so the client has no way
     -- to work it out from anything it already holds.
-    local steer = self:GetSteer()
+    local steer = BMX.VisualSteer(self:GetSteer(), self:GetSpeedUPS(), C)
     local steeredFwd = fwd
     if steer ~= 0 then
         local c, s = math.cos(steer), math.sin(steer)
@@ -391,6 +391,12 @@ function ENT:Draw()
     tube(barL, barL - frontAxle * (3.5 * k), 1.5 * k, COL_TYRE)    -- grips
     tube(barR, barR + frontAxle * (3.5 * k), 1.5 * k, COL_TYRE)
 
+    -- Where the rider's hands and feet belong, for the IK in cl_rider.lua.
+    -- Recorded every frame the bike is drawn: the rider is drawn in the same
+    -- frame, at worst one frame behind.
+    local ik = { rHand = barR + frontAxle * (1.75 * k), lHand = barL - frontAxle * (1.75 * k) }
+    self.ikTargets = ik
+
     ----------------------------------------------------------------------
     -- Drivetrain. The cranks turn at the networked cadence, so pedalling is
     -- visible, and coasting (the freewheel ticking) shows them still.
@@ -409,6 +415,7 @@ function ENT:Draw()
         local arm = (fwd * math.cos(t) - up * math.sin(t)) * (CRANK * k)
         local root = bb + right * (Q * k * side)
         local pedal = root + arm
+        ik[side == 1 and "rFoot" or "lFoot"] = pedal + right * (1.8 * k * side) + up * (0.9 * k)
         tube(root, pedal, 0.9 * k, COL_PART)
         render.DrawBox(pedal + right * (1.8 * k * side), self:GetAngles(),
             Vector(-1.8, -1.8, -0.5) * k, Vector(1.8, 1.8, 0.5) * k, COL_PART)

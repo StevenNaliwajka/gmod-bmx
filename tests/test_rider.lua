@@ -65,30 +65,77 @@ T.test("the pose follows speed, sprint, hop preload, wheelie and steer", functio
     T.ok(math.abs(fast.head.y) < math.abs(fast.spine.y), "the head holds the horizon")
 end)
 
-T.test("drawing a rider moves the bones, in time with the drawn cranks", function()
+-- A rider seated in the pod, the pod where the bike puts it.
+local function seated()
     local cl, bike, ply = client()
-    bike:SetCadence(10)
-    bike:SetSpeedUPS(250)
-    local seen = {}
-    for i = 1, 20 do
-        bike:Draw()                                   -- advances bike.crankAngle
-        cl.env.hook.Run("PrePlayerDraw", ply)
-        seen[#seen + 1] = ply._bones["ValveBiped.Bip01_R_Thigh"].y
-    end
-    local lo, hi = math.huge, -math.huge
-    for _, v in ipairs(seen) do lo, hi = math.min(lo, v), math.max(hi, v) end
-    T.ok(hi - lo > 5, "the right thigh moves while pedalling: " .. (hi - lo))
-    local want = math.sin(bike.crankAngle) * cl.env.BMX.RiderAmplitudes.thighSwing
-    T.near(seen[#seen], want, 1e-9, "on the crank angle the frame was drawn with")
+    local C = bike:Cfg().Chassis
+    local pod = bike:GetPod()
+    pod:SetPos(bike:LocalToWorld(C.seatOffset))
+    pod:SetAngles(bike:LocalToWorldAngles(C.seatAngles))
+    return cl, bike, ply
+end
+
+local function frame(cl, bike, ply)
+    bike:Draw()
+    cl.env.hook.Run("PrePlayerDraw", ply)
+end
+
+local function reach(cl, ply, bone, target)
+    local b = ply:LookupBone(bone)
+    return (ply:GetBoneMatrix(b):GetTranslation() - target):Length()
+end
+
+T.test("IK: the feet go onto the pedals and the hands onto the grips", function()
+    local cl, bike, ply = seated()
+    bike:SetCadence(0)
+    frame(cl, bike, ply)
+    local t = bike.ikTargets
+    local startFoot = reach(cl, ply, "ValveBiped.Bip01_R_Foot", t.rFoot)
+    for _ = 1, 40 do frame(cl, bike, ply) end
+    t = bike.ikTargets
+    ply:InvalidateBoneCache(); ply:SetupBones()
+    local rf = reach(cl, ply, "ValveBiped.Bip01_R_Foot", t.rFoot)
+    T.ok(rf < startFoot, string.format("closer than the plain pose (%.1f -> %.1f)", startFoot, rf))
+    T.between(rf, 0, 1.5, "right foot to its pedal, units")
+    T.between(reach(cl, ply, "ValveBiped.Bip01_L_Foot", t.lFoot), 0, 1.5, "left foot to its pedal")
+    T.between(reach(cl, ply, "ValveBiped.Bip01_R_Hand", t.rHand), 0, 1.5, "right hand to its grip")
+    T.between(reach(cl, ply, "ValveBiped.Bip01_L_Hand", t.lHand), 0, 1.5, "left hand to its grip")
 end)
 
-T.test("coasting holds the legs still", function()
-    local cl, bike, ply = client()
+T.test("IK: pedalling, the feet stay on the pedals all the way round", function()
+    local cl, bike, ply = seated()
     bike:SetCadence(0)
-    bike:Draw(); cl.env.hook.Run("PrePlayerDraw", ply)
-    local a = ply._bones["ValveBiped.Bip01_R_Thigh"].y
-    for _ = 1, 10 do bike:Draw(); cl.env.hook.Run("PrePlayerDraw", ply) end
-    T.eq(ply._bones["ValveBiped.Bip01_R_Thigh"].y, a, "no pedalling without cadence")
+    for _ = 1, 40 do frame(cl, bike, ply) end
+    bike:SetCadence(8)                             -- about a turn a second
+    local worst = 0
+    for i = 1, 66 do
+        frame(cl, bike, ply)
+        if i > 5 then
+            ply:InvalidateBoneCache(); ply:SetupBones()
+            worst = math.max(worst, reach(cl, ply, "ValveBiped.Bip01_R_Foot", bike.ikTargets.rFoot))
+        end
+    end
+    T.between(worst, 0, 3, "furthest the right foot got from its pedal over a turn, units")
+end)
+
+T.test("IK: coasting, the legs are still", function()
+    local cl, bike, ply = seated()
+    bike:SetCadence(0)
+    for _ = 1, 40 do frame(cl, bike, ply) end
+    local b = ply:LookupBone("ValveBiped.Bip01_R_Foot")
+    local p0 = ply:GetBoneMatrix(b):GetTranslation()
+    for _ = 1, 10 do frame(cl, bike, ply) end
+    ply:InvalidateBoneCache(); ply:SetupBones()
+    T.between((ply:GetBoneMatrix(b):GetTranslation() - p0):Length(), 0, 0.3, "foot movement, units")
+end)
+
+T.test("IK off: the simple swing still pedals in time with the cranks", function()
+    local cl, bike, ply = seated()
+    cl.env.GetConVar("bmx_rider_ik"):SetString("0")
+    bike:SetCadence(10)
+    for _ = 1, 5 do frame(cl, bike, ply) end
+    local want = math.sin(bike.crankAngle) * cl.env.BMX.RiderAmplitudes.thighSwing
+    T.near(ply._bones["ValveBiped.Bip01_R_Thigh"].y, want, 1e-9, "thigh on the crank angle")
 end)
 
 T.test("getting off, or bmx_rider_anim 0, puts every bone back", function()

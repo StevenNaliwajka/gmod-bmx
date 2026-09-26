@@ -143,4 +143,6 @@ function M.BasisAngle(f, l, u)
     return M.Angle(p, y, r)
 end
 
+M.AMT = AMT
+M.VMT = VMT
 return M

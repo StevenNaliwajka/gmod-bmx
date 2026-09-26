@@ -504,3 +504,31 @@ T.test("tyre models are made once per wheel and removed with the bike", function
     s.cb:Remove()
     for _, m in ipairs(s.cl.csModels) do T.ok(m.removed, "removed with the bike") end
 end)
+
+T.test("at speed the bars are drawn turned more than the physics steer, never past the lock", function()
+    local s = scene()
+    local B = s.cl.env.BMX
+    local C = s.cb:Cfg()
+    local function barYaw()
+        s.cl.beams = {}
+        s.cb:Draw()
+        local best, len = nil, 0
+        for _, b in ipairs(s.cl.beams) do
+            local d = b.b - b.a
+            if b.a.z > 25 and math.abs(d.z) < 1 and d:Length() > len then best, len = d, d:Length() end
+        end
+        return math.deg(math.atan2(best.y, best.x))
+    end
+    local straight = barYaw()
+    s.cb:SetSteer(math.rad(8))
+    s.cb:SetSpeedUPS(280)
+    local fast = math.abs(math.AngleDifference(barYaw(), straight))
+    T.between(fast, 22, 26, "8 degrees of real steer at 280 u/s is drawn as ~24")
+    s.cb:SetSpeedUPS(20)
+    local slow = math.abs(math.AngleDifference(barYaw(), straight))
+    T.near(slow, 8, 1, "at walking pace, drawn as it is")
+    s.cb:SetSteer(math.rad(30))
+    s.cb:SetSpeedUPS(280)
+    T.ok(math.abs(math.AngleDifference(barYaw(), straight)) <= math.deg(C.Balance.maxSteer) + 0.5,
+        "never drawn past the steering lock")
+end)

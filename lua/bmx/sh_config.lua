@@ -355,6 +355,16 @@ C.Balance = {
 
     maxSteer = math.rad(38),
 
+    -- HOW FAR THE BARS ARE DRAWN TURNED, against how far they really are. The
+    -- simulated steer is the physical one, and at speed that is small: a full
+    -- lean at 280 u/s needs about 8 degrees of bar, which a rider watching the
+    -- bike reads as "leaning and not turning the handlebars". So the DRAWN bars,
+    -- fork and front wheel (and the rider's hands, through the IK) are turned
+    -- by up to this many times the real angle, ramping in from walking pace to
+    -- visualSteerFull. Display only: nothing simulated reads it.
+    visualSteerGain = 3.0,
+    visualSteerFull = 250,
+
     -- Trail/self-centring: mild damping on the derived steer angle so the front
     -- end does not chatter over bumps.
     steerRate = 9.0,

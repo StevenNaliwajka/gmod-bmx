@@ -199,6 +199,7 @@ function M.Realm(world, which)
     env.MOVETYPE_VPHYSICS, env.SOLID_VPHYSICS = 6, 6
     env.SIM_NOTHING = 0
     env.SIMPLE_USE = 1
+    env.ACT_DRIVE_AIRBOAT = 1996
     env.MASK_PLAYERSOLID = 33636363
     env.RENDERGROUP_OPAQUE, env.RENDERGROUP_BOTH = 7, 9
     env.HUD_PRINTCONSOLE, env.HUD_PRINTTALK = 2, 3
@@ -796,7 +797,10 @@ function M.Realm(world, which)
                         local t = vt / vtl
                         local rt = r:Cross(t)
                         local kt = 1 / p.mass + rt:Dot(p:invI(rt))
-                        local jt = math.min(vtl / kt, 0.4 * j)
+                        -- Friction by surface, as VPhysics does it: the
+                        -- addon's ice hull slides, anything else grips.
+                        local mu = (p.material == "gmod_ice") and 0.05 or 0.8
+                        local jt = math.min(vtl / kt, mu * j)
                         p.v = p.v - t * (jt / p.mass)
                         p.w = p.w - p:invI(r:Cross(t * jt))
                     end
@@ -876,6 +880,22 @@ function M.Realm(world, which)
     function Ply:PrintMessage(_, s) self:ChatPrint(s) end
     function Ply:GetEyeTrace() return self._eyeTrace or { Hit = false } end
     function Ply:EyeAngles() return self._eyeAngles or Angle() end
+    -- Bones and sequences: a stock ValveBiped player model, as far as the
+    -- rider animation asks. Manipulations are RECORDED by bone name.
+    local BIPED = {}
+    for i, n in ipairs({ "ValveBiped.Bip01_R_Thigh", "ValveBiped.Bip01_R_Calf",
+        "ValveBiped.Bip01_L_Thigh", "ValveBiped.Bip01_L_Calf", "ValveBiped.Bip01_Spine2",
+        "ValveBiped.Bip01_Head1", "ValveBiped.Bip01_R_UpperArm",
+        "ValveBiped.Bip01_L_UpperArm" }) do BIPED[n] = i; BIPED[i] = n end
+    function Ply:LookupBone(name) return BIPED[name] end
+    function Ply:LookupSequence(name)
+        if self._noSequences then return -1 end
+        return name == "drive_airboat" and 42 or -1
+    end
+    function Ply:ManipulateBoneAngles(b, a)
+        self._bones = self._bones or {}
+        self._bones[BIPED[b]] = a
+    end
     function Ply:GetInfoNum(name, def)
         local cv = world.convars[name]
         return cv and cv:GetFloat() or def
@@ -993,6 +1013,28 @@ function M.Realm(world, which)
         env.ScrW = function() return 1920 end
         env.ScrH = function() return 1080 end
         env.LocalPlayer = function() return R.localPlayer or NULL end
+
+        -- Clientside models: RECORDED, with where they were drawn, so a test
+        -- can ask whether a tyre is round and on its axle. `R.missingModels`
+        -- lets a test take a model away and check the fallback.
+        R.csModels, R.drawnCS, R.missingModels = {}, {}, {}
+        env.util.IsValidModel = function(m) return not R.missingModels[m] end
+        function env.ClientsideModel(model)
+            local m = { model = model, removed = false }
+            function m:IsValid() return not self.removed end
+            function m:Remove() self.removed = true end
+            function m:SetNoDraw(b) self.nodraw = b end
+            function m:SetPos(p) self.pos = p end
+            function m:SetAngles(a) self.ang = a end
+            function m:EnableMatrix(k, mat) self.matrix = mat end
+            function m:SetupBones() end
+            function m:DrawModel()
+                assert(not self.removed, "drew a removed clientside model")
+                R.drawnCS[#R.drawnCS + 1] = { model = self.model, pos = self.pos, ang = self.ang }
+            end
+            R.csModels[#R.csModels + 1] = m
+            return m
+        end
         R.patches = {}
         function env.CreateSound(ent, path)
             local s = { path = path, playing = false, vol = 1, pitch = 100, ent = ent }

@@ -70,6 +70,14 @@ end
 function VMT:IsZero() return self.x == 0 and self.y == 0 and self.z == 0 end
 function VMT:Set(b) self.x, self.y, self.z = b.x, b.y, b.z end
 
+-- Direction -> Angle with a chosen up: GMod's Vector:AngleEx(up).
+function VMT:AngleEx(up)
+    local f = self:GetNormalized()
+    local l = up:Cross(f):GetNormalized()
+    local u = f:Cross(l)
+    return M.BasisAngle(f, l, u)
+end
+
 -- Direction -> Angle, roll 0. Source's VectorAngles.
 function VMT:Angle()
     local x, y, z = self.x, self.y, self.z

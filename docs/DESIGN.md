@@ -309,10 +309,11 @@ symptoms.
 | 6g | Offline suite: client half, wire format, usercmd decode, plant | done |
 | 6h | Disc tyre contact, stoppie inertia, hop landing, ground tricks | done |
 | 6i | Procedural bike body, kickstand, foot down, pick up a fallen bike | done |
-| 7 | Tuning pass with a human rider | **next** |
-| 8 | Rider animation, Workshop release | icon and packer done |
+| 6j | Base-game tyre model, rider animation, E to mount, grippy when fallen | done |
+| 7 | Tuning pass with a human rider | **in progress** |
+| 8 | Workshop release | icon and packer done |
 
-Phases 0 to 6i are done. **The offline suite (132 tests) and the headless
+Phases 0 to 6i are done. **The offline suite (149 tests) and the headless
 suite (19 cases, on a real dedicated server) both pass.** The bike rides,
 brakes, skids, steers from lean, hops and lands, holds a wheelie and a stoppie,
 and tracks a commanded lean to within 11 degrees.

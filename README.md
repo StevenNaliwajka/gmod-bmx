@@ -7,7 +7,7 @@ are leaning rather than a key you press. Wheelies, stoppies, bunny hops, air
 control and flips.
 
 **Status: v0.1.0, pre-alpha.** Two test suites gate every commit: an
-**offline suite** of 132 tests that executes the addon (client half included)
+**offline suite** of 149 tests that executes the addon (client half included)
 against a Garry's Mod shim in a stock Lua 5.1, and a **headless suite** of 19
 cases on a real dedicated server. The bike rides, brakes, skids, steers from
 lean, hops and lands, holds a wheelie and a stoppie, and scores tricks. **It
@@ -34,7 +34,13 @@ Then, in game:
 bmx_spawn            spawn a bike where you are looking
 ```
 
-or find **BMX** in the spawn menu's Entities tab. Press `E` to get on.
+or find **BMX** in the spawn menu's Entities tab. Press `E` on the bike to get on
+(and `E` again to get off, beside it). A parked bike stands on its kickstand; one
+that has fallen over is picked up when you get on it.
+
+The rider pedals in step with the cranks, tucks with speed, crouches for a hop
+and follows the bars. `bmx_rider_anim 0` leaves the plain seated pose, if your
+player model's skeleton disagrees with it.
 
 ## Controls
 

@@ -73,6 +73,12 @@ C.Chassis = {
     -- handler, not from hull friction.
     surfaceProp = "gmod_ice",
 
+    -- ...and once it has FALLEN OVER, the opposite. Ice is right for a hull
+    -- that brushes a wall at speed; it is wrong for a bike lying on its side,
+    -- which then skated off across the map on it. A fallen bike's hull grips
+    -- like the metal frame it is, and goes back to ice when it is upright.
+    fallenSurfaceProp = "metal",
+
     -- FALLBACK moments of inertia, kg*units^2. THESE ARE NOT WHAT RUNS.
     --
     -- The live values come from PhysObj:GetInertia() via BMX.CacheInertia, and

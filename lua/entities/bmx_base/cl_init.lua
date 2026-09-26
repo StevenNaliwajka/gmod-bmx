@@ -99,6 +99,46 @@ local function ring(center, e1, e2, radius, width, col, segments)
 end
 
 --------------------------------------------------------------------------
+-- THE TYRE MODEL. A real, round tyre from base Garry's Mod (Phoenix Storms'
+-- moped tyre: black tread and sidewall on a chrome rim), so there is still no
+-- content dependency and nothing from another game.
+--
+-- It replaces a tyre drawn as a ring of camera-facing beams, which is what a
+-- rider on the server saw as "a few squares": each segment is a flat quad
+-- turned to face the viewer, so from anywhere but side-on the ring came apart
+-- into tiles. Measured on the live server: 38.4 across and 7.3 thick, axle on
+-- the model's Z, origin on one face with the centre 4.37 up it.
+--------------------------------------------------------------------------
+local TYRE_MODEL   = "models/props_phx/wheels/moped_tire.mdl"
+local TYRE_RADIUS  = 19.19          -- model units
+local TYRE_CENTREZ = 4.37           -- model units, along the axle
+local TYRE_THIN    = 0.62           -- BMX tyres are narrower than a moped's
+
+-- One clientside model per wheel, made on first draw and removed with the
+-- bike. nil if the model will not load, and the beam drawing takes over.
+local function tyreModel(ent, key, radius)
+    ent.tyres = ent.tyres or {}
+    local t = ent.tyres[key]
+    if t == nil then
+        t = false
+        if util.IsValidModel(TYRE_MODEL) then
+            local m = ClientsideModel(TYRE_MODEL, RENDERGROUP_OPAQUE)
+            if IsValid(m) then
+                m:SetNoDraw(true)
+                local s = radius / TYRE_RADIUS
+                local mat = Matrix()
+                mat:Scale(Vector(s, s, s * TYRE_THIN))
+                m:EnableMatrix("RenderMultiply", mat)
+                m.bmxScale = s
+                t = m
+            end
+        end
+        ent.tyres[key] = t
+    end
+    return t or nil
+end
+
+--------------------------------------------------------------------------
 -- A wheel: tyre, rim, spokes, hub, and BMX pegs. The spokes carry the spin,
 -- which is what makes speed legible at a glance.
 --
@@ -107,7 +147,7 @@ end
 -- plate with rings around it and reads as a glitch on something that looks
 -- like a bike.
 --------------------------------------------------------------------------
-local function drawWheel(center, axleDir, spin, radius, grounded, debug)
+local function drawWheel(ent, key, center, axleDir, spin, radius, grounded, debug)
     -- Any orthonormal basis spanning the wheel's plane. Angle():Up()/:Right()
     -- of the axle direction gives one for free.
     local a  = axleDir:Angle()
@@ -115,15 +155,31 @@ local function drawWheel(center, axleDir, spin, radius, grounded, debug)
     local e2 = a:Right()
 
     local tyreW = radius * 0.24
-    local col = (debug and not grounded) and COL_AIR or COL_TYRE
-    ring(center, e1, e2, radius - tyreW * 0.5, tyreW, col, TYRE_SEGMENTS)
-    ring(center, e1, e2, radius - tyreW - 0.3, 0.7, COL_RIM, TYRE_SEGMENTS)
+    local model = tyreModel(ent, key, radius)
+    if model and not (debug and not grounded) then
+        -- Forward turns with the spin, up is the axle: the tyre rolls.
+        local fwd = e1 * math.cos(spin) + e2 * math.sin(spin)
+        local s = model.bmxScale
+        model:SetPos(center - axleDir * (TYRE_CENTREZ * s * TYRE_THIN))
+        model:SetAngles(fwd:AngleEx(axleDir))
+        model:SetupBones()
+        model:DrawModel()
+    else
+        -- The beam tyre: the fallback, and bmx_debug's red "no ground" tyre.
+        local col = (debug and not grounded) and COL_AIR or COL_TYRE
+        ring(center, e1, e2, radius - tyreW * 0.5, tyreW, col, TYRE_SEGMENTS)
+        ring(center, e1, e2, radius - tyreW - 0.3, 0.7, COL_RIM, TYRE_SEGMENTS)
+    end
 
-    local rim = radius - tyreW - 0.4
-    for i = 0, SPOKES - 1 do
-        local t = spin + (i / SPOKES) * math.pi * 2
-        local p = center + (e1 * math.cos(t) + e2 * math.sin(t)) * rim
-        render.DrawLine(center, p, COL_SPOKE, true)
+    -- Spokes only on the beam tyre: the model has its own chrome face, and
+    -- lines drawn through it would read as scratches rather than spokes.
+    if not model or (debug and not grounded) then
+        local rim = radius - tyreW - 0.4
+        for i = 0, SPOKES - 1 do
+            local t = spin + (i / SPOKES) * math.pi * 2
+            local p = center + (e1 * math.cos(t) + e2 * math.sin(t)) * rim
+            render.DrawLine(center, p, COL_SPOKE, true)
+        end
     end
 
     -- Hub and pegs: the pegs are the one part a BMX has that nothing else does.
@@ -212,8 +268,8 @@ function ENT:Draw()
     local rPos, rHit = axlePos(self, Vector(-half, 0, lift))
 
     if not bike.wheelModel then
-        drawWheel(fPos, frontAxle, spin, WC.radius, fHit, debug)
-        drawWheel(rPos, rearAxle,  spin, WC.radius, rHit, debug)
+        drawWheel(self, "front", fPos, frontAxle, spin, WC.radius, fHit, debug)
+        drawWheel(self, "rear",  rPos, rearAxle,  spin, WC.radius, rHit, debug)
     end
 
     if bike.hasModel then return end
@@ -306,4 +362,13 @@ function ENT:Draw()
             filter = { self, self:GetPod() }, mask = MASK_SOLID })
         tube(from, tr.Hit and tr.HitPos or want, 0.8 * k, COL_PART)
     end
+end
+
+-- The tyre models are clientside and belong to nobody else: remove them with
+-- the bike, or every bike ever spawned leaves two behind until the map changes.
+function ENT:OnRemove()
+    for _, m in pairs(self.tyres or {}) do
+        if m and IsValid(m) then m:Remove() end
+    end
+    self.tyres = nil
 end

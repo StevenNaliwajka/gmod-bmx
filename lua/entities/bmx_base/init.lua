@@ -271,6 +271,22 @@ function ENT:Think()
             and math.min(1, (self.hopCharge or 0) / self:Cfg().Hop.chargeTime) or 0)
     end
 
+    -- FALLEN OVER: the hull grips instead of skating (Chassis.fallenSurfaceProp).
+    -- Switched only when the state changes; a physics material is not
+    -- something to set twenty times a second.
+    if st then
+        local C = self:Cfg()
+        local fallen = math.abs(st.roll or 0) > C.Stand.maxRoll
+            or math.abs(st.pitch or 0) > C.Stand.maxRoll
+        if fallen ~= (self.bmxFallen or false) then
+            self.bmxFallen = fallen
+            local phys = self:GetPhysicsObject()
+            if IsValid(phys) then
+                phys:SetMaterial(fallen and C.Chassis.fallenSurfaceProp or C.Chassis.surfaceProp)
+            end
+        end
+    end
+
     -- Is anybody leaning on it? A parked bike's hold lets go while a player
     -- is touching it (see 7c in sv_physics.lua). Checked here at 20 Hz, not
     -- per substep: a box query per substep for every bike on a server is

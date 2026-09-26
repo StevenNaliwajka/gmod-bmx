@@ -72,10 +72,11 @@ end
 
 T.test("the stock bike is DRAWN as a bike: frame, wheels, bars, drivetrain", function()
     local s = scene()
+    s.cl.drawnCS = {}
     draw(s)
     T.eq(s.cl.drawnModels, 0, "the stand-in plate is never drawn")
-    T.ok(#s.cl.beams > 120, "tubes, tyres and rims drawn: " .. #s.cl.beams)
-    T.eq(s.cl.lines, 2 * 12, "twelve spokes a wheel")
+    T.eq(#s.cl.drawnCS, 2, "two tyre models")
+    T.ok(#s.cl.beams > 35, "frame, fork, bars, drivetrain, pegs: " .. #s.cl.beams)
     T.ok(s.cl.boxes3d >= 3, "seat and two pedals")
     local red = 0
     for _, b in ipairs(s.cl.beams) do
@@ -380,4 +381,48 @@ T.test("HUD values the client draws match what the server simulates", function()
     T.near(s.cb:GetSpeedUPS(), s.bike.st.speed, 60,
         "networked speed tracks the simulation (20 Hz copy)")
     T.ok(s.cb:GetStamina() > 0, "stamina is networked")
+end)
+
+T.test("the tyres are real round models, centred on their axles and turning about them", function()
+    local s = scene()
+    s.cl.drawnCS = {}
+    draw(s)
+    local f, r = hubs(s)
+    for i, d in ipairs(s.cl.drawnCS) do
+        T.eq(d.model, "models/props_phx/wheels/moped_tire.mdl", "a base-game tyre")
+        local axle = d.ang:Up()
+        -- The model's origin is on one face; its centre is 4.37 model units up
+        -- the axle, scaled. Put that back and it must be on a hub.
+        local s0 = s.cb:Cfg().Wheel.radius / 19.19
+        local centre = d.pos + axle * (4.37 * s0 * 0.62)
+        local dF, dR = (centre - f):Length(), (centre - r):Length()
+        T.ok(math.min(dF, dR) < 0.01, "tyre " .. i .. " centred on a hub: " .. math.min(dF, dR))
+        T.near(math.abs(axle:Dot(s.cb:GetRight())), 1, 1e-6, "axle along the bike's right")
+    end
+
+    -- It rolls: the model's forward turns with the spin.
+    s.cb:SetSpeedUPS(200)
+    local before = s.cl.drawnCS[1].ang:Forward()
+    s.cl.drawnCS = {}
+    draw(s)
+    local after = s.cl.drawnCS[1].ang:Forward()
+    T.ok(before:Dot(after) < 0.9999, "the tyre turned between frames")
+end)
+
+T.test("without the tyre model, the beam tyre and spokes are drawn instead", function()
+    local s = scene()
+    s.cl.missingModels["models/props_phx/wheels/moped_tire.mdl"] = true
+    s.cl.drawnCS = {}
+    draw(s)
+    T.eq(#s.cl.drawnCS, 0, "no model")
+    T.eq(s.cl.lines, 24, "twelve spokes a wheel")
+    T.ok(#s.cl.beams > 100, "beam tyres and rims")
+end)
+
+T.test("tyre models are made once per wheel and removed with the bike", function()
+    local s = scene()
+    for _ = 1, 30 do draw(s) end
+    T.eq(#s.cl.csModels, 2, "two clientside models, however many frames")
+    s.cb:Remove()
+    for _, m in ipairs(s.cl.csModels) do T.ok(m.removed, "removed with the bike") end
 end)

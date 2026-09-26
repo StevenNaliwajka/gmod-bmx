@@ -490,3 +490,30 @@ T.test("fuzz: random riding for a minute never produces a NaN", function()
     end)
     T.eq(#sv.errors, 0, "no errors: " .. table.concat(sv.errors, " | "))
 end)
+
+T.test("a fallen bike grips the ground with its frame instead of skating", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    sv:run(1)
+    local p = bike:GetPhysicsObject()
+    -- Down on its side, sliding at a running pace.
+    F.place(bike, bike:GetPos() + E.Vector(0, 0, 6), E.Angle(0, 0, 85))
+    p:SetVelocity(E.Vector(200, 0, 0))
+    local start = bike:GetPos()
+    sv:run(2.5)
+    T.eq(p.material, bike:Cfg().Chassis.fallenSurfaceProp, "grippy surface while down")
+    local slid = (bike:GetPos() - start):Length()
+    T.between(slid, 0, 90, "slide distance from 200 u/s, units")
+    -- Horizontally: the shim's box-on-ground contact jitters a little in z
+    -- (a VPhysics body at rest does not), and that is not the bike sliding.
+    local at = bike:GetPos()
+    sv:run(1)
+    local d = bike:GetPos() - at
+    T.between(math.sqrt(d.x * d.x + d.y * d.y), 0, 6, "and has stopped sliding (moved in the next second)")
+
+    -- Stood back up (by getting on), it rides on ice again.
+    F.scripted(sv, bike)
+    sv:run(0.2)
+    T.eq(p.material, bike:Cfg().Chassis.surfaceProp, "back to the ice hull upright")
+end)

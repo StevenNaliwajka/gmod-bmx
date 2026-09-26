@@ -20,7 +20,7 @@ on:
 
 jobs:
   check:
-    name: lua syntax
+    name: lua syntax and offline tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +32,13 @@ jobs:
 
       - name: parse every file
         run: LUAC=luac5.1 ./tools/syntax-check.sh
+
+      # The offline suite: the addon EXECUTED against a GMod shim, client half
+      # included. The headless suite needs a real game server, which GitHub
+      # does not have, so on this side of the mirror this is the only thing
+      # that runs the code rather than parsing it.
+      - name: offline suite
+        run: LUA=lua5.1 ./tools/run-tests.sh
 
   pack:
     name: pack gma

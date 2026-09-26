@@ -1,0 +1,92 @@
+--[[--------------------------------------------------------------------------
+    tests/run.lua
+
+    The offline suite. Runs the real addon files in a stock Lua 5.1 against the
+    GMod shim in tests/lib/gmod.lua. No game, no server, no client.
+
+        lua5.1 tests/run.lua                 every test
+        lua5.1 tests/run.lua balance         only tests whose name or file matches
+
+    tools/run-tests.sh finds a Lua for you (or uses Docker). Exit status is the
+    number of failures, capped at 1, so CI can gate on it.
+
+    What this covers and the headless suite (lua/bmx/sv_test.lua) does not: the
+    client half, the usercmd decode, the wire format between them, and the
+    config's own derivations, executed. What it does NOT replace: VPhysics. The
+    plant here is a rigid body that is right in kind; the headless suite on a
+    real server remains the authority on how the bike actually rides.
+----------------------------------------------------------------------------]]
+
+local here = (arg and arg[0] or "tests/run.lua"):match("^(.*)/[^/]*$") or "."
+package.path = here .. "/?.lua;" .. package.path
+
+local gmod = require("lib.gmod")
+gmod.ROOT = here .. "/.."
+
+local T = require("lib.t")
+_G.T = T
+
+local filter = arg and arg[1]
+
+-- Discover test files. A fixed glob rather than a list, so a new test file can
+-- never be written and then silently not run.
+local files = {}
+local p = io.popen('ls "' .. here .. '"/test_*.lua 2>/dev/null')
+for line in p:lines() do files[#files + 1] = line end
+p:close()
+table.sort(files)
+if #files == 0 then
+    io.stderr:write("no tests found under " .. here .. "\n")
+    os.exit(2)
+end
+
+for _, f in ipairs(files) do
+    T.current = f:match("([^/]+)%.lua$")
+    local chunk, err = loadfile(f)
+    if not chunk then
+        io.stderr:write("could not load " .. f .. ": " .. tostring(err) .. "\n")
+        os.exit(2)
+    end
+    chunk()
+end
+
+local passed, failed, ran = 0, 0, 0
+local failures = {}
+local t0 = os.clock()
+
+for _, c in ipairs(T.cases) do
+    local label = c.file .. ": " .. c.name
+    if not filter or label:find(filter, 1, true) then
+        ran = ran + 1
+        local ok, err = xpcall(c.fn, function(e)
+            if type(e) == "table" and e.bmx_test_failure then return e.msg end
+            return debug.traceback(tostring(e), 2)
+        end)
+        if ok then
+            passed = passed + 1
+            print("  ok   " .. label)
+        else
+            failed = failed + 1
+            print("  FAIL " .. label)
+            failures[#failures + 1] = { label = label, err = err }
+        end
+    end
+end
+
+if #failures > 0 then
+    print("")
+    for _, f in ipairs(failures) do
+        print("FAIL " .. f.label)
+        for line in tostring(f.err):gmatch("[^\n]+") do print("     " .. line) end
+        print("")
+    end
+end
+
+print(string.format("\n%d passed, %d failed, %d run (%.1fs)", passed, failed, ran,
+    os.clock() - t0))
+
+if ran == 0 then
+    print("nothing matched " .. tostring(filter))
+    os.exit(2)
+end
+os.exit(failed > 0 and 1 or 0)

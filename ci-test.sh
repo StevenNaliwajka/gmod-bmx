@@ -7,7 +7,7 @@
 # here costs two seconds; catching it on the box costs a deploy, a restart and a
 # confused minute wondering why the bike is gone.
 #
-# The headless simulation suite is NOT here. It needs a running Garry's Mod
+# The HEADLESS simulation suite is NOT here. It needs a running Garry's Mod
 # server, so it runs after deploy in the `headless` stage -- see .gitlab-ci.yml.
 set -euo pipefail
 
@@ -16,6 +16,14 @@ echo "▶ lua syntax"
 # back to Docker. Forcing a name turns "no Lua front end on this machine" into a
 # parse failure on every file, which is a much worse thing to read.
 ./tools/syntax-check.sh
+
+echo "▶ offline suite"
+# The real addon files, EXECUTED in a stock Lua 5.1 against the GMod shim in
+# tests/lib/gmod.lua: the client half, the usercmd decode, the wire format
+# between the realms, the config's own derivations and a closed-loop ride on a
+# rigid-body plant. About ten seconds, and it needs no game server, so it gates
+# every branch before the headless stage borrows the real one.
+./tools/run-tests.sh
 
 echo "▶ shell syntax"
 for f in install.sh ci-test.sh tools/*.sh tools/server/*.sh tools/server/bmx-test; do

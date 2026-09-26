@@ -225,7 +225,11 @@ function BMX.VisualSteer(steer, speed, cfg)
     local B = (cfg or BMX.Config).Balance
     local gain = 1 + ((B.visualSteerGain or 1) - 1)
         * BMX.Ramp(speed, B.walkSpeed, B.visualSteerFull or 250)
-    return BMX.Clamp(steer * gain, -B.maxSteer, B.maxSteer)
+    -- Drawn no further than visualSteerMax: at the full 38 degrees the far
+    -- grip swings beyond an arm's reach even with the rider twisting and
+    -- leaning into it, and the hand came off the bar.
+    local lim = B.visualSteerMax or B.maxSteer
+    return BMX.Clamp(steer * gain, -lim, lim)
 end
 
 -- How far the suspension ray reaches. Past the strut's full extension plus one

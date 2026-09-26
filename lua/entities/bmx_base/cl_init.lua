@@ -502,7 +502,13 @@ function ENT:Draw()
     -- Where the rider's hands and feet belong, for the IK in cl_rider.lua.
     -- Recorded every frame the bike is drawn: the rider is drawn in the same
     -- frame, at worst one frame behind.
-    local ik = { rHand = barR + frontAxle * (1.75 * k), lHand = barL - frontAxle * (1.75 * k) }
+    -- A hand holds a grip ANYWHERE along it: rHandA..rHandB is the grip's
+    -- length, and the IK takes the point nearest the shoulder (a stretched
+    -- rider slides in toward the stem). rHand is the middle, for everything
+    -- that just wants "the grip".
+    local ik = { rHand = barR + frontAxle * (1.75 * k), lHand = barL - frontAxle * (1.75 * k),
+                 rHandA = barR, rHandB = barR + frontAxle * (3.5 * k),
+                 lHandA = barL, lHandB = barL - frontAxle * (3.5 * k) }
     self.ikTargets = ik
 
     ----------------------------------------------------------------------

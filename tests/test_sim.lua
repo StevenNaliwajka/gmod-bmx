@@ -723,3 +723,23 @@ T.test("the tip-over rule waits for the bike to be at rest, not falling past it"
     sv:tick()
     T.ok(E.IsValid(bike:GetDriver()), "not thrown while still falling")
 end)
+
+T.test("getting off at a standstill: beside the bike, facing it, and it stays up", function()
+    local sv, bike, ply = ridden()
+    sv:run(1)
+    ply:ExitVehicle()
+    local E = sv.env
+    T.ok(bike:GetStandDown(), "stand down")
+    local loc = bike:WorldToLocal(ply:GetPos())
+    T.ok(loc.y < 0, "on the RIGHT, away from the side a parked bike leans: " .. loc.y)
+    local lo, hi = E.BMX.CollisionBounds(bike:Cfg())
+    T.ok(math.abs(loc.y) - 16 > hi.y, "the player's box clear of the bars: " .. loc.y)
+    local face = ply._eyeAngles:Forward()
+    local to = (bike:GetPos() - ply:GetPos())
+    to.z = 0
+    T.ok(face:Dot(to:GetNormalized()) > 0.99, "facing the bike")
+    sv:run(4)
+    T.ok(math.abs(bike.st.roll) < bike:Cfg().Stand.maxRoll, "and it is still standing: " .. math.deg(bike.st.roll))
+    T.between(math.deg(bike.st.roll), -13, -4, "on its stand")
+    T.ok((bike.st.pushedUntil or 0) <= sv.world.time, "nobody leaning on it")
+end)

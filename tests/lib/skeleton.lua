@@ -97,10 +97,14 @@ M.BONES = {
     { B .. "L_Foot",     B .. "L_Calf",    Vector(16, 0, 0),   Angle(-60, 0, 0) },
     { B .. "Spine2",     B .. "Pelvis",    Vector(0, 0, 12),   Angle(-90, 0, 0) },
     { B .. "Head1",      B .. "Spine2",    Vector(12, 0, 0),   Angle(0, 0, 0) },
-    { B .. "R_UpperArm", B .. "Pelvis",    Vector(0, -7, 18),  Angle(30, 0, 0) },
+    -- The arms hang off the SPINE, as ValveBiped's do (through the clavicles),
+    -- so twisting the spine carries the shoulders round. Spine2 points UP
+    -- (its local +X), its local -Z faces forward; so a shoulder 18 up and 7
+    -- out is (6, -7, 0) from it, and "forward and 30 down" is pitch 120.
+    { B .. "R_UpperArm", B .. "Spine2",    Vector(6, -7, 0),   Angle(120, 0, 0) },
     { B .. "R_Forearm",  B .. "R_UpperArm", Vector(12, 0, 0),  Angle(-20, 0, 0) },
     { B .. "R_Hand",     B .. "R_Forearm", Vector(11, 0, 0),   Angle(0, 0, 0) },
-    { B .. "L_UpperArm", B .. "Pelvis",    Vector(0, 7, 18),   Angle(30, 0, 0) },
+    { B .. "L_UpperArm", B .. "Spine2",    Vector(6, 7, 0),    Angle(120, 0, 0) },
     { B .. "L_Forearm",  B .. "L_UpperArm", Vector(12, 0, 0),  Angle(-20, 0, 0) },
     { B .. "L_Hand",     B .. "L_Forearm", Vector(11, 0, 0),   Angle(0, 0, 0) },
 }

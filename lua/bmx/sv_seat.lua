@@ -316,12 +316,18 @@ end)
 --------------------------------------------------------------------------
 local PLAYER_MIN, PLAYER_MAX = Vector(-16, -16, 0), Vector(16, 16, 72)
 
+--
+-- THE RIGHT-HAND SIDE FIRST, and clear of the BARS. A bike parked on its stand
+-- leans LEFT, onto the player if they are put down there; and 24 units out,
+-- which cleared the body box, put the player's own box through the bars (14.8
+-- out). Either way the player was touching the bike, touching releases its
+-- hold, and a bike just parked at a standstill was knocked straight over.
 function BMX.ExitPoint(bike, ply)
-    local C = bike:Cfg().Chassis
-    local clear = math.max(math.abs(C.hullMin.y), math.abs(C.hullMax.y)) + 20
-    local back  = math.abs(C.hullMin.x) + 24
+    local lo, hi = BMX.CollisionBounds(bike:Cfg())
+    local clear = math.max(math.abs(lo.y), math.abs(hi.y)) + 16 + 6    -- player half-width, a gap
+    local back  = math.abs(lo.x) + 16 + 6
     local ground = bike:GetPos() - Vector(0, 0, BMX.RestHeight(bike:Cfg()))
-    for _, off in ipairs({ bike:GetRight() * -clear, bike:GetRight() * clear,
+    for _, off in ipairs({ bike:GetRight() * clear, bike:GetRight() * -clear,
                            bike:GetForward() * -back }) do
         local spot = ground + Vector(off.x, off.y, 0) + Vector(0, 0, 4)
         local tr = util.TraceHull({ start = spot, endpos = spot, mins = PLAYER_MIN,
@@ -337,7 +343,12 @@ hook.Add("PlayerLeaveVehicle", "BMX.Dismount", function(ply, veh)
         unbind(ply, bike)
         if IsValid(bike) and IsValid(ply) then
             local spot = BMX.ExitPoint(bike, ply)
-            if spot then ply:SetPos(spot) end
+            if spot then
+                ply:SetPos(spot)
+                -- Facing the bike they just got off.
+                local to = bike:GetPos() - spot
+                ply:SetEyeAngles(Angle(0, to:Angle().y, 0))
+            end
         end
     end
 end)

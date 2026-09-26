@@ -226,80 +226,9 @@ local function bend(ply, root, hinge, eff)
     return math.deg(math.acos(math.Clamp(u:Dot(v), -1, 1))), H, K, F
 end
 
---------------------------------------------------------------------------
--- One limb: hinge, then root, then the pole.
---
--- THE KNEE AND ELBOW ARE HINGES. The first version turned every joint freely
--- in 3D, and a solver free to twist a shin sideways or fold a knee backwards
--- will do it to reach a pedal: riders' legs "deformed and contorted below the
--- bike". So the hinge only turns about the axis the limb already bends
--- around, and stays between MIN_BEND and MAX_BEND. Then THE POLE: spinning
--- the thigh (or upper arm) about the hip-to-foot line moves the knee without
--- moving the foot, and it is turned until the knee points forward and up
--- (the elbow out and down), where a rider's are.
---------------------------------------------------------------------------
-local function solveLimb(ply, limb, T, pole)
-    local rb, hb, eb = ply:LookupBone(limb.root), ply:LookupBone(limb.hinge),
-        ply:LookupBone(limb.eff)
-    if not (rb and hb and eb) then return end
-    local function err() return (bonePos(ply, eb) - T):Length() end
-
-    -- Hinge. Its axis is the normal of the plane the limb bends in now,
-    -- remembered so a nearly straight limb does not lose it.
-    refresh(ply)
-    local _, H, K, F = bend(ply, rb, hb, eb)
-    ply.bmxHinge = ply.bmxHinge or {}
-    local h = (K - H):Cross(F - K)
-    if h:Length() > 1e-3 then
-        h:Normalize()
-        ply.bmxHinge[hb] = h
-    else
-        h = ply.bmxHinge[hb]
-    end
-    if h then
-        local deg = math.Clamp(planeAngle(F - K, T - K, h), -MAX_STEP, MAX_STEP)
-        local e0 = err()
-        tryTurn(ply, hb, h, deg, function()
-            local b1 = bend(ply, rb, hb, eb)
-            return err() < e0 and b1 >= MIN_BEND and b1 <= MAX_BEND
-        end, TWIST.hinge)
-    end
-
-    -- Root: a ball joint, pointing the whole limb at the target.
-    refresh(ply)
-    local R = bonePos(ply, rb)
-    local a, c = (bonePos(ply, eb) - R), (T - R)
-    if a:Length() > 1e-3 and c:Length() > 1e-3 then
-        a:Normalize(); c:Normalize()
-        local axis = a:Cross(c)
-        local sn = axis:Length()
-        if sn > 1e-4 then
-            axis = axis / sn
-            local deg = math.min(math.deg(math.atan2(sn, a:Dot(c))), MAX_STEP)
-            local e0 = err()
-            tryTurn(ply, rb, axis, deg, function() return err() < e0 end, TWIST.root)
-        end
-    end
-
-    -- Pole: spin about root-to-effector, which leaves the effector where it is.
-    refresh(ply)
-    local _, H2, K2, F2 = bend(ply, rb, hb, eb)
-    local line = F2 - H2
-    if line:Length() > 1e-3 then
-        line:Normalize()
-        local deg = math.Clamp(planeAngle(K2 - H2, pole, line), -MAX_STEP, MAX_STEP)
-        local function poleErr()
-            local _, h3, k3, f3 = bend(ply, rb, hb, eb)
-            return math.abs(planeAngle(k3 - h3, pole, (f3 - h3):GetNormalized()))
-        end
-        local p0 = poleErr()
-        tryTurn(ply, rb, line, deg, function() return poleErr() < p0 end, TWIST.root)
-    end
-end
-
 -- Turn bone `b` so the direction from bone `fromB` to bone `toB` points along
 -- `want`. Used to put a sole flat on a pedal and knuckles over a bar.
-local function aim(ply, b, fromB, toB, want)
+local function aim(ply, b, fromB, toB, want, twist)
     refresh(ply)
     local a = bonePos(ply, toB) - bonePos(ply, fromB)
     if a:Length() < 1e-3 then return end
@@ -314,7 +243,56 @@ local function aim(ply, b, fromB, toB, want)
         return math.acos(math.Clamp(d:Dot(want), -1, 1))
     end
     local o0 = off()
-    tryTurn(ply, b, axis, deg, function() return off() < o0 end, TWIST.tip)
+    tryTurn(ply, b, axis, deg, function() return off() < o0 end, twist or TWIST.tip)
+end
+
+--------------------------------------------------------------------------
+-- One limb: ANALYTIC two-bone IK.
+--
+-- The first versions nudged each joint toward the target in turn (cyclic
+-- coordinate descent). That was fine riding straight and it got STUCK at full
+-- lock: the grip is well within reach (16 units from the shoulder, 23 of arm)
+-- but with the elbow's plane fixed from the old pose and a pole pulling the
+-- other way, it settled 11 units short and the hand came off the bar.
+--
+-- A two-bone limb has an exact answer, so this computes it: from the root,
+-- the target and the two bone lengths, the elbow or knee sits where the law
+-- of cosines puts it, in the plane that faces the pole (knee forward, elbow
+-- out and down). Each bone is then pointed at the next point. It cannot get
+-- stuck, it reaches whatever is in reach, and it bends the limb the way the
+-- pole says every time -- which also keeps a knee out in front of the stomach
+-- at the top of the pedal stroke, where a pole with too much "up" in it had
+-- lifted it into the rider.
+--------------------------------------------------------------------------
+local function solveLimb(ply, limb, T, pole)
+    local rb, hb, eb = ply:LookupBone(limb.root), ply:LookupBone(limb.hinge),
+        ply:LookupBone(limb.eff)
+    if not (rb and hb and eb) then return end
+    for _ = 1, 2 do
+        refresh(ply)
+        local R, K, F = bonePos(ply, rb), bonePos(ply, hb), bonePos(ply, eb)
+        local la, lb = (K - R):Length(), (F - K):Length()
+        local toT = T - R
+        local d = toT:Length()
+        if d < 1e-3 or la < 1e-3 or lb < 1e-3 then return end
+        local dir = toT / d
+        -- In reach, and never so close that the joint would have to fold
+        -- past MAX_BEND (the law of cosines at that fold is the least
+        -- distance the two bones can span).
+        local inner = math.rad(180 - MAX_BEND)
+        local dMin = math.sqrt(la * la + lb * lb - 2 * la * lb * math.cos(inner))
+        d = math.Clamp(d, dMin, (la + lb) * 0.999)
+        local along = (la * la - lb * lb + d * d) / (2 * d)
+        local h = math.sqrt(math.max(la * la - along * along, 0))
+        local side = pole - dir * pole:Dot(dir)
+        if side:Length() < 1e-3 then side = (K - R) - dir * (K - R):Dot(dir) end
+        side:Normalize()
+        local joint = R + dir * along + side * h
+        aim(ply, rb, rb, hb, (joint - R):GetNormalized(), TWIST.root)
+        refresh(ply)
+        local K2 = bonePos(ply, hb)
+        aim(ply, hb, hb, eb, (R + dir * d - K2):GetNormalized(), TWIST.hinge)
+    end
 end
 
 --------------------------------------------------------------------------
@@ -377,14 +355,94 @@ local function closeHand(ply, side)
     end
 end
 
+--------------------------------------------------------------------------
+-- THE TORSO TURNS WITH THE BARS. At full lock the outer grip swings ~7 units
+-- forward, beyond an arm hanging from shoulders square to the bike, and the
+-- hand came off it. A rider turns their upper body into the bars; so when a
+-- hand is off its grip, the spine is twisted about its own length (the roll
+-- of its manipulation: the twist, as for every bone here) a few degrees at a
+-- time, the way that brings both hands closer, up to SPINE_TWIST. When the
+-- hands are home it eases back to square. Kept in ply.bmxSpineTwist, because
+-- the pose (tuck, lean) rewrites the spine's angle every frame.
+--------------------------------------------------------------------------
+local SPINE_TWIST = 40     -- degrees either way, about the spine's length
+local SPINE_LEAN  = 30     -- degrees of extra lean toward the bars
+local SPINE_STEP  = 4      -- degrees a frame
+
+-- How far each grip is beyond its shoulder's reach, summed. Scored on REACH,
+-- not on where the hands are now: a twist trial moves the hands with the
+-- shoulders before the arms have re-solved, so judged by the hands every
+-- trial looked worse and the torso never turned.
+local function reachExcess(ply, targets)
+    local total = 0
+    for _, s in ipairs({ "R", "L" }) do
+        local sh = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_UpperArm")
+        local el = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Forearm")
+        local ha = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Hand")
+        local key = s == "R" and "rHand" or "lHand"
+        local T = targets[key .. "Held"] or targets[key]
+        if sh and el and ha and T then
+            local S, E, H = bonePos(ply, sh), bonePos(ply, el), bonePos(ply, ha)
+            local arm = (E - S):Length() + (H - E):Length()
+            total = total + math.max(0, (T - S):Length() - arm * 0.97)
+        end
+    end
+    return total
+end
+
+local function spineReach(ply, targets)
+    local sb = ply:LookupBone("ValveBiped.Bip01_Spine2")
+    if not (sb and targets.rHand and targets.lHand) then return end
+    refresh(ply)
+    local cur = ply:GetManipulateBoneAngles(sb)
+    local e0 = reachExcess(ply, targets)
+    local tw, ln = ply.bmxSpineTwist or 0, ply.bmxSpineLean or 0
+    local tries = {}
+    if e0 > 0.05 then
+        -- Either way on the twist, and more or less lean: a lean left over
+        -- from the last turn can be the thing in the way on this one.
+        tries = { { SPINE_STEP, 0 }, { -SPINE_STEP, 0 }, { 0, SPINE_STEP }, { 0, -SPINE_STEP } }
+    elseif math.abs(tw) > 0.1 or ln > 0.1 then
+        -- In reach: ease back toward square and upright, while it stays so.
+        tries = { { -math.min(math.abs(tw), SPINE_STEP * 0.5) * (tw > 0 and 1 or -1),
+                    -math.min(ln, SPINE_STEP * 0.5) } }
+    end
+    for _, d in ipairs(tries) do
+        local nt = math.Clamp(tw + d[1], -SPINE_TWIST, SPINE_TWIST)
+        local nl = math.Clamp(ln + d[2], 0, SPINE_LEAN)
+        -- The lean goes on the flex (y) the pose already uses; its sign is
+        -- the pose's own "forward", so it needs no calibration.
+        ply:ManipulateBoneAngles(sb, Angle(cur.p, cur.y + (nl - ln), nt))
+        refresh(ply)
+        local e1 = reachExcess(ply, targets)
+        if (e0 > 0.05 and e1 < e0 - 1e-3) or (e0 <= 0.05 and e1 <= 0.05) then
+            ply.bmxSpineTwist, ply.bmxSpineLean = nt, nl
+            return
+        end
+    end
+    ply:ManipulateBoneAngles(sb, cur)
+    refresh(ply)
+end
+
 function BMX.SolveRiderIK(ply, targets, bike)
     ply.bmxIK = ply.bmxIK or {}
     local fwd, up, right = bike:GetForward(), bike:GetUp(), bike:GetRight()
     for _, limb in ipairs(LIMBS) do
         local T = targets[limb.target]
+        -- A hand takes the point on its grip nearest its shoulder.
+        local A, B = targets[limb.target .. "A"], targets[limb.target .. "B"]
+        local rb = ply:LookupBone(limb.root)
+        if T and A and B and rb then
+            refresh(ply)
+            local S = bonePos(ply, rb)
+            local g = B - A
+            local t = math.Clamp((S - A):Dot(g) / math.max(g:Dot(g), 1e-6), 0, 1)
+            T = A + g * t
+            targets[limb.target .. "Held"] = T
+        end
         if T then
             -- Knees forward and up; elbows out, down and back.
-            local pole = limb.leg and (fwd + up * 0.6)
+            local pole = limb.leg and (fwd + up * 0.2)
                 or (right * limb.side - up * 0.6 - fwd * 0.3)
             solveLimb(ply, limb, T, pole:GetNormalized())
 
@@ -403,6 +461,7 @@ function BMX.SolveRiderIK(ply, targets, bike)
             end
         end
     end
+    spineReach(ply, targets)
 end
 
 --------------------------------------------------------------------------
@@ -433,7 +492,7 @@ local function clear(ply)
         if b then ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
     end
     for b in pairs(ply.bmxIK or {}) do ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
-    ply.bmxIK, ply.bmxHinge = nil, nil
+    ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
     animated[ply] = nil
 end
 BMX.ClearRiderPose = clear
@@ -471,6 +530,10 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
         pitch    = select(2, BMX.Attitude(bike, vector_up)),
         steer    = bike:GetSteer(),
     })
+    if useIK and (ply.bmxSpineTwist or ply.bmxSpineLean) then
+        pose.spine = Angle(pose.spine.p, pose.spine.y + (ply.bmxSpineLean or 0),
+            ply.bmxSpineTwist or 0)
+    end
     for key, ang in pairs(pose) do
         -- With IK on, the limbs are the solver's; the pose keeps the body.
         if not (useIK and LIMB_KEYS[key]) then

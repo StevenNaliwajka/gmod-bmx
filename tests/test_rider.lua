@@ -98,8 +98,8 @@ T.test("IK: the feet go onto the pedals and the hands onto the grips", function(
     T.ok(rf < startFoot, string.format("closer than the plain pose (%.1f -> %.1f)", startFoot, rf))
     T.between(rf, 0, 1.5, "right foot to its pedal, units")
     T.between(reach(cl, ply, "ValveBiped.Bip01_L_Foot", t.lFoot), 0, 1.5, "left foot to its pedal")
-    T.between(reach(cl, ply, "ValveBiped.Bip01_R_Hand", t.rHand), 0, 1.5, "right hand to its grip")
-    T.between(reach(cl, ply, "ValveBiped.Bip01_L_Hand", t.lHand), 0, 1.5, "left hand to its grip")
+    T.between(reach(cl, ply, "ValveBiped.Bip01_R_Hand", t.rHandHeld or t.rHand), 0, 1.5, "right hand to its grip")
+    T.between(reach(cl, ply, "ValveBiped.Bip01_L_Hand", t.lHandHeld or t.lHand), 0, 1.5, "left hand to its grip")
 end)
 
 T.test("IK: pedalling, the feet stay on the pedals all the way round", function()
@@ -304,4 +304,39 @@ T.test("landing: the rider crouches to soak it up, in proportion, then stands", 
     T.ok(soft > 0.3 and hard > soft, string.format("a harder landing crouches deeper (%.2f < %.2f)", soft, hard))
     for _ = 1, 40 do frame(cl, bike, ply) end
     T.eq(bike.bmxLand, 0, "and stands back up")
+end)
+
+T.test("IK: at full lock, both hands stay on the grips, left and right", function()
+    local cl, bike, ply = seated()
+    local lock = bike:Cfg().Balance.maxSteer
+    for _, dir in ipairs({ 1, -1 }) do
+        bike:SetSteer(lock * dir)
+        for _ = 1, 60 do frame(cl, bike, ply) end
+        ply:InvalidateBoneCache(); ply:SetupBones()
+        -- To the grip, anywhere along it (the hand takes the nearest point).
+        local r = reach(cl, ply, "ValveBiped.Bip01_R_Hand", bike.ikTargets.rHandHeld or bike.ikTargets.rHand)
+        local l = reach(cl, ply, "ValveBiped.Bip01_L_Hand", bike.ikTargets.lHandHeld or bike.ikTargets.lHand)
+        T.between(r, 0, 2, (dir > 0 and "right" or "left") .. " lock: right hand to its grip")
+        T.between(l, 0, 2, (dir > 0 and "right" or "left") .. " lock: left hand to its grip")
+    end
+end)
+
+T.test("IK: the knees never come into the stomach, all the way round the pedals", function()
+    local cl, bike, ply = seated()
+    for _ = 1, 30 do frame(cl, bike, ply) end
+    bike._vel = bike:GetForward() * 180
+    local worst = math.huge
+    for _ = 1, 90 do
+        frame(cl, bike, ply)
+        ply:InvalidateBoneCache(); ply:SetupBones()
+        local pel, sp = P(ply, "ValveBiped.Bip01_Pelvis"), P(ply, "ValveBiped.Bip01_Spine2")
+        local axis = (sp - pel):GetNormalized()
+        for _, s in ipairs({ "R", "L" }) do
+            local k = P(ply, "ValveBiped.Bip01_" .. s .. "_Calf")
+            if (k - pel):Dot(axis) > 0 then
+                worst = math.min(worst, ((k - pel) - axis * (k - pel):Dot(axis)):Length())
+            end
+        end
+    end
+    T.ok(worst > 9, string.format("closest a knee gets to the torso's centre line: %.1f", worst))
 end)

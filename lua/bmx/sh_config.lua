@@ -389,6 +389,7 @@ C.Balance = {
     -- visualSteerFull. Display only: nothing simulated reads it.
     visualSteerGain = 3.0,
     visualSteerFull = 250,
+    visualSteerMax  = math.rad(34),
 
     -- Trail/self-centring: mild damping on the derived steer angle so the front
     -- end does not chatter over bumps.

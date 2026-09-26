@@ -202,7 +202,9 @@ function(ctx)
     -- tips over. That was the design until someone rode it: a bike that falls
     -- over the moment it is spawned, and cannot be ridden once it has, is not
     -- realism anybody wanted. See C.Stand.
-    ctx:wait(1.5)
+    -- Three and a half seconds to settle, as offline: the nudge that lays a
+    -- parked bike onto its stand is gentle on purpose (it must lose to a push).
+    ctx:wait(3.5)
     local start = ctx.bike:GetPos()
     ctx:wait(3)
 
@@ -472,6 +474,12 @@ function(ctx)
     ctx:input({ throttle = 0.5 })
 
     local z0 = ctx.bike:GetPos().z
+    -- Record WHY, if the landing throws the rider: "angle", "sideways" or
+    -- "impact" point at three different things.
+    local crashWhy
+    hook.Add("BMX_Crash", "BMX.TestHopCrash", function(b, ply, reason, sev)
+        if b == ctx.bike then crashWhy = string.format("%s (severity %.2f)", reason, sev) end
+    end)
     ctx:hop()
 
     local airborne = ctx:waitUntil(function()
@@ -505,6 +513,8 @@ function(ctx)
         -- wheel on its way down. What matters is that the bike ends up back on
         -- both wheels with its rider, so that is what is read, a second on.
         ctx:runUntil(1.0, nil, { throttle = 0.5 })
+        hook.Remove("BMX_Crash", "BMX.TestHopCrash")
+        if crashWhy then ctx:log("crashed: " .. crashWhy) end
         ctx:ok(IsValid(ctx.bike:GetDriver()), "a plain hop lands without a crash")
         ctx:between(math.deg(ctx:st().pitch), -12, 18, "pitch once the landing settles", "deg")
     end

@@ -575,7 +575,18 @@ local function advance()
         end
     end
 
+    -- A HUMAN MAY HAVE JOINED MID-RUN. bmx_test refuses to START with one on,
+    -- but a restart-per-run box is one a tester rejoins while the suite is
+    -- going, and they spawn on the very ground the cases ride over: close
+    -- enough to release a parked bike's hold, or to be ridden into. Two cases
+    -- failed that way on 2026-09-26 and read as bike faults. Say so.
+    if #player.GetHumans() > 0 then ctx.humanPresent = true end
+
     if not run.co then
+        if ctx.humanPresent then
+            ctx:log("WARNING: a human player was connected during this case; " ..
+                "a failure here may be them, not the bike")
+        end
         finiteCheck(ctx, run.case)
         teardown(ctx)
         run.results[#run.results + 1] = {

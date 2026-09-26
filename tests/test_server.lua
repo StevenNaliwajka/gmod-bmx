@@ -334,3 +334,15 @@ T.test("the parked hold lets go while a player is touching the bike", function()
     sv:run(0.05)
     T.ok(p:GetVelocity().x > 10, "a push moves it instead of being cancelled: " .. p:GetVelocity().x)
 end)
+
+T.test("the seat faces the way the bike goes, not across it", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv, nil, E.Vector(0, 0, F.restHeight(sv)))
+    local pod = bike:GetPod()
+    -- A Source seat model sits its occupant facing its own +Y, which is its
+    -- LEFT axis: -GetRight(). That must be the bike's forward.
+    local facing = -pod:GetRight()
+    T.near(facing:Dot(bike:GetForward()), 1, 1e-6, "rider faces forward")
+    T.near(pod:GetUp():Dot(bike:GetUp()), 1, 1e-6, "and sits upright")
+end)

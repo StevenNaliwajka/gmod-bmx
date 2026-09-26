@@ -105,7 +105,10 @@ C.Chassis = {
 
     -- Where the driver's seat sits, local space.
     seatOffset = Vector(-4, 0, 18),
-    seatAngles = Angle(0, 0, 0),
+    -- -90 YAW, because a Source seat model faces along its own +Y, not +X.
+    -- At 0 the rider sat across the bike, facing its right-hand side, with
+    -- their legs pedalling in thin air. simfphys mounts its seats the same way.
+    seatAngles = Angle(0, -90, 0),
 }
 
 --------------------------------------------------------------------------

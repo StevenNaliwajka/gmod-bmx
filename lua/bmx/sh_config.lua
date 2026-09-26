@@ -615,8 +615,10 @@ C.Crash = {
     -- business surviving a landing on the wheels.
     soakRollSpin = 1.0,
     recoverBoost = 2.0,
-    recoverPitchKp = 40,
-    recoverPitchKd = 9,
+    -- Strong: a nose-down landing at speed is a face-plant in the making, as
+    -- the front tyre's grip pulls the bike over it.
+    recoverPitchKp = 120,
+    recoverPitchKd = 20,
 
     -- Impact into geometry: chassis hull collision above this speed throws the
     -- rider regardless of angle.

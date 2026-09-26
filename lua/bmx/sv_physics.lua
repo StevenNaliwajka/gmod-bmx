@@ -206,12 +206,20 @@ function BMX.PhysicsStep(ent, phys, dt)
         if v.z < -CR.soakSpeed then
             phys:ApplyForceCenter(Vector(0, 0, (-CR.soakSpeed - v.z) * phys:GetMass()))
         end
-        local w = st.angVel or vector_origin
-        local r, f = ent:GetRight(), ent:GetForward()
-        local k = CR.soakSpin
-        BMX.ApplyTorque(phys, ent, r, BMX.TorqueFor(BMX.IPitch(ent), -w:Dot(r) * k / dt), dt)
-        BMX.ApplyTorque(phys, ent, f, BMX.TorqueFor(BMX.IRoll(ent),
-            -w:Dot(f) * (CR.soakRollSpin or k) / dt), dt)
+        -- The spin: all of it stops. Set on the engine's own angular velocity
+        -- rather than torqued away against st.angVel, which is estimated from
+        -- the last substep's rotation and trails a fast flip: cancelled that
+        -- way, enough was left to carry a landed flip on over the bars.
+        if CR.soakSpin >= 1 and (CR.soakRollSpin or 1) >= 1 then
+            phys:SetAngleVelocity(vector_origin)
+        else
+            local w = st.angVel or vector_origin
+            local r, f = ent:GetRight(), ent:GetForward()
+            local k = CR.soakSpin
+            BMX.ApplyTorque(phys, ent, r, BMX.TorqueFor(BMX.IPitch(ent), -w:Dot(r) * k / dt), dt)
+            BMX.ApplyTorque(phys, ent, f, BMX.TorqueFor(BMX.IRoll(ent),
+                -w:Dot(f) * (CR.soakRollSpin or k) / dt), dt)
+        end
     end
 
     ----------------------------------------------------------------------

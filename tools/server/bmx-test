@@ -113,10 +113,32 @@ IP="$(ip -4 -o route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="
 
 rcon() { GMOD_RCON_PASSWORD="$PW" python3 "$RCON" --host "$IP" "$@" 2>&1; }
 
-# --- 3. restart ---------------------------------------------------------------
+# --- 3. restart, on the TEST map ----------------------------------------------
+# The server's play map is set by its unit (GMOD_MAP, a drop-in MGMT owns) and
+# may be anything -- a skatepark, say. The suite needs gm_flatgrass: its cases
+# look for a long flat run of ground and would measure the map, not the bike.
+# So the run gets its own map through a RUNTIME drop-in, named to sort last so
+# it wins, and the trap below takes it away and restarts the server onto the
+# play map again however this script ends: pass, fail, or die().
+TEST_MAP="${BMX_TEST_MAP:-gm_flatgrass}"
+DROPIN_DIR="/run/systemd/system/${UNIT}.service.d"
+DROPIN="$DROPIN_DIR/zz-bmx-test-map.conf"
+restore_map() {
+  if [ -f "$DROPIN" ]; then
+    rm -f "$DROPIN"
+    systemctl daemon-reload
+    say "restoring the play map (restarting $UNIT)"
+    systemctl restart "$UNIT" || true
+  fi
+}
+mkdir -p "$DROPIN_DIR"
+printf '[Service]\nEnvironment=GMOD_MAP=%s\n' "$TEST_MAP" > "$DROPIN"
+systemctl daemon-reload
+trap restore_map EXIT
+
 rm -f "$RESULTS" "$PROGRESS"
 : > "$CONSOLE" 2>/dev/null || true
-say "restarting $UNIT"
+say "restarting $UNIT on $TEST_MAP"
 systemctl restart "$UNIT" || die "systemctl restart $UNIT failed"
 
 # --- 4. wait for the addon to actually load ----------------------------------

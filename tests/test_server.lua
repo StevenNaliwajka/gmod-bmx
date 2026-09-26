@@ -491,3 +491,44 @@ T.test("tipping over throws the rider even when no landing is ever judged", func
     T.ok(sv:run(1, function() return not E.IsValid(bike:GetDriver()) end), "thrown off")
     T.ok(not bike.st.airMode, "and it was never a landing")
 end)
+
+T.test("the crash ragdoll is an imitation of the player: model, skin, outfit, colour", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike, ply = tipOver(sv)
+    ply._model, ply._skin = "models/player/group01/male_07.mdl", 2
+    ply._bg = { [1] = 3, [2] = 1 }
+    ply._pcol = E.Vector(0.9, 0.1, 0.2)
+    ply:SetMaterial("models/debug/debugwhite")
+    sv:run(1, function() return not E.IsValid(bike:GetDriver()) end)
+    local rag = ply.BMXTumbling
+    T.ok(E.IsValid(rag), "a ragdoll")
+    T.eq(rag:GetModel(), "models/player/group01/male_07.mdl", "their model")
+    T.eq(rag._skin, 2, "their skin")
+    T.eq(rag._bg[1], 3, "their bodygroups")
+    T.eq(rag._bg[2], 1, "all of them")
+    T.eq(rag:GetMaterial(), "models/debug/debugwhite", "their material")
+    T.ok(rag:GetNWVector("BMXPlayerColor") == ply._pcol, "their player colour, for the client")
+end)
+
+T.test("while tumbling nothing is in their hand; getting up is quiet", function()
+    local sv, world = F.server()
+    local E = sv.env
+    local cl = F.client(world)
+    local bike, ply = tipOver(sv)
+    sv:run(1, function() return not E.IsValid(bike:GetDriver()) end)
+    T.eq(#ply:GetWeapons(), 0, "weapons put away for the tumble")
+    local before = #world.wire
+    sv:run(E.BMX.TumbleTime + 0.2)
+    local quiet
+    for i = before + 1, #world.wire do
+        if world.wire[i].name == "bmx_quiet" then quiet = world.wire[i] end
+    end
+    T.ok(quiet and quiet.to == ply, "the rider's client is asked for quiet")
+    cl:deliver(quiet)
+    T.eq(cl.env.hook.Run("HUDWeaponPickedUp", E.NULL), true, "weapon notices suppressed")
+    T.eq(cl.env.hook.Run("HUDAmmoPickedUp", "SMG1", 90), true, "ammo notices suppressed")
+    world.time = world.time + 1
+    T.eq(cl.env.hook.Run("HUDWeaponPickedUp", E.NULL), nil, "and back to normal after")
+    T.ok(#ply:GetWeapons() >= 2, "weapons back")
+end)

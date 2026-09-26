@@ -117,6 +117,7 @@ local PICKUP_TIME = 0.7
 BMX.PickupTime = PICKUP_TIME
 
 util.AddNetworkString("bmx_gesture")
+util.AddNetworkString("bmx_quiet")
 
 function BMX.BeginPickUp(bike, ply)
     if not IsValid(bike) or not IsValid(ply) or bike.pickingUp then return false end
@@ -187,7 +188,21 @@ function BMX.Tumble(ply, vel, after)
     local rag = ents.Create("prop_ragdoll")
     if not IsValid(rag) then return false end
 
+    -- AN IMITATION OF THE PLAYER, not just their model: skin, bodygroups,
+    -- material and player colour too, or a player in a customised outfit
+    -- tumbles off as the plain default of whatever model they wear.
     rag:SetModel(ply:GetModel())
+    rag:SetSkin(ply:GetSkin())
+    for i = 0, (ply:GetNumBodyGroups() or 1) - 1 do
+        rag:SetBodygroup(i, ply:GetBodygroup(i))
+    end
+    if ply:GetMaterial() ~= "" then rag:SetMaterial(ply:GetMaterial()) end
+    rag:SetColor(ply:GetColor())
+    -- Player colour is a material proxy that asks the ENTITY for
+    -- GetPlayerColor, which a prop_ragdoll does not have: carried over on a
+    -- networked var and answered client-side (cl_rider.lua).
+    rag:SetNWVector("BMXPlayerColor", ply:GetPlayerColor())
+    rag:SetNWEntity("BMXRider", ply)
     rag:SetPos(ply:GetPos())
     rag:SetAngles(Angle(0, ply:EyeAngles().y, 0))
     rag:Spawn()
@@ -216,6 +231,11 @@ function BMX.Tumble(ply, vel, after)
     }
     for _, w in ipairs(ply:GetWeapons()) do saved.weapons[#saved.weapons + 1] = w:GetClass() end
 
+    -- Nothing in their hand while they tumble: the held weapon stayed
+    -- attached to a player who was only spectating, floating by the ragdoll.
+    -- Everything was saved above and is given back when they get up.
+    ply:StripWeapons()
+
     ply.BMXTumbling = rag
     ply:Spectate(OBS_MODE_CHASE)
     ply:SpectateEntity(rag)
@@ -225,6 +245,13 @@ function BMX.Tumble(ply, vel, after)
         ply.BMXTumbling = nil
         local at = IsValid(rag) and rag:GetPos() or ply:GetPos()
         SafeRemoveEntity(rag)
+
+        -- Quiet, for the moment it takes: giving everything back fires a
+        -- "picked up" notice per weapon and ammo type down the right of the
+        -- screen, which reads as a pile of loot rather than getting up.
+        net.Start("bmx_quiet")
+            net.WriteFloat(0.75)
+        net.Send(ply)
 
         ply:UnSpectate()
         ply:Spawn()

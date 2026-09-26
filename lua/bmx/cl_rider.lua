@@ -164,5 +164,29 @@ net.Receive("bmx_gesture", function()
     ply:AnimRestartGesture(GESTURE_SLOT_CUSTOM, ACT_GMOD_GESTURE_ITEM_PLACE, true)
 end)
 
+--------------------------------------------------------------------------
+-- A crash ragdoll wears its rider's player colour: the PlayerColor material
+-- proxy calls ent:GetPlayerColor(), which only players have, so the ragdoll
+-- (BMX.Tumble) carries the colour in a networked var and is given the method.
+--------------------------------------------------------------------------
+hook.Add("OnEntityCreated", "BMX.RagdollColour", function(e)
+    timer.Simple(0, function()
+        if not IsValid(e) or e:GetClass() ~= "prop_ragdoll" then return end
+        local col = e:GetNWVector("BMXPlayerColor", nil)
+        if col then e.GetPlayerColor = function() return col end end
+    end)
+end)
+
+--------------------------------------------------------------------------
+-- No pickup notices while a tumble gives the player their things back
+-- (BMX.Tumble): the server asks for quiet just before it re-gives them.
+--------------------------------------------------------------------------
+local quietUntil = 0
+net.Receive("bmx_quiet", function() quietUntil = CurTime() + net.ReadFloat() end)
+local function quiet() if CurTime() < quietUntil then return true end end
+hook.Add("HUDWeaponPickedUp", "BMX.QuietRestore", quiet)
+hook.Add("HUDAmmoPickedUp",   "BMX.QuietRestore", quiet)
+hook.Add("HUDItemPickedUp",   "BMX.QuietRestore", quiet)
+
 -- Players that leave the server take their entry with them.
 hook.Add("EntityRemoved", "BMX.RiderForget", function(e) animated[e] = nil end)

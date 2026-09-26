@@ -531,11 +531,18 @@ function M.Realm(world, which)
     function Ent:GetModel() return self._model end
     for _, k in ipairs({ "SetMoveType", "SetSolid", "SetCollisionBounds",
             "SetCustomCollisionCheck", "SetNoDraw", "DrawShadow", "SetKeyValue",
-            "Activate", "SetRenderMode", "SetColor", "StopSound",
+            "Activate", "SetRenderMode", "StopSound",
             "SetRenderBounds", "SetUseType" }) do
         Ent[k] = function() end
     end
     function Ent:SetNotSolid(b) self._notSolid = b end
+    function Ent:SetColor(c) self._color = c end
+    function Ent:SetMaterial(m) self._material = m end
+    function Ent:GetMaterial() return self._material or "" end
+    function Ent:GetColor() return self._color or { r = 255, g = 255, b = 255, a = 255 } end
+    function Ent:SetNWVector(k, v) self._nw["nw_" .. k] = v end
+    function Ent:GetNWVector(k, d) local v = self._nw["nw_" .. k]; if v == nil then return d end return v end
+    function Ent:SetNWEntity(k, v) self._nw["nw_" .. k] = v end
     -- ON A PHYSICS ENTITY THE BODY IS THE AUTHORITY, as in the engine: once
     -- it has a physics object, Entity:SetPos / SetAngles are overwritten by
     -- the body on the next step, so only PhysObj:SetPos / SetAngles move it.
@@ -912,6 +919,8 @@ function M.Realm(world, which)
     function Rag:GetPhysicsObjectNum(i) return i == 0 and self._phys or nil end
     function Rag:TranslatePhysBoneToBone(i) return i end
     function Rag:SetCollisionGroup(g) self._group = g end
+    function Rag:SetSkin(n) self._skin = n end
+    function Rag:SetBodygroup(i, v) self._bg = self._bg or {}; self._bg[i] = v end
 
     local Ply = {}
     ENGINE.player = Ply
@@ -936,6 +945,10 @@ function M.Realm(world, which)
     function Ply:Armor() return self._armor or 0 end
     function Ply:SetArmor(a) self._armor = a end
     function Ply:GetModel() return self._model or "models/player/kleiner.mdl" end
+    function Ply:GetSkin() return self._skin or 0 end
+    function Ply:GetNumBodyGroups() return 3 end
+    function Ply:GetBodygroup(i) return (self._bg or {})[i] or 0 end
+    function Ply:GetPlayerColor() return self._pcol or Vector(0.24, 0.34, 0.41) end
     function Ply:Alive() return (self._health or 100) > 0 end
     function Ply:GetWeapons()
         local o = {}

@@ -643,3 +643,55 @@ T.test("a bike spawns in your chosen default colour, and a copy keeps its paint"
     local pasted = E.duplicator.Paste(ply, { [1] = copy }, {})[1]
     T.eq(pasted:GetColorIndex(), E.BMX.PaletteIndex("cyan"), "the pasted copy is cyan too")
 end)
+
+T.test("the colour you last chose is the colour your next bike spawns in", function()
+    local sv = F.server()
+    local E = sv.env
+    local B = E.BMX
+    local ply = sv:player("Rider")
+    ply:SetPos(E.Vector(0, 0, 0))
+    ply._eyeTrace = { Hit = true, HitPos = E.Vector(100, 0, 0), HitNormal = E.Vector(0, 0, 1) }
+    local function spawn()
+        sv.world.time = sv.world.time + 2
+        sv:command("bmx_spawn", ply)
+        local all = E.ents.FindByClass("bmx_base")
+        return all[#all]
+    end
+
+    local first = spawn()
+    first:Use(ply, ply, 1, 0)
+    for _ = 1, 3 do                             -- K three times: red -> yellow... -> lime
+        sv.world.time = sv.world.time + 1
+        E.hook.Run("PlayerButtonDown", ply, E.KEY_K)
+    end
+    T.eq(first:GetColorIndex(), 4, "recoloured to lime")
+    ply:ExitVehicle()
+
+    T.eq(spawn():GetColorIndex(), 4, "the next bike spawns lime")
+    T.eq(ply._concommands[#ply._concommands], "bmx_color_default lime",
+        "and it is saved to their client for next time")
+
+    -- A fresh session: only the saved convar is left, and it is enough.
+    ply.BMXColor = nil
+    T.eq(spawn():GetColorIndex(), 4, "still lime after a rejoin")
+
+    -- Choosing by command or menu counts too.
+    local b = spawn()
+    b:Use(ply, ply, 1, 0)
+    sv.world.time = sv.world.time + 1
+    sv:command("bmx_color", ply, "indigo")
+    ply:ExitVehicle()
+    T.eq(spawn():GetColorIndex(), B.PaletteIndex("indigo"), "indigo after bmx_color")
+end)
+
+T.test("someone else's colour choice is not yours", function()
+    local sv = F.server()
+    local E = sv.env
+    local a, b = sv:player("A"), sv:player("B")
+    local bike = F.bike(sv)
+    bike:Use(a, a, 1, 0)
+    sv.world.time = sv.world.time + 1
+    E.hook.Run("PlayerButtonDown", a, E.KEY_K)
+    T.eq(a.BMXColor, 2, "A chose orange")
+    T.eq(b.BMXColor, nil, "B chose nothing")
+end)

@@ -437,11 +437,10 @@ local SPAWN_COOLDOWN = 1.0
 
 if cleanup then cleanup.Register("bmx") end
 
--- A bike somebody spawns starts in the colour they asked for with
--- bmx_color_default (a client convar), if it names one.
+-- A bike somebody spawns starts in their colour: the last one they chose
+-- for a bike, else their bmx_color_default. See BMX.RememberColor.
 function BMX.PaintAsPreferred(bike, ply)
-    if not IsValid(bike) or not IsValid(ply) or not ply.GetInfo then return end
-    local i = BMX.PaletteIndex(ply:GetInfo("bmx_color_default"))
+    local i = BMX.PreferredColor(ply)
     if i then BMX.SetBikeColor(bike, i, false) end
 end
 

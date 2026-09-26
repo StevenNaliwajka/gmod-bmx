@@ -1087,6 +1087,14 @@ function M.Realm(world, which)
         return m and m:Copy() or nil
     end
     function Ply:GetBoneCount() return #SK.BONES end
+    -- The server telling this player's client to run a command. For a
+    -- convar, that sets it, and (a userinfo convar) GetInfo then reports it.
+    function Ply:ConCommand(line)
+        self._concommands = self._concommands or {}
+        self._concommands[#self._concommands + 1] = line
+        local name, val = line:match("^(%S+)%s+(.*)$")
+        if name then self._info = self._info or {}; self._info[name] = val end
+    end
     function Ply:GetInfo(name)
         if self._info and self._info[name] ~= nil then return self._info[name] end
         local cv = world.convars[name]

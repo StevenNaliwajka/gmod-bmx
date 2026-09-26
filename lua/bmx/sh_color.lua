@@ -65,10 +65,11 @@ if SERVER then
     -- Paint a bike. `puff` adds the smoke and the pop, which is what K and the
     -- menu do; a bike spawned in a colour just is that colour.
     --------------------------------------------------------------------------
-    function BMX.SetBikeColor(bike, i, puff)
+    function BMX.SetBikeColor(bike, i, puff, by)
         if not IsValid(bike) or not bike.IsBMX or not BMX.Palette[i] then return false end
         if hook.Run("BMX_CanRecolor", bike, i) == false then return false end
         bike:SetColorIndex(i)
+        if IsValid(by) then BMX.RememberColor(by, i) end
         duplicator.StoreEntityModifier(bike, "bmx_color", { i = i })
         if puff then
             net.Start("bmx_puff")
@@ -79,6 +80,26 @@ if SERVER then
             bike:EmitSound(BMX.SoundFile("recolor"), S.level, math.random(96, 108), S.vol)
         end
         return true
+    end
+
+    --------------------------------------------------------------------------
+    -- A COLOUR YOU CHOOSE IS YOUR COLOUR. Recolouring a bike (K, the menu,
+    -- bmx_color) makes that the colour your next bike spawns in: remembered
+    -- here for this session, and written to your bmx_color_default so it is
+    -- still yours after a rejoin (it is an archived client convar). The
+    -- server-side copy is what a spawn reads first, because the convar's new
+    -- value takes a round trip to reach the server.
+    --------------------------------------------------------------------------
+    function BMX.RememberColor(ply, i)
+        if not IsValid(ply) or not BMX.Palette[i] then return end
+        ply.BMXColor = i
+        ply:ConCommand("bmx_color_default " .. string.lower(BMX.Palette[i].name))
+    end
+
+    function BMX.PreferredColor(ply)
+        if not IsValid(ply) then return nil end
+        if ply.BMXColor and BMX.Palette[ply.BMXColor] then return ply.BMXColor end
+        return ply.GetInfo and BMX.PaletteIndex(ply:GetInfo("bmx_color_default")) or nil
     end
 
     duplicator.RegisterEntityModifier("bmx_color", function(ply, ent, data)
@@ -93,7 +114,7 @@ if SERVER then
         if CurTime() < (ply.BMXNextRecolor or 0) then return end
         ply.BMXNextRecolor = CurTime() + COOLDOWN
         local n = #BMX.Palette
-        BMX.SetBikeColor(bike, (bike:GetColorIndex() % n) + 1, true)
+        BMX.SetBikeColor(bike, (bike:GetColorIndex() % n) + 1, true, ply)
     end)
 
     -- The bike a player means: the one they ride, else the one they look at.
@@ -124,7 +145,7 @@ if SERVER then
         end
         if CurTime() < (ply.BMXNextRecolor or 0) then return end
         ply.BMXNextRecolor = CurTime() + COOLDOWN
-        BMX.SetBikeColor(bike, i, true)
+        BMX.SetBikeColor(bike, i, true, ply)
     end)
 end
 
@@ -200,7 +221,7 @@ if properties then
             local i = net.ReadUInt(5)
             if not properties.CanBeTargeted(ent, ply) then return end
             if not self:Filter(ent, ply) then return end
-            BMX.SetBikeColor(ent, i, true)
+            BMX.SetBikeColor(ent, i, true, ply)
         end,
     })
 end

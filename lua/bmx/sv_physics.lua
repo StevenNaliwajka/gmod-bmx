@@ -300,7 +300,13 @@ function BMX.PhysicsStep(ent, phys, dt)
     -- while parked on the stand and slow, so a bike that is pushed hard, or
     -- knocked off its stand, moves like anything else.
     ----------------------------------------------------------------------
-    if not hasDriver and st.onStand and speed < C.Balance.walkSpeed then
+    -- AND NEVER AGAINST A PLAYER. With somebody touching the bike, the hold
+    -- would be pinning it against them every substep: the bike pushed back
+    -- into the player, and a player a prop is pushed into gets stuck in it.
+    -- So the hold lets go and ordinary physics settles the push (ENT:Think
+    -- sets pushedUntil).
+    local touched = (st.pushedUntil or 0) > CurTime()
+    if not hasDriver and st.onStand and not touched and speed < C.Balance.walkSpeed then
         -- Read NOW, after this substep's tyre forces, not the `vel` taken at
         -- the top of the step: removing that one leaves whatever the tyres
         -- just added, and the bike still slid at 0.2 u/s.

@@ -201,7 +201,35 @@ function BMX.Balance(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
         local ridden = IsValid(ent:GetDriver())
         local want = ridden and (inp.lean * S.footLean) or S.standLean
         local a = -topple + S.kp * (want - roll) - S.kd * st.rollRate
-        alpha = alpha + BMX.Clamp(a, -B.maxAssistAccel, B.maxAssistAccel) * support
+        a = BMX.Clamp(a, -B.maxAssistAccel, B.maxAssistAccel)
+
+        -- A KICKSTAND ONLY PUSHES. It props the bike from the left and can
+        -- hold it off the ground, but it cannot pull it back: push a parked
+        -- bike from the left and it lifts off the stand, comes upright, and
+        -- over it goes. That is how a real one behaves, and it is how someone
+        -- walking into a parked bike knocks it over. (It used to hold the lean
+        -- both ways, so the bike was an immovable post that shoved back.)
+        -- The rider's foot is a different thing and works both ways.
+        if not ridden and a < 0 then a = 0 end
+
+        -- ...AND IT IS WHERE THE BIKE WAS LEFT. Right of the stand lean the
+        -- leg is off the ground and only gravity acts, which at exactly
+        -- upright is nothing: a noise-free bike would stand there forever, and
+        -- on a real server it would fall whichever way the first bump sent
+        -- it, half the time away from its stand. So a parked bike is SET DOWN
+        -- onto its stand, by a gentle nudge left. Gentle on purpose: it loses
+        -- to gravity a couple of degrees right of upright (settle * lean-gap
+        -- against the ~166 rad/s^2 per rad toppling gradient), so a push from
+        -- the left still tips the bike over, and past tipOver it is not tried.
+        -- Not while somebody is touching it: the nudge exists to set a bike
+        -- down, and against a push it is just resistance. With it on, a shove
+        -- that should tip a parked bike over only rocked it.
+        local touched = (st.pushedUntil or 0) > CurTime()
+        if not ridden and not touched and roll > S.standLean and roll < S.tipOver then
+            a = a - S.settle * (roll - S.standLean) - S.kd * 0.25 * st.rollRate
+        end
+
+        alpha = alpha + a * support
         st.onStand = not ridden
     end
 

@@ -359,6 +359,12 @@ C.Stand = {
     footLean  = math.rad(6),       -- ridden: how far A/D lean at a standstill
     maxRoll   = math.rad(50),      -- beyond this it has fallen over
 
+    -- Parked: the nudge that sets the bike down onto its stand from upright,
+    -- rad/s^2 per rad of gap. Loses to gravity about 2 degrees right of
+    -- upright, which is what lets somebody walking into it knock it over.
+    settle    = 30,
+    tipOver   = math.rad(6),       -- past this lean the other way, no nudge at all
+
     -- Stiff enough to beat the toppling gradient with margin: that is
     -- m*g*h/I_roll = 86*600*30/9299 = 166 rad/s^2 per rad, so 400 holds and
     -- 40 is zeta ~1 against it. Clamped by Balance.maxAssistAccel like the

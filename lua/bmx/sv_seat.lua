@@ -107,9 +107,38 @@ hook.Add("PlayerEnteredVehicle", "BMX.Mount", function(ply, veh)
     end
 end)
 
+--------------------------------------------------------------------------
+-- WHERE A RIDER GETS OFF. The pod's own exit point is inside the bike's
+-- hull, which is tall on purpose (it stands in for the rider), so a player
+-- set down there is embedded in the bike they just left: stuck to it, or
+-- shoving it about as the engine tries to separate the two. So step off to
+-- the left, the right, or behind, whichever has room, beside the hull.
+--------------------------------------------------------------------------
+local PLAYER_MIN, PLAYER_MAX = Vector(-16, -16, 0), Vector(16, 16, 72)
+
+function BMX.ExitPoint(bike, ply)
+    local C = bike:Cfg().Chassis
+    local clear = math.max(math.abs(C.hullMin.y), math.abs(C.hullMax.y)) + 20
+    local back  = math.abs(C.hullMin.x) + 24
+    local ground = bike:GetPos() - Vector(0, 0, BMX.RestHeight(bike:Cfg()))
+    for _, off in ipairs({ bike:GetRight() * -clear, bike:GetRight() * clear,
+                           bike:GetForward() * -back }) do
+        local spot = ground + Vector(off.x, off.y, 0) + Vector(0, 0, 4)
+        local tr = util.TraceHull({ start = spot, endpos = spot, mins = PLAYER_MIN,
+            maxs = PLAYER_MAX, filter = { bike, bike:GetPod(), ply }, mask = MASK_PLAYERSOLID })
+        if not tr.StartSolid and not tr.Hit then return spot end
+    end
+    return nil
+end
+
 hook.Add("PlayerLeaveVehicle", "BMX.Dismount", function(ply, veh)
     if IsValid(veh) and veh.BMXBike then
-        unbind(ply, veh.BMXBike)
+        local bike = veh.BMXBike
+        unbind(ply, bike)
+        if IsValid(bike) and IsValid(ply) then
+            local spot = BMX.ExitPoint(bike, ply)
+            if spot then ply:SetPos(spot) end
+        end
     end
 end)
 
@@ -242,7 +271,8 @@ concommand.Add("bmx_spawn", function(ply, _, args)
     local ent = ents.Create(class)
     if not IsValid(ent) then return end
 
-    ent:SetPos(tr.HitPos + tr.HitNormal * 16 + Vector(0, 0, ent:Cfg().Wheel.radius))
+    -- At its resting height, not dropped from above: see BMX.RestHeight.
+    ent:SetPos(tr.HitPos + tr.HitNormal * (BMX.RestHeight(ent:Cfg()) + 0.5))
     ent:SetAngles(Angle(0, ply:EyeAngles().y, 0))
     ent:Spawn()
     ent:Activate()

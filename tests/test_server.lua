@@ -141,6 +141,7 @@ end)
 local function looker(sv, name)
     local E = sv.env
     local ply = sv:player(name or "Spawner")
+    ply:SetPos(E.Vector(0, 0, 0))
     ply._eyeTrace = { Hit = true, HitPos = E.Vector(100, 0, 0), HitNormal = E.Vector(0, 0, 1) }
     return ply
 end
@@ -213,4 +214,123 @@ T.test("the tuning self-test and config dump run without a client", function()
     sv:run(0.2)
     local joined = table.concat(ply._chat or {}, "\n")
     T.ok(joined:find("IMPULSE %(expected%)"), "the shim is impulse-semantics: " .. joined)
+end)
+
+T.test("E on the bike gets you on it; not onto someone else's, not twice", function()
+    local sv = F.server()
+    local bike = F.bike(sv)
+    local ply = sv:player("Walker")
+    bike:Use(ply, ply, 1, 0)
+    T.ok(bike:GetDriver() == ply, "E mounts the bike")
+    T.ok(ply.BMXBike == bike, "and binds the rider")
+    local other = sv:player("Other")
+    bike:Use(other, other, 1, 0)
+    T.ok(bike:GetDriver() == ply, "someone else's E does not steal it")
+    T.ok(not sv.env.IsValid(other:GetVehicle()), "and puts them nowhere")
+end)
+
+T.test("E mounts a bike lying on its side, and stands it up", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    sv:run(1)
+    F.place(bike, bike:GetPos() + E.Vector(0, 0, 8), E.Angle(0, 0, 80))
+    sv:run(2)
+    local ply = sv:player("Walker")
+    bike:Use(ply, ply, 1, 0)
+    ply.BMXScripted = true
+    sv:run(1.5)
+    T.ok(bike:GetDriver() == ply, "on")
+    T.between(math.deg(math.abs(bike.st.roll)), 0, 4, "upright")
+end)
+
+T.test("getting off puts you BESIDE the bike, not inside its hull", function()
+    local sv = F.server()
+    local bike = F.bike(sv)
+    sv:run(0.5)
+    local ply = sv:player("Rider")
+    bike:Use(ply, ply, 1, 0)
+    ply:ExitVehicle()
+    local loc = bike:WorldToLocal(ply:GetPos())
+    local C = bike:Cfg().Chassis
+    local inside = loc.x > C.hullMin.x - 16 and loc.x < C.hullMax.x + 16
+        and loc.y > C.hullMin.y - 16 and loc.y < C.hullMax.y + 16
+    T.ok(not inside, string.format("player box clear of the hull: local (%.0f, %.0f)", loc.x, loc.y))
+    T.near(ply:GetPos().z, 4, 1, "standing on the ground")
+end)
+
+T.test("a spawned bike is placed at rest, not dropped: it does not bounce", function()
+    local sv = F.server()
+    local E = sv.env
+    local ply = sv:player("Spawner")
+    ply:SetPos(E.Vector(0, 0, 0))
+    ply._eyeTrace = { Hit = true, HitPos = E.Vector(100, 0, 0), HitNormal = E.Vector(0, 0, 1) }
+    sv:command("bmx_spawn", ply)
+    local bike = E.ents.FindByClass("bmx_base")[1]
+    local f, r = F.wheels(bike)
+    local worst, left = 0, false
+    sv:run(1.5, function()
+        worst = math.max(worst, math.abs(bike:GetPhysicsObject():GetVelocity().z))
+        if not f.onGround or not r.onGround then left = true end
+    end)
+    T.between(worst, 0, 12, "vertical speed during the first 1.5 s, u/s")
+    T.ok(not left, "neither wheel left the ground")
+
+    -- The spawn menu's path, the same.
+    local tr = { Hit = true, HitPos = E.Vector(300, 0, 0), HitNormal = E.Vector(0, 0, 1) }
+    local b2 = sv.stored.bmx_base.SpawnFunction(nil, ply, tr, "bmx_base")
+    T.near(b2:GetPos().z, E.BMX.RestHeight(b2:Cfg()) + 0.5, 0.01, "spawn menu places at rest height")
+end)
+
+-- Somebody leaning on a parked bike from one side, for `seconds`.
+local function lean(sv, bike, fromLeft, seconds)
+    local E = sv.env
+    local ply = sv:player("Walker")
+    local left = -bike:GetRight()
+    ply:SetPos(bike:GetPos() + left * (fromLeft and 14 or -14))
+    local p = bike:GetPhysicsObject()
+    local push = bike:GetRight() * (fromLeft and 1 or -1)
+    sv:run(seconds, function()
+        -- A firm shove at a standing player's chest height. The threshold on
+        -- the plant sits between a light 40 (rocks it) and this 80 (tips it):
+        -- a bike on its stand has to be pushed through upright before it goes.
+        p:ApplyForceOffset(push * 80, bike:LocalToWorld(E.Vector(0, 0, 40)))
+        ply:SetPos(bike:GetPos() + left * (fromLeft and 14 or -14))
+    end)
+    ply:SetPos(E.Vector(5000, 5000, 0))
+    return ply
+end
+
+T.test("walking into a parked bike from the left knocks it over", function()
+    local sv = F.server()
+    local bike = F.bike(sv)
+    sv:run(3)
+    lean(sv, bike, true, 0.6)
+    sv:run(2.5)
+    T.ok(math.abs(bike.st.roll) > bike:Cfg().Stand.maxRoll,
+        "fell over, away from its stand: roll " .. math.deg(bike.st.roll))
+end)
+
+T.test("pushing a parked bike INTO its stand does not knock it over", function()
+    local sv = F.server()
+    local bike = F.bike(sv)
+    sv:run(3)
+    lean(sv, bike, false, 0.4)
+    sv:run(2.5)
+    T.between(math.deg(bike.st.roll), -20, 0, "still on its stand, deg")
+end)
+
+T.test("the parked hold lets go while a player is touching the bike", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    sv:run(3)
+    local ply = sv:player("Walker")
+    ply:SetPos(bike:GetPos() + E.Vector(0, 10, 0))
+    sv:run(0.1)
+    T.ok((bike.st.pushedUntil or 0) > sv.world.time, "noticed")
+    local p = bike:GetPhysicsObject()
+    p:ApplyForceCenter(E.Vector(86 * 30, 0, 0))
+    sv:run(0.05)
+    T.ok(p:GetVelocity().x > 10, "a push moves it instead of being cancelled: " .. p:GetVelocity().x)
 end)

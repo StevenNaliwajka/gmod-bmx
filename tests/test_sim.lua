@@ -41,16 +41,16 @@ T.test("parked: a riderless bike stands on its kickstand and stays put", functio
     local bike = F.bike(sv)
     -- Settle first: tipping 9 degrees onto the stand moves the origin (on the
     -- axle line, well above the tyres) sideways by a unit or so by geometry.
-    sv:run(1)
-    local start = bike:GetPos()
     sv:run(3)
+    local start = bike:GetPos()
+    sv:run(10)
     local C = bike:Cfg().Stand
     T.near(math.deg(bike.st.roll), math.deg(C.standLean), 2, "leaning onto the stand, deg")
     T.ok(bike.st.onStand, "on the stand")
     local f, r = F.wheels(bike)
     T.ok(f.onGround and r.onGround, "on both wheels")
     local moved = bike:GetPos() - start
-    T.between(math.sqrt(moved.x ^ 2 + moved.y ^ 2), 0, 0.3, "drift over 3 s once settled, units")
+    T.between(math.sqrt(moved.x ^ 2 + moved.y ^ 2), 0, 0.3, "drift over 10 s once settled, units")
     T.between(bike.st.speed, 0, 0.5, "and is still")
 end)
 

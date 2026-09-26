@@ -198,6 +198,8 @@ function M.Realm(world, which)
     env.MASK_SOLID, env.MASK_SOLID_BRUSHONLY = 33570827, 16395
     env.MOVETYPE_VPHYSICS, env.SOLID_VPHYSICS = 6, 6
     env.SIM_NOTHING = 0
+    env.SIMPLE_USE = 1
+    env.MASK_PLAYERSOLID = 33636363
     env.RENDERGROUP_OPAQUE, env.RENDERGROUP_BOTH = 7, 9
     env.HUD_PRINTCONSOLE, env.HUD_PRINTTALK = 2, 3
     env.DMG_FALL = 32
@@ -510,6 +512,7 @@ function M.Realm(world, which)
     R.makeEntity = makeEntity
 
     function Ent:IsValid() return not self._removed end
+    function Ent:IsPlayer() return false end
     function Ent:EntIndex() return self._index end
     function Ent:GetClass() return self._class end
     function Ent:SetModel(m) self._model = m end
@@ -517,7 +520,7 @@ function M.Realm(world, which)
     for _, k in ipairs({ "SetMoveType", "SetSolid", "SetCollisionBounds",
             "SetCustomCollisionCheck", "SetNoDraw", "DrawShadow", "SetKeyValue",
             "Activate", "SetRenderMode", "SetColor", "StopSound",
-            "SetRenderBounds" }) do
+            "SetRenderBounds", "SetUseType" }) do
         Ent[k] = function() end
     end
     function Ent:SetNotSolid(b) self._notSolid = b end
@@ -618,6 +621,17 @@ function M.Realm(world, which)
         GetAll = function()
             local o = {}
             for _, e in ipairs(R.ents) do if not e._removed then o[#o + 1] = e end end
+            return o
+        end,
+        FindInBox = function(mn, mx)
+            local o = {}
+            for _, e in ipairs(R.ents) do
+                local p = e._pos
+                if not e._removed and p.x >= mn.x and p.x <= mx.x and p.y >= mn.y
+                    and p.y <= mx.y and p.z >= mn.z and p.z <= mx.z then
+                    o[#o + 1] = e
+                end
+            end
             return o
         end,
         FindByClass = function(pattern)
@@ -871,6 +885,9 @@ function M.Realm(world, which)
         opts = opts or {}
         local p = makeEntity("player")
         p._nick, p._bot = nick or "Player", opts.bot or false
+        -- Somewhere out of the way: a player standing at the origin would be
+        -- "touching" every bike a test spawns there.
+        p:SetPos(Vector(5000, 5000, 0))
         p._superadmin = opts.superadmin
         self.players[#self.players + 1] = p
         return p

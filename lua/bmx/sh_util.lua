@@ -127,6 +127,17 @@ function BMX.DiscContact(mount, down, axle, dist, normal, radius)
     return s, centre - inPlane * radius
 end
 
+-- Where the entity origin sits above flat ground at rest: on the axle line,
+-- which is one wheel radius up less the static sag. Spawning anywhere higher
+-- is dropping the bike, and it bounced on its suspension every time it was
+-- spawned: both spawn paths used to put it 16 units plus a radius up.
+function BMX.RestHeight(cfg)
+    local C = cfg or BMX.Config
+    local g = physenv and physenv.GetGravity and physenv.GetGravity():Length() or 600
+    local sag = C.Chassis.mass * g * 0.5 / C.Wheel.spring
+    return C.Wheel.radius - math.min(sag, C.Wheel.restLength)
+end
+
 -- How far the suspension ray reaches. Past the strut's full extension plus one
 -- radius, because a pitched disc sits r/cos(pitch) down the strut from the
 -- ground rather than r: 1.6 radii covers ~51 degrees, beyond the wheelie hold's

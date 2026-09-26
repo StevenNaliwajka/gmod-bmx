@@ -40,6 +40,12 @@ function ENT:Initialize()
     -- the bike across the map.
     self:SetCustomCollisionCheck(true)
 
+    -- USE (E) ON THE BIKE GETS YOU ON IT. The seat is an invisible,
+    -- non-solid pod, so the use key's trace can never land on it: the only
+    -- thing a player looking at a bike can press E on is the bike. With no
+    -- Use here, nobody could get on at all except by a script. See ENT:Use.
+    self:SetUseType(SIMPLE_USE)
+
     local phys = self:GetPhysicsObject()
     if not IsValid(phys) then
         ErrorNoHalt("[BMX] physics init failed for " .. tostring(bike.model) ..
@@ -186,6 +192,19 @@ function ENT:CreateSeat()
     self:DeleteOnRemove(pod)
 end
 
+--------------------------------------------------------------------------
+-- E on any part of the bike (frame, seat, bars): get on. The hull covers all
+-- of them, since it stands in for the rider as well as the frame.
+--------------------------------------------------------------------------
+function ENT:Use(activator)
+    if not IsValid(activator) or not activator:IsPlayer() then return end
+    if activator:InVehicle() then return end
+    local pod = self:GetPod()
+    if not IsValid(pod) or IsValid(self:GetDriver()) then return end
+    if hook.Run("BMX_CanMount", self, activator) == false then return end
+    activator:EnterVehicle(pod)
+end
+
 -- Fail LOUDLY rather than half-built. A bike whose Initialize died partway
 -- through still spawns, still has physics, and still looks completely normal
 -- until someone presses E on it and nothing happens. That cost an afternoon
@@ -250,6 +269,21 @@ function ENT:Think()
         self:SetSprinting(st.sprinting or false)
         self:SetHopCharge(self.hopHeld
             and math.min(1, (self.hopCharge or 0) / self:Cfg().Hop.chargeTime) or 0)
+    end
+
+    -- Is anybody leaning on it? A parked bike's hold lets go while a player
+    -- is touching it (see 7c in sv_physics.lua). Checked here at 20 Hz, not
+    -- per substep: a box query per substep for every bike on a server is
+    -- real cost, and a push lasts far longer than a twentieth of a second.
+    if st and not IsValid(self:GetDriver()) then
+        local C = self:Cfg().Chassis
+        local mn, mx = self:BoundsWorld(C.hullMin, C.hullMax, 8)
+        for _, e in ipairs(ents.FindInBox(mn, mx)) do
+            if e:IsPlayer() and not e:InVehicle() then
+                st.pushedUntil = CurTime() + 0.6
+                break
+            end
+        end
     end
 
     -- Live tuning. Reading a dozen convars 20 times a second is free and it
@@ -439,11 +473,28 @@ function ENT:SpawnFunction(ply, tr, class)
 
     local ang = Angle(0, ply:EyeAngles().y, 0)
     local ent = ents.Create(class)
-    ent:SetPos(tr.HitPos + tr.HitNormal * 16 + Vector(0, 0, ent:Cfg().Wheel.radius))
+    ent:SetPos(tr.HitPos + tr.HitNormal * (BMX.RestHeight(ent:Cfg()) + 0.5))
     ent:SetAngles(ang)
     ent:Spawn()
     ent:Activate()
     return ent
+end
+
+-- The world-space box around a local box, grown by `pad` on every side.
+function ENT:BoundsWorld(lmin, lmax, pad)
+    local mn = Vector(math.huge, math.huge, math.huge)
+    local mx = -mn
+    for _, x in ipairs({ lmin.x, lmax.x }) do
+        for _, y in ipairs({ lmin.y, lmax.y }) do
+            for _, z in ipairs({ lmin.z, lmax.z }) do
+                local p = self:LocalToWorld(Vector(x, y, z))
+                mn = Vector(math.min(mn.x, p.x), math.min(mn.y, p.y), math.min(mn.z, p.z))
+                mx = Vector(math.max(mx.x, p.x), math.max(mx.y, p.y), math.max(mx.z, p.z))
+            end
+        end
+    end
+    local g = Vector(pad, pad, pad)
+    return mn - g, mx + g
 end
 
 function ENT:OnRemove()

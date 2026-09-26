@@ -28,7 +28,6 @@ local COL_SPOKE  = Color(160, 165, 175)
 local COL_PART   = Color(34, 34, 38)       -- bars, cranks, seat, fork crown
 local COL_CHROME = Color(200, 204, 212)
 local COL_AIR    = Color(235, 90, 60)
-local COL_FRAME  = Color(205, 35, 45)      -- a bike def can set frameColor
 
 -- Big enough for the frame, the bars and a rider, in chassis units at the
 -- stock wheelbase; scaled per bike. Without it the engine culls the drawing
@@ -81,11 +80,88 @@ local function axlePos(ent, mountLocal)
 end
 
 --------------------------------------------------------------------------
--- Drawing primitives. Everything is a camera-facing beam or a box in the colour
--- material: no textures, no models, nothing that is not in base Garry's Mod.
+-- DRAWING PRIMITIVES: real 3D shapes.
+--
+-- Every tube on the bike is a cylinder -- base Garry's Mod's XQM unit cylinder
+-- (12.5 across and 12.5 long, along its own X) scaled to the tube's length
+-- and thickness -- in glossy paint, tinted per part. Joints are spheres, the
+-- saddle a squashed one, the pedals blocks. One clientside model per shape
+-- per bike, drawn many times a frame with a different transform each time.
+--
+-- This replaces flat camera-facing strips, which is what the whole frame
+-- used to be: they read as paper cut-outs next to the real tyre model. They
+-- remain as the fallback if the shapes will not load.
 --------------------------------------------------------------------------
+local PRIM = {
+    cyl = { model = "models/xqm/cylinderx1.mdl",               size = 12.5 },
+    sph = { model = "models/hunter/misc/sphere025x025.mdl",    size = 12.3625 },
+    box = { model = "models/hunter/blocks/cube025x025x025.mdl", size = 12.3125 },
+}
+BMX.BikePrimitives = PRIM
+local PAINT = "models/shiny"
+
+local drawing       -- the bike being drawn, for the shape cache
+
+local function primModel(kind)
+    local ent = drawing
+    if not ent then return nil end
+    ent.prims = ent.prims or {}
+    local m = ent.prims[kind]
+    if m and IsValid(m) then return m end
+    if m == false and CurTime() < (ent.primRetry or 0) then return nil end
+    m = ClientsideModel(PRIM[kind].model, RENDERGROUP_OPAQUE)
+    if not IsValid(m) then
+        ent.prims[kind] = false
+        ent.primRetry = CurTime() + 3
+        return nil
+    end
+    m:SetNoDraw(true)
+    m:SetMaterial(PAINT)
+    ent.prims[kind] = m
+    return m
+end
+
+local function drawPrim(m, pos, ang, scale, col)
+    local mat = Matrix()
+    mat:Scale(scale)
+    m:EnableMatrix("RenderMultiply", mat)
+    m:SetPos(pos)
+    m:SetAngles(ang)
+    m:SetupBones()
+    render.SetColorModulation(col.r / 255, col.g / 255, col.b / 255)
+    m:DrawModel()
+    render.SetColorModulation(1, 1, 1)
+end
+
+-- A tube from a to b, `width` across.
 local function tube(a, b, width, col)
-    render.DrawBeam(a, b, width, 0, 1, col)
+    local d = b - a
+    local len = d:Length()
+    local m = len > 0.01 and primModel("cyl")
+    if not m then
+        render.DrawBeam(a, b, width, 0, 1, col)
+        return
+    end
+    local s = PRIM.cyl.size
+    drawPrim(m, (a + b) * 0.5, d:Angle(), Vector(len / s, width / s, width / s), col)
+end
+
+-- A ball, `dia` across: where tubes meet, so a joint is round and not a gap.
+local function joint(p, dia, col)
+    local m = primModel("sph")
+    if not m then return end
+    local s = dia / PRIM.sph.size
+    drawPrim(m, p, Angle(0, 0, 0), Vector(s, s, s), col)
+end
+
+-- A box or an ellipsoid, centred on `p`, `dims` long/wide/tall in `ang`.
+local function solid(kind, p, ang, dims, col)
+    local m = primModel(kind)
+    if not m then
+        render.DrawBox(p, ang, dims * -0.5, dims * 0.5, col)
+        return
+    end
+    drawPrim(m, p, ang, dims / PRIM[kind].size, col)
 end
 
 -- A circle in the plane spanned by e1/e2, as a closed chain of beams. Each
@@ -274,6 +350,7 @@ local COG     = 1.3     -- rear cog radius
 local CHAINY  = -2.3    -- the drive side is the RIGHT, which is -Y in Source
 
 function ENT:Draw()
+    drawing = self
     local bike = self:Bike()
     local C    = self:Cfg()
     local WC   = C.Wheel
@@ -349,7 +426,8 @@ function ENT:Draw()
     local lift0 = Vector(0, 0, sag)
     local function P(v) return self:LocalToWorld(v * k + lift0) end
 
-    local col = bike.frameColor or COL_FRAME
+    -- The paint: this bike's palette colour (sh_color.lua), networked.
+    local col = BMX.PaletteColor(self:GetColorIndex())
     local bb, seatJ, seat = P(FRAME.bb), P(FRAME.seatJ), P(FRAME.seat)
     local headT, headB = P(FRAME.headT), P(FRAME.headB)
 
@@ -361,12 +439,18 @@ function ENT:Draw()
         local off = right * (1.6 * k * side)
         tube(bb + off, rPos + off, 0.95 * k, col)       -- chain stays
         tube(seatJ + off, rPos + off, 0.95 * k, col)    -- seat stays
+        joint(rPos + off, 1.3 * k, col)                 -- dropouts
     end
+    -- Where the tubes meet: round, not a notch.
+    joint(bb, 2.4 * k, col)
+    joint(seatJ, 1.9 * k, col)
+    joint(headT, 2.1 * k, col)
+    joint(headB, 2.1 * k, col)
 
-    -- Seat post and seat.
+    -- Seat post and seat: a padded saddle, not a brick.
     tube(seatJ, seat, 1.0 * k, COL_CHROME)
-    render.DrawBox(seat + up * (0.8 * k), self:GetAngles(),
-        Vector(-5, -1.9, -0.8) * k, Vector(4, 1.9, 0.8) * k, COL_PART)
+    solid("sph", seat + up * (0.8 * k) - fwd * (0.5 * k), self:GetAngles(),
+        Vector(9.5, 4.0, 2.0) * k, COL_PART)
 
     ----------------------------------------------------------------------
     -- Fork, stem and bars. The fork runs from the head tube to the front
@@ -417,8 +501,8 @@ function ENT:Draw()
         local pedal = root + arm
         ik[side == 1 and "rFoot" or "lFoot"] = pedal + right * (1.8 * k * side) + up * (0.9 * k)
         tube(root, pedal, 0.9 * k, COL_PART)
-        render.DrawBox(pedal + right * (1.8 * k * side), self:GetAngles(),
-            Vector(-1.8, -1.8, -0.5) * k, Vector(1.8, 1.8, 0.5) * k, COL_PART)
+        solid("box", pedal + right * (1.8 * k * side), self:GetAngles(),
+            Vector(3.6, 3.6, 1.0) * k, COL_PART)
     end
     tube(bb - right * (Q * k), bb + right * (Q * k), 1.3 * k, COL_PART)     -- spindle
 
@@ -438,8 +522,10 @@ end
 -- The tyre models are clientside and belong to nobody else: remove them with
 -- the bike, or every bike ever spawned leaves two behind until the map changes.
 function ENT:OnRemove()
-    for _, m in pairs(self.tyres or {}) do
-        if m and IsValid(m) then m:Remove() end
+    for _, set in ipairs({ self.tyres or {}, self.prims or {} }) do
+        for _, m in pairs(set) do
+            if m and IsValid(m) then m:Remove() end
+        end
     end
-    self.tyres = nil
+    self.tyres, self.prims = nil, nil
 end

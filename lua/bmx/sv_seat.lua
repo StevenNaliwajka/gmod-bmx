@@ -437,6 +437,14 @@ local SPAWN_COOLDOWN = 1.0
 
 if cleanup then cleanup.Register("bmx") end
 
+-- A bike somebody spawns starts in the colour they asked for with
+-- bmx_color_default (a client convar), if it names one.
+function BMX.PaintAsPreferred(bike, ply)
+    if not IsValid(bike) or not IsValid(ply) or not ply.GetInfo then return end
+    local i = BMX.PaletteIndex(ply:GetInfo("bmx_color_default"))
+    if i then BMX.SetBikeColor(bike, i, false) end
+end
+
 concommand.Add("bmx_spawn", function(ply, _, args)
     if not IsValid(ply) then return end
 
@@ -469,6 +477,7 @@ concommand.Add("bmx_spawn", function(ply, _, args)
     ent:Activate()
 
     hook.Run("PlayerSpawnedSENT", ply, ent)
+    BMX.PaintAsPreferred(ent, ply)
 
     -- Undo history, so a tester can clean up with Z like any other spawn.
     undo.Create("BMX")

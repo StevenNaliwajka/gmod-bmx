@@ -46,7 +46,7 @@ function MMT:GetTranslation() return Vector(self.t) end
 function MMT:GetForward() return Vector(self.f) end
 function MMT:GetRight() return -self.l end            -- GMod: the -Y column
 function MMT:GetUp() return Vector(self.u) end
-function MMT:Scale() end
+function MMT:Scale(v) self.s = Vector(v) end
 
 -- A local vector expressed in world (rotation only).
 function MMT:Dir(v) return self.f * v.x + self.l * v.y + self.u * v.z end

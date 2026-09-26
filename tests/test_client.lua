@@ -65,6 +65,13 @@ local function hubs(s)
     return f, r
 end
 
+local TYRE = "models/props_phx/wheels/moped_tire.mdl"
+local function tyreDraws(s)
+    local o = {}
+    for _, d in ipairs(s.cl.drawnCS) do if d.model == TYRE then o[#o + 1] = d end end
+    return o
+end
+
 local function draw(s)
     s.cl.lines, s.cl.beams, s.cl.drawnModels, s.cl.boxes3d = 0, {}, 0, 0
     s.cb:Draw()
@@ -75,9 +82,13 @@ T.test("the stock bike is DRAWN as a bike: frame, wheels, bars, drivetrain", fun
     s.cl.drawnCS = {}
     draw(s)
     T.eq(s.cl.drawnModels, 0, "the stand-in plate is never drawn")
-    T.eq(#s.cl.drawnCS, 2, "two tyre models")
+    T.eq(#tyreDraws(s), 2, "two tyre models")
     T.ok(#s.cl.beams > 35, "frame, fork, bars, drivetrain, pegs: " .. #s.cl.beams)
-    T.ok(s.cl.boxes3d >= 3, "seat and two pedals")
+    local solids = 0
+    for _, d in ipairs(s.cl.drawnCS) do
+        if d.model:find("sphere025") or d.model:find("cube025") then solids = solids + 1 end
+    end
+    T.ok(solids >= 3, "saddle, pedals and joints are solid shapes: " .. solids)
     local red = 0
     for _, b in ipairs(s.cl.beams) do
         if b.col and b.col.r == 205 and b.col.g == 35 then red = red + 1 end
@@ -388,8 +399,8 @@ T.test("the tyres are real round models, centred on their axles and turning abou
     s.cl.drawnCS = {}
     draw(s)
     local f, r = hubs(s)
-    for i, d in ipairs(s.cl.drawnCS) do
-        T.eq(d.model, "models/props_phx/wheels/moped_tire.mdl", "a base-game tyre")
+    for i, d in ipairs(tyreDraws(s)) do
+        T.eq(d.model, TYRE, "a base-game tyre")
         local axle = d.ang:Up()
         -- The model's origin is on one face; its centre is 4.37 model units up
         -- the axle, scaled. Put that back and it must be on a hub.
@@ -402,10 +413,10 @@ T.test("the tyres are real round models, centred on their axles and turning abou
 
     -- It rolls: the model's forward turns with the spin.
     s.cb._vel = s.cb:GetForward() * 200
-    local before = s.cl.drawnCS[1].ang:Forward()
+    local before = tyreDraws(s)[1].ang:Forward()
     s.cl.drawnCS = {}
     draw(s)
-    local after = s.cl.drawnCS[1].ang:Forward()
+    local after = tyreDraws(s)[1].ang:Forward()
     T.ok(before:Dot(after) < 0.9999, "the tyre turned between frames")
 end)
 
@@ -414,7 +425,7 @@ T.test("without the tyre model, the beam tyre and spokes are drawn instead", fun
     s.cl.missingModels["models/props_phx/wheels/moped_tire.mdl"] = true
     s.cl.drawnCS = {}
     draw(s)
-    T.eq(#s.cl.drawnCS, 0, "no model")
+    T.eq(#tyreDraws(s), 0, "no tyre model")
     T.eq(s.cl.lines, 24, "twelve spokes a wheel")
     T.ok(#s.cl.beams > 100, "beam tyres and rims")
     local said = false
@@ -427,15 +438,15 @@ T.test("a tyre model that failed is tried again, not given up on for good", func
     local M = "models/props_phx/wheels/moped_tire.mdl"
     s.cl.missingModels[M] = true
     draw(s)
-    T.eq(#s.cl.drawnCS, 0, "fallback first")
+    T.eq(#tyreDraws(s), 0, "fallback first")
     s.cl.missingModels[M] = nil
     s.cl.drawnCS = {}
     draw(s)
-    T.eq(#s.cl.drawnCS, 0, "not retried every frame")
+    T.eq(#tyreDraws(s), 0, "not retried every frame")
     s.world.time = s.world.time + 4
     s.cl.drawnCS = {}
     draw(s)
-    T.eq(#s.cl.drawnCS, 2, "retried a few seconds later, and drawn")
+    T.eq(#tyreDraws(s), 2, "retried a few seconds later, and drawn")
 end)
 
 T.test("the server precaches the tyre model for every client", function()
@@ -500,7 +511,8 @@ end)
 T.test("tyre models are made once per wheel and removed with the bike", function()
     local s = scene()
     for _ = 1, 30 do draw(s) end
-    T.eq(#s.cl.csModels, 2, "two clientside models, however many frames")
+    -- Two tyres and one of each primitive shape (cylinder, sphere, box).
+    T.eq(#s.cl.csModels, 5, "five clientside models, however many frames")
     s.cb:Remove()
     for _, m in ipairs(s.cl.csModels) do T.ok(m.removed, "removed with the bike") end
 end)
@@ -549,4 +561,70 @@ T.test("a crash ragdoll shows its rider's colour even if the colour arrives late
     s.me.GetPlayerColor = function() return E.Vector(0.1, 0.9, 0.1) end
     rag2:SetNWEntity("BMXRider", s.me)
     T.ok(rag2:GetPlayerColor().y > 0.8, "or asks its rider")
+end)
+
+T.test("the frame is solid 3D tubes in glossy paint, with round joints", function()
+    local s = scene()
+    s.cl.drawnCS = {}
+    draw(s)
+    local cyl, sph, painted = 0, 0, 0
+    for _, d in ipairs(s.cl.drawnCS) do
+        if d.model == "models/xqm/cylinderx1.mdl" then cyl = cyl + 1 end
+        if d.model == "models/hunter/misc/sphere025x025.mdl" then sph = sph + 1 end
+        if d.material == "models/shiny" then painted = painted + 1 end
+    end
+    T.ok(cyl >= 25, "tubes are cylinders: " .. cyl)
+    T.ok(sph >= 5, "joints and saddle are spheres: " .. sph)
+    T.eq(painted, #s.cl.drawnCS - #tyreDraws(s), "every shape in glossy paint")
+    -- The top tube runs seat cluster to head tube, and is the frame's colour.
+    local red = 0
+    for _, b in ipairs(s.cl.beams) do
+        if b.cylinder and b.col.r == 205 and b.col.g == 35 then red = red + 1 end
+    end
+    T.ok(red >= 8, "frame tubes in the bike's red: " .. red)
+end)
+
+T.test("changing the networked colour repaints the frame", function()
+    local s = scene()
+    local B = s.cl.env.BMX
+    s.cb:SetColorIndex(B.PaletteIndex("blue"))
+    draw(s)
+    local blue = B.PaletteColor(B.PaletteIndex("blue"))
+    local n = 0
+    for _, b in ipairs(s.cl.beams) do
+        if b.cylinder and b.col.r == blue.r and b.col.g == blue.g and b.col.b == blue.b then n = n + 1 end
+    end
+    T.ok(n >= 8, "frame tubes in blue: " .. n)
+end)
+
+T.test("without the shape models, the frame falls back to flat tubes", function()
+    local s = scene()
+    s.cl.missingModels["models/xqm/cylinderx1.mdl"] = true
+    local orig = s.cl.env.ClientsideModel
+    s.cl.env.ClientsideModel = function(m) if s.cl.missingModels[m] then return nil end return orig(m) end
+    draw(s)
+    local flat = 0
+    for _, b in ipairs(s.cl.beams) do if not b.cylinder then flat = flat + 1 end end
+    T.ok(flat >= 25, "beams instead: " .. flat)
+end)
+
+T.test("a recolour arrives as a puff of smoke in the new colour", function()
+    local s = scene()
+    local B = s.cl.env.BMX
+    s.bike:SetColorIndex(1)
+    B.SetBikeColor = B.SetBikeColor      -- client has none; the server sends it
+    s.sv.env.BMX.SetBikeColor(s.bike, 8, true)
+    local msg
+    for _, m in ipairs(s.world.wire) do if m.name == "bmx_puff" then msg = m end end
+    T.ok(msg and msg.pvs, "sent to everyone who can see the bike")
+    msg.items[1].value = s.cb                 -- the client's copy of the entity
+    s.cl.particles = {}
+    s.cl:deliver(msg)
+    T.ok(#s.cl.particles >= 20, "a puff: " .. #s.cl.particles)
+    local blue = B.PaletteColor(8)
+    local coloured = 0
+    for _, p in ipairs(s.cl.particles) do
+        if p.color and p.color.r == blue.r and p.color.b == blue.b then coloured = coloured + 1 end
+    end
+    T.ok(coloured > #s.cl.particles / 2, "mostly in the new colour")
 end)

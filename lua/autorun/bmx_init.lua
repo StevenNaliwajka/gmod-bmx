@@ -37,6 +37,7 @@ local SHARED = {
     "bmx/sh_util.lua",
     "bmx/sh_bikes.lua",
     "bmx/sh_sound.lua",
+    "bmx/sh_color.lua",     -- the palette and the ways to choose from it
 }
 
 local SERVER_FILES = {

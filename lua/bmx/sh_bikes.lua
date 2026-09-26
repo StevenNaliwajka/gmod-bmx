@@ -72,7 +72,7 @@ local deriveOne
 --   def.printName spawnmenu label
 --   def.model     frame model. Optional: without one the whole bike is drawn
 --                 procedurally, which is what the stock bike does.
---   def.frameColor Color for the procedural frame.
+--   def.colorIndex which BMX.Palette colour it starts in (sh_color.lua).
 --   def.seatModel model the invisible pod uses; only its seat attachment and
 --                 sit animation matter, since it is never drawn.
 --   def.wheelModel optional. Absent, the client draws procedural wheels, which
@@ -217,5 +217,5 @@ registerDuplicator("bmx_base")
 BMX.RegisterBike("stock", {
     printName   = "BMX",
     description = "Street BMX with lean-driven handling.",
-    frameColor  = Color(205, 35, 45),
+    colorIndex  = 1,            -- red; see BMX.Palette in sh_color.lua
 })

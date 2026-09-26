@@ -532,3 +532,114 @@ T.test("while tumbling nothing is in their hand; getting up is quiet", function(
     T.eq(cl.env.hook.Run("HUDWeaponPickedUp", E.NULL), nil, "and back to normal after")
     T.ok(#ply:GetWeapons() >= 2, "weapons back")
 end)
+
+T.test("K while riding cycles the colour, wraps round, and has a cooldown", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    local ply = F.rider(sv, bike)
+    T.eq(bike:GetColorIndex(), 1, "starts red")
+    E.hook.Run("PlayerButtonDown", ply, E.KEY_K)
+    T.eq(bike:GetColorIndex(), 2, "K: the next colour")
+    E.hook.Run("PlayerButtonDown", ply, E.KEY_K)
+    T.eq(bike:GetColorIndex(), 2, "a second press at once does nothing (cooldown)")
+    local puffs, pops = 0, 0
+    for _, m in ipairs(sv.world.wire) do if m.name == "bmx_puff" then puffs = puffs + 1 end end
+    for _, x in ipairs(sv.sounds) do if x.name:find("balloon_pop") then pops = pops + 1 end end
+    T.eq(puffs, 1, "one puff")
+    T.eq(pops, 1, "one pop")
+    for _ = 1, #E.BMX.Palette do
+        sv.world.time = sv.world.time + 1
+        E.hook.Run("PlayerButtonDown", ply, E.KEY_K)
+    end
+    T.eq(bike:GetColorIndex(), 2, "all the way round the palette and back")
+end)
+
+T.test("K does nothing on foot, and other keys do nothing on the bike", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    local ply = sv:player("Walker")
+    E.hook.Run("PlayerButtonDown", ply, E.KEY_K)
+    T.eq(bike:GetColorIndex(), 1, "not riding: unchanged")
+    F.rider(sv, bike, { name = "Rider" })
+    local rider = bike:GetDriver()
+    E.hook.Run("PlayerButtonDown", rider, 22)
+    T.eq(bike:GetColorIndex(), 1, "a different key: unchanged")
+end)
+
+T.test("bmx_color paints by name or number; a bad name lists the colours", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    local ply = F.rider(sv, bike)
+    sv:command("bmx_color", ply, "Purple")
+    T.eq(bike:GetColorIndex(), E.BMX.PaletteIndex("purple"), "by name, any case")
+    sv.world.time = sv.world.time + 1
+    sv:command("bmx_color", ply, "3")
+    T.eq(bike:GetColorIndex(), 3, "by number")
+    sv:command("bmx_color", ply, "plaid")
+    T.ok(ply._chat[#ply._chat]:find("red, orange"), "lists them: " .. ply._chat[#ply._chat])
+end)
+
+T.test("bmx_color paints the bike you look at, but not someone else's ridden one", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    local ply = sv:player("Walker")
+    ply:SetPos(bike:GetPos() + E.Vector(-60, 0, 0))
+    ply._eyeTrace = { Hit = true, Entity = bike, HitPos = bike:GetPos() }
+    sv:command("bmx_color", ply, "green")
+    T.eq(bike:GetColorIndex(), E.BMX.PaletteIndex("green"), "the parked bike in front of them")
+    F.rider(sv, bike, { name = "Owner" })
+    sv.world.time = sv.world.time + 1
+    sv:command("bmx_color", ply, "pink")
+    T.eq(bike:GetColorIndex(), E.BMX.PaletteIndex("green"), "not while someone else rides it")
+end)
+
+T.test("the context menu offers every colour and paints the bike", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    local ply = sv:player("Walker")
+    local prop = sv.properties.bmx_color
+    T.ok(prop, "Bike colour is in the context menu")
+    T.ok(prop:Filter(bike, ply), "for a bike")
+    T.ok(not prop:Filter(sv:player("NotABike"), ply), "and not for anything else")
+    -- The menu: one entry per palette colour.
+    local entries = {}
+    local option = { AddSubMenu = function()
+        return { AddOption = function(_, name) entries[#entries + 1] = name end }
+    end }
+    prop:MenuOpen(option, bike)
+    T.eq(#entries, #E.BMX.Palette, "every colour offered")
+    T.eq(entries[1], "Red", "in rainbow order")
+    -- The server half.
+    prop.MsgStart = function() E.util.AddNetworkString("properties"); E.net.Start("properties") end
+    prop.MsgEnd = function() E.net.Send(nil) end
+    prop:Paint(bike, 6)
+    local msg = sv.world.wire[#sv.world.wire]
+    local items = msg.items
+    local pos = 0
+    local rd = E.net.ReadEntity
+    E.net.ReadEntity = function() return items[1].value end
+    E.net.ReadUInt = function() return items[2].value end
+    prop:Receive(0, ply)
+    E.net.ReadEntity = rd
+    T.eq(bike:GetColorIndex(), 6, "painted teal")
+end)
+
+T.test("a bike spawns in your chosen default colour, and a copy keeps its paint", function()
+    local sv = F.server()
+    local E = sv.env
+    local ply = sv:player("Spawner")
+    ply:SetPos(E.Vector(0, 0, 0))
+    ply._info = { bmx_color_default = "cyan" }
+    ply._eyeTrace = { Hit = true, HitPos = E.Vector(100, 0, 0), HitNormal = E.Vector(0, 0, 1) }
+    sv:command("bmx_spawn", ply)
+    local bike = E.ents.FindByClass("bmx_base")[1]
+    T.eq(bike:GetColorIndex(), E.BMX.PaletteIndex("cyan"), "spawned cyan")
+    local copy = E.duplicator.Copy(bike)
+    local pasted = E.duplicator.Paste(ply, { [1] = copy }, {})[1]
+    T.eq(pasted:GetColorIndex(), E.BMX.PaletteIndex("cyan"), "the pasted copy is cyan too")
+end)

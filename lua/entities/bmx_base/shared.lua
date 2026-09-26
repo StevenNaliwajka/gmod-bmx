@@ -87,8 +87,11 @@ function ENT:SetupDataTables()
     self:NetworkVar("Float", 4, "Cadence")
 
     self:NetworkVar("Int",   0, "Score")
+    -- The paint: an index into BMX.Palette (sh_color.lua).
+    self:NetworkVar("Int",   1, "ColorIndex")
 
     if SERVER then
+        self:SetColorIndex(self:Bike().colorIndex or 1)
         self:SetSteer(0)
         self:SetSpeedUPS(0)
         self:SetStamina(self:Cfg().Drive.staminaMax)

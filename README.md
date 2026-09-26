@@ -7,7 +7,7 @@ are leaning rather than a key you press. Wheelies, stoppies, bunny hops, air
 control and flips.
 
 **Status: v0.1.0, pre-alpha.** Two test suites gate every commit: an
-**offline suite** of 182 tests that executes the addon (client half included)
+**offline suite** of 192 tests that executes the addon (client half included)
 against a Garry's Mod shim in a stock Lua 5.1, and a **headless suite** of 19
 cases on a real dedicated server. The bike rides, brakes, skids, steers from
 lean, hops and lands, holds a wheelie and a stoppie, and scores tricks. **It
@@ -59,6 +59,12 @@ disagrees with either.
 | `SPACE` | hold to preload, release to bunny hop | - |
 | `SHIFT` | sprint (drains stamina) | - |
 | `CTRL` | tuck: less drag | tuck: faster rotation |
+| `K` | next paint colour, in a puff of smoke | same |
+
+**Colour.** Fourteen, red to pink plus white and black. `K` while riding cycles
+them; hold `C` and right-click a bike for **Bike colour** to pick one; or
+`bmx_color <name>` for the bike you ride or look at. `bmx_color_default <name>`
+sets the colour your spawned bikes start in. A duplicator copy keeps its paint.
 
 Tricks score on the HUD. Flips, barrel rolls and big air pay on landing (not
 on a crash). A wheelie held for a second or more, or a stoppie held to a stop,

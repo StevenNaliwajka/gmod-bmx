@@ -77,6 +77,9 @@ BMX.Sounds = {
     hop = { path = "physics/body/body_medium_impact_soft%d.wav",
             variants = 4, vol = 0.4, level = 65 },
 
+    -- The puff of smoke when a bike changes colour (sh_color.lua).
+    recolor = { path = "garrysmod/balloon_pop_cute.wav", vol = 0.45, level = 68 },
+
     -- Frame hitting the world. Standing in for: a crash.
     crash = { path = "physics/metal/metal_box_impact_hard%d.wav",
               variants = 3, vol = 1.0, level = 80 },

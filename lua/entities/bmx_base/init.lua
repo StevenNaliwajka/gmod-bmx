@@ -538,6 +538,7 @@ function ENT:SpawnFunction(ply, tr, class)
     ent:SetAngles(ang)
     ent:Spawn()
     ent:Activate()
+    BMX.PaintAsPreferred(ent, ply)
     return ent
 end
 

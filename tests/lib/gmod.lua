@@ -201,6 +201,11 @@ function M.Realm(world, which)
     env.MOVETYPE_VPHYSICS, env.SOLID_VPHYSICS = 6, 6
     env.SIM_NOTHING = 0
     env.SIMPLE_USE = 1
+    env.KEY_K = 21
+    function env.VectorRand()
+        return Vector(math.random() * 2 - 1, math.random() * 2 - 1, math.random() * 2 - 1)
+    end
+    math.Rand = math.Rand or function(a, b) return a + (b - a) * math.random() end
     env.OBS_MODE_CHASE = 5
     env.COLLISION_GROUP_WEAPON = 11
     env.GESTURE_SLOT_CUSTOM = 6
@@ -253,6 +258,16 @@ function M.Realm(world, which)
     -- hook / timer / concommand / convars
     ----------------------------------------------------------------------
     R.gm = {}    -- a stand-in GAMEMODE; tests put PlayerSpawnSENT and friends on it
+    R.properties = {}
+    env.properties = {
+        Add = function(name, t) t.InternalName = name; R.properties[name] = t end,
+        CanBeTargeted = function(ent, ply) return env.IsValid(ent) end,
+    }
+    env.gamemode = { Call = function(ev, ...)
+        local r = env.hook.Run(ev, ...)
+        if r == nil then return true end
+        return r
+    end }
     env.GAMEMODE = R.gm
     env.hook = {
         Add = function(ev, id, fn)
@@ -378,6 +393,11 @@ function M.Realm(world, which)
             out = nil
         end,
         Broadcast = function()
+            world.wire[#world.wire + 1] = out
+            out = nil
+        end,
+        SendPVS = function(pos)
+            out.pvs = pos
             world.wire[#world.wire + 1] = out
             out = nil
         end,
@@ -1067,6 +1087,11 @@ function M.Realm(world, which)
         return m and m:Copy() or nil
     end
     function Ply:GetBoneCount() return #SK.BONES end
+    function Ply:GetInfo(name)
+        if self._info and self._info[name] ~= nil then return self._info[name] end
+        local cv = world.convars[name]
+        return cv and cv:GetString() or ""
+    end
     function Ply:GetInfoNum(name, def)
         local cv = world.convars[name]
         return cv and cv:GetFloat() or def
@@ -1119,8 +1144,14 @@ function M.Realm(world, which)
         end,
         Copy = function(ent)
             -- ONE entity table, as the real Copy returns. Paste wants a list.
-            return { Class = ent:GetClass(), Pos = ent:GetPos(), Angle = ent:GetAngles() }
+            return { Class = ent:GetClass(), Pos = ent:GetPos(), Angle = ent:GetAngles(),
+                     EntityMods = table.Copy(ent.EntityMods or {}) }
         end,
+        StoreEntityModifier = function(ent, key, data)
+            ent.EntityMods = ent.EntityMods or {}
+            ent.EntityMods[key] = data
+        end,
+        RegisterEntityModifier = function(key, fn) R.dupeMods = R.dupeMods or {}; R.dupeMods[key] = fn end,
         Paste = function(ply, list)
             local out = {}
             for idx, data in pairs(list) do
@@ -1128,7 +1159,13 @@ function M.Realm(world, which)
                     error("duplicator.Paste wants a LIST of entity tables", 2)
                 end
                 local reg = R.dupe[data.Class]
-                if reg then out[idx] = reg.fn(ply, data) end
+                if reg then
+                    out[idx] = reg.fn(ply, data)
+                    for key, mod in pairs(data.EntityMods or {}) do
+                        local fn = (R.dupeMods or {})[key]
+                        if fn and out[idx] then fn(ply, out[idx], mod) end
+                    end
+                end
             end
             return out, {}
         end,
@@ -1158,6 +1195,7 @@ function M.Realm(world, which)
                 R.lines = R.lines + 1
             end,
             SetColorMaterial = function() end,
+            SetColorModulation = function(r, g, b) R.colorMod = { r, g, b } end,
             -- Beams and boxes are the procedural bike's whole vocabulary, so
             -- they are RECORDED: a test can ask where the frame was drawn.
             DrawBeam = function(a, b, w, s0, s1, col)
@@ -1198,14 +1236,44 @@ function M.Realm(world, which)
             function m:SetAngles(a) self.ang = a end
             function m:EnableMatrix(k, mat) self.matrix = mat end
             function m:SetupBones() end
+            function m:SetMaterial(mat) self.material = mat end
             function m:DrawModel()
                 assert(not self.removed, "drew a removed clientside model")
-                R.drawnCS[#R.drawnCS + 1] = { model = self.model, pos = self.pos, ang = self.ang }
+                local cm = R.colorMod or { 1, 1, 1 }
+                local col = { r = math.floor(cm[1] * 255 + 0.5), g = math.floor(cm[2] * 255 + 0.5),
+                              b = math.floor(cm[3] * 255 + 0.5) }
+                local sc = self.matrix and self.matrix.s or Vector(1, 1, 1)
+                R.drawnCS[#R.drawnCS + 1] = { model = self.model, pos = self.pos, ang = self.ang,
+                                              scale = sc, col = col, material = self.material }
+                -- A cylinder is a TUBE: recorded as the same {a, b, w, col}
+                -- segment a beam is, so geometry tests read either path.
+                if self.model == "models/xqm/cylinderx1.mdl" then
+                    local f = self.ang:Forward()
+                    local half = sc.x * 12.5 * 0.5
+                    R.beams[#R.beams + 1] = { a = self.pos - f * half, b = self.pos + f * half,
+                                              w = sc.y * 12.5, col = col, cylinder = true }
+                end
             end
             R.csModels[#R.csModels + 1] = m
             return m
         end
         R.patches = {}
+        R.particles = {}
+        function env.ParticleEmitter(pos)
+            local em = { pos = pos }
+            function em:Add(mat, p)
+                local part = { mat = mat, pos = p }
+                for _, k in ipairs({ "SetVelocity", "SetDieTime", "SetStartAlpha", "SetEndAlpha",
+                        "SetStartSize", "SetEndSize", "SetRoll", "SetRollDelta", "SetAirResistance" }) do
+                    part[k] = function(self, v) self[k:sub(4)] = v end
+                end
+                function part:SetColor(r, g, b) self.color = { r = r, g = g, b = b } end
+                R.particles[#R.particles + 1] = part
+                return part
+            end
+            function em:Finish() self.finished = true end
+            return em
+        end
         function env.CreateSound(ent, path)
             local s = { path = path, playing = false, vol = 1, pitch = 100, ent = ent }
             function s:PlayEx(v, p) self.playing, self.vol, self.pitch = true, v, p end

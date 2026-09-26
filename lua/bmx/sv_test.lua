@@ -414,6 +414,20 @@ local function setupCase(case)
     -- problem.
     if groundNote then ctx:log("WARNING: " .. groundNote) end
 
+    -- THE BOT IS A PLAYER, and a player standing beside a parked bike
+    -- releases its hold (see 7c in sv_physics.lua), by design. A riderless
+    -- case used to find the bot wherever the previous case had left it --
+    -- on this same patch of ground -- and parked_on_stand measured the bot
+    -- leaning on its bike (4.6 u of drift, against 0.02 with nobody near).
+    if not case.rider then
+        for _, p in ipairs(player.GetAll()) do
+            if p:IsBot() and p:Nick() == BOT_NAME then
+                if IsValid(p:GetVehicle()) then p:ExitVehicle() end
+                p:SetPos(ground + Vector(-600, 0, 16))
+            end
+        end
+    end
+
     if case.rider then
         local bot, err = ensureBot()
         if not bot then

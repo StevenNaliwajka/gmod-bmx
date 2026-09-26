@@ -421,6 +421,9 @@ end)
 -- anyone who has got off, so a rider never walks away with pedalling legs.
 --------------------------------------------------------------------------
 local animated = {}     -- player -> true while we have bones moved on them
+local LAND_MIN     = 120    -- u/s downward: gentler than this is not worth a crouch
+local LAND_FULL    = 450    -- u/s downward for the deepest crouch
+local LAND_RECOVER = 2.0    -- per second: back up in about half a second
 local LIMB_KEYS = { rThigh = true, lThigh = true, rCalf = true, lCalf = true,
                     rArm = true, lArm = true }
 
@@ -444,12 +447,27 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
 
     local C = bike:Cfg()
     local useIK = cv_ik:GetBool() and bike.ikTargets ~= nil
+
+    -- THE LEGS SOAK UP A LANDING. On touching down with real downward speed
+    -- the rider crouches, in proportion to how hard it was, and eases back up
+    -- over about half a second: the same fold as a hop preload. Worked out
+    -- here from what the client already sees (grounded, and the bike's
+    -- vertical velocity just before), so it costs no networking.
+    local dt = FrameTime()
+    local grounded = bike:GetGrounded()
+    local vz = bike:GetVelocity().z
+    if grounded and bike.bmxWasAir and (bike.bmxAirVz or 0) < -LAND_MIN then
+        bike.bmxLand = math.Clamp(-bike.bmxAirVz / LAND_FULL, 0.35, 1)
+    end
+    if not grounded then bike.bmxAirVz = vz end
+    bike.bmxWasAir = not grounded
+    bike.bmxLand = math.max(0, (bike.bmxLand or 0) - dt * LAND_RECOVER)
     local pose = BMX.RiderPose({
         crank    = bike.crankAngle or 0,
         speed    = bike:GetSpeedUPS(),
         topSpeed = C.Drive.maxCadence * C.Drive.gearRatio * C.Wheel.radius,
         sprint   = bike:GetSprinting(),
-        hop      = bike:GetHopCharge(),
+        hop      = math.max(bike:GetHopCharge(), bike.bmxLand or 0),
         pitch    = select(2, BMX.Attitude(bike, vector_up)),
         steer    = bike:GetSteer(),
     })

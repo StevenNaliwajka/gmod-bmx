@@ -359,7 +359,8 @@ end
 -- attached to them as the suspension (the rider's legs) works.
 --------------------------------------------------------------------------
 local FRAME = {
-    bb     = Vector(-4.5, 0,  1.5),    -- bottom bracket
+    bb     = Vector(-4.5, 0,  2.5),    -- bottom bracket: pedals clear the ground
+                                        -- even at full travel
     seatJ  = Vector(-9.5, 0, 14.0),    -- where the top tube meets the seat tube
     seat   = Vector(-10.5, 0, 18.5),   -- top of the seat post
     headT  = Vector(12.5, 0, 17.5),    -- head tube, top

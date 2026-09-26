@@ -150,7 +150,9 @@ function BMX.CollisionBoxes(cfg)
     local C  = cfg or BMX.Config
     local CH, W = C.Chassis, C.Wheel
     local half, r = W.wheelbase * 0.5, W.radius
-    local hw, bot = CH.wheelHullHalfWidth or 1.6, CH.wheelHullBottom or -3
+    local hw = CH.wheelHullHalfWidth or 1.6
+    -- The floor is where the suspension runs out of travel (see the config).
+    local bot = CH.wheelHullBottom or -(W.radius - W.restLength)
 
     local wheels = {}
     for _, x in ipairs({ half, -half }) do

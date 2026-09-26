@@ -659,3 +659,24 @@ T.test("materials by part: metallic paint frame, chrome metal, matte saddle and 
     T.ok(saddle and saddle.material == M.matte, "the saddle is not shiny")
     T.ok(not byMat["models/shiny"], "nothing left in the old mirror finish")
 end)
+
+T.test("the camera eases through a landing instead of stopping dead with the bike", function()
+    local s = scene()
+    local E = s.cl.env
+    local B = E.BMX
+    local z0 = 100
+    B.CameraFollowHeight(z0, 1 / 66)           -- seed
+    -- The bike stops 8 units lower in one tick (a landing).
+    local first = B.CameraFollowHeight(z0 - 8, 1 / 66)
+    T.ok(first > z0 - 8 + 2, "the view does not jump the whole way at once: " .. first)
+    local z, over = first, false
+    for _ = 1, 40 do
+        z = B.CameraFollowHeight(z0 - 8, 1 / 66)
+        if z < z0 - 8 - 0.05 then over = true end
+    end
+    T.near(z, z0 - 8, 0.05, "it settles where the bike is")
+    T.ok(not over, "without bouncing past it")
+    B.CameraFollowHeight(z0 - 100, 1 / 66)
+    local lagged = B.CameraFollowHeight(z0 - 100, 1 / 66)
+    T.ok(lagged <= z0 - 100 + 12.001, "and never lags more than 12 units")
+end)

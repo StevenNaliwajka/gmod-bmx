@@ -73,14 +73,14 @@ C.Chassis = {
     -- slim box -- the tyre's width, its full diameter fore and aft, and down
     -- to wheelHullBottom below the axle line.
     --
-    -- -4 IS radius - restLength: the box meets flat ground exactly where the
-    -- suspension runs out of travel. So it never touches while riding (3
-    -- units clear at ride height) and it IS the hard stop on a big landing.
-    -- At -3 a 40-unit drop still overcompressed to 3.26 and the tyres were
-    -- drawn most of a unit into the ground. See BMX.CollisionBoxes: the body box is
-    -- SHIFTED so the whole shape's mass centre stays at massCenterExpected.
+    -- The box's floor is DERIVED, at -(radius - restLength): it meets flat
+    -- ground exactly where the suspension runs out of travel. So it never
+    -- touches while riding and it IS the hard stop on a big landing. It was a
+    -- written-down -4, right only for one travel; one unit short of it and a
+    -- 40-unit drop overcompressed to 3.26, drawing the tyres into the ground.
+    -- See BMX.CollisionBoxes: the body box is SHIFTED so the whole shape's
+    -- mass centre stays at massCenterExpected.
     wheelHullHalfWidth = 1.6,
-    wheelHullBottom    = -4,
 
     -- AND THE BARS. They reach 14.5 units out each side, against 4 for the
     -- body box, so a bike lying on its side put its lower bar end 10 units
@@ -158,16 +158,25 @@ C.Wheel = {
     -- Suspension travel. A BMX has no FORK, but it is not rigid: the tyre
     -- carcass deflects and, far more importantly, THE RIDER IS THE SUSPENSION.
     -- Legs and arms absorb impacts on a BMX, which is why riders stand up for
-    -- anything rough. 6 units is ~15 cm of rider compliance, which is realistic
-    -- and is what this spring actually represents.
+    -- anything rough. 8 units is ~20 cm of rider compliance, which is what
+    -- this spring actually represents.
+    --
+    -- 8, NOT 6, BECAUSE A LANDING IS DECIDED BY DISTANCE. Stopping a fall of
+    -- speed v inside travel d takes v^2 / 2d, whatever the spring and damper:
+    -- from a 60-unit drop (268 u/s) that is ~10 g over 6 units, and at 66 Hz
+    -- the bike crosses 6 units in about a tick and a half, so the damper
+    -- barely acts and the hard stop takes the blow. Measured on the tests'
+    -- plant: 6 -> 8 cut the peak on that drop from 32 g to 23 g, with the
+    -- same ride height (which is radius - sag, not a function of travel).
     --
     -- The original 2.0 was "a BMX has no suspension, keep it tiny", and it was
     -- wrong twice over: physically, because it ignored the rider, and
     -- numerically, because 2 units of travel forces a 43,000 spring to carry
     -- the bike, and a 43,000 spring is not integrable at 66 Hz. See below.
-    restLength = 6.0,
+    restLength = 8.0,
 
-    -- Sized so each wheel carries m*g/2 at ~3u of sag, i.e. half its travel:
+    -- Sized so each wheel carries m*g/2 at ~3u of sag (it was half the old
+    -- 6-unit travel; with 8 it is 3/8, leaving more for the landing):
     --   k = (86*600/2) / 3 ~= 8600
     --
     -- THIS NUMBER IS BOUNDED BY THE TIMESTEP, not just by taste. The natural

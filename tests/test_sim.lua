@@ -649,3 +649,23 @@ T.test("a bike lying on its side draws nothing below the ground, bars included",
     end
     T.ok(worst > -1.0, string.format("lowest drawn point %.2f (the ground is 0)", worst))
 end)
+
+T.test("a 60-unit drop lands under 26 g (it was 32 with 6 units of travel)", function()
+    local sv, bike = ridden()
+    local E = sv.env
+    sv:run(0.7)
+    F.input(bike, {})
+    local p = bike:GetPhysicsObject()
+    F.place(bike, E.Vector(0, 0, F.restHeight(sv) + 60), E.Angle(0, 0, 0))
+    p:SetVelocity(E.Vector(150, 0, 0))
+    local f, r = F.wheels(bike)
+    local lastV, worst, touched = p:GetVelocity().z, 0, false
+    sv:run(1.5, function()
+        if f.onGround or r.onGround then touched = true end
+        local v = p:GetVelocity().z
+        if touched then worst = math.max(worst, (v - lastV) * 66 / 600) end
+        lastV = v
+    end)
+    T.between(worst, 0, 26, "peak landing deceleration, g")
+    T.ok(E.IsValid(bike:GetDriver()), "and the rider stays on")
+end)

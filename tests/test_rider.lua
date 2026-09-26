@@ -286,3 +286,22 @@ T.test("IK: no limb is wrung: twist stays within limits through pedalling and st
     T.between(reach(cl, ply, "ValveBiped.Bip01_R_Foot", bike.ikTargets.rFoot), 0, 3, "foot on its pedal")
     T.between(reach(cl, ply, "ValveBiped.Bip01_R_Hand", bike.ikTargets.rHand), 0, 3, "hand on its grip")
 end)
+
+T.test("landing: the rider crouches to soak it up, in proportion, then stands", function()
+    local cl, bike, ply = seated()
+    local function land(vz)
+        bike.bmxLand = 0
+        bike:SetGrounded(false)
+        bike._vel = cl.env.Vector(0, 0, vz)
+        frame(cl, bike, ply)                  -- in the air, falling
+        bike:SetGrounded(true)
+        bike._vel = cl.env.Vector()
+        frame(cl, bike, ply)                  -- touchdown
+        return bike.bmxLand
+    end
+    T.eq(land(-60), 0, "a gentle touchdown: no crouch")
+    local soft, hard = land(-200), land(-500)
+    T.ok(soft > 0.3 and hard > soft, string.format("a harder landing crouches deeper (%.2f < %.2f)", soft, hard))
+    for _ = 1, 40 do frame(cl, bike, ply) end
+    T.eq(bike.bmxLand, 0, "and stands back up")
+end)

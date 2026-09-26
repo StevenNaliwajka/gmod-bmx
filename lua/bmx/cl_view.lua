@@ -41,6 +41,27 @@ local cv_fp    = CreateClientConVar("bmx_cam_first", "0", true, false,
 local sDist, sFov, sRoll = 0, 0, 0
 local sBike = nil
 
+-- THE CAMERA'S HEIGHT RIDES ON ITS OWN SPRING. A landing stops the bike in
+-- a tick or two, and a camera bolted to it stops just as hard: the jolt is
+-- felt through the view more than anywhere. So the view's height follows the
+-- bike through a critically damped spring (no overshoot, no bounce) with a
+-- short time constant, and a capped lag so it can never lose the bike. A
+-- landing then reads as the view dipping and settling, a cushioned one.
+local sZ, sZv = nil, 0
+local CAM_OMEGA = 16        -- rad/s: about a 60 ms settle
+local CAM_MAXLAG = 12       -- units
+
+local function followHeight(target, dt)
+    if not sZ then sZ, sZv = target, 0 return target end
+    local a = CAM_OMEGA * CAM_OMEGA * (target - sZ) - 2 * CAM_OMEGA * sZv
+    sZv = sZv + a * dt
+    sZ = sZ + sZv * dt
+    if sZ > target + CAM_MAXLAG then sZ, sZv = target + CAM_MAXLAG, 0 end
+    if sZ < target - CAM_MAXLAG then sZ, sZv = target - CAM_MAXLAG, 0 end
+    return sZ
+end
+BMX.CameraFollowHeight = followHeight
+
 local function approach(cur, target, rate)
     return cur + (target - cur) * math.min(1, rate * FrameTime())
 end
@@ -72,6 +93,7 @@ hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
 
     if sBike ~= bike then
         sBike = bike
+        sZ = nil
         sDist = cv_dist:GetFloat() * (1 + frac * 0.35)
         sFov  = fov + frac * 16
         sRoll = math.deg(roll) * cv_roll:GetFloat()
@@ -99,6 +121,7 @@ hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
     -- Chase
     ----------------------------------------------------------------------
     local target = bike:LocalToWorld(Vector(0, 0, cv_height:GetFloat()))
+    target.z = followHeight(target.z, FrameTime())
     sDist = approach(sDist, cv_dist:GetFloat() * (1 + frac * 0.35), 4)
     sFov  = approach(sFov,  fov + frac * 16, 4)
 

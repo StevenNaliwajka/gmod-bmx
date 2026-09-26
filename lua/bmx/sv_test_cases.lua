@@ -493,9 +493,14 @@ function(ctx)
     local landed = ctx:waitUntil(function() return ctx:st().grounded end, 2,
         "the bike to come back down")
     if landed then
-        ctx:wait(0.3)
+        -- A SETTLED landing, not the touchdown. Read at 0.3 s this reported
+        -- -2.8 deg on one run and 28 on the next, on the same commit: a hop can
+        -- come down rear wheel first, and 0.3 s is sometimes still the front
+        -- wheel on its way down. What matters is that the bike ends up back on
+        -- both wheels with its rider, so that is what is read, a second on.
+        ctx:runUntil(1.0, nil, { throttle = 0.5 })
         ctx:ok(IsValid(ctx.bike:GetDriver()), "a plain hop lands without a crash")
-        ctx:between(math.deg(ctx:st().pitch), -12, 18, "pitch after landing", "deg")
+        ctx:between(math.deg(ctx:st().pitch), -12, 18, "pitch once the landing settles", "deg")
     end
 end)
 

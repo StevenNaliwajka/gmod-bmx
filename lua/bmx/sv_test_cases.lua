@@ -221,10 +221,16 @@ T.Case("fallen_is_picked_up", { rider = false, timeout = 25,
     desc = "a bike knocked flat stays down, and getting on stands it up" },
 function(ctx)
     ctx:wait(1)
+    -- Through the PHYSICS OBJECT. Entity:SetAngles on a VPhysics entity does
+    -- not stick: the first run of this case set 85 degrees, read -1 a quarter
+    -- second later, and watched the stand recover a bike it thought it had
+    -- knocked flat.
     local phys = ctx.bike:GetPhysicsObject()
-    ctx.bike:SetAngles(Angle(0, 0, 85))
-    ctx.bike:SetPos(ctx.bike:GetPos() + Vector(0, 0, 10))
-    if IsValid(phys) then phys:Wake() end
+    if not ctx:ok(IsValid(phys), "bike has a physics object") then return end
+    phys:SetAngles(Angle(0, 0, 85))
+    phys:SetPos(ctx.bike:GetPos() + Vector(0, 0, 10), true)
+    phys:SetVelocity(vector_origin)
+    phys:Wake()
     ctx:wait(2.5)
     ctx:ok(math.abs(ctx:st().roll) > ctx.bike:Cfg().Stand.maxRoll,
         "knocked flat, it stays down")
@@ -644,8 +650,10 @@ function(ctx)
 
     -- Drop it inverted from high enough that the hull arrives above
     -- Crash.maxImpactSpeed. sqrt(2 * 600 * 500) is ~775 u/s, comfortably over.
-    ctx.bike:SetPos(ctx.ground + Vector(0, 0, 500))
-    ctx.bike:SetAngles(Angle(0, 0, 165))
+    -- Through the physics object: Entity:SetPos/SetAngles do not reliably
+    -- move a VPhysics body (measured in fallen_is_picked_up).
+    phys:SetPos(ctx.ground + Vector(0, 0, 500), true)
+    phys:SetAngles(Angle(0, 0, 165))
     phys:SetVelocity(Vector(0, 0, -150))
     phys:Wake()
 

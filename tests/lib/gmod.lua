@@ -521,9 +521,19 @@ function M.Realm(world, which)
         Ent[k] = function() end
     end
     function Ent:SetNotSolid(b) self._notSolid = b end
-    function Ent:SetPos(p) self._pos = Vector(p) end
+    -- ON A PHYSICS ENTITY THE BODY IS THE AUTHORITY, as in the engine: once
+    -- it has a physics object, Entity:SetPos / SetAngles are overwritten by
+    -- the body on the next step, so only PhysObj:SetPos / SetAngles move it.
+    -- The shim used to honour the entity setters, and so passed a pick-up
+    -- that the live server showed did nothing. Before Spawn (placement) they
+    -- work, as they do in the engine.
+    function Ent:SetPos(p)
+        if rawget(self, "_phys") and self._spawned then return end
+        self._pos = Vector(p)
+    end
     function Ent:GetPos() return Vector(self._pos) end
     function Ent:SetAngles(a)
+        if rawget(self, "_phys") and self._spawned then return end
         local f, r, u = VA.AngleVectors(a)
         self._f, self._l, self._u = f, -r, u
     end
@@ -688,6 +698,11 @@ function M.Realm(world, which)
         self.w = e._f * r(v.x) + e._l * r(v.y) + e._u * r(v.z)
     end
     function Phys:GetPos() return self.ent:GetPos() end
+    function Phys:SetPos(p) self.ent._pos = Vector(p) end
+    function Phys:SetAngles(a)
+        local f, r, u = VA.AngleVectors(a)
+        self.ent._f, self.ent._l, self.ent._u = f, -r, u
+    end
     function Phys:GetAngles() return self.ent:GetAngles() end
 
     -- Principal moments in kg*UNITS^2, as (roll, pitch, yaw).

@@ -61,9 +61,17 @@ function BMX.PickUp(bike)
     local yaw = (math.abs(fwd.x) + math.abs(fwd.y) > 1e-3)
         and math.deg(math.atan2(fwd.y, fwd.x)) or bike:GetAngles().y
 
-    bike:SetAngles(Angle(0, yaw, 0))
-    bike:SetPos(bike:GetPos() + Vector(0, 0, bike:Cfg().Wheel.radius + 4))
+    -- THE PHYSICS OBJECT, not only the entity. On a VPhysics entity the
+    -- physics object is the authority: Entity:SetAngles alone was measured on
+    -- the live server to read -1 degrees a quarter second after being told 85,
+    -- so a pick-up done that way silently left the bike lying down.
+    local ang = Angle(0, yaw, 0)
+    local pos = bike:GetPos() + Vector(0, 0, bike:Cfg().Wheel.radius + 4)
+    bike:SetAngles(ang)
+    bike:SetPos(pos)
     if IsValid(phys) then
+        phys:SetAngles(ang)
+        phys:SetPos(pos, true)
         phys:SetVelocity(vector_origin)
         phys:SetAngleVelocity(vector_origin)
         phys:Wake()

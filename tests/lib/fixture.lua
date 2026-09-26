@@ -68,6 +68,14 @@ function F.input(bike, t)
     i.wheelieMod  = t.wheelieMod or false
 end
 
+-- Move a SPAWNED bike, the way the engine requires: through its physics
+-- object. Entity:SetPos/SetAngles are ignored once a body exists (see gmod.lua).
+function F.place(bike, pos, ang)
+    local p = bike:GetPhysicsObject()
+    if ang then p:SetAngles(ang) end
+    if pos then p:SetPos(pos) end
+end
+
 function F.wheels(bike)
     local f, r
     for _, w in ipairs(bike.wheels) do

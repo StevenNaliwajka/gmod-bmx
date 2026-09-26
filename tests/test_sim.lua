@@ -59,8 +59,7 @@ T.test("parked: a bike knocked flat stays down (a stand does not stand it up)", 
     local E = sv.env
     local bike = F.bike(sv)
     sv:run(1)
-    bike:SetAngles(E.Angle(0, 0, 80))
-    bike:SetPos(bike:GetPos() + E.Vector(0, 0, 8))
+    F.place(bike, bike:GetPos() + E.Vector(0, 0, 8), E.Angle(0, 0, 80))
     sv:run(3)
     T.ok(math.abs(bike.st.roll) > bike:Cfg().Stand.maxRoll, "still lying down")
 end)
@@ -70,13 +69,13 @@ T.test("getting on a fallen bike picks it up, facing the way it pointed", functi
     local E = sv.env
     local bike = F.bike(sv)
     sv:run(1)
-    bike:SetAngles(E.Angle(0, 30, 80))
-    bike:SetPos(bike:GetPos() + E.Vector(0, 0, 8))
+    F.place(bike, bike:GetPos() + E.Vector(0, 0, 8), E.Angle(0, 30, 80))
     sv:run(2)
     -- Where it points NOW, lying down: it slides about on its side before
     -- anybody picks it up, and that is the heading a rider would pick up.
     local f = bike:GetForward()
     local lyingYaw = math.deg(math.atan2(f.y, f.x))
+    T.ok(math.abs(bike.st.roll) > bike:Cfg().Stand.maxRoll, "it really was lying down")
     F.scripted(sv, bike)
     sv:run(2)
     T.between(math.deg(math.abs(bike.st.roll)), 0, 3, "upright, deg")
@@ -409,8 +408,7 @@ T.test("crash: an inverted drop throws the rider, hurts them, and plays the cras
     local sv, bike, ply = ridden()
     sv:run(1.2)         -- the grace period is real
     local p = bike:GetPhysicsObject()
-    bike:SetPos(bike:GetPos() + sv.env.Vector(0, 0, 500))
-    bike:SetAngles(sv.env.Angle(0, 0, 165))
+    F.place(bike, bike:GetPos() + sv.env.Vector(0, 0, 500), sv.env.Angle(0, 0, 165))
     p:SetVelocity(sv.env.Vector(0, 0, -150))
     local ejected = sv:run(4, function() return not sv.env.IsValid(bike:GetDriver()) end)
     T.ok(ejected, "rider ejected")
@@ -481,8 +479,7 @@ T.test("fuzz: random riding for a minute never produces a NaN", function()
         end
         -- Remount if a crash threw the bot off, so the whole minute is ridden.
         if not E.IsValid(bike:GetDriver()) then
-            bike:SetAngles(E.Angle(0, bike:GetAngles().y, 0))
-            bike:SetPos(bike:GetPos() + E.Vector(0, 0, 20))
+            F.place(bike, bike:GetPos() + E.Vector(0, 0, 20), E.Angle(0, bike:GetAngles().y, 0))
             F.scripted(sv, bike)
         end
         local p = bike:GetPhysicsObject()

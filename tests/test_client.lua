@@ -826,3 +826,40 @@ T.test("someone else's crash ragdoll does not keep your cinematic camera on", fu
     E.hook.Run("Think")
     T.ok(not E.GetConVar("bmx_cinematic"):GetBool(), "off: that is not their crash")
 end)
+
+T.test("a grind throws sparks off the contact and scrapes, and both stop with it", function()
+    local s = scene()
+    local E = s.cl.env
+    s.cl.particles, s.cl.patches = {}, {}
+    s.cb:SetGrind(1)
+    -- A second at a standstill: the slowest the sparks ever come.
+    for _ = 1, 20 do
+        s.world.time = s.world.time + 0.05
+        E.hook.Run("Think")
+    end
+    T.ok(#s.cl.particles >= 8, "sparks: " .. #s.cl.particles)
+    local crank = s.cb:LocalToWorld(E.BMX.GrindCrankPoint(s.cb:Cfg()))
+    T.ok(s.cl.particles[1].pos:Distance(crank) < 0.01, "from the chainring's contact")
+    T.eq(s.cl.particles[1].mat, "effects/spark", "spark material")
+    local scrape
+    for _, p in ipairs(s.cl.patches) do if p.path == E.BMX.Sounds.grind.path then scrape = p end end
+    T.ok(scrape and scrape.playing, "scraping")
+
+    -- Pegs on the right: two contacts, on the right (-Y) side.
+    s.cl.particles = {}
+    s.cb:SetGrind(3)
+    for _ = 1, 10 do
+        s.world.time = s.world.time + 0.05
+        E.hook.Run("Think")
+    end
+    local right = 0
+    for _, p in ipairs(s.cl.particles) do
+        if s.cb:WorldToLocal(p.pos).y < 0 then right = right + 1 end
+    end
+    T.ok(#s.cl.particles > 0 and right == #s.cl.particles, "peg sparks on the right: " .. right)
+
+    s.cb:SetGrind(0)
+    s.world.time = s.world.time + 0.05
+    E.hook.Run("Think")
+    T.ok(not scrape.playing, "the scrape stops when the grind does")
+end)

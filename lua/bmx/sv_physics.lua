@@ -203,6 +203,25 @@ function BMX.PhysicsStep(ent, phys, dt)
     st.fwdSpeed = fwdSpeed
 
     ----------------------------------------------------------------------
+    -- 2b. GRINDING (sv_grind.lua). On a rail the bike is placed along it and
+    -- none of the riding model below applies: no tyres, no balance, no tip
+    -- rule. Off it, each substep looks for a rail to lock on to.
+    ----------------------------------------------------------------------
+    if st.grind then
+        if hasDriver then
+            BMX.GrindStep(ent, phys, C, dt, inp, st)
+        else
+            BMX.EndGrind(ent, phys, C, st, "rider")
+        end
+        phys:Wake()
+        return
+    end
+    if hasDriver and BMX.TryGrind and BMX.TryGrind(ent, phys, C, st, vel) then
+        phys:Wake()
+        return
+    end
+
+    ----------------------------------------------------------------------
     -- 3. Drivetrain and brakes
     ----------------------------------------------------------------------
     local front, rear
@@ -299,6 +318,7 @@ function BMX.PhysicsStep(ent, phys, dt)
         st.groundNormal = Vector(0, 0, 1)
     end
     st.grounded = grounded
+    st.groundedFor = grounded and (st.groundedFor or 0) + dt or 0
 
     ----------------------------------------------------------------------
     -- 6. Attitude control

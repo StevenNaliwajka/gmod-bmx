@@ -131,6 +131,10 @@ function M.World(opts)
         -- A RAMP: the ground can be an inclined plane through (0, 0, groundZ)
         -- rising toward +x at this many degrees. 0 is the flat plane.
         groundSlope = opts.groundSlope or 0,
+        -- SOLIDS: axis-aligned boxes { mins, maxs } standing in for a map's
+        -- rails and ledges. Traces hit them; the plant does not collide with
+        -- them (a grind positions the bike itself, and that is what is tested).
+        solids = opts.solids or {},
         convars  = {},
         wire     = {},
     }
@@ -465,6 +469,42 @@ function M.Realm(world, which)
             local p = s + (e - s) * f
             if groundAt(world, p) then
                 res.Hit, res.Fraction, res.HitPos = true, f, p
+                res.HitWorld = true
+            end
+        end
+        -- Nearest solid box along the segment (slab method).
+        local best = res.Hit and res.Fraction or 1
+        for _, b in ipairs(world.solids or {}) do
+            local lo, hi = b[1], b[2]
+            if s.x >= lo.x and s.x <= hi.x and s.y >= lo.y and s.y <= hi.y
+                and s.z >= lo.z and s.z <= hi.z then
+                res.Hit, res.Fraction, res.HitPos, res.StartSolid = true, 0, s, true
+                res.HitWorld = true
+                return res
+            end
+            local t0, t1, nrm = 0, best, nil
+            local ok = true
+            for _, ax in ipairs({ "x", "y", "z" }) do
+                local d = e[ax] - s[ax]
+                if math.abs(d) < 1e-9 then
+                    if s[ax] < lo[ax] or s[ax] > hi[ax] then ok = false break end
+                else
+                    local ta, tb = (lo[ax] - s[ax]) / d, (hi[ax] - s[ax]) / d
+                    local sign = -1
+                    if ta > tb then ta, tb, sign = tb, ta, 1 end
+                    if ta > t0 then
+                        t0 = ta
+                        nrm = { x = 0, y = 0, z = 0 }
+                        nrm[ax] = sign
+                    end
+                    if tb < t1 then t1 = tb end
+                    if t0 > t1 then ok = false break end
+                end
+            end
+            if ok and nrm and t0 < best then
+                best = t0
+                res.Hit, res.Fraction, res.HitPos = true, t0, s + (e - s) * t0
+                res.HitNormal = Vector(nrm.x, nrm.y, nrm.z)
                 res.HitWorld = true
             end
         end
@@ -1295,7 +1335,8 @@ function M.Realm(world, which)
             function em:Add(mat, p)
                 local part = { mat = mat, pos = p }
                 for _, k in ipairs({ "SetVelocity", "SetDieTime", "SetStartAlpha", "SetEndAlpha",
-                        "SetStartSize", "SetEndSize", "SetRoll", "SetRollDelta", "SetAirResistance" }) do
+                        "SetStartSize", "SetEndSize", "SetRoll", "SetRollDelta", "SetAirResistance",
+                        "SetStartLength", "SetEndLength", "SetGravity", "SetCollide", "SetBounce" }) do
                     part[k] = function(self, v) self[k:sub(4)] = v end
                 end
                 function part:SetColor(r, g, b) self.color = { r = r, g = g, b = b } end
@@ -1313,6 +1354,7 @@ function M.Realm(world, which)
             function s:IsPlaying() return self.playing end
             function s:ChangeVolume(v) self.vol = v end
             function s:ChangePitch(p) self.pitch = p end
+            function s:SetSoundLevel(l) self.level = l end
             R.patches[#R.patches + 1] = s
             return s
         end

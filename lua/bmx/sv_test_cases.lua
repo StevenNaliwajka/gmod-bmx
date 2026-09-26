@@ -881,6 +881,110 @@ function(ctx)
 end)
 
 --------------------------------------------------------------------------
+-- GRINDING on the real engine. The offline suite places boxes; here the rail
+-- is a real prop, VPhysics really collides the frame with it, and the bike is
+-- really moved by setting its physics object inside PhysicsSimulate.
+--------------------------------------------------------------------------
+
+-- A frozen prop, returned with its world bounds once it has settled in place.
+local function railProp(ctx, model, pos, ang)
+    local e = ents.Create("prop_physics")
+    e:SetModel(model)
+    e:SetPos(pos)
+    e:SetAngles(ang)
+    e:Spawn()
+    local p = e:GetPhysicsObject()
+    if IsValid(p) then p:EnableMotion(false) end
+    ctx:wait(0.1)
+    local lo, hi = e:WorldSpaceAABB()
+    return e, lo, hi
+end
+
+-- Put the bike in the air with its crank contact `above` over `at`, moving.
+local function launchAt(ctx, at, above, yaw, vel)
+    local b = ctx.bike
+    local crank = BMX.GrindCrankPoint(b:Cfg())
+    local ang = Angle(0, yaw, 0)
+    local off = ang:Forward() * crank.x - ang:Right() * crank.y + ang:Up() * crank.z
+    local phys = b:GetPhysicsObject()
+    phys:SetAngles(ang)
+    phys:SetPos(at + Vector(0, 0, above) - off)
+    phys:SetVelocity(vel)
+    phys:SetAngleVelocity(Vector(0, 0, 0))
+    b.st.grounded, b.st.groundedFor = false, 0
+end
+
+-- Watch one grind from start to end.
+local function watchGrind(ctx, timeout, each)
+    local started, ended
+    hook.Add("BMX_GrindStarted", "BMX.TestGrind", function(e, kind)
+        if e == ctx.bike then started = started or kind end
+    end)
+    hook.Add("BMX_GrindEnded", "BMX.TestGrind", function(e, kind, why, t)
+        if e == ctx.bike then ended = ended or { kind = kind, why = why, t = t } end
+    end)
+    ctx:waitUntil(function()
+        if ctx:st().grind and each then each(ctx:st().grind) end
+        return ended ~= nil
+    end, timeout, "the grind to end")
+    hook.Remove("BMX_GrindStarted", "BMX.TestGrind")
+    hook.Remove("BMX_GrindEnded", "BMX.TestGrind")
+    return started, ended
+end
+
+T.Case("grind_pipe", { timeout = 25,
+    desc = "hopping onto a pipe along it locks into a crank grind, and lets go at the end" },
+function(ctx)
+    ctx:input({})
+    local pole, lo, hi = railProp(ctx, "models/props_c17/signpole001.mdl",
+        ctx.ground + Vector(0, 0, 45), Angle(90, 0, 0))
+    local long = hi.x - lo.x
+    ctx:log(string.format("pole %.0f long, %.1f x %.1f across", long, hi.y - lo.y, hi.z - lo.z))
+    local y = (lo.y + hi.y) * 0.5
+    launchAt(ctx, Vector(lo.x + 8, y, hi.z), 5, 8, Vector(240, 0, -30))
+
+    local worstUp, worstSide = 0, 0
+    local started, ended = watchGrind(ctx, 4, function(g)
+        local c = ctx.bike:LocalToWorld(BMX.GrindCrankPoint(ctx.bike:Cfg()))
+        worstUp = math.max(worstUp, math.abs(c.z - g.point.z))
+        worstSide = math.max(worstSide, math.abs(c.y - y))
+    end)
+    ctx:ok(started == "crank", "locked into a crank grind: " .. tostring(started))
+    if ended then
+        ctx:log(string.format("ended by %s after %.2fs", ended.why, ended.t))
+        ctx:ok(ended.why == "end", "let go where the pipe ends")
+        ctx:between(ended.t, 0.2, 2, "grind time along the pole", "s")
+    end
+    ctx:between(worstUp, 0, 1.5, "chainring kept on the pipe's top", "u")
+    ctx:between(worstSide, 0, 2.5, "and on its line", "u")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+    SafeRemoveEntity(pole)
+end)
+
+T.Case("grind_ledge", { timeout = 25,
+    desc = "hopping onto a ledge's edge along it locks into a double peg grind" },
+function(ctx)
+    ctx:input({})
+    local box, lo, hi = railProp(ctx, "models/hunter/blocks/cube1x8x1.mdl",
+        ctx.ground + Vector(0, 0, 24), Angle(0, 90, 0))
+    ctx:log(string.format("ledge %.0f long, top at +%.0f", hi.x - lo.x, hi.z - ctx.ground.z))
+    launchAt(ctx, Vector(lo.x + 20, lo.y + 2, hi.z), 6, 0, Vector(240, 0, -30))
+
+    local code, dropSide = 0, true
+    local started, ended = watchGrind(ctx, 5, function(g)
+        code = ctx.bike:GetGrind()
+        local half = ctx.bike:Cfg().Wheel.wheelbase * 0.5
+        if ctx.bike:LocalToWorld(Vector(half, 0, 0)).y > lo.y then dropSide = false end
+    end)
+    ctx:ok(started == "peg", "locked into a peg grind: " .. tostring(started))
+    ctx:ok(code == 2, "pegs on the left, the ledge's side: " .. code)
+    ctx:ok(dropSide, "the wheels hung off the drop side the whole way")
+    if ended then ctx:log(string.format("ended by %s after %.2fs", ended.why, ended.t)) end
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+    SafeRemoveEntity(box)
+end)
+
+--------------------------------------------------------------------------
 T.Case("sounds_exist", { rider = false, timeout = 15,
     desc = "every sound the addon references actually ships with the game" },
 function(ctx)

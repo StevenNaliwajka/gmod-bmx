@@ -59,6 +59,14 @@ BMX.Sounds = {
         level  = 62,
     },
 
+    -- Frame or pegs sliding on a rail (cl_grind.lua). Standing in for: a grind.
+    grind = {
+        path   = "physics/metal/metal_box_scrape_rough_loop1.wav",
+        vol    = 0.55,
+        pitch  = { 85, 125 },
+        level  = 75,
+    },
+
     ----------------------------------------------------------------------
     -- ONE-SHOTS. `variants` means the path carries a %d and the files are
     -- numbered 1..variants, which is how the suite proves every one of them is

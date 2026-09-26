@@ -685,6 +685,75 @@ C.Tricks = {
 }
 
 --------------------------------------------------------------------------
+-- GRINDING (sv_grind.lua)
+--
+-- Hop onto a rail or a ledge edge moving roughly along it and the bike locks
+-- on and slides. Two grinds, chosen by what is under the middle of the bike:
+--
+--   crank grind       a PIPE (narrower than pipeMaxWidth): the pipe runs under
+--                     the middle, the chainring rides it, and the bike is
+--                     turned crankYaw off the pipe so the wheels hang down
+--                     either side of it
+--   double peg grind  an EDGE (a ledge, a box, a wide beam): the bike hangs off
+--                     the drop side, both pegs on the edge
+--
+-- No map needs marking up: rails are found with traces, so a brush rail, a
+-- prop and a kerb all work the same way.
+--------------------------------------------------------------------------
+C.Grind = {
+    enabled = true,
+
+    -- Where the frame meets a pipe: the bottom of the chainring, drawn by
+    -- cl_init.lua (FRAME.bb, RING) on the frame's riding line. Move one and
+    -- move the other.
+    bb   = Vector(-4.5, 0, 2.5),
+    ring = 3.8,
+    -- A peg's contact, per side: out along the axle, just under its centre.
+    pegY = 4.4,
+    pegZ = -1.0,
+    -- A peg rests this far onto the edge's top, not on the corner itself.
+    pegInset = 0.8,
+    -- Gap kept between the contact and the rail top, units.
+    clearance = 0.3,
+
+    -- The crank grind's angle to the pipe. Large enough that the peg boxes
+    -- (6.6 out from each axle, 19.5 fore and aft of the middle) are clear of
+    -- a pipe: 19.5 * sin(25 deg) = 8.2.
+    crankYaw = math.rad(25),
+
+    -- FINDING A RAIL. The rail top must be within snapAbove below the
+    -- contact point (falling onto it) or snapBelow above it (a little past).
+    snapAbove = 10,
+    snapBelow = 3,
+    reach     = 6,      -- half-width of the grid searched round the contact
+    ring      = 7,      -- radius of the ring that tells a pipe from an edge
+    drop      = 6,      -- lower than the top by this much is off the rail
+    topTol    = 1.5,    -- within this of the top is still on it
+    pipeMaxWidth = 6,   -- wider than this is a beam: grind its edge on pegs
+    edgeSearch   = 12,  -- how far across the top an edge is looked for
+
+    -- GETTING ON. Hopping onto it or just landed, moving along it.
+    minSpeed      = 70,             -- u/s along the rail
+    maxEntryAngle = math.rad(40),   -- between the travel and the rail
+    maxEntryVz    = 120,            -- rising faster than this is not landing on it
+    landedWindow  = 0.2,            -- s on the ground that still counts as landing
+
+    -- ON IT. Gravity along a sloped rail speeds it up or slows it down.
+    friction   = 40,     -- u/s^2
+    brakeDecel = 220,    -- u/s^2 more with a brake held
+    stopSpeed  = 30,     -- slower than this and the grind is over
+
+    -- GETTING OFF: hop (the jump key), the rail ending, or too slow.
+    hopSpeed = 190,      -- u/s up
+    minHop   = 0.6,      -- of hopSpeed, for a tap of the key
+    hopAway  = 60,       -- u/s off the ledge side of a peg grind
+    cooldown = 0.4,      -- s before the same bike can lock on again
+
+    minTime      = 0.3,  -- s: shorter was a brush, not a grind
+    pointsPerSec = 140,
+}
+
+--------------------------------------------------------------------------
 -- CONVARS
 --
 -- Only the numbers a tuner reaches for repeatedly. Everything else is a code

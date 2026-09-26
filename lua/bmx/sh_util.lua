@@ -382,3 +382,18 @@ end
 function BMX.ToMPH(ups)
     return ups * 0.0254 * 2.23694
 end
+
+--------------------------------------------------------------------------
+-- The crank grind's contact (sv_grind.lua), entity-local; shared because the
+-- client throws its sparks from the same point: the bottom of the chainring as
+-- cl_init.lua draws it. The frame is drawn on the line it RIDES at, lifted by
+-- the static sag above the design line, and scaled with the wheelbase.
+--------------------------------------------------------------------------
+function BMX.GrindCrankPoint(cfg)
+    local C = cfg or BMX.Config
+    local G = C.Grind
+    local k = C.Wheel.wheelbase / 39
+    local sag = C.Wheel.radius - BMX.RestHeight(C)
+    return Vector(G.bb.x * k, 0, G.bb.z * k + sag - G.ring * k)
+end
+

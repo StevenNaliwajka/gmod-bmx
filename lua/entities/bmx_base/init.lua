@@ -488,6 +488,11 @@ function ENT:PhysicsCollide(data, phys)
     if data.Speed < CR.maxImpactSpeed then return end
     if CurTime() - (self.spawnTime or 0) < CR.grace then return end
 
+    -- NOT A CRASH ON A RAIL. A grind puts the frame on the rail on purpose,
+    -- and hopping off still scrapes it for a moment.
+    local st0 = self.st
+    if st0 and (st0.grind or CurTime() - (st0.grindEnded or -1e9) < 0.3) then return end
+
     -- NOT A CRASH IF IT LANDED ON ITS WHEELS. The wheels have collision
     -- boxes now (Chassis.wheelHullBottom), and a hard landing that bottoms
     -- the suspension out meets the ground with them, at speed. That is the

@@ -94,6 +94,9 @@ function ENT:SetupDataTables()
     self:NetworkVar("Int",   0, "Score")
     -- The paint: an index into BMX.Palette (sh_color.lua).
     self:NetworkVar("Int",   1, "ColorIndex")
+    -- The grind under way, for the sparks and the scrape (cl_sound.lua):
+    -- 0 none, 1 crank grind, 2 pegs on the left, 3 pegs on the right.
+    self:NetworkVar("Int",   2, "Grind")
 
     if SERVER then
         self:SetColorIndex(self:Bike().colorIndex or 1)

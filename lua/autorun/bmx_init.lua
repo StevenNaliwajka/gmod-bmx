@@ -45,6 +45,7 @@ local SERVER_FILES = {
     "bmx/sv_balance.lua",
     "bmx/sv_air.lua",
     "bmx/sv_input.lua",
+    "bmx/sv_grind.lua",     -- before sv_physics, which calls it
     "bmx/sv_physics.lua",
     "bmx/sv_seat.lua",
     "bmx/sv_debug.lua",
@@ -62,6 +63,7 @@ local CLIENT_FILES = {
     "bmx/cl_sound.lua",
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
+    "bmx/cl_grind.lua",     -- sparks and the scrape while a bike grinds
 }
 
 if SERVER then

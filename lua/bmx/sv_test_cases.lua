@@ -1001,7 +1001,18 @@ function(ctx)
     -- An 11.9-unit square beam, 380 long, its top 30 up: wider than a pipe,
     -- so a peg grind on its near edge.
     local beam, lo, hi = railProp(ctx, "models/hunter/blocks/cube025x8x025.mdl",
-        ctx.ground + Vector(290, 0, 30 - 5.93), Angle(0, 90, 0))
+        ctx.ground + Vector(290, 0, 30), Angle(0, 90, 0))
+    -- Put it where it is meant to be by its BOUNDS: a model's origin is
+    -- wherever its author left it (this one's is at its base, which put the
+    -- top 6 units higher than asked and out of a hop's reach).
+    local shift = Vector(ctx.ground.x + 290 - (lo.x + hi.x) * 0.5,
+                         ctx.ground.y - (lo.y + hi.y) * 0.5,
+                         ctx.ground.z + 30 - hi.z)
+    local bp = beam:GetPhysicsObject()
+    beam:SetPos(beam:GetPos() + shift)
+    if IsValid(bp) then bp:SetPos(beam:GetPos()) bp:EnableMotion(false) end
+    ctx:wait(0.1)
+    lo, hi = beam:WorldSpaceAABB()
     ctx:log(string.format("beam x %.0f..%.0f, y %.1f..%.1f, top +%.0f",
         lo.x - ctx.ground.x, hi.x - ctx.ground.x, lo.y - ctx.ground.y, hi.y - ctx.ground.y,
         hi.z - ctx.ground.z))

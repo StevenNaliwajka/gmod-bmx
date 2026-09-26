@@ -128,6 +128,18 @@ rcon() { GMOD_RCON_PASSWORD="$PW" python3 "$RCON" --host "$IP" "$@" 2>&1; }
 # is SKIPPED, not failed (exit 0, and it says so): the offline suite has already
 # passed in `validate`, and a physics check is not worth a player's session.
 # BMX_TEST_FORCE=1 runs it anyway.
+#
+# AND NOT RIGHT AFTER A RESTART. The pipeline's deploy step restarts the server
+# just before this runs, which disconnects everyone; counted then, the server is
+# empty and the swap goes ahead under a rider who is still reconnecting. That is
+# exactly how the first version of this check let a rider be bounced. So if the
+# map has been up less than REJOIN_GRACE seconds, wait out the rest first.
+REJOIN_GRACE="${BMX_TEST_REJOIN_GRACE:-90}"
+up="$(rcon "status" | sed -n 's/^uptime[[:space:]]*:[[:space:]]*\([0-9][0-9]*\)s map.*/\1/p' | head -1)"
+if [ -n "$up" ] && [ "$up" -lt "$REJOIN_GRACE" ]; then
+  say "server up ${up}s: waiting $((REJOIN_GRACE - up))s for anyone the restart dropped to rejoin"
+  sleep $((REJOIN_GRACE - up))
+fi
 humans="$(rcon "status" | sed -n 's/^players[[:space:]]*:[[:space:]]*\([0-9][0-9]*\) humans.*/\1/p' | head -1)"
 if [ "${humans:-0}" -gt 0 ] && [ "${BMX_TEST_FORCE:-0}" != 1 ]; then
   say "SKIPPED: ${humans} player(s) on the server; not swapping the map under them."

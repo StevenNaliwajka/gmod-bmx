@@ -1111,14 +1111,26 @@ function(ctx)
     phys:SetAngleVelocity(Vector(0, 0, 0))
     b.st.grounded, b.st.airMode = false, false
 
-    local off
+    -- AIRBORNE FIRST. The entity's position follows its physics object one
+    -- tick late, so the first substep after the teleport still sees the bike
+    -- on its start ground and reports it grounded -- which the first version
+    -- of this case took for the landing, with the bike still level: exactly
+    -- 30.00 degrees off, every run.
+    local t0 = CurTime()
+    ctx:waitUntil(function() return not b.st.grounded end, 1, "leaving the start")
+    local off, sawRef, airMode, tLand = nil, false, false, nil
     ctx:waitUntil(function()
+        if b.st.landRef then sawRef = true end
+        if b.st.airMode then airMode = true end
         if b.st.grounded then
             off = math.deg(math.acos(math.Clamp(b:GetUp():Dot(n), -1, 1)))
+            tLand = CurTime() - t0
             return true
         end
         return false
     end, 3, "the landing")
+    ctx:log(string.format("landed after %.2fs; air mode %s; landing surface seen %s",
+        tLand or -1, tostring(airMode), tostring(sawRef)))
     ctx:wait(1)
     if off then ctx:between(off, 0, 15, "off the slope at touchdown", "deg") end
     ctx:ok(IsValid(b:GetDriver()), "rider still aboard")

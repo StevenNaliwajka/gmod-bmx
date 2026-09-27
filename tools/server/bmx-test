@@ -129,16 +129,24 @@ rcon() { GMOD_RCON_PASSWORD="$PW" python3 "$RCON" --host "$IP" "$@" 2>&1; }
 # passed in `validate`, and a physics check is not worth a player's session.
 # BMX_TEST_FORCE=1 runs it anyway.
 #
-# AND NOT RIGHT AFTER A RESTART. The pipeline's deploy step restarts the server
-# just before this runs, which disconnects everyone; counted then, the server is
-# empty and the swap goes ahead under a rider who is still reconnecting. That is
-# exactly how the first version of this check let a rider be bounced. So if the
-# map has been up less than REJOIN_GRACE seconds, wait out the rest first.
-REJOIN_GRACE="${BMX_TEST_REJOIN_GRACE:-90}"
-up="$(rcon "status" | sed -n 's/^uptime[[:space:]]*:[[:space:]]*\([0-9][0-9]*\)s map.*/\1/p' | head -1)"
-if [ -n "$up" ] && [ "$up" -lt "$REJOIN_GRACE" ]; then
-  say "server up ${up}s: waiting $((REJOIN_GRACE - up))s for anyone the restart dropped to rejoin"
-  sleep $((REJOIN_GRACE - up))
+# AND NOT JUST AFTER ONE. The pipeline's deploy restarts the server right
+# before this runs, and a restart drops everyone to the menu -- Garry's Mod
+# does NOT reconnect them -- so "who is on right now" said nobody and the swap
+# went ahead under a rider who had been riding a minute earlier (twice, on
+# 2026-09-27; waiting 90 s for a rejoin never helped, since nobody rejoins).
+# The addon records the last time a human was connected (sv_test.lua,
+# BMX.NoteHumans: every 15 s and at shutdown); anyone within RECENT seconds
+# and this run is skipped too.
+RECENT="${BMX_TEST_RECENT:-600}"
+LAST_FILE="$DATA_DIR/bmx_last_human.txt"
+if [ -r "$LAST_FILE" ] && [ "${BMX_TEST_FORCE:-0}" != 1 ]; then
+  last="$(tr -dc '0-9' < "$LAST_FILE")"
+  now="$(date +%s)"
+  if [ -n "$last" ] && [ $((now - last)) -lt "$RECENT" ]; then
+    say "SKIPPED: a player was on $((now - last))s ago; not swapping the map on them."
+    say "         Runs once the server has been empty ${RECENT}s, or with BMX_TEST_FORCE=1."
+    exit 0
+  fi
 fi
 humans="$(rcon "status" | sed -n 's/^players[[:space:]]*:[[:space:]]*\([0-9][0-9]*\) humans.*/\1/p' | head -1)"
 if [ "${humans:-0}" -gt 0 ] && [ "${BMX_TEST_FORCE:-0}" != 1 ]; then

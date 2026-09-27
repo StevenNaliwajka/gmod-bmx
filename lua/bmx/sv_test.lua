@@ -669,3 +669,26 @@ hook.Add("InitPostEntity", "BMX.TestOnBoot", function()
     -- created in the same frame as the world can land inside it.
     timer.Simple(8, function() T.Run() end)
 end)
+
+--------------------------------------------------------------------------
+-- WHO WAS HERE. bmx-test (tools/server/bmx-test) will not swap this server
+-- onto its test map under a rider, and it used to decide that by asking who
+-- is connected RIGHT NOW. But the pipeline's deploy restarts the server first,
+-- and a restart drops everyone to the menu -- Garry's Mod does not reconnect
+-- them -- so the answer was always "nobody", and the swap went ahead under a
+-- rider who had been on a minute before. So the server keeps the last time a
+-- human was connected, every 15 seconds and at shutdown, and bmx-test skips
+-- when that was recent.
+--------------------------------------------------------------------------
+BMX.LAST_HUMAN_FILE = "bmx_last_human.txt"
+
+function BMX.NoteHumans()
+    if player.GetHumans and #player.GetHumans() > 0 then
+        file.Write(BMX.LAST_HUMAN_FILE, tostring(os.time()))
+        return true
+    end
+    return false
+end
+
+timer.Create("BMX.LastHuman", 15, 0, BMX.NoteHumans)
+hook.Add("ShutDown", "BMX.LastHuman", BMX.NoteHumans)

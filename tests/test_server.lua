@@ -741,3 +741,20 @@ T.test("a wheel-box hit while airborne is a touchdown: it sticks the landing", f
     sv:tick()
     T.near(p.w:Length(), 0, 0.5, "the spin stops on the next substep")
 end)
+
+T.test("the server remembers when a human was last on (so a test run never swaps the map on them)", function()
+    local F = require("lib.fixture")
+    local sv = F.server()
+    local B = sv.env.BMX
+    local bike = F.bike(sv)
+    F.scripted(sv, bike)                              -- a bot is not a rider
+    T.ok(not B.NoteHumans(), "bots only: nothing noted")
+    T.eq(sv.files[B.LAST_HUMAN_FILE], nil, "no file")
+    sv:player("Rider")
+    T.ok(B.NoteHumans(), "a human: noted")
+    local t = tonumber(sv.files[B.LAST_HUMAN_FILE])
+    T.ok(t and math.abs(t - os.time()) < 5, "the time, in seconds: " .. tostring(t))
+    sv.files[B.LAST_HUMAN_FILE] = nil
+    sv.env.hook.Run("ShutDown")
+    T.ok(sv.files[B.LAST_HUMAN_FILE], "and again at shutdown, the moment a deploy restarts it")
+end)

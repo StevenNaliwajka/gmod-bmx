@@ -266,3 +266,27 @@ T.test("a pipe that runs into a higher block: the grind ends, it does not climb 
         "ended at the block: " .. tostring(rec.ended and rec.ended.why))
     notLaunched(rec, sv, "into a block")
 end)
+
+T.test("jump onto a beam from the side at an angle (the headless grind_hop_on move)", function()
+    local E0 = F.server().env
+    local TOP, YAW, SPEED = 18, 6, 260
+    local beam = { E0.Vector(100, -5.93, TOP - 11.86), E0.Vector(480, 5.93, TOP) }
+    -- The same arithmetic grind_hop_on uses to pick its start.
+    local sv0 = F.server()
+    local C = sv0.env.BMX.Config
+    local g = 600
+    local vz = C.Hop.popSpeed / math.sqrt(1 + C.Hop.forwardBias ^ 2)
+    local crank0 = sv0.env.BMX.RestHeight(C) + sv0.env.BMX.GrindCrankPoint(C).z
+    local rise = TOP + 4 - crank0
+    local tDown = (vz + math.sqrt(math.max(vz * vz - 2 * g * rise, 0))) / g
+    local t = C.Hop.chargeTime + 0.05 + tDown
+    local y0 = -5.93 + 2 - SPEED * math.sin(math.rad(YAW)) * t
+    local x0 = 100 + 60 - SPEED * math.cos(math.rad(YAW)) * t
+    local sv, bike, ply = setup({ beam }, 0, YAW, SPEED)
+    F.place(bike, sv.env.Vector(x0, y0, F.restHeight(sv)), sv.env.Angle(0, YAW, 0))
+    bike:GetPhysicsObject():SetVelocity(sv.env.Angle(0, YAW, 0):Forward() * SPEED)
+    local rec = ride(sv, bike, ply, 3.5, hopAt(0.0, C.Hop.chargeTime + 0.05))
+    T.eq(rec.started and rec.started.kind, "peg", "a peg grind on the near edge")
+    T.ok(rec.ended, "came off it")
+    notLaunched(rec, sv, "beam from the side")
+end)

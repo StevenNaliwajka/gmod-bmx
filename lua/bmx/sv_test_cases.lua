@@ -989,50 +989,71 @@ function(ctx)
 end)
 
 T.Case("grind_hop_on", { timeout = 30,
-    desc = "a rider rolling beside a beam hops up onto it, grinds it, and comes off without being launched" },
+    desc = "a rider coming at a beam from the side hops onto it, grinds, and comes off without being launched" },
 function(ctx)
     -- The whole move on the real engine: rolling on the ground, a real hop
     -- (the preload and the pop), the lock-on in mid-air, the grind, and the
     -- beam ending under it. Nothing is placed but the start.
+    --
+    -- FROM THE SIDE, AT AN ANGLE, the way a rider does it. Rolling straight
+    -- alongside a beam at bar height puts the bars (14.8 out) into its end
+    -- before any hop, which is a test of riding into things.
     ctx:st().grindExitClamped = 0
     local b = ctx.bike
     local phys = b:GetPhysicsObject()
-    local start = ctx.ground + Vector(0, 0, BMX.RestHeight(b:Cfg()))
-    -- An 11.9-unit square beam, 380 long, its top 30 up: wider than a pipe,
-    -- so a peg grind on its near edge.
+    local C = b:Cfg()
+    local TOP, YAW, SPEED = 18, 6, 260
     local beam, lo, hi = railProp(ctx, "models/hunter/blocks/cube025x8x025.mdl",
-        ctx.ground + Vector(290, 0, 30), Angle(0, 90, 0))
-    -- Put it where it is meant to be by its BOUNDS: a model's origin is
-    -- wherever its author left it (this one's is at its base, which put the
-    -- top 6 units higher than asked and out of a hop's reach).
+        ctx.ground + Vector(290, 0, TOP), Angle(0, 90, 0))
+    -- By its BOUNDS: a model's origin is wherever its author left it (this
+    -- one's is at its base).
     local shift = Vector(ctx.ground.x + 290 - (lo.x + hi.x) * 0.5,
                          ctx.ground.y - (lo.y + hi.y) * 0.5,
-                         ctx.ground.z + 30 - hi.z)
+                         ctx.ground.z + TOP - hi.z)
     local bp = beam:GetPhysicsObject()
     beam:SetPos(beam:GetPos() + shift)
     if IsValid(bp) then bp:SetPos(beam:GetPos()) bp:EnableMotion(false) end
     ctx:wait(0.1)
     lo, hi = beam:WorldSpaceAABB()
-    ctx:log(string.format("beam x %.0f..%.0f, y %.1f..%.1f, top +%.0f",
-        lo.x - ctx.ground.x, hi.x - ctx.ground.x, lo.y - ctx.ground.y, hi.y - ctx.ground.y,
-        hi.z - ctx.ground.z))
-    phys:SetAngles(Angle(0, 0, 0))
-    phys:SetPos(Vector(start.x, lo.y - 4.5, start.z))
-    phys:SetVelocity(Vector(260, 0, 0))
+
+    -- Where the crank point should cross the near edge: on the way down, a
+    -- unit or two onto the top. Worked back from the hop (Hop.popSpeed off
+    -- the ground, Hop.chargeTime of preload) to a start beside the beam.
+    local g = physenv.GetGravity():Length()
+    local vz = C.Hop.popSpeed / math.sqrt(1 + C.Hop.forwardBias ^ 2)
+    local crank0 = BMX.RestHeight(C) + BMX.GrindCrankPoint(C).z
+    local rise = TOP + 4 - crank0
+    local tDown = (vz + math.sqrt(math.max(vz * vz - 2 * g * rise, 0))) / g
+    local t = C.Hop.chargeTime + 0.05 + tDown
+    local lateral = SPEED * math.sin(math.rad(YAW))
+    local y0 = lo.y + 2 - lateral * t
+    local x0 = lo.x + 60 - SPEED * math.cos(math.rad(YAW)) * t
+    ctx:log(string.format("beam x %.0f..%.0f, near edge y %.1f, top +%.0f; start %.0f,%.0f; over it at %.2fs",
+        lo.x - ctx.ground.x, hi.x - ctx.ground.x, lo.y - ctx.ground.y, hi.z - ctx.ground.z,
+        x0 - ctx.ground.x, y0 - ctx.ground.y, t))
+
+    local ang = Angle(0, YAW, 0)
+    phys:SetAngles(ang)
+    phys:SetPos(Vector(x0, y0, ctx.ground.z + BMX.RestHeight(C)))
+    phys:SetVelocity(ang:Forward() * SPEED)
     phys:SetAngleVelocity(Vector(0, 0, 0))
     ctx:input({ throttle = 1 })
     ctx:wait(0.05)
 
-    local out, worstUp, worstFast = nil, -math.huge, -math.huge
+    local out, worstUp, worstFast, started = nil, -math.huge, -math.huge, nil
+    local closest = math.huge
     hook.Add("BMX_GrindEnded", "BMX.TestHopOn", function(e)
         if e == b and not out then out = b.st.grindExit and b.st.grindExit.vel end
     end)
-    local started
     hook.Add("BMX_GrindStarted", "BMX.TestHopOn", function(e, kind)
         if e == b then started = started or kind end
     end)
     ctx:hop()
     ctx:waitUntil(function()
+        local c = b:LocalToWorld(BMX.GrindCrankPoint(C))
+        if c.x > lo.x and c.x < hi.x then
+            closest = math.min(closest, math.abs(c.z - hi.z) + math.max(lo.y - c.y, 0))
+        end
         if out then
             if b.st.grounded then return true end
             local v = phys:GetVelocity()
@@ -1044,6 +1065,7 @@ function(ctx)
     hook.Remove("BMX_GrindEnded", "BMX.TestHopOn")
     hook.Remove("BMX_GrindStarted", "BMX.TestHopOn")
     ctx:input({})
+    ctx:log(string.format("closest the crank point came to the near edge's top: %.1f u", closest))
 
     ctx:ok(started == "peg", "hopped onto the beam into a peg grind: " .. tostring(started))
     ctx:ok(out ~= nil, "and came off it")

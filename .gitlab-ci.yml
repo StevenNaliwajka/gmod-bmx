@@ -86,5 +86,9 @@ headless:
       # old harness is the failure mode this avoids. The second then tests what
       # is on disk, so the runner and the code it runs are never different
       # vintages.
-      $SSH "$EXEC 'git config --global --add safe.directory ${APP_DIR} && cd ${APP_DIR} && git fetch -q origin && git checkout -f ${CI_COMMIT_SHA} && bash install.sh'"
+      # ALREADY THERE, NO RESTART. On the default branch deploy-dev has just
+      # installed this very commit, and install.sh restarts the server: doing it
+      # again disconnected anyone riding a second time, eleven seconds after the
+      # first. Only a commit that is not on the box yet is checked out.
+      $SSH "$EXEC 'git config --global --add safe.directory ${APP_DIR} && cd ${APP_DIR} && git fetch -q origin && if [ \"\$(git rev-parse HEAD)\" = \"${CI_COMMIT_SHA}\" ] && git diff --quiet HEAD; then echo \"already at ${CI_COMMIT_SHORT_SHA}: no reinstall, no restart\"; else git checkout -f ${CI_COMMIT_SHA} && bash install.sh; fi'"
       $SSH "$EXEC '/usr/local/bin/bmx-test'"

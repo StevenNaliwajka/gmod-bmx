@@ -1109,15 +1109,23 @@ function(ctx)
     phys:SetPos(tr.HitPos + Vector(0, 0, 70))
     phys:SetVelocity(Vector(250, 0, 0))
     phys:SetAngleVelocity(Vector(0, 0, 0))
-    b.st.grounded, b.st.airMode = false, false
 
     -- AIRBORNE FIRST. The entity's position follows its physics object one
     -- tick late, so the first substep after the teleport still sees the bike
     -- on its start ground and reports it grounded -- which the first version
     -- of this case took for the landing, with the bike still level: exactly
     -- 30.00 degrees off, every run.
+    -- Not by the grounded flag: this case has just set it false itself, which
+    -- is why the second version still "landed" 0.02 s in. By where the bike
+    -- really is, and then by a couple of substeps of real air.
     local t0 = CurTime()
-    ctx:waitUntil(function() return not b.st.grounded end, 1, "leaving the start")
+    local startZ = tr.HitPos.z + 40
+    ctx:waitUntil(function() return b:GetPos().z > startZ end, 1, "the bike up at its start")
+    local airTicks = 0
+    ctx:waitUntil(function()
+        if b.st.grounded then airTicks = 0 else airTicks = airTicks + 1 end
+        return airTicks >= 3
+    end, 1, "leaving the start")
     local off, sawRef, airMode, tLand = nil, false, false, nil
     ctx:waitUntil(function()
         if b.st.landRef then sawRef = true end

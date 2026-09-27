@@ -46,6 +46,7 @@ local SERVER_FILES = {
     "bmx/sv_air.lua",
     "bmx/sv_input.lua",
     "bmx/sv_grind.lua",     -- before sv_physics, which calls it
+    "bmx/sv_combo.lua",     -- chained tricks: before sv_physics too
     "bmx/sv_physics.lua",
     "bmx/sv_seat.lua",
     "bmx/sv_debug.lua",

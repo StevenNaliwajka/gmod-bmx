@@ -863,3 +863,51 @@ T.test("a grind throws sparks off the contact and scrapes, and both stop with it
     E.hook.Run("Think")
     T.ok(not scrape.playing, "the scrape stops when the grind does")
 end)
+
+--------------------------------------------------------------------------
+-- A CALM CAMERA. The chase camera aimed at a point on the bike's own up
+-- axis, so every degree the bike rolled swung the view sideways (26 units up,
+-- 20 degrees of roll is 9 units of sway), and its height spring settled in
+-- 60 ms, following every bump in the floor one for one.
+--------------------------------------------------------------------------
+local function chase(s, E)
+    return E.hook.Run("CalcView", s.me, E.Vector(), E.Angle(10, 0, 0), 90)
+end
+
+T.test("calm camera: the bike rocking side to side does not sway the view", function()
+    local s = scene()
+    local E = s.cl.env
+    local base = s.cb:GetPos()
+    local ys = {}
+    for i = 0, 60 do
+        s.world.time = s.world.time + s.world.dt
+        s.cb:SetAngles(E.Angle(0, 0, 20 * math.sin(i * 0.4)))
+        s.cb:SetPos(base)
+        local v = chase(s, E)
+        if i > 10 then ys[#ys + 1] = v.origin.y end
+    end
+    local lo, hi = math.huge, -math.huge
+    for _, y in ipairs(ys) do lo, hi = math.min(lo, y), math.max(hi, y) end
+    T.between(hi - lo, 0, 1.5, "sideways sway of the camera while the bike rocks +-20 degrees, units")
+end)
+
+T.test("calm camera: a bump is eased into, not copied", function()
+    local s = scene()
+    local E = s.cl.env
+    local base = s.cb:GetPos()
+    for _ = 1, 30 do
+        s.world.time = s.world.time + s.world.dt
+        chase(s, E)
+    end
+    local before = chase(s, E).origin.z
+    s.cb:SetPos(base + E.Vector(0, 0, 5))           -- over a 5-unit bump
+    s.world.time = s.world.time + s.world.dt
+    local first = chase(s, E).origin.z - before
+    local after = 0
+    for _ = 1, 40 do
+        s.world.time = s.world.time + s.world.dt
+        after = chase(s, E).origin.z - before
+    end
+    T.between(first, 0, 1.2, "the view's rise on the first frame of a 5-unit bump, units")
+    T.between(after, 4.5, 5.5, "and it has followed the bike up within 0.6 s, units")
+end)

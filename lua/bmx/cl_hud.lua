@@ -316,3 +316,49 @@ hook.Add("HUDPaint", "BMX.CalloutPaint", function()
         end
     end
 end)
+
+--------------------------------------------------------------------------
+-- COMBOS (sv_combo.lua): the chain as it builds, then LANDED with the bonus
+-- or BAILED. Lower centre, under the trick callouts.
+--------------------------------------------------------------------------
+local combo = nil        -- { state, n, base, bonus, names, at }
+BMX.ComboHUD = function() return combo end
+
+net.Receive("bmx_combo", function()
+    local c = { state = net.ReadUInt(2), n = net.ReadUInt(8), base = net.ReadUInt(20),
+                bonus = net.ReadUInt(22), names = {}, at = CurTime() }
+    for i = 1, net.ReadUInt(3) do c.names[i] = net.ReadString() end
+    combo = c
+end)
+
+local function commas(n)
+    local s = tostring(math.floor(n))
+    local out = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+    return (out:gsub("^,", ""))
+end
+
+hook.Add("HUDPaint", "BMX.ComboPaint", function()
+    local c = combo
+    if not c then return end
+    local age = CurTime() - c.at
+    local sw, sh = ScrW(), ScrH()
+    local y = sh * 0.72
+    if c.state == 0 then
+        if c.n < 2 then return end           -- one trick is not a combo yet
+        if age > 6 then combo = nil return end
+        draw.SimpleText(table.concat(c.names, " + "), "BMX.Small", sw * 0.5, y,
+            Color(255, 255, 255, 230), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.SimpleText(commas(c.base) .. "  x" .. c.n, "BMX.Big", sw * 0.5, y + 30,
+            Color(255, 214, 90, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        return
+    end
+    if age > 2.2 or (c.state == 1 and c.bonus <= 0) then combo = nil return end
+    local a = 255 * (1 - math.max(0, (age - 1.4) / 0.8))
+    if c.state == 1 then
+        draw.SimpleText("COMBO LANDED  +" .. commas(c.bonus), "BMX.Big", sw * 0.5, y + 30,
+            Color(110, 230, 120, a), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    else
+        draw.SimpleText("BAILED", "BMX.Big", sw * 0.5, y + 30,
+            Color(235, 80, 70, a), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+end)

@@ -807,6 +807,16 @@ C.Grind = {
 }
 
 --------------------------------------------------------------------------
+-- COMBOS (sv_combo.lua): tricks chained together pay a bonus when landed.
+--------------------------------------------------------------------------
+C.Combo = {
+    enabled = true,
+    -- Seconds on the ground, not in a trick, before a combo banks: the time a
+    -- rider has to link the next trick. A manual or a grind holds it open.
+    grace = 0.8,
+}
+
+--------------------------------------------------------------------------
 -- CONVARS
 --
 -- Only the numbers a tuner reaches for repeatedly. Everything else is a code

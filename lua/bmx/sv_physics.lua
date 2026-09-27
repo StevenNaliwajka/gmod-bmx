@@ -445,8 +445,11 @@ function BMX.PhysicsStep(ent, phys, dt)
     if hasDriver then
         local done = BMX.TrackManual(st, C, front, rear, speed, dt)
         if done and ent.AwardTricks then ent:AwardTricks(done) end
+        if BMX.ComboThink then BMX.ComboThink(ent, st) end
     else
         st.manual = nil
+        -- Got off with a combo open: it was landed, and it banks.
+        if st.combo and BMX.ComboEnd then BMX.ComboEnd(ent, true) end
     end
 
     ----------------------------------------------------------------------

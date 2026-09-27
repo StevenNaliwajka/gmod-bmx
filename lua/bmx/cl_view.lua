@@ -132,7 +132,12 @@ hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
     ----------------------------------------------------------------------
     -- Chase
     ----------------------------------------------------------------------
-    local target = bike:LocalToWorld(Vector(0, 0, cv_height:GetFloat()))
+    -- STRAIGHT UP from the bike, in the world: not up the bike's own axis.
+    -- The camera looks over a rider, not along a mast bolted to the frame;
+    -- aimed up the frame, every degree of lean swung the view sideways (17.8
+    -- units of sway for a bike rocking +-20 degrees), and a calm ride felt
+    -- like a boat. tests/test_client.lua, "calm camera".
+    local target = bike:GetPos() + Vector(0, 0, cv_height:GetFloat())
     target.z = followHeight(target.z, FrameTime())
     sDist = approach(sDist, cv_dist:GetFloat() * (1 + frac * 0.35), 4)
     sFov  = approach(sFov,  fov + frac * 16, 4)

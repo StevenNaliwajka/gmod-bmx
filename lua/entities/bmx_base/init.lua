@@ -379,6 +379,7 @@ function ENT:AwardTricks(tricks)
     self:SetScore(self:GetScore() + total)
     hook.Run("BMX_TricksLanded", self, self:GetDriver(), tricks, total)
     self:SendTrickCallout(tricks, total)
+    if BMX.ComboAdd then BMX.ComboAdd(self, tricks) end
     return total
 end
 
@@ -433,6 +434,9 @@ end
 -- Crash: throw the rider off.
 --------------------------------------------------------------------------
 function ENT:Crash(reason, severity)
+    -- A crash loses the combo's bonus (sv_combo.lua), while the rider is
+    -- still aboard to be told so.
+    if BMX.ComboEnd then BMX.ComboEnd(self, false) end
     local ply = self:GetDriver()
     if not IsValid(ply) then return end
 

@@ -268,7 +268,7 @@ end
 -- plate with rings around it and reads as a glitch on something that looks
 -- like a bike.
 --------------------------------------------------------------------------
-local function drawWheel(ent, key, center, axleDir, spin, radius, grounded, debug)
+local function drawWheel(ent, key, center, axleDir, spin, radius, grounded, debug, lod)
     -- Any orthonormal basis spanning the wheel's plane. Angle():Up()/:Right()
     -- of the axle direction gives one for free.
     local a  = axleDir:Angle()
@@ -314,6 +314,7 @@ local function drawWheel(ent, key, center, axleDir, spin, radius, grounded, debu
     end
 
     -- Hub and pegs: the pegs are the one part a BMX has that nothing else does.
+    if (lod or 0) >= 2 then return end
     tube(center - axleDir * 2.2, center + axleDir * 2.2, 1.6, COL_CHROME)
     tube(center + axleDir * 2.4, center + axleDir * 6.0, 1.3, COL_CHROME)
     tube(center - axleDir * 2.4, center - axleDir * 6.0, 1.3, COL_CHROME)
@@ -367,6 +368,36 @@ local FRAME = {
     headB  = Vector(14.5, 0, 10.5),    -- head tube, bottom
     bars   = Vector(10.5, 0, 26.0),    -- bar centre (BMX bars are tall and swept back)
 }
+--------------------------------------------------------------------------
+-- LEVEL OF DETAIL. A bike is ~55 model draws and 2 ground traces a frame,
+-- every frame, at any distance -- eight riders in view is ~440 draws for
+-- bikes that past a street's width are a few pixels across. So by distance
+-- from the eye:
+--
+--   0  near   everything
+--   1  mid    the chainring in 6 pieces not 16; no joint balls, no chain,
+--             no pedal blocks or spindle: all under a few pixels there
+--   2  far    frame, fork, bars, saddle and tyres; the wheels drawn where
+--             they sit at rest instead of traced to the ground (the two
+--             traces are most of what a far bike costs)
+--
+-- bmx_lod_scale stretches both distances (2 = twice as far); 0 turns LOD
+-- off. The rider's hand and foot targets are worked out at every level:
+-- only what is DRAWN changes, never where the rider's limbs go.
+--------------------------------------------------------------------------
+local LOD_MID, LOD_FAR = 900, 2500
+local lodScale = CreateClientConVar("bmx_lod_scale", "1", true, false,
+    "BMX bike detail by distance: 1 normal, 2 = full detail twice as far, 0 = always full.")
+
+function BMX.BikeLOD(ent)
+    local k = lodScale:GetFloat()
+    if k <= 0 then return 0 end
+    local d = EyePos():Distance(ent:GetPos())
+    if d > LOD_FAR * k then return 2 end
+    if d > LOD_MID * k then return 1 end
+    return 0
+end
+
 local CRANK   = 6.8     -- 170 mm cranks
 local Q       = 3.4     -- half the distance between the pedals
 local RING    = 3.8     -- chainring radius
@@ -381,6 +412,7 @@ function ENT:Draw()
     local half = WC.wheelbase * 0.5
     local dt   = FrameTime()
     local debug = GetConVar("bmx_debug") and GetConVar("bmx_debug"):GetInt() > 0
+    local lod = debug and 0 or BMX.BikeLOD(self)
 
     ----------------------------------------------------------------------
     -- A bike that ships a real model draws it, through a pushed matrix so
@@ -425,16 +457,28 @@ function ENT:Draw()
     -- The SUSPENSION MOUNTS, exactly as ENT:Initialize places them: restLength
     -- above the axle line. axlePos slides the axle down the strut from there.
     local lift = WC.restLength
-    local fPos, fHit = axlePos(self, Vector( half, 0, lift))
-    local rPos, rHit = axlePos(self, Vector(-half, 0, lift))
+    local fPos, fHit, rPos, rHit
+    if lod >= 2 then
+        -- Far: where the wheels sit at rest (the axle line lifted by the
+        -- static sag), and grounded as the server says, with no traces.
+        local g = physenv.GetGravity():Length()
+        local sag = math.Clamp(C.Chassis.mass * g * 0.5 / WC.spring, 0, WC.restLength)
+        fPos = self:LocalToWorld(Vector( half, 0, sag))
+        rPos = self:LocalToWorld(Vector(-half, 0, sag))
+        fHit = self:GetGrounded()
+        rHit = fHit
+    else
+        fPos, fHit = axlePos(self, Vector( half, 0, lift))
+        rPos, rHit = axlePos(self, Vector(-half, 0, lift))
+    end
 
     local fallen = math.abs((BMX.Attitude(self, vector_up))) > C.Stand.maxRoll
     local fSpin = self:WheelSpin("front", fHit, fallen, dt)
     local rSpin = self:WheelSpin("rear",  rHit, fallen, dt)
 
     if not bike.wheelModel then
-        drawWheel(self, "front", fPos, frontAxle, fSpin, WC.radius, fHit, debug)
-        drawWheel(self, "rear",  rPos, rearAxle,  rSpin, WC.radius, rHit, debug)
+        drawWheel(self, "front", fPos, frontAxle, fSpin, WC.radius, fHit, debug, lod)
+        drawWheel(self, "rear",  rPos, rearAxle,  rSpin, WC.radius, rHit, debug, lod)
     end
 
     if bike.hasModel then return end
@@ -463,13 +507,15 @@ function ENT:Draw()
         local off = right * (1.6 * k * side)
         tube(bb + off, rPos + off, 0.95 * k, col)       -- chain stays
         tube(seatJ + off, rPos + off, 0.95 * k, col)    -- seat stays
-        joint(rPos + off, 1.3 * k, col)                 -- dropouts
+        if lod == 0 then joint(rPos + off, 1.3 * k, col) end  -- dropouts
     end
     -- Where the tubes meet: round, not a notch.
-    joint(bb, 2.4 * k, col)
-    joint(seatJ, 1.9 * k, col)
-    joint(headT, 2.1 * k, col)
-    joint(headB, 2.1 * k, col)
+    if lod == 0 then
+        joint(bb, 2.4 * k, col)
+        joint(seatJ, 1.9 * k, col)
+        joint(headT, 2.1 * k, col)
+        joint(headB, 2.1 * k, col)
+    end
 
     -- Seat post and seat: a padded saddle, not a brick.
     tube(seatJ, seat, 1.0 * k, COL_CHROME)
@@ -523,10 +569,12 @@ function ENT:Draw()
 
     local cr = right * (-CHAINY * k)             -- -Y local is +right world
     local ringC = bb + cr
-    ring(ringC, fwd, up, RING * k, 0.6 * k, COL_CHROME, 16)
+    if lod < 2 then ring(ringC, fwd, up, RING * k, 0.6 * k, COL_CHROME, lod == 0 and 16 or 6) end
     local cogC = rPos + cr
-    tube(ringC + up * (RING * k), cogC + up * (COG * k), 0.45 * k, COL_PART)   -- chain, top
-    tube(ringC - up * (RING * k), cogC - up * (COG * k), 0.45 * k, COL_PART)   -- chain, bottom
+    if lod == 0 then
+        tube(ringC + up * (RING * k), cogC + up * (COG * k), 0.45 * k, COL_PART)   -- chain, top
+        tube(ringC - up * (RING * k), cogC - up * (COG * k), 0.45 * k, COL_PART)   -- chain, bottom
+    end
 
     for _, side in ipairs({ 1, -1 }) do
         local t = self.crankAngle + (side == 1 and 0 or math.pi)
@@ -534,12 +582,16 @@ function ENT:Draw()
         local root = bb + right * (Q * k * side)
         local pedal = root + arm
         ik[side == 1 and "rFoot" or "lFoot"] = pedal + right * (1.8 * k * side) + up * (0.9 * k)
-        tube(root, pedal, 0.9 * k, COL_PART)
+        if lod < 2 then tube(root, pedal, 0.9 * k, COL_PART) end
         -- Matte: pedals are grippy plastic and pins, not polished metal.
-        solid("box", pedal + right * (1.8 * k * side), self:GetAngles(),
-            Vector(3.6, 3.6, 1.0) * k, COL_PART, MAT.matte)
+        if lod == 0 then
+            solid("box", pedal + right * (1.8 * k * side), self:GetAngles(),
+                Vector(3.6, 3.6, 1.0) * k, COL_PART, MAT.matte)
+        end
     end
-    tube(bb - right * (Q * k), bb + right * (Q * k), 1.3 * k, COL_PART)     -- spindle
+    if lod == 0 then
+        tube(bb - right * (Q * k), bb + right * (Q * k), 1.3 * k, COL_PART)     -- spindle
+    end
 
     ----------------------------------------------------------------------
     -- Kickstand, when it is DOWN (networked: put down by a rider stopping, or
@@ -549,9 +601,13 @@ function ENT:Draw()
     if self:GetStandDown() then
         local from = bb - right * (2 * k)
         local want = from - up * (16 * k) - right * (7 * k)
-        local tr = util.TraceLine({ start = from, endpos = want,
-            filter = { self, self:GetPod() }, mask = MASK_SOLID })
-        tube(from, tr.Hit and tr.HitPos or want, 0.8 * k, COL_PART)
+        local to = want
+        if lod < 2 then
+            local tr = util.TraceLine({ start = from, endpos = want,
+                filter = { self, self:GetPod() }, mask = MASK_SOLID })
+            if tr.Hit then to = tr.HitPos end
+        end
+        tube(from, to, 0.8 * k, COL_PART)
     end
 end
 

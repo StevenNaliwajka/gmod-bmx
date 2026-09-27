@@ -55,16 +55,28 @@ end
 local function probe(p, zTop, G, filter)
     local tr = down(p, zTop + 3, zTop - G.drop - 4, filter)
     if tr.StartSolid then return "wall" end
-    if not tr.Hit or not solidOK(tr) then return "off" end
+    if not tr.Hit or not solidOK(tr) then return "off", nil end
     local z = tr.HitPos.z
     if z > zTop + G.topTol then return "wall" end
     if z >= zTop - G.topTol then return "on", z end
-    return "off"
+    return "off", z
+end
+
+-- A REAL DROP, not a slope. Just past where the top ends, the surface must
+-- be at least `drop` lower (or not there at all). Without this a bare ramp
+-- was an "edge": its surface falls away to one side of any point on it, so
+-- a bike flying across a 15-40 degree slope locked into a peg grind on
+-- nothing, pinned into the ramp. Measured in tests/test_grind.lua.
+local function dropsAt(p, zTop, G, filter)
+    local tr = down(p, zTop + 3, zTop - G.drop - 4, filter)
+    if tr.StartSolid then return false end
+    if not tr.Hit or not solidOK(tr) then return true end
+    return tr.HitPos.z < zTop - G.drop
 end
 
 -- How far from `from` (on the top) along `dir` the top ends. nil if it does
 -- not end within `maxd`, or ends in a wall.
-local function edgeDist(from, dir, zTop, maxd, G, filter)
+local function edgeDist(from, dir, zTop, maxd, G, filter, quick)
     local step, last = 1.5, 0
     local d = step
     while d <= maxd + 1e-6 do
@@ -76,7 +88,11 @@ local function edgeDist(from, dir, zTop, maxd, G, filter)
                 local m = (a + b) * 0.5
                 if probe(from + dir * m, zTop, G, filter) == "on" then a = m else b = m end
             end
-            return (a + b) * 0.5
+            local edge = (a + b) * 0.5
+            if not quick and not dropsAt(from + dir * (edge + G.edgeCheck), zTop, G, filter) then
+                return nil
+            end
+            return edge
         end
         last = d
         d = d + step
@@ -96,7 +112,13 @@ end
 -- `n` and, for an edge, `side` (horizontal, pointing onto the top). Returns
 -- the point on the grind line and its top height, or nil if there is no rail
 -- there any more.
-local function locate(rail, guess, zGuess, G, filter)
+--
+-- `quick` is the per-substep tracking case: a rail already known to be a rail
+-- is followed along ONE side (a pipe's centre is that edge less half the
+-- width it was measured at), without re-proving the drop. Every few substeps
+-- it is found in full again, so a rail that widens or runs out onto a ramp is
+-- still noticed within a tenth of a second.
+local function locate(rail, guess, zGuess, G, filter, quick)
     local n = rail.n
     -- Find the top near the guess. A thin pipe is easy to miss with one line
     -- straight down, so look either side as well.
@@ -114,13 +136,20 @@ local function locate(rail, guess, zGuess, G, filter)
     if not base then return nil end
 
     if rail.kind == "crank" then
+        if quick and rail.width then
+            local a = edgeDist(base, n, zTop, G.edgeSearch, G, filter, true)
+            if not a then return nil end
+            local c = base + n * (a - rail.width * 0.5)
+            return Vector(c.x, c.y, zTop), zTop
+        end
         local a = edgeDist(base, n, zTop, G.edgeSearch, G, filter)
         local b = edgeDist(base, -n, zTop, G.edgeSearch, G, filter)
         if not a or not b or a + b > G.pipeMaxWidth then return nil end
+        rail.width = a + b
         local c = base + n * ((a - b) * 0.5)
         return Vector(c.x, c.y, zTop), zTop
     end
-    local e = edgeDist(base, -rail.side, zTop, G.edgeSearch, G, filter)
+    local e = edgeDist(base, -rail.side, zTop, G.edgeSearch, G, filter, quick)
     if not e then return nil end
     local c = base - rail.side * e
     return Vector(c.x, c.y, zTop), zTop
@@ -201,7 +230,7 @@ function BMX.FindRail(point, vel, cfg, filter, centre)
     local rail
     if a and b and a + b <= G.pipeMaxWidth then
         local c = T + n * ((a - b) * 0.5)
-        rail = { kind = "crank", point = Vector(c.x, c.y, zTop), n = n }
+        rail = { kind = "crank", point = Vector(c.x, c.y, zTop), n = n, width = a + b }
     elseif a or b then
         local useA = a ~= nil
         if a and b and centre then useA = (centre - T):Dot(n) >= 0 end
@@ -264,14 +293,23 @@ end
 -- middle. Anything in the way and the pose is refused: a grind is not
 -- started there, and one under way ends at the last pose that was clear.
 --------------------------------------------------------------------------
-function BMX.GrindPoseClear(pos, ang, cfg, filter)
+--
+-- `low` checks only the boxes that hang down beside a rail -- the wheels and
+-- the pegs, corners only -- which is what a grind under way can run into from
+-- one substep to the next; the whole bike is checked on the way on, and again
+-- every Grind.fullEvery substeps.
+function BMX.GrindPoseClear(pos, ang, cfg, filter, low)
     local fa, ra, ua = ang:Forward(), ang:Right(), ang:Up()
     local function world(v) return pos + fa * v.x - ra * v.y + ua * v.z end
-    for _, b in ipairs(BMX.CollisionBoxes(cfg)) do
+    local boxes = BMX.CollisionBoxes(cfg)
+    for i, b in ipairs(boxes) do
         local lo, hi = b[1], b[2]
         local cx, cy = (lo.x + hi.x) * 0.5, (lo.y + hi.y) * 0.5
-        for _, xy in ipairs({ { lo.x, lo.y }, { lo.x, hi.y }, { hi.x, lo.y },
-                               { hi.x, hi.y }, { cx, cy } }) do
+        local pts = { { lo.x, lo.y }, { lo.x, hi.y }, { hi.x, lo.y }, { hi.x, hi.y } }
+        if not low then pts[5] = { cx, cy } end
+        -- Box 1 is the body and the last the bars: high, and only checked in full.
+        if low and (i == 1 or (cfg.Chassis.barHullCentre and i == #boxes)) then pts = {} end
+        for _, xy in ipairs(pts) do
             local tr = util.TraceLine({
                 start  = world(Vector(xy[1], xy[2], hi.z)),
                 endpos = world(Vector(xy[1], xy[2], lo.z)),
@@ -308,6 +346,48 @@ local function code(g)
 end
 
 --------------------------------------------------------------------------
+-- CHEAP FIRST. The full search (FindRail) is ~40 traces, and TryGrind runs
+-- on every airborne substep -- 66 a second, per bike, for every jump -- where
+-- nearly always the answer is "that is just the ground". So two quick
+-- questions before it:
+--
+--   1. Is there anything at all in the lock-on window? One hull the size of
+--      the search, swept down through it. High in the air: no, done.
+--   2. Is it one plane? Five lines: the middle and the four corners. If all
+--      five hit, facing the same way, with each diagonal's ends averaging
+--      to the middle, it is flat ground or an even ramp, and neither is a
+--      rail. (A rail or an edge breaks the plane: a corner misses, or drops.)
+--
+-- Only what survives both pays for the search. Measured in
+-- tests/test_perf.lua: in the air over flat ground 27 traces a tick -> 8.
+--------------------------------------------------------------------------
+function BMX.MightBeRail(point, cfg, filter)
+    local G = cfg.Grind
+    local r = G.reach
+    local pre = util.TraceHull({ start = point + UP * G.snapBelow, endpos = point - UP * G.snapAbove,
+        mins = Vector(-r, -r, 0), maxs = Vector(r, r, 0.5), filter = filter, mask = MASK_SOLID })
+    if not pre.Hit then return false end
+    if pre.StartSolid then return true end
+
+    local z, n = {}, nil
+    local offs = { Vector(0, 0, 0), Vector(r, r, 0), Vector(-r, -r, 0), Vector(r, -r, 0), Vector(-r, r, 0) }
+    for i, o in ipairs(offs) do
+        local p = point + o
+        local tr = down(p, point.z + G.snapBelow, point.z - G.snapAbove - G.drop, filter)
+        if not tr.Hit or tr.StartSolid or not solidOK(tr) then return true end
+        if i == 1 then
+            n = tr.HitNormal
+        elseif tr.HitNormal:Dot(n) < 0.98 then
+            return true
+        end
+        z[i] = tr.HitPos.z
+    end
+    local tol = 0.5
+    if abs(z[2] + z[3] - 2 * z[1]) > tol or abs(z[4] + z[5] - 2 * z[1]) > tol then return true end
+    return false
+end
+
+--------------------------------------------------------------------------
 -- Try to lock on. Called each substep while not grinding; true if it did.
 --------------------------------------------------------------------------
 function BMX.TryGrind(ent, phys, cfg, st, vel)
@@ -321,6 +401,7 @@ function BMX.TryGrind(ent, phys, cfg, st, vel)
 
     local crank = BMX.GrindCrankPoint(cfg)
     local point = ent:LocalToWorld(crank)
+    if not BMX.MightBeRail(point, cfg, ent.traceFilter) then return false end
     local centre = phys:LocalToWorld(phys:GetMassCenter())
     local rail = BMX.FindRail(point, vel, cfg, ent.traceFilter, centre)
     if not rail then return false end
@@ -440,7 +521,9 @@ function BMX.GrindStep(ent, phys, cfg, dt, inp, st)
     local guess = g.point + g.dir * (v * dt)
     local look = g.point
     if g.kind == "peg" then look = g.point - g.side * G.pegInset end
-    local p = locate(g, look + g.dir * (v * dt), guess.z, G, ent.traceFilter)
+    g.tick = (g.tick or 0) + 1
+    local full = g.tick % G.fullEvery == 0
+    local p = locate(g, look + g.dir * (v * dt), guess.z, G, ent.traceFilter, not full)
     if not p then return BMX.EndGrind(ent, phys, cfg, st, "end") end
     if g.kind == "peg" then p = p + g.side * G.pegInset end
     -- A rail does not jump. A top found well above or below where this one
@@ -465,7 +548,7 @@ function BMX.GrindStep(ent, phys, cfg, dt, inp, st)
     local oldPoint, oldDir, oldN, oldSide = g.point, g.dir, g.n, g.side
     g.point = p
     local pos, ang = BMX.GrindPose(g, cfg)
-    if not BMX.GrindPoseClear(pos, ang, cfg, ent.traceFilter) then
+    if not BMX.GrindPoseClear(pos, ang, cfg, ent.traceFilter, g.tick % G.fullEvery ~= 0) then
         -- No room further on: let go from the last pose that had it.
         g.point, g.dir, g.n, g.side = oldPoint, oldDir, oldN, oldSide
         return BMX.EndGrind(ent, phys, cfg, st, "blocked")

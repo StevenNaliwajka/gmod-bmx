@@ -1078,6 +1078,53 @@ function(ctx)
     SafeRemoveEntity(beam)
 end)
 
+T.Case("lands_on_a_transition", { timeout = 25,
+    desc = "hands off, the bike comes down onto a 30-degree slope matching it, not level" },
+function(ctx)
+    -- A skatepark lands you on slopes. The air assist levels toward the
+    -- surface it is about to land on (BMX.LandingNormal), which on a tilted
+    -- plate the offline plant cannot model is a question for VPhysics.
+    ctx:input({})
+    local b = ctx.bike
+    local phys = b:GetPhysicsObject()
+    local plate = ents.Create("prop_physics")
+    plate:SetModel("models/hunter/plates/plate8x8.mdl")
+    plate:SetPos(ctx.ground + Vector(0, 0, 120))
+    plate:SetAngles(Angle(30, 0, 0))        -- falls away toward +x
+    plate:Spawn()
+    local pp = plate:GetPhysicsObject()
+    if IsValid(pp) then pp:EnableMotion(false) end
+    ctx:wait(0.1)
+    local n = plate:GetUp()
+    ctx:log(string.format("slope normal (%.2f, %.2f, %.2f)", n.x, n.y, n.z))
+
+    -- Above the uphill half, level, riding down the fall line.
+    local over = plate:GetPos() - Vector(90, 0, 0)
+    local tr = util.TraceLine({ start = over + Vector(0, 0, 200), endpos = over - Vector(0, 0, 200),
+        filter = { b, b:GetPod(), b:GetDriver() } })
+    if not ctx:ok(tr.Hit and tr.Entity == plate, "found the slope under the start") then
+        SafeRemoveEntity(plate) return
+    end
+    phys:SetAngles(Angle(0, 0, 0))
+    phys:SetPos(tr.HitPos + Vector(0, 0, 70))
+    phys:SetVelocity(Vector(250, 0, 0))
+    phys:SetAngleVelocity(Vector(0, 0, 0))
+    b.st.grounded, b.st.airMode = false, false
+
+    local off
+    ctx:waitUntil(function()
+        if b.st.grounded then
+            off = math.deg(math.acos(math.Clamp(b:GetUp():Dot(n), -1, 1)))
+            return true
+        end
+        return false
+    end, 3, "the landing")
+    ctx:wait(1)
+    if off then ctx:between(off, 0, 15, "off the slope at touchdown", "deg") end
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+    SafeRemoveEntity(plate)
+end)
+
 --------------------------------------------------------------------------
 T.Case("sounds_exist", { rider = false, timeout = 15,
     desc = "every sound the addon references actually ships with the game" },

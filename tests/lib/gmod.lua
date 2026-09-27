@@ -454,11 +454,19 @@ function M.Realm(world, which)
     ----------------------------------------------------------------------
     -- util / physenv / engine / game / file / list / undo / cleanup
     ----------------------------------------------------------------------
+    -- A HULL trace sweeps a box, as the engine's does: against the ground
+    -- plane that is the plane moved out by the box's deepest corner, against
+    -- a solid box it is that box grown by the hull (Minkowski). HitPos is the
+    -- hull's centre where it stops. A line trace is a hull of zero size.
     local function trace(t)
         local s, e = t.start, t.endpos
+        local hmin, hmax = t.mins or Vector(0, 0, 0), t.maxs or Vector(0, 0, 0)
         local res = { Hit = false, Fraction = 1, HitPos = e, HitNormal = Vector(groundNormal(world)),
                       StartPos = s, HitWorld = false }
-        local hs, he = groundHeight(world, s), groundHeight(world, e)
+        local nx, ny, nz = groundNormal(world)
+        local deep = math.min(nx * hmin.x, nx * hmax.x) + math.min(ny * hmin.y, ny * hmax.y)
+            + math.min(nz * hmin.z, nz * hmax.z)
+        local hs, he = groundHeight(world, s) + deep, groundHeight(world, e) + deep
         if hs < 0 and groundAt(world, s) then
             res.Hit, res.Fraction, res.HitPos, res.StartSolid = true, 0, s, true
             res.HitWorld = true
@@ -475,7 +483,7 @@ function M.Realm(world, which)
         -- Nearest solid box along the segment (slab method).
         local best = res.Hit and res.Fraction or 1
         for _, b in ipairs(world.solids or {}) do
-            local lo, hi = b[1], b[2]
+            local lo, hi = b[1] - hmax, b[2] - hmin
             if s.x >= lo.x and s.x <= hi.x and s.y >= lo.y and s.y <= hi.y
                 and s.z >= lo.z and s.z <= hi.z then
                 res.Hit, res.Fraction, res.HitPos, res.StartSolid = true, 0, s, true
@@ -515,7 +523,8 @@ function M.Realm(world, which)
     R.precached = {}
     env.util = {
         PrecacheModel = function(m) R.precached[m] = true end,
-        TraceLine = trace,
+        TraceLine = function(t) return trace({ start = t.start, endpos = t.endpos,
+            filter = t.filter, mask = t.mask }) end,
         TraceHull = trace,
         AddNetworkString = function(name) R.netStrings[name] = true end,
         PrecacheSound = function() end,

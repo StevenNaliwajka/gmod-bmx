@@ -156,6 +156,25 @@ What the shim gives the tests:
   figures: ride height 7.2-7.5 u (live 7.3-7.5), the full weight carried, and a
   right lean turning right.
 
+- **A world with shape**: the ground can be a ramp (`World{ groundSlope = }`),
+  and boxes can stand in for rails and ledges (`World{ solids = }`). Traces hit
+  both, and hull traces sweep their box the way the engine's do. The plant does
+  not collide with the boxes: a grind places the bike itself, and that
+  placement is what is tested.
+- **A cost meter**: `tests/test_perf.lua` counts the traces one physics
+  substep makes in every state (parked, riding, in the air, grinding) and the
+  model draws one bike costs a frame near, mid and far, and fails when a
+  change blows a budget.
+
+Which file covers what, for the newer parts:
+
+| File | What it rides |
+|---|---|
+| `test_grind.lua` | a bike placed over a pipe, a ledge, a bare ramp: what locks on and what does not |
+| `test_grind_jump.lua` | a HUMAN rider through the real keys (W, SPACE) hopping onto rails, with every run checked for being launched |
+| `test_landing.lua` | hands-off landings onto transitions and banks, and a barrel roll left alone |
+| `test_perf.lua` | the trace and draw budgets |
+
 The plant is not VPhysics, so the closed-loop tests use the headless suite's
 bands and assert signs and orderings. When the two disagree, take it to a real
 server: the headless suite is the authority on how the bike behaves.

@@ -20,6 +20,38 @@ local abs, min, max = math.abs, math.min, math.max
 local TAU = math.pi * 2
 
 --------------------------------------------------------------------------
+-- WHERE WILL IT LAND? The surface under the bike's falling path, found by
+-- tracing that path (the mass centre's parabola) Air.landLookAhead seconds
+-- ahead in three straight pieces. Its normal, or nil if the path meets
+-- nothing in time or only a wall.
+--
+-- A skatepark is mostly slopes -- transitions, banks, quarter-pipe faces --
+-- and the auto-level used to level the bike to WORLD up whatever was below
+-- it, so hands off it came down onto a 30-degree transition 27 degrees off
+-- it, and onto a 25-degree bank 21 off. Measured in tests/test_landing.lua.
+--------------------------------------------------------------------------
+function BMX.LandingNormal(ent, phys, cfg)
+    local A = cfg.Air
+    local vel = phys:GetVelocity()
+    local g = physenv.GetGravity()
+    local com = phys:LocalToWorld(phys:GetMassCenter())
+    local T = A.landLookAhead
+    local prev = com
+    for i = 1, 3 do
+        local t = T * i / 3
+        local p = com + vel * t + g * (0.5 * t * t)
+        local tr = util.TraceLine({ start = prev, endpos = p, filter = ent.traceFilter,
+            mask = MASK_SOLID })
+        if tr.Hit and not tr.StartSolid then
+            if tr.HitNormal.z >= A.landMinNormalZ then return tr.HitNormal end
+            return nil
+        end
+        prev = p
+    end
+    return nil
+end
+
+--------------------------------------------------------------------------
 -- One physics substep of air control.
 --
 -- `st.angVel` is a WORLD-space angular velocity vector estimated in
@@ -63,10 +95,40 @@ function BMX.AirControl(ent, phys, cfg, dt, inp, st)
     ----------------------------------------------------------------------
     if A.autoLevel > 0 then
         local vel = phys:GetVelocity()
-        if vel.z < -40 then
-            local roll = select(1, BMX.Attitude(ent, vector_up))
-            local strength = A.autoLevel * (1 - abs(inp.lean))
-            aRoll = aRoll - roll * strength
+
+        -- LEVEL TO WHAT IT WILL LAND ON, not to world up. See LandingNormal.
+        -- Looked for every third substep: the answer changes slowly and it
+        -- costs three traces.
+        --
+        -- A CORRECTION, NOT A RESCUE: only with a rider, and only for a bike
+        -- already within landAssistMax of the surface. A riderless bike
+        -- falling over, or a rider coming down upside down, is a crash and
+        -- stays one; matching it from there made both land on their wheels.
+        st.landTick = (st.landTick or 0) + 1
+        if st.landTick % 3 == 1 then
+            local n = IsValid(ent:GetDriver()) and BMX.LandingNormal(ent, phys, C) or nil
+            if n and math.acos(BMX.Clamp(up:Dot(n), -1, 1)) > A.landAssistMax then n = nil end
+            st.landRef = n
+        end
+        local ref = st.landRef or vector_up
+
+        -- World up only while descending (the original weak pull); a
+        -- surface in sight, for the whole flight: a short hop is half over
+        -- before it is falling at all.
+        if vel.z < -40 or st.landRef then
+            local roll = select(1, BMX.Attitude(ent, ref))
+            local hands = 1 - abs(inp.lean)
+            -- Not mid barrel roll: past a quarter turn the rider meant it,
+            -- and letting go of the key must not wrench them back.
+            if st.landRef and abs(st.spinRoll or 0) < math.pi * 0.5 then
+                -- A surface is coming: match it, as firmly as pitch is
+                -- levelled. The weak world-up pull below turned a short hop
+                -- about 5 degrees, nowhere near a 25-degree bank.
+                local k = A.autoLevel / 1.6
+                aRoll = aRoll - (A.landRollKp * roll + A.landRollKd * wRoll) * hands * k
+            else
+                aRoll = aRoll - roll * A.autoLevel * hands
+            end
         end
 
         ------------------------------------------------------------------
@@ -89,7 +151,7 @@ function BMX.AirControl(ent, phys, cfg, dt, inp, st)
         -- pull them back the way they came.
         ------------------------------------------------------------------
         if inp.pitch == 0 and abs(st.spinPitch or 0) < math.pi * 0.5 then
-            local pitch = select(2, BMX.Attitude(ent, vector_up))
+            local pitch = select(2, BMX.Attitude(ent, ref))
             aPitch = aPitch - A.pitchLevelKp * pitch - A.pitchLevelKd * wPitch
         end
     end

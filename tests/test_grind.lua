@@ -174,3 +174,26 @@ T.test("grind: touching the rail is not a crash, and nobody aboard ends it", fun
     sv:tick()
     T.ok(not bike.st.grind, "the grind ends with the rider gone")
 end)
+
+T.test("grind: a bare ramp is not an edge, at any slope or heading", function()
+    -- A ramp's surface falls away to one side of every point on it, which the
+    -- first edge finder took for a ledge: flying across a 15-40 degree slope
+    -- locked the bike into a peg grind on nothing, pinned into the ramp.
+    local bad = {}
+    for _, d in ipairs({ 10, 15, 25, 30, 40, 50 }) do
+        for _, yaw in ipairs({ 0, 45, 60, 90, 180, 270 }) do
+            local sv = F.server({ groundSlope = d })
+            local E = sv.env
+            local bike = F.bike(sv)
+            F.scripted(sv, bike)
+            sv:run(0.2)
+            F.place(bike, E.Vector(0, 0, 14), E.Angle(0, yaw, 0))
+            bike:GetPhysicsObject():SetVelocity(E.Angle(0, yaw, 0):Forward() * 250 + E.Vector(0, 0, -20))
+            bike.st.grounded = false
+            local g
+            sv:run(0.4, function() g = g or (bike.st.grind and bike.st.grind.kind) end)
+            if g then bad[#bad + 1] = d .. " deg / yaw " .. yaw end
+        end
+    end
+    T.eq(#bad, 0, "false grinds: " .. table.concat(bad, ", "))
+end)

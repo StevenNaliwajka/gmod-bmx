@@ -544,6 +544,21 @@ C.Air = {
     pitchLevelKp = 12,
     pitchLevelKd = 3.0,
 
+    -- LANDING ON A SLOPE (BMX.LandingNormal in sv_air.lua). The levelling
+    -- above aims at the surface the bike is about to land on when one is in
+    -- sight: this far ahead along its path, s, and no steeper than a normal
+    -- this upright (0.5 = a 60-degree face; steeper is a wall, not a landing).
+    landLookAhead  = 0.9,
+    landMinNormalZ = 0.5,
+    -- ...and roll is then matched firmly, hands off and not mid barrel roll:
+    -- 12/3 (the pitch gains) left a 25-degree bank 10 off at touchdown after
+    -- a short hop, 40/7 leaves it under 1 (tests/test_landing.lua).
+    -- Only for a bike already this close to the surface: a correction, not a
+    -- rescue (an upside-down landing still throws you).
+    landAssistMax = math.rad(60),
+    landRollKp = 40,
+    landRollKd = 7,
+
     -- Both wheels must be off the ground for this long before air mode engages,
     -- so a bump in the road is not a "trick".
     engageDelay = 0.08,
@@ -731,6 +746,8 @@ C.Grind = {
     topTol    = 1.5,    -- within this of the top is still on it
     pipeMaxWidth = 6,   -- wider than this is a beam: grind its edge on pegs
     edgeSearch   = 12,  -- how far across the top an edge is looked for
+    edgeCheck    = 2.5, -- this far past an edge the surface must be `drop`
+                        -- lower: a ramp falls away too, but gently
 
     -- GETTING ON. Hopping onto it or just landed, moving along it.
     minSpeed      = 70,             -- u/s along the rail
@@ -751,6 +768,10 @@ C.Grind = {
     -- A rail's top moves this little per substep; a bigger jump is some
     -- other surface, and the grind ends rather than follow it.
     maxStepZ = 2,
+    -- While grinding the rail is followed cheaply (one side, the wheels' and
+    -- pegs' room) and found in full, drop and whole bike, every this many
+    -- substeps: ~25 traces a substep instead of 43 (tests/test_perf.lua).
+    fullEvery = 6,
     -- For this long after letting go the bike may go no faster than it left
     -- (sv_physics.lua): the backstop for a pose the room check missed.
     exitGuard = 0.3,

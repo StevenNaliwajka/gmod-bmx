@@ -340,7 +340,23 @@ function BMX.PhysicsStep(ent, phys, dt)
     if rear.onGround  then n = n + rear.contactNorm;  c = c + 1 end
     if c > 0 then
         n:Normalize()
-        st.groundNormal = n
+        st.groundNormalRaw = n
+        -- SMOOTHED. A floor's seams and undulations swing the raw normal tick
+        -- to tick. Lean used to be held against it, and riding hands-off over
+        -- bumps rolled the bike up to 16 degrees by itself (the live server
+        -- showed 18); lean is now held against GRAVITY (BMX.BalanceUp), which
+        -- bumps cannot touch, but pitch -- what a wheelie or a stoppie is
+        -- judged on -- is still measured against this, and so is the steep-
+        -- face blend. Followed at Balance.normalFollow it still tracks a real
+        -- transition in a couple of tenths of a second. Taken RAW on
+        -- touchdown, so a landing is judged on the surface it actually met.
+        if not wasGrounded or not st.groundNormal then
+            st.groundNormal = n
+        else
+            local k = min(1, C.Balance.normalFollow * dt)
+            local sm = st.groundNormal + (n - st.groundNormal) * k
+            st.groundNormal = sm:GetNormalized()
+        end
     else
         st.groundNormal = Vector(0, 0, 1)
     end

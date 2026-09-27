@@ -175,6 +175,14 @@ C.Wheel = {
     -- the bike, and a 43,000 spring is not integrable at 66 Hz. See below.
     restLength = 8.0,
 
+    -- STEPS (sv_wheel.lua, "a step is not a spring"). Riding, the ground under
+    -- a wheel may rise at most climbRate, u/s -- a tyre rolls up a kerb over
+    -- the ~9 units it takes to climb it, ~110 u/s at riding speed -- and a
+    -- rise of more than stepMax in one substep is a face, not ground: about
+    -- half the radius, the tallest step a wheel rolls onto without a hop.
+    climbRate = 150,
+    stepMax   = 5,
+
     -- Sized so each wheel carries m*g/2 at ~3u of sag (it was half the old
     -- 6-unit travel; with 8 it is 3/8, leaving more for the landing):
     --   k = (86*600/2) / 3 ~= 8600
@@ -342,10 +350,28 @@ C.Balance = {
     -- below ~182 the bike cannot hold the lean it is asked for, at any speed,
     -- however long you wait.
     --
-    -- Kd tracks Kp: critical is 2*sqrt(Kp), and a little under feels alive while
-    -- a lot under oscillates and reads as twitchy. 27 is zeta ~0.9.
-    leanKp = 220,
-    leanKd = 27.0,
+    -- Kd: critical is 2*sqrt(Kp) on paper, but the bike is not the paper
+    -- plant. When a lean is let go the bike is still carving, and the tyres'
+    -- cornering force goes on righting it past upright: at 27 (zeta ~0.9 on
+    -- paper) every release of A or D swung 24% of the lean through to the
+    -- other side, and a rider called it "bouncing back and forth". The ride is
+    -- meant to be CALM (the Tony Hawk games, not a simulator), so Kd is set
+    -- well past critical: 65 leaves 6% (1.8 degrees) and settles in half a
+    -- second, and Kp went 220 -> 260 to keep the lean as quick to arrive.
+    -- tests/test_ride_feel.lua holds the overshoot under 10%.
+    -- How fast the smoothed ground normal (pitch is measured against it)
+    -- follows the real one, 1/s (sv_physics.lua, section 5): slow enough to
+    -- ignore a floor's bumps, fast enough to follow a transition.
+    normalFollow = 6,
+
+    -- Balance is upright to GRAVITY (BMX.BalanceUp in sv_balance.lua), except
+    -- pointed steeply up or down a surface, where it blends to square to the
+    -- surface between these climb angles: a quarter pipe's face.
+    surfaceFrom = math.rad(45),
+    surfaceTo   = math.rad(70),
+
+    leanKp = 260,
+    leanKd = 65,
 
     -- Ceiling on the assist's angular acceleration, rad/s^2. This is the
     -- difference between an arcade bike and one on rails: with no cap, no

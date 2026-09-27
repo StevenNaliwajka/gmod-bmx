@@ -51,10 +51,15 @@ T.test("the lean Kp is above the floor that can meet its own spec", function()
         string.format("leanKp %g is below the %.0f the spec needs", C.Balance.leanKp, floor))
 end)
 
-T.test("the lean Kd is near critical for its Kp", function()
+T.test("the lean Kd is past critical for its Kp: a calm ride, not a lively one", function()
+    -- It was held near critical (0.6-1.2 on paper), and the real bike, whose
+    -- tyres go on righting it after a lean is let go, overshot every release
+    -- by 24%. The ride is meant to be calm, so the paper ratio sits well past
+    -- 1; tests/test_ride_feel.lua measures what that buys (overshoot < 10%).
+    -- The ceiling stops it being so heavy that leaning in turns sluggish.
     local C = cfg()
     local zeta = C.Balance.leanKd / (2 * math.sqrt(C.Balance.leanKp))
-    T.between(zeta, 0.6, 1.2, "lean damping ratio")
+    T.between(zeta, 1.3, 2.6, "lean damping ratio, on paper")
 end)
 
 T.test("the assist ceiling beats gravity at full lean, with margin", function()

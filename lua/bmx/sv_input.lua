@@ -194,8 +194,11 @@ end)
 -- Ramping the target (not the output) keeps the PD controller honest while
 -- giving the rider a continuous input.
 --------------------------------------------------------------------------
-local LEAN_RATE   = 4.2    -- units of target per second
-local LEAN_RETURN = 6.5    -- faster when returning to centre: crisper corner exits
+-- CALM, not crisp. Returning to centre used to be faster (6.5) for "crisper
+-- corner exits", and on a keyboard, where A and D are all or nothing, that
+-- made every release a snap that the bike overshot. Both are a glide now.
+local LEAN_RATE   = 3.0    -- units of target per second
+local LEAN_RETURN = 3.0    -- the same on the way back: a glide, not a snap
 local PITCH_RATE  = 6.0
 
 local function approach(cur, target, rate, dt)

@@ -131,6 +131,7 @@ function M.World(opts)
         -- A RAMP: the ground can be an inclined plane through (0, 0, groundZ)
         -- rising toward +x at this many degrees. 0 is the flat plane.
         groundSlope = opts.groundSlope or 0,
+        groundBumps = opts.groundBumps,          -- see bump() below
         -- SOLIDS: axis-aligned boxes { mins, maxs } standing in for a map's
         -- rails and ledges. Traces hit them; the plant does not collide with
         -- them (a grind positions the bike itself, and that is what is tested).
@@ -150,11 +151,35 @@ local function groundNormal(world)
     local a = math.rad(world.groundSlope or 0)
     return -math.sin(a), 0, math.cos(a)
 end
+
+-- BUMPS: World{ groundBumps = { amp = , wave = } } lays a rolling surface of
+-- height amp*sin(2 pi x/wave)*sin(2 pi y/(0.73 wave) + 1.1) over the plane -- a
+-- skatepark floor's seams and undulations, tilting the surface both along and
+-- across the direction of travel. nil is the smooth plane.
+local function bump(world, x, y)
+    local b = world.groundBumps
+    if not b then return 0, 0, 0 end
+    local kx, ky = 2 * math.pi / b.wave, 2 * math.pi / (b.wave * 0.73)
+    local sx, cx = math.sin(kx * x), math.cos(kx * x)
+    local sy, cy = math.sin(ky * y + 1.1), math.cos(ky * y + 1.1)   -- not flat along y = 0
+    return b.amp * sx * sy, b.amp * kx * cx * sy, b.amp * ky * sx * cy
+end
+
 local function groundHeight(world, p)
     local nx, ny, nz = groundNormal(world)
-    return p.x * nx + p.y * ny + (p.z - world.groundZ) * nz
+    local f = bump(world, p.x, p.y)
+    return p.x * nx + p.y * ny + (p.z - world.groundZ - f) * nz
 end
-M.groundNormal, M.groundHeight = groundNormal, groundHeight
+
+-- The surface normal at (x, y): the plane's, tilted by the bumps' slope.
+local function groundNormalAt(world, p)
+    local nx, ny, nz = groundNormal(world)
+    local _, fx, fy = bump(world, p.x, p.y)
+    local vx, vy, vz = nx - fx * nz, ny - fy * nz, nz
+    local l = math.sqrt(vx * vx + vy * vy + vz * vz)
+    return vx / l, vy / l, vz / l
+end
+M.groundNormal, M.groundHeight, M.groundNormalAt = groundNormal, groundHeight, groundNormalAt
 
 --------------------------------------------------------------------------
 -- A convar. Shared between realms through the world, which is what
@@ -472,7 +497,30 @@ function M.Realm(world, which)
             res.HitWorld = true
             return res
         end
-        if hs >= 0 and he <= 0 and hs ~= he then
+        if world.groundBumps then
+            -- Not a plane: march for the first crossing, then bisect it.
+            local function h(f) return groundHeight(world, s + (e - s) * f) + deep end
+            local N, prevF, prevH = 12, 0, hs
+            for i = 1, N do
+                local f = i / N
+                local hf = h(f)
+                if prevH >= 0 and hf <= 0 then
+                    local a, b = prevF, f
+                    for _ = 1, 20 do
+                        local m = (a + b) * 0.5
+                        if h(m) > 0 then a = m else b = m end
+                    end
+                    local p = s + (e - s) * b
+                    if groundAt(world, p) then
+                        res.Hit, res.Fraction, res.HitPos = true, b, p
+                        res.HitNormal = Vector(groundNormalAt(world, p))
+                        res.HitWorld = true
+                    end
+                    break
+                end
+                prevF, prevH = f, hf
+            end
+        elseif hs >= 0 and he <= 0 and hs ~= he then
             local f = hs / (hs - he)
             local p = s + (e - s) * f
             if groundAt(world, p) then
@@ -943,6 +991,7 @@ function M.Realm(world, which)
         for _, lc in ipairs(pts) do
             local wc = e:LocalToWorld(lc)
             local h = groundHeight(world, wc)
+            if world.groundBumps then n = Vector(groundNormalAt(world, wc)) end
             if h < 0 and groundAt(world, wc) then
                 deepest = math.max(deepest, -h)
                 local r  = wc - p:COM()

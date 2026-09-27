@@ -1125,6 +1125,55 @@ function(ctx)
     SafeRemoveEntity(plate)
 end)
 
+T.Case("into_a_ledge", { timeout = 25,
+    desc = "riding straight into a ledge does not launch the bike" },
+function(ctx)
+    -- A rider: "if I drive into a ledge my bike launches". The suspension ray
+    -- landed on the ledge's top the tick the fork crossed its edge; now a rise
+    -- past Wheel.stepMax is a face, not ground. Here the wheel's own collision
+    -- box really meets the face, which the offline plant cannot show.
+    ctx:input({})
+    local b = ctx.bike
+    local phys = b:GetPhysicsObject()
+    local worstVz, worstRise = -math.huge, -math.huge
+    for _, model in ipairs({ "models/hunter/blocks/cube025x8x025.mdl",
+                             "models/hunter/blocks/cube05x8x05.mdl" }) do
+        local box, lo, hi = railProp(ctx, model, ctx.ground + Vector(260, 0, 30), Angle(0, 0, 0))
+        local shift = Vector(ctx.ground.x + 260 - lo.x, 0, ctx.ground.z - lo.z)
+        local bp = box:GetPhysicsObject()
+        box:SetPos(box:GetPos() + shift)
+        if IsValid(bp) then bp:SetPos(box:GetPos()) bp:EnableMotion(false) end
+        ctx:wait(0.1)
+        lo, hi = box:WorldSpaceAABB()
+        local h = hi.z - ctx.ground.z
+        local z0 = ctx.ground.z + BMX.RestHeight(b:Cfg())
+        phys:SetAngles(Angle(0, 0, 0))
+        phys:SetPos(Vector(ctx.ground.x + 20, (lo.y + hi.y) * 0.5, z0))
+        phys:SetVelocity(Vector(250, 0, 0))
+        phys:SetAngleVelocity(Vector(0, 0, 0))
+        ctx:input({ throttle = 1 })
+        local vz, rise = -math.huge, -math.huge
+        local t0 = CurTime()
+        ctx:waitUntil(function()
+            if not IsValid(b) then return true end
+            vz = math.max(vz, phys:GetVelocity().z)
+            rise = math.max(rise, b:GetPos().z - z0)
+            return CurTime() - t0 > 2
+        end, 4, "the ride into it")
+        ctx:input({})
+        ctx:log(string.format("%.0f-unit ledge: fastest upward %.0f u/s, highest %.1f units up", h, vz, rise))
+        worstVz, worstRise = math.max(worstVz, vz), math.max(worstRise, rise)
+        SafeRemoveEntity(box)
+        -- Back aboard for the next ledge if the impact threw the rider.
+        if IsValid(ctx.bot) and not IsValid(b:GetDriver()) and IsValid(b:GetPod()) then
+            ctx.bot:EnterVehicle(b:GetPod())
+        end
+        ctx:wait(0.2)
+    end
+    ctx:between(worstVz, -1e9, 120, "fastest the bike went UP off a ledge it hit", "u/s")
+    ctx:between(worstRise, -1e9, 30, "highest it went", "u")
+end)
+
 --------------------------------------------------------------------------
 T.Case("sounds_exist", { rider = false, timeout = 15,
     desc = "every sound the addon references actually ships with the game" },

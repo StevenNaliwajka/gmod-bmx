@@ -49,11 +49,37 @@ end
 -- ordering is ambiguous enough across builds that differentiating an angle we
 -- computed ourselves is both simpler and more portable.
 --------------------------------------------------------------------------
+--------------------------------------------------------------------------
+-- WHICH WAY IS UP, FOR BALANCE: GRAVITY'S. A rider stays upright to gravity
+-- whatever the ground under them does. This used to hold the bike square to
+-- the SURFACE, so riding across or diagonally up a slope tilted the bike with
+-- it -- 32 degrees off vertical across a 25-degree bank, 45 across a 35 --
+-- and a bike leaning that far off gravity with nothing holding it there went
+-- over downhill: "it always tries to make me stand up even when going up
+-- slopes diagonally, so I flip over". Measured in tests/test_ride_feel.lua.
+--
+-- The one place gravity's up stops meaning anything is pointed steeply up or
+-- down a surface -- a quarter pipe's face -- where "upright" can only mean
+-- square to the wall. So between Balance.surfaceFrom and surfaceTo of climb
+-- (or dive) the reference blends over to the surface's normal.
+--------------------------------------------------------------------------
+function BMX.BalanceUp(ent, cfg, groundNormal)
+    local B = cfg.Balance
+    local steep = math.abs(ent:GetForward():Dot(vector_up))
+    local b = BMX.Ramp(steep, math.sin(B.surfaceFrom), math.sin(B.surfaceTo))
+    if b <= 0 or not groundNormal then return vector_up end
+    return (vector_up * (1 - b) + groundNormal * b):GetNormalized()
+end
+
 function BMX.Balance(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
     local C  = cfg
     local B  = C.Balance
 
-    local roll, pitch = BMX.Attitude(ent, groundNormal)
+    -- Roll against gravity (BalanceUp); pitch against the ground, because a
+    -- wheelie, a stoppie and the tip rule are all about the ground: measured
+    -- against gravity, riding up any ramp would read as a wheelie.
+    local roll = select(1, BMX.Attitude(ent, BMX.BalanceUp(ent, cfg, groundNormal)))
+    local pitch = select(2, BMX.Attitude(ent, groundNormal))
 
     -- Numerical rates, lightly smoothed. Raw per-substep derivatives are noisy
     -- enough that a Kd of any useful size turns into a buzz.

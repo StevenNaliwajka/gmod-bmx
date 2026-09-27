@@ -160,6 +160,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     -- longer proof of contact on its own.
     ----------------------------------------------------------------------
     if not s or s > WC.restLength then
+        self.lastComp   = nil
         self.onGround   = false
         self.load       = 0
         self.slipLong   = 0
@@ -192,6 +193,34 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     -- Suspension
     ----------------------------------------------------------------------
     local comp   = WC.restLength - s                -- >= 0
+
+    ----------------------------------------------------------------------
+    -- A STEP IS NOT A SPRING. The strut is a ray from the mount, and the
+    -- substep the mount crosses a ledge's edge the ray lands on its TOP: the
+    -- compression jumps by the ledge's height in one tick, far past the
+    -- travel, and the bump stop answers with the force of a crash landing.
+    -- Riding into a 16-unit ledge threw the bike up at 226 u/s, a 40-unit one
+    -- at 483 (tests/test_ride_feel.lua). A tyre cannot do that: it rolls up
+    -- a small step over the distance it takes to climb it, and a step taller
+    -- than about half its radius it cannot roll onto at all -- that is a face
+    -- the wheel runs into, which the wheel's collision box already meets.
+    --
+    -- So, riding (not landing: a landing's soak wants the full compression
+    -- at once), the ground under a wheel may rise at most Wheel.climbRate,
+    -- and a rise of more than Wheel.stepMax in one substep is not ground.
+    ----------------------------------------------------------------------
+    local prev = self.lastComp
+    self.stepBlocked = false
+    if prev and not self.soak then
+        local rise = comp - prev
+        if rise > WC.stepMax then
+            comp = prev
+            self.stepBlocked = true
+        elseif rise > WC.climbRate * dt then
+            comp = prev + WC.climbRate * dt
+        end
+    end
+    self.lastComp = comp
     local normal = tr.HitNormal
 
     local velAt   = phys:GetVelocityAtPoint(contact)

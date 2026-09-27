@@ -127,18 +127,22 @@ T.test("someone who is not the driver cannot steer the bike", function()
     T.eq(bike.input.throttle, 0, "a usercmd from a non-driver changes nothing")
 end)
 
-T.test("smoothing ramps the lean and returns to centre faster", function()
+T.test("smoothing glides the lean in and glides it back, never a snap", function()
+    -- A keyboard's A and D are all or nothing; the ramp is what turns a tap
+    -- into a lean. The return used to be faster (6.5/s, "crisper corner
+    -- exits"), and every release was a snap the bike overshot. Now both ways
+    -- are the same glide.
     local sv = F.server()
     local B = sv.env.BMX
     local inp = B.BlankInput()
     inp.leanTarget = 1
     B.SmoothInput(inp, 0.1)
-    T.near(inp.lean, 0.42, 1e-9, "4.2/s toward the target")
+    T.near(inp.lean, 0.30, 1e-9, "3.0/s toward the target")
     for _ = 1, 10 do B.SmoothInput(inp, 0.1) end
     T.eq(inp.lean, 1, "reaches it and stops, no overshoot")
     inp.leanTarget = 0
     B.SmoothInput(inp, 0.1)
-    T.near(inp.lean, 0.35, 1e-9, "6.5/s back to centre")
+    T.near(inp.lean, 0.70, 1e-9, "3.0/s back to centre: no faster than in")
 end)
 
 T.test("holding W into a hop is not a front flip; pressing it again in the air is", function()

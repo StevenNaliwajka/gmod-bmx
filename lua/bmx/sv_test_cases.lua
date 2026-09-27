@@ -1139,9 +1139,13 @@ function(ctx)
     end, 3, "the landing")
     ctx:log(string.format("landed after %.2fs; air mode %s; landing surface seen %s",
         tLand or -1, tostring(airMode), tostring(sawRef)))
-    ctx:wait(1)
+    -- Aboard just after touchdown, not a second later: by then the bike has
+    -- ridden off the plate's lower edge, 25 units up and nose-down, which is
+    -- a drop off a ledge and a different question (it threw the rider on one
+    -- run in two, with the landing itself identical).
+    ctx:wait(0.3)
     if off then ctx:between(off, 0, 15, "off the slope at touchdown", "deg") end
-    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard after the landing")
     SafeRemoveEntity(plate)
 end)
 
@@ -1172,16 +1176,21 @@ function(ctx)
         phys:SetVelocity(Vector(250, 0, 0))
         phys:SetAngleVelocity(Vector(0, 0, 0))
         ctx:input({ throttle = 1 })
+        -- The MASS CENTRE's rise, not the origin's: a bike that hits a face
+        -- tips forward over its bars, which lifts the origin (on the axle
+        -- line, well below the mass centre) 30 units on one run in two while
+        -- the mass centre pivots. A launch throws the mass centre up.
         local vz, rise = -math.huge, -math.huge
+        local com0 = phys:LocalToWorld(phys:GetMassCenter()).z
         local t0 = CurTime()
         ctx:waitUntil(function()
             if not IsValid(b) then return true end
             vz = math.max(vz, phys:GetVelocity().z)
-            rise = math.max(rise, b:GetPos().z - z0)
+            rise = math.max(rise, phys:LocalToWorld(phys:GetMassCenter()).z - com0)
             return CurTime() - t0 > 2
         end, 4, "the ride into it")
         ctx:input({})
-        ctx:log(string.format("%.0f-unit ledge: fastest upward %.0f u/s, highest %.1f units up", h, vz, rise))
+        ctx:log(string.format("%.0f-unit ledge: fastest upward %.0f u/s, mass centre up %.1f units", h, vz, rise))
         worstVz, worstRise = math.max(worstVz, vz), math.max(worstRise, rise)
         SafeRemoveEntity(box)
         -- Back aboard for the next ledge if the impact threw the rider.
@@ -1191,7 +1200,7 @@ function(ctx)
         ctx:wait(0.2)
     end
     ctx:between(worstVz, -1e9, 120, "fastest the bike went UP off a ledge it hit", "u/s")
-    ctx:between(worstRise, -1e9, 30, "highest it went", "u")
+    ctx:between(worstRise, -1e9, 25, "highest the mass centre went", "u")
 end)
 
 --------------------------------------------------------------------------

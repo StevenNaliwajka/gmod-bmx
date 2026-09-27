@@ -15,3 +15,4 @@ tuning/*.local.lua
 # python bytecode from tools/
 __pycache__/
 *.pyc
+dist/

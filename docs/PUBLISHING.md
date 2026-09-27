@@ -14,6 +14,7 @@ singleplayer and for servers that prefer a mounted addon.
 |---|---|---|
 | `bmx.gma` | `tools/gmad.py` (or CI, on a `v*` tag) | no, built |
 | `workshop/icon.jpg` | `tools/make_icon.py` | yes |
+| the upload kit (zip) | `tools/package-workshop.sh` | no, built into `dist/` |
 | title / description / type / tags | `addon.json` | yes |
 | the Workshop item itself | `gmpublish`, by hand | n/a |
 
@@ -26,12 +27,14 @@ produced a file 24 bytes different, all of it metadata whitespace. The note in
 layout, because a mount failure on a stranger's server is an expensive way to
 find a byte-order mistake.
 
-**Check the suite is green on a real server**, not just that it parses:
+**Check the suite is green on a real server**, not just that it parses: the
+pipeline's `headless` job runs `bmx-test` (24/24 as of 2026-09-27, v1.0.0).
 
-```
-bmx_selftest        # -> IMPULSE (expected)
-bmx_test            # 10/12 as of 2026-08-26; see docs/TUNING.md for the two
-```
+**Verified for v1.0.0 (2026-09-27)** on the dev server with the real `gmad`:
+`gmad extract` of the packed file gave all 25 files byte-identical to the repo,
+and `gmad create` over the same files ignored 0 of them (the Workshop refuses an
+addon with a file type off Garry's Mod's whitelist, and this is how to find out
+before Steam does).
 
 ## The icon
 
@@ -49,25 +52,32 @@ artwork as well as the addon. Change the wheelbase and the icon changes with it.
 
 ## Publishing
 
-`gmpublish` ships in the same depot as `gmad`, next to it in
-`bin/linux64/`. It needs a Steam account that owns Garry's Mod and has accepted
-the Workshop legal agreement, which is why this step is **not in CI** and should
-not be: a token that can publish to the Workshop has no business in a build
-runner.
+The Workshop item belongs to the Steam account **ConvexBurrito5**. Uploading
+is done by `gmpublish`, which ships with Garry's Mod (`bin\gmpublish.exe` on
+Windows) and uploads as whichever account the running Steam client is signed
+into -- so it runs on the publisher's own PC, never on a server and never in CI.
 
-First publish, which creates the item and prints the ID you will need forever
-after:
+Build the kit:
 
 ```
-python3 tools/gmad.py -o /tmp/bmx.gma
-gmpublish publish -addon /tmp/bmx.gma -icon workshop/icon.jpg
+tools/package-workshop.sh        # -> dist/BMX-Workshop-<version>.zip
 ```
 
-Every publish after that updates it in place:
+It holds `bmx.gma`, `icon.jpg`, `publish.bat` (first upload: `gmpublish create`),
+`update.bat` (`gmpublish update -id`), `find-gmpublish.ps1` (finds Garry's Mod
+through the registry and every Steam library folder, falling back to asking),
+`publish.sh` for a Linux PC, and a README with the steps. By hand:
 
 ```
-gmpublish update -id <workshop-id> -addon /tmp/bmx.gma -changes "what changed"
+gmpublish.exe create -addon bmx.gma -icon icon.jpg
+gmpublish.exe update -addon bmx.gma -id <workshop-id> -changes "what changed"
 ```
+
+(An earlier version of this file said `gmpublish publish`; the command is
+`create`.)
+
+After the first upload, open the item in Steam (Garry's Mod > Workshop > Your
+Files): accept the Workshop agreement if asked, and set the visibility.
 
 **Record the workshop ID in this file when it exists.** It is not recoverable
 from anything in the repo, and publishing without `-id` creates a second item

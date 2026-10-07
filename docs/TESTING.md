@@ -174,6 +174,7 @@ Which file covers what, for the newer parts:
 | `test_grind_jump.lua` | a HUMAN rider through the real keys (W, SPACE) hopping onto rails, with every run checked for being launched |
 | `test_landing.lua` | hands-off landings onto transitions and banks, and a barrel roll left alone |
 | `test_perf.lua` | the trace and draw budgets |
+| `test_platform.lua` | the vehicle platform (G22): `RegisterVehicle` validation (a 4-wheel board and a 1-wheel unicycle accepted, every bad field refused), input maps, the Vehicles settings and their spawn doors, and the hidden 4-wheel test cart driving forward with no balance mode. The headless twin is `test_cart_drives` |
 
 The plant is not VPhysics, so the closed-loop tests use the headless suite's
 bands and assert signs and orderings. When the two disagree, take it to a real

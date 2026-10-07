@@ -69,6 +69,9 @@ function T.Case(name, opts, fn)
         -- Cases read the bike's numbers through ctx.cfg, never BMX.Config, so
         -- the same case means the same thing on a bike with other geometry.
         bike    = opts.bike or "stock",
+        -- A vehicle that is not a bike, by registry id (setupCase). Nil for every
+        -- case that rides a bike.
+        vehicle = opts.vehicle,
     }
 end
 
@@ -446,8 +449,12 @@ local function setupCase(case)
         return nil, (groundNote or "no ground") .. " on " .. game.GetMap()
     end
 
-    local class = BMX.ClassFor(case.bike)
-    if not class then return nil, "no such bike: " .. tostring(case.bike) end
+    -- `vehicle` is a case that rides something that is not a bike (the test
+    -- cart); `bike` stays the stock id for every case that is not a variant, which
+    -- the suite's own bookkeeping checks.
+    local vid = case.vehicle or case.bike
+    local class = BMX.ClassFor(vid)
+    if not class then return nil, "no such vehicle: " .. tostring(vid) end
     local bike = ents.Create(class)
     if not IsValid(bike) then return nil, "could not create " .. class end
     -- Spawn at the bike's ACTUAL resting height, computed rather than guessed:
@@ -459,9 +466,13 @@ local function setupCase(case)
     -- transient big enough to fail cases that were measuring something else
     -- entirely. Deriving it means a future spring change cannot silently
     -- reintroduce that.
-    local cfg = BMX.ConfigFor(BMX.Bikes[case.bike])
+    --
+    -- The weight is shared by ALL the wheels (a bike's two give the 0.5 this
+    -- always was; the four of a cart a quarter).
+    local def = BMX.Vehicles[vid]
+    local cfg = BMX.ConfigFor(def)
     local WC  = cfg.Wheel
-    local sag = (cfg.Chassis.mass * physenv.GetGravity():Length() * 0.5)
+    local sag = (cfg.Chassis.mass * physenv.GetGravity():Length() / #BMX.WheelDefs(def, cfg))
         / WC.spring
     bike:SetPos(ground + Vector(0, 0, WC.radius - sag + 1))
     bike:SetAngles(Angle(0, 0, 0))

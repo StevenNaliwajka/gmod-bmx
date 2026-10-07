@@ -77,6 +77,7 @@ S.AddCategory("client", "sound",    "Sound")
 S.AddCategory("client", "advanced", "Advanced")
 
 S.AddCategory("server", "rules",    "Rules and scoring")
+S.AddCategory("server", "vehicles", "Vehicles")
 S.AddCategory("server", "world",    "The park")
 S.AddCategory("server", "feel",     "How the bike rides")
 S.AddCategory("server", "bots",     "Bot riders")
@@ -273,6 +274,27 @@ server{ name = "bmx_combos", kind = "bool", default = true, category = "rules",
 server{ name = "bmx_max_per_player", kind = "int", default = 0, min = 0, max = 50, category = "rules",
     label = "Bikes per player",
     help = "How many bikes one player may have out at once. 0 means no limit from BMX (the sandbox's own entity limit still applies)." }
+-- ---- Vehicles (G22) ------------------------------------------------------
+-- One switch per spawn menu heading (BMX.SpawnCategories, sh_vehicles.lua, which
+-- loads after this file, so the four are written out and tests/test_platform.lua
+-- checks they are the same four). Off means no player can spawn anything of that
+-- family -- from bmx_spawn or the spawn menu -- and nothing already out is
+-- removed. Created in sv_rules.lua; BMX.VehicleEnabled reads them. Only Bikes has
+-- anything in it today: the rest are ready for the boards, scooters and motor
+-- vehicles that follow.
+server{ name = "bmx_allow_bikes", kind = "bool", default = true, category = "vehicles",
+    label = "Allow bikes",
+    help = "Players may spawn bikes (BMX, cruiser, mini and any other bike). Off stops new ones being spawned; the ones already out stay." }
+server{ name = "bmx_allow_boards", kind = "bool", default = true, category = "vehicles",
+    label = "Allow boards",
+    help = "Players may spawn boards and skates, when there are any. Off stops new ones being spawned." }
+server{ name = "bmx_allow_scooters", kind = "bool", default = true, category = "vehicles",
+    label = "Allow scooters",
+    help = "Players may spawn scooters, when there are any. Off stops new ones being spawned." }
+server{ name = "bmx_allow_motor", kind = "bool", default = true, category = "vehicles",
+    label = "Allow motor vehicles",
+    help = "Players may spawn motorbikes and e-bikes, when there are any. Off stops new ones being spawned." }
+
 server{ name = "bmx_crash_ragdoll", kind = "bool", default = true, category = "rules",
     label = "Crashes throw the rider",
     help = "A rider who crashes is thrown off as a ragdoll for a moment. Off just shoves them off the bike." }

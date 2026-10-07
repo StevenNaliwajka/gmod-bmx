@@ -144,7 +144,7 @@ end
 -- is deliberate: the damper was fixed for this in isolation once, and the tyre,
 -- which has exactly the same problem, was left behind for a month.
 --------------------------------------------------------------------------
-local function effectiveMass(ent, phys, cfg, contact, dir)
+local function effectiveMass(ent, phys, cfg, contact, dir, share)
     local com = phys:LocalToWorld(phys:GetMassCenter())
     local rxd = (contact - com):Cross(dir)
 
@@ -158,7 +158,16 @@ local function effectiveMass(ent, phys, cfg, contact, dir)
                + ly * ly / BMX.IPitch(ent)
                + lz * lz / BMX.IYaw(ent)
 
-    return 1 / (1 / cfg.Chassis.mass + invI)
+    -- WHEN SEVERAL WHEELS ANSWER THE SAME MOTION (`share`, the wheel's
+    -- `coupling`: the number of wheels, for a vehicle with more than two; 1 for
+    -- a bike). Each cap above is the force that would null the slip IF THIS
+    -- WHEEL WERE THE ONLY ONE ACTING, and a bike's two wheels are the case they
+    -- were tuned against. Four wheels all measuring the same slip and each
+    -- nulling the whole of it overshoot it four times over and ring; each
+    -- carrying a quarter of the mass is the same constraint split between them,
+    -- and the stick-slip springs below add back up to the whole. A bike's
+    -- coupling is exactly 1, so nothing it computes changes.
+    return 1 / (1 / cfg.Chassis.mass + invI) / (share or 1)
 end
 
 --------------------------------------------------------------------------
@@ -227,11 +236,19 @@ end
 --   driveTorque  kg*units^2/s^2 delivered to THIS wheel by the drivetrain
 --   brakeTorque  kg*units^2/s^2, always opposes rotation
 --   filter       entities the ground trace must ignore
+--   snap         optional { v, w, com }: the chassis's velocity, angular
+--                velocity and mass centre at the START of the substep. With it
+--                the wheel reads the patch's velocity from that instead of from
+--                the live body, which the wheels before it in the loop have
+--                already pushed. A bike (two wheels, applied in turn, which is
+--                what its tyre caps were tuned on) passes none; see
+--                ENT:Initialize, where `coupling` is set, for why four wheels
+--                cannot be evaluated one after another.
 --
 -- Returns nothing; forces are applied directly and diagnostic state is left on
 -- the wheel for the caller.
 --------------------------------------------------------------------------
-function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
+function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, snap)
     local C     = cfg
     local WC    = self:WheelConfig(C)
     local radius = WC.radius
@@ -370,7 +387,8 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     end
     self.lastComp = comp
 
-    local velAt   = phys:GetVelocityAtPoint(contact)
+    local velAt   = snap and (snap.v + snap.w:Cross(contact - snap.com))
+                         or phys:GetVelocityAtPoint(contact)
 
     -- d(compression)/dt: the contact patch approaching the ground. Measured
     -- along the ground normal rather than the strut, since that is the axis the
@@ -414,7 +432,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     local damperF = WC.damper * compVel
 
     if compVel > 0 then
-        local cap = effectiveMass(ent, phys, cfg, contact, normal) * compVel / dt
+        local cap = effectiveMass(ent, phys, cfg, contact, normal, self.coupling) * compVel / dt
         if damperF > cap then damperF = cap end
     end
 
@@ -565,7 +583,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     -- tyre had been given a numerical ceiling below its physical one, which
     -- quietly deletes the friction model.
     ----------------------------------------------------------------------
-    local invCompLong = 1 / effectiveMass(ent, phys, cfg, contact, fwdDir)
+    local invCompLong = 1 / effectiveMass(ent, phys, cfg, contact, fwdDir, self.coupling)
     if not locked then
         invCompLong = invCompLong + radius * radius / WC.inertia
     end
@@ -575,7 +593,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
         Flong = capLong * (Flong >= 0 and 1 or -1)
     end
 
-    local capLat = abs(slipLat) * effectiveMass(ent, phys, cfg, contact, rightDir) / dt
+    local capLat = abs(slipLat) * effectiveMass(ent, phys, cfg, contact, rightDir, self.coupling) / dt
     if abs(Flat) > capLat then
         Flat = capLat * (Flat >= 0 and 1 or -1)
     end
@@ -623,8 +641,8 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
                 local k, c = m * w * w, 2 * m * w
                 return -(k * x + (k * dt + c) * v) / (1 + c * dt / m + k * dt * dt / m)
             end
-            local mL = effectiveMass(ent, phys, cfg, contact, fwdDir)
-            local mT = effectiveMass(ent, phys, cfg, contact, rightDir)
+            local mL = effectiveMass(ent, phys, cfg, contact, fwdDir, self.coupling)
+            local mT = effectiveMass(ent, phys, cfg, contact, rightDir, self.coupling)
             local aLong = spring(d:Dot(fwdDir),   vFwd, mL)
             local aLat  = spring(d:Dot(rightDir), vLat, mT)
             if sqrt(aLong * aLong + aLat * aLat) <= Fmax then

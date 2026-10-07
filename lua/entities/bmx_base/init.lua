@@ -138,6 +138,22 @@ function ENT:Initialize()
             Vector(wd.pos.x, wd.pos.y, wd.pos.z + lift), front, wd)
     end
 
+    -- MORE THAN TWO WHEELS ARE EVALUATED TOGETHER, not one after another.
+    -- The wheels apply their forces to the chassis as they go, and a lateral
+    -- slip is measured at the patch, so the second wheel of a pair sees the roll
+    -- the first one's suspension force just gave the body (a vertical push at
+    -- 11 units to the side, 27 below the mass centre, is several u/s of
+    -- sideways velocity at the patch). Left and right tyres then answered each
+    -- other's disturbance instead of the chassis's real slip, their forces
+    -- cancelled, and the test cart crept sideways at 5 u/s for ever. So with
+    -- more than two wheels every one reads its patch's velocity from a snapshot
+    -- taken before any of them acts (BMX.PhysicsStep passes it), and each
+    -- carries only its share of the mass in the tyre's stability caps
+    -- (`coupling`, effectiveMass in sv_wheel.lua). A bike -- two wheels in line,
+    -- on the centreline, where this never showed -- is exactly as it was.
+    local coupling = #self.wheels > 2 and #self.wheels or 1
+    for _, w in ipairs(self.wheels) do w.coupling = coupling end
+
     self.st    = BMX.NewState(C)
     -- Which vehicle this state belongs to, for the trick list (BMX.VehicleAllows).
     self.st.def = bike

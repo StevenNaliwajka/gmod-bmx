@@ -68,6 +68,91 @@ nowhere. Two things follow from the bike being its own config:
 Read a bike's numbers with `ent:Cfg()`, never `BMX.Config`, so your code means
 the same thing on a bike with other geometry.
 
+### Vehicles that are not bikes: `BMX.RegisterVehicle`
+
+`BMX.RegisterBike(id, def)` is the bike-shaped way in. Underneath it is
+`BMX.RegisterVehicle{ ... }`, the one registration door (G22), which is what a
+skateboard, a scooter or a motor vehicle uses. `RegisterBike` just fills in the
+bike's `family`, `wheels`, `balance`, `drive`, `input`, `pose`, `tricks` and
+`grindPoints` and calls it, so everything above (the id and class, the spawn
+menu, the duplicator, `bmx_spawn`, `BMX.Bikes`) is the same for both.
+`BMX.Bikes` is the same table as `BMX.Vehicles`.
+
+```lua
+BMX.RegisterVehicle{
+    id = "cart", printName = "Cart", family = "board",
+    wheels = {                                    -- any number, any layout
+        { pos = Vector( 16,  11, 0), steer = function(w, ent, st, inp, cfg, dt, speed)
+                                          return inp.lean * 0.2 end },
+        { pos = Vector( 16, -11, 0), steer = function(w, ent, st, inp, cfg, dt, speed)
+                                          return inp.lean * 0.2 end },
+        { pos = Vector(-16,  11, 0), drive = true },
+        { pos = Vector(-16, -11, 0), drive = true },
+    },
+    balance = "none",
+    drive   = { kind = "throttle", torque = 110000, maxSpeed = 320 },
+    input   = "drive",
+    pose    = "seated",
+    tricks  = {},
+    grindPoints = false,
+}
+```
+
+A vehicle that says nothing gets: `balance = "none"`, `drive = { kind = "none" }`,
+`input = "drive"`, `pose = "seated"`, `tricks = {}`, `grindPoints = false`.
+`id`, `family` and `wheels` are required.
+
+| Field | Meaning |
+|---|---|
+| `id` | Lower-case letters, digits and `_`. Becomes the class `bmx_<id>`. |
+| `family` | `"bike"`, `"board"`, `"skates"`, `"scooter"` or `"moto"`. Decides the spawn menu heading (Bikes, Boards, Scooters, Motor; skates are under Boards) and which `bmx_allow_*` setting can switch it off. |
+| `wheels` | A list of wheels, or a function of the config returning one. At least one, at most eight. See below. |
+| `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (reserved for the skateboard; runs as `none`, with a message, until its module exists), or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
+| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", ... }` (reserved for the board) or `{ kind = "none" }`. `pedal` and `throttle` need at least one wheel with `drive = true`. |
+| `seats` | `{ { model, offset, angles } }`. One seat for now (passengers are G11). Omitted: the config's `Chassis.seatOffset` and `seatAngles`. |
+| `input` | An id in `BMX.InputMaps`: `"bike"` or `"drive"`, or one you register. |
+| `pose` | An id in `BMX.PoseSets` (the rider's pose on the client): `"bike"` or `"seated"`. |
+| `tricks` | `"all"` or a list of registered trick ids. Limits what is scored from motion: the flips and turns, the held wheelie and stoppie, and registered custom ticks. |
+| `grindPoints` | `false` (cannot grind) or `{ crank = Vector or fn(cfg), pegs = { y, z, x = { ... } } or fn(cfg) }`: where a pipe is looked for and ridden on, and where the pegs are on an edge. |
+| `physics`, `bones`, and every appearance field above | As for a bike. |
+| `hidden` | Not in the spawn menu or `BMX.BikeIDs()`. |
+| `debugOnly` | `bmx_spawn` and the spawn door refuse it unless the player has `bmx_debug 1`. |
+
+**Wheels.** Each is `{ pos, radius, steer, drive, front, name }`:
+
+- `pos` is the **axle**, in chassis space (x forward, y left, z up), measured
+  from the design axle line. The suspension mount is `Wheel.restLength` above it.
+- `radius` overrides the config's `Wheel.radius` for this wheel only.
+- `steer` is `false`, `"fork"` (the single-track balance steers it from the lean)
+  or a **function** `(wheel, ent, st, inp, cfg, dt, speed) -> radians`, called
+  every grounded substep after the balance has run, so it may read `st.roll`.
+  Positive turns right. A skateboard's truck lean is one.
+- `drive = true` takes an equal share of the drive torque.
+- `front` says which axle's brake the wheel takes (front brake on the front,
+  rear brake on the rest). Omitted, it is `pos.x > 0`.
+
+**Validation.** All of it is checked at registration, like `physics`. Every
+unknown key at every level, a wheel with no `pos`, `singletrack` on anything but
+a front and a rear wheel, `steer = "fork"` without `singletrack`, a throttle drive
+with no drive wheel or no torque, an unknown input map, pose set or trick id, and
+more than one seat are all reported to the console, naming the field, and the
+vehicle is **not registered**. (An invalid `physics` or `bones` is reported but
+the vehicle still registers, as it always has.) `RegisterVehicle` returns the
+definition, or `false`.
+
+**Input maps.** `BMX.RegisterInputMap{ id, actions = { name = { key = IN_..., ctx = { "ground", "air" }, label = "..." } } }`.
+`key` is the usercmd bit, `ctx` is any of `ground`, `air`, `grind`, `manual`.
+`sv_input.lua` reads the key for each action from the vehicle's map; an action the
+map lacks is never down. `BMX.InputActions(mapId, ctx)` lists a map's actions for a
+keybind panel. The `bike` map is the controls in the game's help; `drive` is
+forward, back, left, right, jump.
+
+**Server settings.** `bmx_allow_bikes`, `bmx_allow_boards`, `bmx_allow_scooters`
+and `bmx_allow_motor` (default 1; Options > BMX > Server > Vehicles) switch a
+whole heading off for the spawn menu and `bmx_spawn`. Off stops new ones being
+spawned; ones already out stay. `BMX_CanSpawn` is still the gamemode's own veto
+on top.
+
 ## 2. Tricks
 
 Tricks are scored by name and points: a trick is `{ name = "Backflip", count = 1,

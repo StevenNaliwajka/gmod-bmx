@@ -422,3 +422,56 @@ BMX.RegisterBike("mini", {
         Wheel   = { radius = 8, wheelbase = 34 },
     },
 })
+
+--------------------------------------------------------------------------
+-- THE TEST CART: the platform's proof that it is not a bicycle.
+--
+-- Four wheels in a rectangle, no balance mode at all (`none`: it stands on its
+-- suspension), a throttle drive on the two rear wheels, and the front pair
+-- steered by a FUNCTION of the rider's key rather than by a fork. Nothing in
+-- it is a bike except the code that has been generalised to run it, which is
+-- the point: it exercises N wheels, per-wheel steer and drive, the `none`
+-- balance, the throttle drive and the plain input map before the skateboard
+-- (G23) depends on any of them.
+--
+-- HIDDEN and debugOnly. It is not in the spawn menu or BikeIDs, and bmx_spawn
+-- refuses it unless the player has bmx_debug >= 1; the suites spawn the class
+-- directly. It is registered in every game because the offline and headless
+-- suites run against the shipped files, and a vehicle that exists only in the
+-- tests would be a vehicle the tests do not test.
+--
+-- The layout is a go-kart's, a 32 by 22 rectangle about the origin, on the
+-- stock wheel (radius 10). Its torque and top speed are chosen to be
+-- unremarkable: a cart that drives forward, not a tuned vehicle.
+--------------------------------------------------------------------------
+-- The steer function: the key's lean, a third of a radian at a crawl and less as
+-- it goes faster, so the sideways acceleration stays under ~120 u/s^2
+-- (v^2 * tan(steer) / wheelbase, with the wheelbase 32): a cart this narrow rolls
+-- over a pull of a third of a g and there is no balance mode to hold it.
+-- (wheel, ent, st, inp, cfg, dt, speed) -> radians.
+local function cartSteer(w, ent, st, inp, cfg, dt, speed)
+    local v2 = math.max((speed or 0) ^ 2, 1)
+    return inp.lean * math.min(0.3, 120 * 32 / v2)
+end
+
+BMX.RegisterVehicle({
+    id          = "testcart",
+    printName   = "Test cart",
+    description = "Four wheels and a throttle: the platform's test vehicle. Not in the menu.",
+    family      = "board",
+    hidden      = true,
+    debugOnly   = true,
+    colorIndex  = 5,
+    wheels = {
+        { pos = Vector( 16,  11, 0), steer = cartSteer, drive = false, name = "front_l" },
+        { pos = Vector( 16, -11, 0), steer = cartSteer, drive = false, name = "front_r" },
+        { pos = Vector(-16,  11, 0), steer = false,     drive = true,  name = "rear_l" },
+        { pos = Vector(-16, -11, 0), steer = false,     drive = true,  name = "rear_r" },
+    },
+    balance = "none",
+    drive   = { kind = "throttle", torque = 110000, maxSpeed = 320 },
+    input   = "drive",
+    pose    = "seated",
+    tricks  = {},
+    grindPoints = false,
+})

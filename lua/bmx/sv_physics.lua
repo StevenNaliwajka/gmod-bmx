@@ -367,9 +367,16 @@ function BMX.PhysicsStep(ent, phys, dt)
     -- its axle's: the front brake on the front axle, the rear on the others.
     local filter = ent.traceFilter
     local share = nDrive > 0 and driveTorque / nDrive or 0
+    -- More than two wheels read the chassis's motion as it was at the top of the
+    -- substep (see ENT:Initialize on `coupling`); a bike's two take it live.
+    local snap
+    if #wheels > 2 then
+        snap = { v = phys:GetVelocity(), w = st.angVel or vector_origin,
+                 com = phys:LocalToWorld(phys:GetMassCenter()) }
+    end
     for _, w in ipairs(wheels) do
         w:Simulate(ent, phys, C, dt, w.drive and share or 0,
-            w.isFront and brakeFront or brakeRear, filter)
+            w.isFront and brakeFront or brakeRear, filter, snap)
     end
 
     -- The climbing push (see drivetrain): at the mass centre, along the slope.

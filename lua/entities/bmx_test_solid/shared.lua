@@ -13,7 +13,7 @@
 ENT.Type = "anim"
 ENT.Base = "base_anim"
 ENT.PrintName = "BMX test solid"
-ENT.Author = "naliwajka"
+ENT.Author = "Burrito"
 ENT.Spawnable = false
 ENT.AdminOnly = true
 ENT.RenderGroup = RENDERGROUP_OPAQUE

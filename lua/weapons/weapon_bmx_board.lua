@@ -9,7 +9,7 @@
 ----------------------------------------------------------------------------]]
 
 SWEP.PrintName    = "Skateboard"
-SWEP.Author       = "naliwajka"
+SWEP.Author       = "Burrito"
 SWEP.Category     = "BMX"
 SWEP.Instructions = "Left mouse: put the board down.  Console: bmx_pickup_board while looking at one picks it up."
 SWEP.Spawnable    = true

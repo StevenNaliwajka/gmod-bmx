@@ -270,7 +270,7 @@ function BMX.RegisterVehicle(def)
             Category  = "BMX",
             Subcategory = BMX.Families[def.family].category,
             Family    = def.family,
-            Author    = def.author or "naliwajka",
+            Author    = def.author or "Burrito",
             Information = def.description or "",
         })
     end

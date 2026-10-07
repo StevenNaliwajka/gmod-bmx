@@ -12,7 +12,7 @@
 ----------------------------------------------------------------------------]]
 
 SWEP.PrintName     = "Bike Lock"
-SWEP.Author        = "naliwajka"
+SWEP.Author        = "Burrito"
 SWEP.Category      = "BMX"
 SWEP.Instructions  = "Left click: lock the bike you are aiming at to the ground. Right click: unlock it (yours, or any if you are an admin). Reload: who locked it."
 SWEP.Spawnable     = true

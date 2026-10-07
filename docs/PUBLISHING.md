@@ -15,7 +15,8 @@ no `.gma` at all.
 | `bmx.gma` | `tools/gmad.py` (or CI, on a `v*` tag) | no, built |
 | `workshop/icon.jpg` | `tools/make_icon.py` | yes |
 | the upload kit (zip) | `tools/package-workshop.sh` | no, built into `dist/` |
-| title / description / type / tags | `addon.json` | yes |
+| title / type / tags | `addon.json` | yes |
+| the page text | `workshop/description.bbcode` (copied into `addon.json`) | yes |
 | the Workshop item itself | `gmpublish`, by hand | n/a |
 
 ## Before the first publish
@@ -88,6 +89,13 @@ Workshop ID: 3814420080
 exactly -- it lies between v1.0.0's and the combos commit's -- so which build
 it is was not recorded. Record the commit next time, below.)
 
+Updates, newest first (the commit the kit was built from; the `v` tag goes on
+it once the upload is done):
+
+| Version | Kit built | From commit | Uploaded |
+|---|---|---|---|
+| 1.1.0 | 2026-10-07 | BUILDSHA | waiting on the upload from the owner's PC |
+
 The same number lives in `workshop/workshop-id.txt`, which the kit ships and
 both `update.bat` and `publish.sh update` read, so an update needs nothing
 typed. `publish.bat` and `publish.sh create` refuse while that file exists
@@ -104,9 +112,12 @@ does, Steam moves on a decision.
    "not yet on the Workshop" line to the date it went out.
 2. `tools/package-workshop.sh`, then `update.bat` (or `./publish.sh update
    "what changed"`) on the publisher's PC, signed in as ConvexBurrito5.
-3. Open the item page and check the description. It came from `addon.json` at
-   the first upload; if the page still shows the old one, paste the new
-   `description` from `addon.json` in (the page takes BBCode).
+3. Open the item page and check the title ("BMX") and the description.
+   `gmpublish update` uploads the addon, not the page, so if the page still
+   shows the old text, paste in `description.bbcode` from the kit (the page
+   takes BBCode). It is `workshop/description.bbcode`, the page copy, and
+   `addon.json`'s `description` carries it word for word
+   (`tools/test-workshop.sh` fails if the two drift).
 4. Tag it: `git tag -a v<version> -m "..." && git push origin v<version>`.
    The tag is the record of which commit subscribers have.
 

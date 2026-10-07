@@ -84,7 +84,7 @@ BMX.RegisterVehicle({
     look        = "skateboard",    -- its model (docs/MODELS.md)
     printName   = "Skateboard",
     description = "A skateboard: push, carve, ollie and flip it, grind rails and ledges.",
-    author      = "naliwajka",
+    author      = "Burrito",
     family      = "board",
     colorIndex  = 6,
     wheels      = B.Wheels,

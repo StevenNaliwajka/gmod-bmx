@@ -535,7 +535,7 @@ BMX.RegisterVehicle({
     look        = "skates",        -- its model (docs/MODELS.md)
     printName   = "Inline skates",
     description = "Aggressive inline skates: stride (W), crossover (A / D), T-stop (S), jump, and soul, mizou and backslide grinds. Equip them from the weapon list; holster to walk.",
-    author      = "naliwajka",
+    author      = "Burrito",
     family      = "skates",
     worn        = true,
     wheels      = S.Wheels,

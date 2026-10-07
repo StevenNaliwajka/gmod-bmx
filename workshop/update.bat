@@ -1,5 +1,5 @@
 @echo off
-rem Upload a NEW VERSION of BMX Bike to the Workshop item publish.bat created.
+rem Upload a NEW VERSION of BMX to the Workshop item publish.bat created.
 setlocal
 set "HERE=%~dp0"
 set "GMP="
@@ -19,7 +19,7 @@ rem THE LIVE ITEM'S ID SHIPS IN THE KIT (workshop-id.txt), so nobody types it:
 rem a mistyped ID updates nothing, or somebody else's item.
 set "WSID="
 if exist "%HERE%workshop-id.txt" set /p WSID=<"%HERE%workshop-id.txt"
-if not defined WSID set /p WSID=Workshop ID of BMX Bike (the number publish.bat printed): 
+if not defined WSID set /p WSID=Workshop ID of BMX (the number publish.bat printed): 
 echo Updating Workshop item %WSID%
 echo   https://steamcommunity.com/sharedfiles/filedetails/?id=%WSID%
 set /p NOTE=What changed in this version (one line): 

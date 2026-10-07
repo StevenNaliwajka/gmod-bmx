@@ -85,21 +85,33 @@ TITLE="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["title"
 ok '[ "$TITLE" = "BMX" ]' "the title is plain BMX, the owner's call ($TITLE)"
 ok '[ "${#TITLE}" -le 128 ]' "the title fits Steam's 128 characters"
 
-# THE CONTROLS SECTION MATCHES THE INPUT CODE. Every key sv_input.lua reads has
-# its line in the description, so documentation that is already wrong cannot ship.
+# THE PAGE TEXT IS ONE TEXT. workshop/description.bbcode is the Workshop page
+# (the owner's copy); addon.json's description carries it verbatim, because the
+# release step pastes it from there and the .gma embeds it. Two copies that
+# drift would put the wrong page on Steam.
+ok 'python3 -c "import json,sys; d=json.load(open(sys.argv[1]))[\"description\"]; sys.exit(0 if d.strip() == open(sys.argv[2]).read().strip() else 1)" "$ROOT/addon.json" "$ROOT/workshop/description.bbcode"' \
+   "addon.json's description is workshop/description.bbcode, word for word"
+ok 'grep -q "workshop/description.bbcode" "$ROOT/tools/package-workshop.sh"' "the kit ships the page text, ready to paste"
+
+# THE CONTROLS TABLE MATCHES THE INPUT CODE. Every key sv_input.lua reads has its
+# row in the page's Controls table, so documentation that is already wrong cannot ship.
 declare -A KEYLINE=( [IN_FORWARD]="W / S" [IN_BACK]="W / S" [IN_MOVELEFT]="A / D" [IN_MOVERIGHT]="A / D"
-                     [IN_ATTACK2]="Right mouse" [IN_ATTACK]="Left mouse" [IN_JUMP]="SPACE"
-                     [IN_SPEED]="SHIFT" [IN_DUCK]="CTRL" [IN_RELOAD]="R  " [IN_WALK]="ALT" )
-CONTROLS="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1]))["description"]; print(d.split("CONTROLS",1)[1].split("SERVER OWNERS",1)[0])' "$ROOT/addon.json")"
+                     [IN_ATTACK2]="Right mouse" [IN_ATTACK]="Left mouse" [IN_JUMP]="[td]SPACE"
+                     [IN_SPEED]="SHIFT" [IN_DUCK]="CTRL" [IN_RELOAD]="[td]R[/td]" [IN_WALK]="[td]ALT" )
+CONTROLS="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1]))["description"]; print(d.split("[h2]Controls[/h2]",1)[1])' "$ROOT/addon.json")"
+ok '[ -n "$CONTROLS" ]' "the description has a Controls table"
 for key in $(grep -o 'IN_[A-Z0-9]*' "$ROOT/lua/bmx/sv_input.lua" | sort -u); do
   line="${KEYLINE[$key]:-}"
   ok '[ -n "$line" ] && grep -qF -- "$line" <<<"$CONTROLS"' "the description's controls cover $key (${line:-UNMAPPED: add it to this test})"
 done
 
-for name in "BMX Cruiser" "Mini BMX" "Combos" "bmx_max_per_player" "bmx_scoring" "bmx_combos" "bmx_stick_deadzone"; do
-  ok 'grep -q "$name" "$ROOT/addon.json"' "the Workshop description mentions $name"
+# What 1.1.0 brings, named on the page. The tandem, the motor vehicles and the
+# server settings are left off it on purpose (aa3ba8c, f4180d2): README has those.
+for name in "Cruiser" "Mini" "Road Bike" "Fixie" "City Bike" "Downhill" "Unicycle" "Penny-Farthing" \
+            "skateboard" "kick scooter" "inline skates" "Combos" "child seat" "Bike rack and lock" "bell"; do
+  ok 'grep -qF "$name" "$ROOT/workshop/description.bbcode"' "the Workshop description mentions $name"
 done
-for cv in bmx_max_per_player bmx_scoring bmx_combos; do
+for cv in bmx_max_per_player bmx_scoring bmx_combos bmx_stick_deadzone; do
   ok 'grep -q "$cv" "$ROOT/README.md"' "README documents $cv"
 done
 
@@ -122,14 +134,67 @@ while True:
     j = b.index(b"\0", i); print(b[i:j].decode()); i = j + 1
     i += 8 + 4                        # size, crc
 PY
-# The addon is its Lua and the spawn-menu pictures (materials/entities, one per Q-menu
-# entry: tests/test_spawn_icons.lua), and nothing else.
-want="$(cd "$ROOT" && git ls-files lua materials/entities | tr 'A-Z' 'a-z' | sort)"
+# The addon is its Lua, the spawn-menu pictures (materials/entities, one per Q-menu
+# entry: tests/test_spawn_icons.lua) and its own sounds (sound/bmx/*.wav, the bell
+# and the horn, made by tools/sound/make_sounds.py), and nothing else.
+want="$(cd "$ROOT" && git ls-files lua materials/entities 'sound/bmx/*.wav' | tr 'A-Z' 'a-z' | sort)"
 got="$(grep -v '^addon.json$' "$TMP/gma.txt" | sort)"
-ok '[ "$want" = "$got" ]' "the .gma holds exactly the addon's lua files and spawn icons ($(echo "$got" | wc -l))"
+ok '[ "$want" = "$got" ]' "the .gma holds exactly the addon's lua files, spawn icons and sounds ($(echo "$got" | wc -l))"
 ok 'grep -q "^lua/bmx/sv_rules.lua$" "$TMP/gma.txt"' "including the new server settings"
 ok 'grep -q "^materials/entities/bmx_base.png$" "$TMP/gma.txt"' "including the spawn-menu pictures"
-ok '! grep -qvE "^(lua/|materials/entities/[a-z0-9_]+\.png$|addon\.json$)" "$TMP/gma.txt"' "and nothing else (tests, tools, docs stay out)"
+ok 'grep -q "^sound/bmx/bell1.wav$" "$TMP/gma.txt"' "including the bell"
+ok '! grep -qvE "^(lua/.+\.lua$|materials/entities/[a-z0-9_]+\.png$|sound/bmx/[a-z0-9_]+\.wav$|addon\.json$)" "$TMP/gma.txt"' \
+   "and nothing else (tests, tools, docs, licence notes stay out)"
+
+# EVERY ASSET THE CODE NAMES IS SHIPPED, OR IS THE BASE GAME'S. A sound, model or
+# material path in lua/ is either packed in the .gma (a sound path is relative to
+# sound/, a material's to materials/; "%d" with `variants = N` is every variant)
+# or sits in a folder Garry's Mod itself ships, and is not one of ours. A path of
+# ours that is not packed plays silence or draws an ERROR for every subscriber,
+# and no server-side test can hear or see that.
+python3 - "$ROOT" "$TMP/gma.txt" > "$TMP/assets.txt" <<'ASSETS'
+import os, re, sys
+root, gma = sys.argv[1], sys.argv[2]
+packed = set(open(gma).read().split())
+BASE = ("physics/", "vehicles/", "ambient/", "garrysmod/", "doors/", "ui/", "buttons/",
+        "weapons/", "player/", "npc/", "items/", "common/", "plats/", "icon16/", "gui/",
+        "models/hunter/", "models/props_", "models/xqm/", "models/nova/", "models/weapons/",
+        "models/player/", "models/dav0r/", "models/maxofs2d/", "models/editor/")
+pat = re.compile(r'"([A-Za-z0-9_./%-]+\.(?:wav|mp3|ogg|mdl|vmt|vtf|png|jpg))"')
+var = re.compile(r'variants\s*=\s*(\d+)')
+seen = 0
+for dp, _, fns in sorted(os.walk(os.path.join(root, "lua"))):
+    for fn in sorted(fns):
+        if not fn.endswith(".lua"):
+            continue
+        f = os.path.join(dp, fn)
+        for n, line in enumerate(open(f, encoding="utf-8"), 1):
+            for ref in pat.findall(line):
+                ref = ref.lower()
+                seen += 1
+                if ref.endswith((".wav", ".mp3", ".ogg")):
+                    cand = "sound/" + ref
+                elif ref.startswith("models/"):
+                    cand = ref
+                else:
+                    cand = "materials/" + ref
+                m = var.search(line)
+                cands = [cand.replace("%d", str(i)) for i in range(1, (int(m.group(1)) if m else 1) + 1)] \
+                        if "%d" in cand else [cand]
+                if all(c in packed for c in cands):
+                    print("ok", ref)
+                elif ref.startswith(BASE) and "bmx" not in ref:
+                    print("base", ref)
+                else:
+                    print("MISSING", ref, os.path.relpath(f, root) + ":" + str(n))
+print("seen", seen)
+ASSETS
+SEEN="$(sed -n 's/^seen //p' "$TMP/assets.txt")"
+ok '[ "${SEEN:-0}" -ge 20 ]' "the asset scan finds the code's sound and model paths (${SEEN:-none})"
+ok 'grep -q "^ok bmx/bell%d.wav$" "$TMP/assets.txt" && grep -q "^ok bmx/horn%d.wav$" "$TMP/assets.txt"' \
+   "the bell and horn the code plays are packed, every variant"
+ok '! grep -q "^MISSING" "$TMP/assets.txt"' \
+   "every sound, model and material the code names is in the .gma or the base game $(grep '^MISSING' "$TMP/assets.txt" | tr '\n' ' ')"
 
 echo "$pass passed, $fail failed"
 [ "$fail" = 0 ]

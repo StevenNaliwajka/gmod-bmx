@@ -284,7 +284,7 @@ BMX.RegisterBike("scooter", {
     look        = "scooter",       -- its model (docs/MODELS.md)
     printName   = "Scooter",
     description = "A pro stunt scooter: kick (W), steer by leaning, rear fender brake (S), hop, tailwhip, barspin, bri flip and grind.",
-    author      = "naliwajka",
+    author      = "Burrito",
     family      = "scooter",
     colorIndex  = 2,
     drive       = { kind = "push", torque = T.kick, maxSpeed = T.maxSpeed, kickInterval = T.kickInterval, footBrake = false },

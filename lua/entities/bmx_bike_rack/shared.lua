@@ -15,7 +15,7 @@
 ENT.Type = "anim"
 ENT.Base = "base_anim"
 ENT.PrintName = "Bike Rack"
-ENT.Author = "naliwajka"
+ENT.Author = "Burrito"
 ENT.Category = "BMX"
 ENT.Spawnable = true
 ENT.AdminOnly = false
@@ -37,6 +37,6 @@ list.Set("SpawnableEntities", "bmx_bike_rack", {
     ClassName   = "bmx_bike_rack",
     Category    = "BMX",
     Subcategory = "Bikes",
-    Author      = "naliwajka",
+    Author      = "Burrito",
     Information = "Welds to a car and carries up to two bikes. E with a bike beside it loads it; E on a racked bike lets it down.",
 })

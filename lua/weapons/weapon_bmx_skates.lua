@@ -13,7 +13,7 @@
 ----------------------------------------------------------------------------]]
 
 SWEP.PrintName    = "Inline skates"
-SWEP.Author       = "naliwajka"
+SWEP.Author       = "Burrito"
 SWEP.Category     = "BMX"
 SWEP.Instructions = "Equip to skate: W stride, A / D crossover, S brake, SPACE jump, hold SPACE in the air near a rail to grind. Switch weapon to take them off."
 SWEP.Spawnable    = true

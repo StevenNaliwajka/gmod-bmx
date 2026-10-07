@@ -16,7 +16,7 @@ ENT.Type      = "anim"
 ENT.Base      = "base_entity"
 
 ENT.PrintName = "BMX"
-ENT.Author    = "naliwajka"
+ENT.Author    = "Burrito"
 ENT.Category  = "BMX"
 ENT.Spawnable = true
 ENT.AdminOnly = false

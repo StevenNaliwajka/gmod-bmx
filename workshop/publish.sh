@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Upload BMX Bike to the Steam Workshop from a Linux PC with Garry's Mod installed.
+# Upload BMX to the Steam Workshop from a Linux PC with Garry's Mod installed.
 # Steam must be running and signed in as ConvexBurrito5.
 #
 #   ./publish.sh update "what changed"    new version of the live item (the usual)
@@ -24,7 +24,7 @@ cmd="${1:-update}"
 case "$cmd" in
   create)
     if [ -n "$WSID" ] && [ "${2:-}" != "--new" ]; then
-      echo "BMX Bike is already on the Workshop as item $WSID." >&2
+      echo "BMX is already on the Workshop as item $WSID." >&2
       echo "Use: ./publish.sh update \"what changed\"   (or: create --new for a second item)" >&2
       exit 1
     fi

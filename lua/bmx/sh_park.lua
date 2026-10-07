@@ -712,7 +712,7 @@ function P.RegisterSpawnClasses()
                 scripted_ents.Register({
                     Type = "anim", Base = "bmx_park_piece",
                     PrintName = P.Label(id, { s, v }), Category = P.CATEGORY,
-                    Author = "naliwajka", Spawnable = true, AdminOnly = false,
+                    Author = "Burrito", Spawnable = true, AdminOnly = false,
                     ParkShape = id, ParkParams = params,
                 }, class)
             end

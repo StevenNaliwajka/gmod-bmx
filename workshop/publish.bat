@@ -1,5 +1,5 @@
 @echo off
-rem Publish the BMX Bike addon to the Steam Workshop as a NEW item.
+rem Publish the BMX addon to the Steam Workshop as a NEW item.
 rem Run this ONCE. Every later release uses update.bat instead: running this
 rem again makes a second Workshop item rather than updating the first.
 setlocal
@@ -16,18 +16,18 @@ set "GMP=%GMP:"=%"
 if not exist "%GMP%" ( echo Not found: %GMP% & pause & exit /b 1 )
 echo Using %GMP%
 
-rem BMX Bike IS ALREADY PUBLISHED. Creating again makes a second item that
+rem BMX IS ALREADY PUBLISHED. Creating again makes a second item that
 rem nobody is subscribed to, so it takes typing NEW to do it on purpose.
 if not exist "%HERE%workshop-id.txt" goto create
 set /p WSID=<"%HERE%workshop-id.txt"
-echo   BMX Bike is already on the Workshop as item %WSID%.
+echo   BMX is already on the Workshop as item %WSID%.
 echo   To release a new version, close this and run update.bat instead.
 set /p CONFIRM=Type NEW to create a SECOND, separate item anyway: 
 if /i not "%CONFIRM%"=="NEW" exit /b 1
 :create
 
 echo.
-echo   Uploading BMX Bike to the Steam Workshop as a NEW item.
+echo   Uploading BMX to the Steam Workshop as a NEW item.
 echo.
 echo   Before you go on:
 echo     1. Steam is running and signed in as ConvexBurrito5.

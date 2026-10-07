@@ -20,7 +20,7 @@
 ENT.Type      = "anim"
 ENT.Base      = "base_anim"
 ENT.PrintName = "BMX Filmer Camera"
-ENT.Author    = "naliwajka"
+ENT.Author    = "Burrito"
 ENT.Category  = "BMX"
 ENT.Spawnable = true
 ENT.AdminOnly = true

@@ -310,6 +310,51 @@ T.test("bike model (client): the simple bike stands in while the model builds, t
     T.ok(paint and paint.r == 205 and paint.g == 35, "frame drawn in the bike's palette colour")
 end)
 
+T.test("bike model (client): while a new size's model builds, the bike keeps its last model, not the old simple look", function()
+    local E = S.cl.env
+    local BM = E.BMX.BikeMesh
+    local get = BM.Get
+    BM.Get = function() return nil end           -- its new model: still building
+    draw(S)
+    BM.Get = get
+    T.ok(#S.cl.groups > 0, "the last model is drawn while the new one builds")
+    T.eq(#S.cl.drawnCS, 0, "no flash of the simple bike")
+    -- After a rebuild the old meshes are gone: then, and only then, the simple bike.
+    local held = S.cb.bmxDrawnModel
+    BM.Clear()
+    T.ok(held.cleared, "a rebuild marks the models it destroyed")
+    BM.Get = function() return nil end
+    draw(S)
+    BM.Get = get
+    T.eq(#S.cl.groups, 0, "a destroyed model is never drawn")
+    T.ok(#S.cl.drawnCS > 10, "the simple bike stands in")
+    T.ok(ready(S), "and the model is built again")
+end)
+
+T.test("bike model (client): a bike's model is built before it is ever drawn", function()
+    local s = scene()
+    enableMeshes(s)
+    local E = s.cl.env
+    E.BMX.BikeMesh.Clear()
+    local think = s.cl.hooks and s.cl.hooks.Think and s.cl.hooks.Think["BMX.BikeModelPrebuild"]
+        or (E.hook.GetTable and E.hook.GetTable().Think and E.hook.GetTable().Think["BMX.BikeModelPrebuild"])
+    T.ok(think, "a Think hook builds models")
+    local t = 0
+    E.RealTime = function() return t end
+    local built = false
+    for i = 1, 5000 do
+        t = t + 0.02
+        think()
+        -- Read off the cache, not by asking (asking would build it too).
+        for _, st in pairs(E.BMX.BikeMesh.Status()) do if st == "ready" then built = true end end
+        if built then break end
+    end
+    T.ok(built, "built with the bike never drawn")
+    draw(s)
+    T.ok(#s.cl.groups > 0, "so its first draw is the model")
+    T.eq(#s.cl.drawnCS, 0, "never the simple bike")
+end)
+
 T.test("bike model (client): every part is placed by a rigid, finite transform", function()
     draw(S)
     for _, g in ipairs(S.cl.groups) do

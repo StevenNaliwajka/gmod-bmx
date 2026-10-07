@@ -393,6 +393,7 @@ end
 
 function BM.Clear()
     for _, m in pairs(models) do
+        m.cleared = true                -- a bike still holding it must not draw it
         if m.groups then
             for _, list in pairs(m.groups) do
                 for _, e in ipairs(list) do

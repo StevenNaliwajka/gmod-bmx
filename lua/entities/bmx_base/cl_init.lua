@@ -587,6 +587,28 @@ function BMX.BikeModelFor(ent)
     } or nil)
 end
 
+-- BUILT BEFORE IT IS SEEN. A model's build only advanced while a bike asking
+-- for it was being drawn, so a bike that rode into view -- a rental, the trick
+-- bot, a kind nobody had ridden yet -- showed the old simple bike for seconds
+-- and then swapped to the built one. Every bike in the world now asks once a
+-- frame, drawn or not (BikeMesh.Get advances one build a frame, a few ms, and a
+-- ready model is a table lookup).
+local prebuild, nextScan = {}, 0
+hook.Add("Think", "BMX.BikeModelPrebuild", function()
+    if not (BMX.BikeMesh and BMX.BikeMesh.Enabled()) then return end
+    local now = RealTime()
+    if now > nextScan then
+        nextScan = now + 1
+        prebuild = {}
+        for _, e in ipairs(ents.GetAll()) do
+            if e.IsBMX and e.Cfg and e.Bike then prebuild[#prebuild + 1] = e end
+        end
+    end
+    for _, e in ipairs(prebuild) do
+        if IsValid(e) then BMX.BikeModelFor(e) end
+    end
+end)
+
 -- The anchors a model's layout gives (docs/MODELS.md), in model space:
 --   headT headB          the steer axis (the fork and the bars turn about it)
 --   rear front           the axles, as the model was built
@@ -973,6 +995,18 @@ function ENT:Draw()
     -- the vehicle's own sizes so the saddle is under its rider and the wheels on
     -- its axles.
     local model = not debug and BMX.BikeModelFor(self)
+    -- WHILE A NEW ONE BUILDS, THE LAST ONE. A bike whose size changes under it
+    -- (the server's settings arriving after it spawned) asks for a model that is
+    -- not built yet; drawn as the simple bike meanwhile, it flashed back to the
+    -- old look for a few seconds and then swapped again. It keeps the model it
+    -- was last drawn with until the new one is ready (not after a rebuild,
+    -- which destroys the old meshes: BikeMesh.Clear marks them).
+    if model then
+        self.bmxDrawnModel = model
+    elseif not debug and self.bmxDrawnModel and not self.bmxDrawnModel.cleared
+        and BMX.BikeMesh and BMX.BikeMesh.Enabled() then
+        model = self.bmxDrawnModel
+    end
     -- A tandem's stoker targets come only from the detailed model (DrawDetailed): a
     -- frame drawn without it must not leave last frame's world points behind.
     if not model then self.ikTargetsStoker = nil end

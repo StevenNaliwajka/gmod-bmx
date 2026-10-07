@@ -476,6 +476,16 @@ function ENT:Crash(reason, severity)
         -- rider comes off the bike as a body rather than sliding out of it
         -- standing up. Hurt when they get up, so the damage lands on the
         -- player and not on a ragdoll. bmx_crash_ragdoll 0 is the old shove.
+        -- Somebody else's ragdoll first. BMX_RiderCrashed(ply, vel, bike) lets
+        -- ANY ragdoll addon take the rider without us knowing about each one:
+        -- return true from it and the rider is yours. Then RagMod, if
+        -- installed (sv_compat_ragmod.lua; false on any problem). Damage still
+        -- lands either way, straight away: there is no get-up of ours to wait for.
+        if hook.Run("BMX_RiderCrashed", ply, throw, bike) == true
+            or (BMX.Compat and BMX.Compat.Ragdoll and BMX.Compat.Ragdoll(ply, throw)) then
+            hurt()
+            return
+        end
         if GetConVar("bmx_crash_ragdoll"):GetBool() and BMX.Tumble(ply, throw, hurt) then
             return
         end

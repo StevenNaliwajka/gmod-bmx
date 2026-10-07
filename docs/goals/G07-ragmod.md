@@ -45,3 +45,19 @@ without us knowing about each one (part of G20's API).
 
 RagMod's API isn't stable. Pin the functions we call in a comment, and fail
 over to ours on any error (`pcall`).
+
+## Status (2026-10-07)
+
+Implemented on the worktree branch, not yet on a live server.
+
+- `lua/bmx/sv_compat_ragmod.lua`: `BMX.Compat.Ragdoll(ply, vel)`,
+  `BMX.Compat.DetectRagMod()` (run at `InitPostEntity`), convar `bmx_ragmod`
+  (default 1). Every call into RagMod is a `pcall`; any failure returns false and
+  the existing `bmx_crash_ragdoll` path runs.
+- `ENT:Crash` fires `BMX_RiderCrashed(ply, vel, bike)` (return true to take the
+  rider), then asks the adapter, then falls back. Damage is applied either way.
+- Offline tests in `tests/test_ragmod.lua` (fake RagMod table, velocity, error
+  fallback, convar off, hook takeover).
+- **Not verified:** RagMod's real entry-point names are a guess (see the file
+  header); the manual crash test with RagMod Reworked installed is still to do.
+  Until then players get our own ragdoll, as before.

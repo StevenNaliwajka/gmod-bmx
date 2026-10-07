@@ -391,7 +391,7 @@ T.test("bikes: an unknown bike name lists every vehicle", function()
     local ply = looker(sv)
     sv:command("bmx_spawn", ply, "tandem")
     local said = table.concat(ply._chat, "\n")
-    T.ok(said:find("city, cruiser, fixie, mini, road, scooter, skateboard, stock", 1, true), "lists them: " .. said)
+    T.ok(said:find("city, cruiser, fixie, mini, road, scooter, skateboard, skates, stock", 1, true), "lists them: " .. said)
 end)
 
 --------------------------------------------------------------------------

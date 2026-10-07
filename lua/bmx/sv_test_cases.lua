@@ -2779,3 +2779,117 @@ for _, name in ipairs({ "rest", "parked_on_stand", "fallen_is_picked_up", "lean_
                         "curb_no_pop" }) do
     T.Variant(name, "scooter")
 end
+
+--------------------------------------------------------------------------
+-- INLINE SKATES (G25), on the real engine. NOT RUN YET: no server was to hand when these
+-- were written, so the bands are wide and the first run is expected to move some of them.
+--
+-- A WORN vehicle has no entity (sv_test.lua, setupWorn): the case's bot is put on the test
+-- ground, stopped and equipped, ctx.worn is its wearer state and ctx.bike is nil. The bot
+-- is scripted, so these write ctx.worn.input directly, as the usercmd decoder would, and
+-- the engine's own movement does the collisions on the velocity the skates' step writes.
+-- What they find out, that the offline suite cannot, is whether the player really glides
+-- (Entity:SetFriction 0 and the zeroed walk keys: sv_skates.lua) and keeps the speed it was given.
+--------------------------------------------------------------------------
+
+-- Write the skater's keys the way the decoder does. Anything omitted is neutral; `eyeYaw` is left
+-- nil so that A and D (`turn`) steer, as for a bot.
+local function skateInput(ctx, t)
+    t = t or {}
+    local i = ctx.worn.input
+    i.fwd, i.turn = t.fwd or 0, t.turn or 0
+    i.w, i.s, i.a, i.d = (t.fwd or 0) > 0, (t.fwd or 0) < 0 or t.brake or false, (t.turn or 0) > 0, (t.turn or 0) < 0
+    i.jump, i.crouch, i.brake = t.jump or false, t.crouch or false, t.brake or false
+    i.brakeMode = t.brakeMode or "tstop"
+    i.eyeYaw = nil
+end
+
+local function planarSpeed(p)
+    local v = p:GetVelocity()
+    return math.sqrt(v.x * v.x + v.y * v.y)
+end
+
+T.Case("skates_stride_to_speed", { vehicle = "skates", timeout = 40,
+    desc = "inline skates: W strides the player up to speed on the engine's own movement, the legs alternating, and a T-stop stops them" },
+function(ctx)
+    local p, w = ctx.bot, ctx.worn
+    ctx:ok(p:GetFriction() == 0, "the engine's friction is off, so the player can glide")
+    ctx:ok(w.def.worn and w.def.balance == "skates", "the worn skates mode")
+    local start = p:GetPos()
+    local feet, last, peak = 0, nil, 0
+    skateInput(ctx, { fwd = 1 })
+    local t0 = CurTime()
+    while CurTime() - t0 < 8 do
+        local v = planarSpeed(p)
+        peak = math.max(peak, v)
+        if w.sk.foot ~= last then feet = feet + 1 last = w.sk.foot end
+        if ctx.runway > 0 and p:GetPos():Distance(start) > ctx.runway then break end
+        if v > 230 then break end
+        coroutine.yield()
+    end
+    local v = planarSpeed(p)
+    ctx:log(string.format("%.0f u/s (peak %.0f) after %.1f s, %.0f units, %d strides",
+        v, peak, CurTime() - t0, p:GetPos():Distance(start), feet))
+    ctx:between(peak, 110, 440, "speed from striding", "u/s")
+    ctx:ok(feet >= 3, "the legs alternated: " .. feet)
+    ctx:ok(p:Alive(), "the player is fine")
+    ctx:ok(p:GetPos():Distance(start) > 150, "it went somewhere: the engine kept the velocity the step wrote")
+
+    skateInput(ctx, {})
+    ctx:wait(1.0)
+    local coast = planarSpeed(p)
+    ctx:ok(coast > peak * 0.55, "it coasts, a skater glides: " .. math.floor(peak) .. " -> " .. math.floor(coast))
+    skateInput(ctx, { brake = true })
+    ctx:wait(1.2)
+    ctx:ok(planarSpeed(p) < coast * 0.4, "a T-stop stops it: " .. math.floor(coast) .. " -> " .. math.floor(planarSpeed(p)))
+    skateInput(ctx, {})
+end)
+
+T.Case("skates_soul_grind", { vehicle = "skates", timeout = 40,
+    desc = "inline skates: SPACE in the air over a park flat rail along it locks a soul grind, the soles on the rail's top, and pays it" },
+function(ctx)
+    local g = ctx.ground
+    local p, w = ctx.bot, ctx.worn
+    local rail = BMX.Park.Build("flatrail", { 2 })
+    local at = Vector(g.x + 500, g.y, g.z)
+    if not parkPiece(ctx, "flatrail", { 2 }, at, 0) then return end
+    ctx:wait(0.3)
+    local line = BMX.Park.WorldGrind(rail, at, 0)[1]
+    ctx:log(string.format("rail %.0f long, top at +%.0f", line.b.x - line.a.x, line.a.z - g.z))
+
+    local landed = {}
+    hook.Add("BMX_TrickLanded", "BMX.Test.SkatesSoul", function(ply, t) landed[#landed + 1] = t.name end)
+    local endedWhy
+    hook.Add("BMX_WornGrindEnded", "BMX.Test.SkatesSoul", function(ply, id, move, why) if ply == p then endedWhy = endedWhy or why end end)
+    -- In the air, a little over the rail's start, along it, SPACE held.
+    p:SetPos(Vector(line.a.x + 8, line.a.y, line.a.z + 6))
+    p:SetVelocity(Vector(240, 0, -30) - p:GetVelocity())
+    w.sk.heading = 0
+    w.expect = nil
+    skateInput(ctx, { jump = true })
+
+    local started, move, worstUp, worstSide = false, nil, 0, 0
+    ctx:waitUntil(function()
+        local gr = w.st.grind
+        if gr then
+            started, move = true, gr.move
+            worstUp = math.max(worstUp, math.abs(p:GetPos().z - (line.a.z + ctx.cfg.Grind.clearance)))
+            worstSide = math.max(worstSide, math.abs(p:GetPos().y - line.a.y))
+            -- A and D hold the meter near zero: A (turn +1) lowers it.
+            local m = w.meter or 0
+            skateInput(ctx, { jump = true, turn = m > 0.1 and 1 or (m < -0.1 and -1 or 0) })
+        end
+        return endedWhy ~= nil
+    end, 6, "the grind to end")
+    hook.Remove("BMX_WornGrindEnded", "BMX.Test.SkatesSoul")
+    hook.Remove("BMX_TrickLanded", "BMX.Test.SkatesSoul")
+    skateInput(ctx, {})
+    ctx:ok(started and move == "skate_soul", "locked into a soul grind: " .. tostring(move))
+    ctx:ok(endedWhy == "end" or endedWhy == "slow", "let go where the rail ends: " .. tostring(endedWhy))
+    ctx:between(worstUp, 0, 4, "the soles stayed on the rail's top", "u")
+    ctx:between(worstSide, 0, 4, "and on its line", "u")
+    local paid = false
+    for _, n in ipairs(landed) do if n == "Soul Grind" then paid = true end end
+    ctx:ok(paid, "a Soul Grind was paid: " .. table.concat(landed, ", "))
+    ctx:ok(p:Alive() and BMX.Worn.Of(p) ~= nil, "still alive and on skates")
+end)

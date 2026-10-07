@@ -77,8 +77,12 @@ BMX.SpawnCategories = {
 --                 the server says so, once.
 --   none          nothing holds the vehicle up. It stands on its wheels
 --                 (a motor vehicle with a low centre of mass, a cart).
+--   skates        G25's, and the one WORN mode: the player is the chassis, there is no
+--                 entity for a balance to hold up. Its module is not in BalanceModes
+--                 but in BMX.WornModes (sv_worn.lua): a step on the player's own
+--                 velocity, not a controller on a physics object.
 --------------------------------------------------------------------------
-BMX.BalanceModeNames = { singletrack = true, board = true, none = true }
+BMX.BalanceModeNames = { singletrack = true, board = true, skates = true, none = true }
 
 --------------------------------------------------------------------------
 -- DRIVES: what turns the rider's keys into wheel torque (sv_physics.lua).
@@ -95,6 +99,8 @@ BMX.BalanceModeNames = { singletrack = true, board = true, none = true }
 --   push       the skateboard's (G23) and the kick scooter's (G24): a kick every
 --              kickInterval. footBrake = false drops the board's foot drag and
 --              kick-turn (a scooter brakes with its fender)
+--   stride     alternating strides of a pair of skates (G25): a worn vehicle's push,
+--              spread over the legs in turn (sv_skates.lua)
 --   none       coasts
 --------------------------------------------------------------------------
 BMX.DriveKinds = {
@@ -103,6 +109,7 @@ BMX.DriveKinds = {
     coaster  = {},
     throttle = { torque = "number", maxSpeed = "number" },
     push     = { torque = "number", maxSpeed = "number", kickInterval = "number", footBrake = "boolean" },
+    stride   = { torque = "number", maxSpeed = "number", strideInterval = "number" },
     none     = {},
 }
 
@@ -278,6 +285,8 @@ local TOP_LEVEL = {
     printName = true, description = true, author = true, model = true,
     colorIndex = true, seatModel = true, wheelModel = true, forkModel = true,
     frameOffset = true, frameAngles = true, scale = true, bones = true,
+    -- a WORN vehicle (G25): no seat and no entity, the player is the chassis
+    worn = true,
     -- spawn menu behaviour
     hidden = true,      -- not in the spawn menu
     debugOnly = true,   -- bmx_spawn needs bmx_debug >= 1
@@ -438,7 +447,7 @@ function BMX.ValidateVehicle(def)
     -- Balance.
     local balance = def.balance
     if not BMX.BalanceModeNames[balance] then
-        bad[#bad + 1] = string.format("balance %q is not one of singletrack, board, none", tostring(balance))
+        bad[#bad + 1] = string.format("balance %q is not one of singletrack, board, skates, none", tostring(balance))
     elseif balance == "singletrack" and nWheels > 0 and not (nWheels == 2 and nFront == 1 and nRear == 1) then
         bad[#bad + 1] = "balance singletrack needs exactly one front and one rear wheel"
     end
@@ -446,10 +455,27 @@ function BMX.ValidateVehicle(def)
         bad[#bad + 1] = "steer = \"fork\" is the single-track balance's; use a function"
     end
 
+    -- WORN (G25): a vehicle the player wears. There is no entity to sit in, so nothing
+    -- that is about one: no seat, no single-track balance (nothing leans), and the
+    -- wheels are cast from the feet. A worn vehicle IS NOT SPAWNED: no class, no menu
+    -- row of its own (sh_bikes.lua); it is equipped, as a SWEP.
+    if def.worn ~= nil and not isbool(def.worn) then
+        bad[#bad + 1] = "worn must be true or false"
+    elseif def.worn then
+        if def.seats ~= nil and not (istable(def.seats) and next(def.seats) == nil) then
+            bad[#bad + 1] = "a worn vehicle has no seat: the player is the chassis"
+        end
+        if balance == "singletrack" or balance == "board" then
+            bad[#bad + 1] = "a worn vehicle needs a worn balance mode (skates), not " .. tostring(balance)
+        end
+    elseif balance == "skates" then
+        bad[#bad + 1] = "balance skates is a worn mode: it needs worn = true"
+    end
+
     -- Drive.
     local drive = def.drive
     if not istable(drive) or not BMX.DriveKinds[drive.kind] then
-        bad[#bad + 1] = "drive.kind must be one of pedal, fixed, coaster, throttle, push, none"
+        bad[#bad + 1] = "drive.kind must be one of pedal, fixed, coaster, throttle, push, stride, none"
     else
         local allowed = BMX.DriveKinds[drive.kind]
         for k, v in pairs(drive) do

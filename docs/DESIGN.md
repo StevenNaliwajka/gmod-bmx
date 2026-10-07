@@ -540,6 +540,57 @@ trick scoring, the combo, the crash and the landing judge are the bike's, with t
 small wrappers (`sv_scooter.lua`: the grind sparks, the bri flip, and a manual being
 called a manual).
 
+## 6g. Worn vehicles: the skates (G25)
+
+The first vehicle that is not an entity. A skater has no chassis and no seat: the player
+is the thing that moves, and the platform's idea of a vehicle (a registry entry, a state,
+an input map, a trick list, scoring and combos) has to work with nothing to spawn. Six
+decisions.
+
+**`worn = true` is a registration flag and nothing else.** A worn vehicle has no entity
+class (`BMX.ClassFor` is nil, `BMX.VehicleIDs`, which is the classes, leaves it out) and
+no spawn row, may not have a seat or a single-track or board balance, and is equipped
+(a SWEP) and holstered. It stays in `BMX.Vehicles` (the config, the trick list and the
+grind points are read from there) and in `BMX.GettableIDs` (the entities and the worn ones: what
+the /bike window lists and `bmx_spawn` accepts, so `bmx_spawn skates` gives the weapon); it is not in
+`BMX.BikeIDs`, which is the entities.
+
+**The scoring runs through a stand-in.** `ENT:AwardTricks`, the combo chain and the trick
+tracking take an entity and ask it for `st`, `Cfg`, `Bike`, `GetDriver` and the score.
+`w.proxy` is a plain table that answers those from the wearer, so there is one scoring
+path and a trick on skates builds a combo, fires `BMX_TrickLanded` and shows a callout
+like any other. (The hooks that took an entity are handed the player.)
+
+**The player's own movement does the colliding; the skates only own the velocity.**
+Writing a player mover means rewriting collision, stairs and slopes, so each tick
+(`SetupMove`) the player's velocity is taken, run through a pure step and written
+back, their walk keys are zeroed so the engine adds none, and `Entity:SetFriction(0)`
+so it takes none away. What the engine then does to that velocity is collide with the
+world, which is right. The one thing it can do wrong is leave a velocity that is slower
+than ours for a reason that is not a wall, so the velocity last written is kept and the
+engine's is taken in its place only when it came back more than 12 percent slower. That
+is an assumption about the engine nobody has run: it is stated in `sv_skates.lua`, and
+the headless case `skates_stride_to_speed` is what checks it.
+
+**A skater steers by where they look.** The heading chases the view, rate-limited by a
+turn rate that falls with speed (a carve at 400 u/s is wide), and the velocity is carried
+round with it while the part across the boots is gripped away: that is a carve, and it is
+the whole of steering. A and D turn the VIEW, on the client, at the rate the server will
+follow (`CreateMove`), so a keyboard carve and a mouse carve are the same thing and no
+usercmd ever has to carry a heading. (Scripted skaters, which have no view, are turned by
+A and D on the server.) The crossing legs pump a little speed back in.
+
+**The wheels are cast from the feet.** Eight rays, four in a line under each boot, give
+the slope under the skater (the part of gravity along it is added to the velocity: a
+downhill gains), and are what the client draws. There is no spring: the legs are the
+suspension and the player's own hull stands.
+
+**A grind places the skater, as a bike's does.** `sv_grind.lua`'s rail finder is entity-free
+and is reused as it is; what a skater adds is the placing (the player's origin is set each
+tick and the engine's movement is taken over, `Move` returns true), the balance meter (the
+board's) and the end. The contact is the sole, at the player's origin, so a standing hull
+rests on the rail's top and is not inside it when it lets go.
+
 ## 7. Roadmap
 
 | Phase | Deliverable | Status |

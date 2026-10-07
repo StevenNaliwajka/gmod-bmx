@@ -235,6 +235,13 @@ function BMX.RegisterVehicle(def)
 
     BMX.Vehicles[id] = def
 
+    -- A WORN VEHICLE (G25) is not an entity: nothing to derive a class for, no duplicator,
+    -- no spawn row of its own and no entity for the per-player limit to count. It is
+    -- still in BMX.Vehicles (the config, the trick list and the grind points are read from
+    -- there), in WornIDs and in GettableIDs (the /bike window lists it, and bmx_spawn
+    -- equips it), and NOT in BikeIDs, which is the entities.
+    if def.worn then return def end
+
     -- "stock" IS bmx_base rather than a derivative, so the base class stays
     -- spawnable on its own and a broken registry still leaves something to ride.
     if id ~= "stock" then
@@ -293,15 +300,28 @@ end
 function BMX.ClassFor(id)
     id = string.lower(id or "")
     if not BMX.Bikes[id] then return nil end
+    -- A worn vehicle (skates) has no entity class: there is nothing to create.
+    if BMX.Bikes[id].worn then return nil end
     return id == "stock" and "bmx_base" or ("bmx_" .. id)
 end
 
--- The vehicles a player can see and spawn: everything but the hidden ones.
+-- The vehicles a player can see and spawn: everything but the hidden ones and the worn ones.
 -- (Named for the bikes it was written for; boards and scooters are in it.)
 function BMX.BikeIDs()
     local out = {}
     for id, def in pairs(BMX.Vehicles) do
-        if not def.hidden then out[#out + 1] = id end
+        if not def.hidden and not def.worn then out[#out + 1] = id end
+    end
+    table.sort(out)
+    return out
+end
+
+-- Everything a player can GET: the spawnable vehicles and the worn ones (BMX.WornIDs), which
+-- they put on instead. What bmx_spawn accepts, and what the /bike window lists.
+function BMX.GettableIDs()
+    local out = BMX.BikeIDs()
+    for id, def in pairs(BMX.Vehicles) do
+        if def.worn and not def.hidden then out[#out + 1] = id end
     end
     table.sort(out)
     return out
@@ -311,7 +331,20 @@ end
 -- ours?" and the per-player limit have to count.
 function BMX.VehicleIDs()
     local out = {}
-    for id in pairs(BMX.Vehicles) do out[#out + 1] = id end
+    for id, def in pairs(BMX.Vehicles) do
+        if not def.worn then out[#out + 1] = id end
+    end
+    table.sort(out)
+    return out
+end
+
+-- The worn vehicles (skates): registered, equipped rather than spawned, and with no
+-- entity class, which is why VehicleIDs (the classes) leaves them out.
+function BMX.WornIDs()
+    local out = {}
+    for id, def in pairs(BMX.Vehicles) do
+        if def.worn then out[#out + 1] = id end
+    end
     table.sort(out)
     return out
 end

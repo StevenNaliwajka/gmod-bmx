@@ -47,6 +47,7 @@ local SHARED = {
     "bmx/sh_bikes.lua",
     "bmx/sh_boards.lua",    -- ...and the boards, registered once RegisterVehicle exists
     "bmx/sh_scooter.lua",   -- the kick scooter (G24): its map, grinds and registration (needs sh_board's push)
+    "bmx/sh_skates.lua",    -- inline skates (G25): the first WORN vehicle: the step, the grinds, the registration
     "bmx/sh_sound.lua",
     "bmx/sh_color.lua",     -- the palette and the ways to choose from it
     "bmx/sh_stance.lua",    -- seated / standing / attack: IK offsets (G21)
@@ -69,6 +70,8 @@ local SERVER_FILES = {
     "bmx/sv_board_carry.lua",  -- ...and carrying one (weapon_bmx_board)
     "bmx/sv_board_grind.lua",  -- ...its grinds, slides and manuals (wraps sv_grind.lua's entry points)
     "bmx/sv_scooter.lua",   -- the kick scooter (G24): its grind moves, bri flip, manual name (wraps after the board's)
+    "bmx/sv_worn.lua",      -- worn vehicles (G25): equip, the hooks, scoring with no entity
+    "bmx/sv_skates.lua",    -- ...and the skates, the first of them (needs sv_worn, sv_combo, sv_grind)
     "bmx/sv_seat.lua",
     "bmx/sv_passenger.lua", -- a second rider: boarding, mass, the crash (G11)
     "bmx/sv_basket.lua",    -- a city bike's basket: props ride in it until the ride is not gentle (G12)
@@ -100,6 +103,7 @@ local CLIENT_FILES = {
     "bmx/cl_passenger.lua", -- who is a passenger, how they sit, where their hands go (G11)
     "bmx/cl_board.lua",     -- the skateboard's drawing, rider pose and HUD (G23): after cl_rider
     "bmx/cl_scooter.lua",   -- the kick scooter's drawing and rider pose (G24): after cl_board, which it borrows from
+    "bmx/cl_skates.lua",    -- the skates on the player's feet, the stride, the crossover turn (G25)
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
     "bmx/cl_filmer.lua",    -- views through a bmx_filmer_cam (bmx_filmer_view)
     "bmx/cl_replay.lua",    -- the last 30 s, played back (bmx_replay)
@@ -115,6 +119,7 @@ if SERVER then
     -- The skateboard SWEP (G23), a client file as well: the engine loads weapons itself,
     -- but sending it explicitly is what makes it work in multiplayer as well.
     AddCSLuaFile("weapons/weapon_bmx_board.lua")
+    AddCSLuaFile("weapons/weapon_bmx_skates.lua")      -- ...and the skates one (G25)
     for _, f in ipairs(SHARED) do AddCSLuaFile(f) end
     for _, f in ipairs(CLIENT_FILES) do AddCSLuaFile(f) end
 end

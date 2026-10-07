@@ -498,10 +498,17 @@ concommand.Add("bmx_spawn", function(ply, _, args)
     if not IsValid(ply) then return end
 
     local id    = args[1] or "stock"
+    -- A WORN vehicle (skates, G25) is not put on the ground: it is equipped, through the same
+    -- doors (BMX_CanSpawn, the vehicle switches), and the player is given what carries it.
+    local worn = BMX.Vehicles[string.lower(id)]
+    if worn and worn.worn then
+        BMX.Worn.Give(ply, id)
+        return
+    end
     local class = BMX.ClassFor(id)
     if not class then
         ply:ChatPrint("[BMX] no such bike: " .. id ..
-            " (try: " .. table.concat(BMX.BikeIDs(), ", ") .. ")")
+            " (try: " .. table.concat(BMX.GettableIDs(), ", ") .. ")")
         return
     end
 

@@ -261,6 +261,7 @@ function M.Realm(world, which)
     env.FCVAR_PROTECTED = 32
     env.MASK_SOLID, env.MASK_SOLID_BRUSHONLY = 33570827, 16395
     env.MOVETYPE_VPHYSICS, env.SOLID_VPHYSICS = 6, 6
+    env.MOVETYPE_WALK = 2
     env.SIM_NOTHING = 0
     env.MOVETYPE_NOCLIP = 8
     env.SIMPLE_USE = 1
@@ -739,6 +740,10 @@ function M.Realm(world, which)
     function Ent:GetNWVector(k, d) local v = self._nw["nw_" .. k]; if v == nil then return d end return v end
     function Ent:SetNWInt(k, v) self._nw["nw_" .. k] = v end
     function Ent:GetNWInt(k, d) local v = self._nw["nw_" .. k]; if v == nil then return d end return v end
+    function Ent:SetNWString(k, v) self._nw["nw_" .. k] = v end
+    function Ent:GetNWString(k, d) local v = self._nw["nw_" .. k]; if v == nil then return d end return v end
+    function Ent:SetNWFloat(k, v) self._nw["nw_" .. k] = v end
+    function Ent:GetNWFloat(k, d) local v = self._nw["nw_" .. k]; if v == nil then return d end return v end
     function Ent:SetNWEntity(k, v) self._nw["nw_" .. k] = v end
     function Ent:GetNWEntity(k, d)
         local v = self._nw["nw_" .. k]
@@ -1231,6 +1236,13 @@ function M.Realm(world, which)
         return m:GetTranslation(), m:GetAngles()
     end
     function Ply:GetGroundEntity() return self._groundEnt or NULL end
+    function Ply:GetRenderAngles() return Angle(0, self:EyeAngles().y, 0) end
+    function Ply:ManipulateBonePosition(b, v) self._manipPos = self._manipPos or {}; self._manipPos[b] = v end
+    -- A worn vehicle (G25) lowers the friction multiplier, and reads whether the engine has the
+    -- player on the ground: a test says which with ply._onGround (on the ground unless false).
+    function Ply:SetFriction(f) self._friction = f end
+    function Ply:GetFriction() return self._friction or 1 end
+    function Ply:IsOnGround() return self._onGround ~= false end
     function Ply:GetObserverTarget() return self._spectatee or NULL end
     function Ply:GetObserverMode() return self._spectating or 0 end
     function Ply:AnimRestartGesture(slot, act) self._gesture = act end
@@ -1657,6 +1669,7 @@ function M.Realm(world, which)
         self:loadStool("bmx_park")
         for _, fn in ipairs(M.EXTRA_BOOT) do fn(self, env) end
         self:loadWeapon("weapon_bmx_board")
+        self:loadWeapon("weapon_bmx_skates")
         env.hook.Run("InitPostEntity")
         self:runTimers()
         return self

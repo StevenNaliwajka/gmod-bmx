@@ -188,14 +188,15 @@ A vehicle that says nothing gets: `balance = "none"`, `drive = { kind = "none" }
 | `id` | Lower-case letters, digits and `_`. Becomes the class `bmx_<id>`. |
 | `family` | `"bike"`, `"board"`, `"skates"`, `"scooter"` or `"moto"`. Decides the spawn menu heading (Bikes, Boards, Scooters, Motor; skates are under Boards) and which `bmx_allow_*` setting can switch it off. |
 | `wheels` | A list of wheels, or a function of the config returning one. At least one, at most eight. See below. |
-| `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (the skateboard's, `sv_board.lua`: the chassis is held flat to the ground and the rider's lean is a state of its own that the steering reads; needs no particular wheel layout), `"none"` (nothing holds the vehicle up; it stands on its wheels). |
-| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "coaster" }` (the same, a coaster brake: freewheeling, S is the brake and, with the `bike_rearonly` map, that is all there is), `{ kind = "fixed" }` (a fixed gear, below), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", torque = N, maxSpeed = N, kickInterval = N }` (a skateboard rider's kick: `torque` is the speed one kick adds at a standstill, u/s, falling to nothing at `maxSpeed`, one kick every `kickInterval` seconds while the throttle is held; also the foot-drag brake and the kick-turn; add `footBrake = false` to drop both, for a vehicle that brakes with its wheel, as the scooter does) `{ kind = "none" }`. `pedal`, `fixed`, `coaster` and `throttle` need at least one wheel with `drive = true`. |
+| `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (the skateboard's, `sv_board.lua`: the chassis is held flat to the ground and the rider's lean is a state of its own that the steering reads; needs no particular wheel layout), `"skates"` (the one WORN mode, below: the player is the chassis) or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
+| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "coaster" }` (the same, a coaster brake: freewheeling, S is the brake and, with the `bike_rearonly` map, that is all there is), `{ kind = "fixed" }` (a fixed gear, below), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", torque = N, maxSpeed = N, kickInterval = N }` (a skateboard rider's kick: `torque` is the speed one kick adds at a standstill, u/s, falling to nothing at `maxSpeed`, one kick every `kickInterval` seconds while the throttle is held; also the foot-drag brake and the kick-turn; add `footBrake = false` to drop both, for a vehicle that brakes with its wheel, as the scooter does) `{ kind = "stride", torque = N, maxSpeed = N, strideInterval = N }` (the skates' alternating strides: the same cycle as `push`, the legs taking turns) or `{ kind = "none" }`. `pedal`, `fixed`, `coaster` and `throttle` need at least one wheel with `drive = true`. |
 | `seats` | `{ rider = {...}, pegs = {...}, child = {...} }` (G11): the vehicle's seats, each `{ model, offset, angles, massFactor }` with every key optional (an empty table is all defaults). `rider` is always there; omitted, it is the config's `Chassis.seatOffset` and `seatAngles`. `pegs` seats a second player on the rear pegs, `child` in a child seat. `offset` may be a `Vector` or a function of the config (so a seat can follow a frame's size); `massFactor` is the passenger's mass as a fraction of the bike's own `Chassis.mass` (default 0.6 on the pegs, 0.25 in the child seat). The old list form, `{ { model, offset, angles } }`, is still the rider's seat. Checked at registration: an unknown seat or key, a bad type, a `massFactor` outside 0-2. See "Passengers" below. |
 | `input` | An id in `BMX.InputMaps`: `"bike"`, `"drive"`, `"road"`, `"bike_rearonly"`, or one you register. |
 | `pose` | An id in `BMX.PoseSets` (the rider's pose on the client): `"bike"`, `"seated"`, `"road"` (tucked over the drops) or `"upright"`. |
 | `tricks` | `"all"` or a list of registered trick ids. Limits what is scored from motion: the flips and turns, the held wheelie and stoppie, and registered custom ticks. |
 | `grindPoints` | `false` (cannot grind) or `{ crank = Vector or fn(cfg), pegs = { y, z, x = { ... } } or fn(cfg), moves = fn }`: where a pipe is looked for and ridden on, where the pegs are on an edge, and optionally `moves(ent, st, rail, dh, vel)`, called when a rail is found, which answers with the move (`{ id, name, mult, yaw, pitch, signed, reverse, crank = Vector, peg = fn(side) -> Vector }`: which point of the vehicle rides the rail, how it is turned and pitched, what it is called and the multiple of the grind rate it pays) or `nil` for no grind here. The skateboard's ten grinds and slides are one (`BMX.Board.GrindMoves`). |
 | `physics`, `bones`, and every appearance field above | As for a bike. |
+| `worn` | `true` for a **worn** vehicle (G25, below): no entity class, no seat, no spawn row of its own; the player is the chassis. It needs a worn `balance` (`"skates"`) and no `seats`. |
 | `hidden` | Not in the spawn menu or `BMX.BikeIDs()`. |
 | `debugOnly` | `bmx_spawn` and the spawn door refuse it unless the player has `bmx_debug 1`. |
 
@@ -304,6 +305,51 @@ Adding a scooter is a `BMX.RegisterBike` with `family = "scooter"`, `input = "sc
 `pose = "scooter"`, `drive = { kind = "push", ..., footBrake = false }` and a small
 `physics` table, and `grindPoints = BMX.Scooter.GrindPoints` for the moves.
 
+### Worn vehicles, and the skates (G25)
+
+Every vehicle above is an entity with a seat. A **worn** vehicle is not: the player is
+the chassis, nothing is spawned, and it is equipped and holstered. `worn = true` in the
+registration is the whole of the flag; the platform (`sv_worn.lua`) does the rest.
+
+```lua
+BMX.Worn.Equip(ply, "skates")      -- put a player into a worn vehicle (returns the wearer's state)
+BMX.Worn.Unequip(ply)
+BMX.Worn.Of(ply)                   -- the wearer's state, or nil: { id, def, st, input, proxy, ... }
+BMX.WornIDs()                      -- the worn vehicles, as BMX.VehicleIDs() is the entity ones
+BMX.WornModes.<balance> = { Decode, Setup, Move, Equip, Unequip, Weapon }
+```
+
+A **mode** is what a `balance` name means for a worn vehicle: `Decode(ply, w, cmd)` reads
+the player's usercmd into `w.input`; `Setup(ply, w, mv, dt)` runs once a movement tick
+before the engine moves the player and may rewrite their velocity; `Move(ply, w, mv,
+dt)` returns `true` to take the movement over; `Weapon` is the SWEP class that carries
+the vehicle (`bmx_spawn <id>` and the /bike window give it). `w.proxy` is a plain table
+that stands in for the entity for the scoring and the combos (`Bike`, `Cfg`, `GetDriver`,
+`GetScore`, `AwardTricks`), so a trick on skates pays, builds a combo, fires
+`BMX_TrickLanded` and shows a callout exactly as a bike's does; the score is the
+networked int `BMXWornScore` on the player. A worn vehicle is **not** in
+`BMX.VehicleIDs()` or `BMX.ClassFor()` (there is no class), and **is** in
+`BMX.BikeIDs()` either (that is the entities), but **is** in `BMX.GettableIDs()` (the
+entities and the worn ones), which is what `bmx_spawn` accepts and the /bike window lists:
+`bmx_spawn skates` gives the weapon.
+
+`skates` is registered in `sh_skates.lua` (`BMX.Skates`): eight wheels, four in a line
+under each boot, cast down from the feet each tick for the slope under the skater. The
+step is a pure function (`BMX.Skates.Step`) and everything numeric is
+`BMX.Skates.Tune`. Equip them from the weapon list (`weapon_bmx_skates`), `bmx_give_skates`
+or `bmx_spawn skates`; holster to walk. A held pair counts toward `bmx_max_per_player`
+and `bmx_allow_boards` switches them off with the boards.
+
+Controls: W strides (the legs alternate; each stroke adds speed, less as the skater
+speeds up), A / D are crossovers (the view turns, and the skater goes round with it), the
+heading follows where you look at a rate that falls with speed, S is a T-stop (or a
+heel brake: `bmx_skates_brake heel`), SPACE jumps. Hold SPACE in the air near a rail or
+ledge (or turn on `bmx_board_autogrind`) to grind: along it with no key a **soul**, with
+W a **mizou**, turned across it a **backslide**; A / D hold the balance meter, release SPACE
+to pop off. Spins in the air pay on the landing (a 180, a 360), and a landing across your
+travel, or from too high, is a bail. Not done yet: makio, topside, royale, unity and
+frontside grinds, flips and grabs, and the wall ride.
+
 ## 2. Tricks
 
 Tricks are scored by name and points: a trick is `{ name = "Backflip", count = 1,
@@ -356,7 +402,7 @@ addon's own limit (`bmx_max_per_player`) also uses.
 
 *Server, vetoable.* A rider has just come off and is about to be put in a
 ragdoll. `vel` is the throw velocity (a vector) and `bike` the bike they came
-off. Return `true` to take the rider yourself (spawn your own ragdoll, or none):
+off (on a **worn** vehicle, the skates, it is the player again: there is no entity). Return `true` to take the rider yourself (spawn your own ragdoll, or none):
 the built-in ragdoll is then skipped. RagMod is handled this way by
 `bmx_ragmod`. It fires once for every person thrown: the rider, then each passenger
 (G11, with the bike's momentum and a little of their own). `BMX_Crash` is the earlier
@@ -385,7 +431,7 @@ what kind it was, absent otherwise: `air` (seconds the bike was up, on air
 tricks), `held` (seconds, on a wheelie or stoppie), `grind` (seconds on the
 rail). A trick that ends in a crash does not fire this (`BMX_TricksBailed`).
 Does not fire with `bmx_scoring 0`. Replaces the per-landing
-`BMX_TricksLanded`.
+`BMX_TricksLanded`. On a worn vehicle (the skates) `bike` is the wearer, the player.
 
 ### `BMX_ComboBanked` (ply, chain, total)
 
@@ -429,6 +475,39 @@ is true if it was popped off the nose.
 *Server.* A skateboard locked onto a rail or ledge. `moveId` is `grind5050`,
 `grind50`, `nosegrind`, `crooked`, `smith`, `feeble`, `boardslide`, `lipslide`,
 `noseslide` or `tailslide` (`BMX.Board.Grinds`). `BMX_GrindStarted` fires too.
+
+### Worn vehicles (skates)
+
+### `BMX_WornEquipped` (ply, id)
+
+*Server.* A player put on a worn vehicle (`id` is `"skates"`): the SWEP was deployed or
+`BMX.Worn.Equip` was called.
+
+### `BMX_WornHolstered` (ply, id)
+
+*Server.* A player took a worn vehicle off: holstered it, died, left, or got into a
+vehicle.
+
+### `BMX_WornGrind` (ply, id, moveId)
+
+*Server.* A skater locked onto a rail or ledge. `moveId` is `skate_soul`,
+`skate_mizou` or `skate_backslide` (`BMX.Skates.Grinds`).
+
+### `BMX_WornGrindEnded` (ply, id, moveId, why, seconds)
+
+*Server.* Off the rail. `why` is `"hop"`, `"end"`, `"slow"` or `"balance"` (the meter was
+lost, which is also a bail).
+
+### `BMX_WornBailed` (ply, id, reason, severity)
+
+*Server.* A skater came off: `reason` is `"fall"`, `"sideways"` or `"balance"`, `severity`
+is 0 to 1. They are then thrown the way a bike's rider is (`BMX_RiderCrashed`, RagMod, a
+ragdoll tumble, or a shove), and the combo is lost.
+
+### `BMX_WornTricksBailed` (ply, id, tricks)
+
+*Server.* The air ended in a bail and paid nothing: the worn counterpart of
+`BMX_TricksBailed`.
 
 ### `BMX_CanRecolor` (bike, paletteIndex)
 

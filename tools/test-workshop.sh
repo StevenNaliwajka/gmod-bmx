@@ -92,6 +92,21 @@ ok '[ "${#TITLE}" -le 128 ]' "the title fits Steam's 128 characters"
 ok 'python3 -c "import json,sys; d=json.load(open(sys.argv[1]))[\"description\"]; sys.exit(0 if d.strip() == open(sys.argv[2]).read().strip() else 1)" "$ROOT/addon.json" "$ROOT/workshop/description.bbcode"' \
    "addon.json's description is workshop/description.bbcode, word for word"
 ok 'grep -q "workshop/description.bbcode" "$ROOT/tools/package-workshop.sh"' "the kit ships the page text, ready to paste"
+# STEAM'S TABLES. Steam turns every line break inside a [table] into an empty
+# row, so a table goes on one line; a key written as a bare [ or ] reads as a
+# tag and breaks its row, so it goes in [noparse]; and the table has a header.
+ok 'python3 -c "
+import re,sys
+s=open(sys.argv[1]).read()
+ts=re.findall(r\"\[table[^\]]*\]([\s\S]*?)\[/table\]\", s)
+ok=bool(ts)
+for t in ts:
+    ok = ok and \"\n\" not in t and t.startswith(\"[tr][th]\")
+    plain = re.sub(r\"\[noparse\][\s\S]*?\[/noparse\]\", \"\", t)
+    plain = re.sub(r\"\[/?(tr|td|th|b|i|u)\]\", \"\", plain)
+    ok = ok and \"[\" not in plain and \"]\" not in plain
+sys.exit(0 if ok else 1)" "$ROOT/workshop/description.bbcode"' \
+   "the Controls table is one line, with a header, and no stray [ ] (Steam renders it cleanly)"
 
 # THE CONTROLS TABLE MATCHES THE INPUT CODE. Every key sv_input.lua reads has its
 # row in the page's Controls table, so documentation that is already wrong cannot ship.

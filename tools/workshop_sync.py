@@ -4,6 +4,7 @@
     tools/workshop_sync.py --dry-run              pack and check all three, upload nothing
     tools/workshop_sync.py                        sync all three (asks first)
     tools/workshop_sync.py bmx --note "..."       just one item (bmx, map, mode)
+    tools/workshop_sync.py bmx --page-only        just the page: text, tags, icon, gallery
 
 What it does, per item, the way gmpublish does and then some:
 
@@ -267,7 +268,8 @@ class Steam:
         tags = [t.encode() for t in item["tags"]]
         arr = StringArray((C.c_char_p * len(tags))(*tags), len(tags))
         ok.append(self.ugc_call("SetItemTags", h, C.byref(arr), False))
-        ok.append(self.ugc_call("SetItemContent", h, item["content"].encode()))
+        if not item.get("page_only"):
+            ok.append(self.ugc_call("SetItemContent", h, item["content"].encode()))
         ok.append(self.ugc_call("SetItemPreview", h, item["icon"].encode()))
         for i in range(old - 1, -1, -1):
             ok.append(self.ugc_call("RemoveItemPreview", h, i))
@@ -309,8 +311,12 @@ def main():
     ap.add_argument("--note", default="", help="the change note (default: the commit's subject)")
     ap.add_argument("--dry-run", action="store_true", help="pack and check, upload nothing")
     ap.add_argument("--yes", action="store_true", help="do not ask first")
+    ap.add_argument("--page-only", action="store_true",
+                    help="update the page (title, description, tags, icon, gallery) and leave the uploaded files as they are")
     a = ap.parse_args()
     items = [load(dict(i), a.ref) for i in ITEMS if not a.only or i["key"] in a.only]
+    for it in items:
+        it["page_only"] = a.page_only
     for t in (GMAD, STEAM_API_LIB):
         if not os.path.isfile(t):
             die("missing %s (copy it from a Garry's Mod dedicated server's bin/linux64)" % t)
@@ -351,7 +357,8 @@ def main():
                                             capture_output=True, text=True).stdout.strip()
             old = steam.update(it, note[:8000])
             ids[it["key"]] = it["id"]
-            print("  done: %s, %d gallery images (replaced %d)" % (it["sha"][:7], len(it["gallery"]), old))
+            print("  done: %s%s, %d gallery images (replaced %d)" % (
+                it["sha"][:7], " (page only; files unchanged)" if it.get("page_only") else "", len(it["gallery"]), old))
             print("  https://steamcommunity.com/sharedfiles/filedetails/?id=%s" % it["id"])
         # Required Items
         all_ids = {}

@@ -45,3 +45,26 @@ model.
 ## Risks
 
 Low. Pure client drawing, no physics change.
+
+## Status (2026-10-07)
+
+Done on the worktree branch (offline only; nobody has looked at it in game).
+
+- `entities/bmx_base/cl_init.lua`: `BMX.SteeredBars` (the bar transform, now
+  shared by `Draw` and the tests) and `BMX.BrakeCable`: lever on the right grip
+  -> a gyro detangler on the head tube (frame-fixed, does not turn) -> the rear
+  brake on the seat stays. Two quadratic Beziers drawn as tubes (5 segments near,
+  2 mid, none far). The lever-to-gyro span is the same at every steer angle, so
+  the slack never changes through a barspin.
+- `sh_bikes.lua`: optional `bones` table, `BMX.ValidateBones` at registration:
+  unknown role = loud error; once given, bars, fork, frontWheel, rearWheel and
+  cranks are required (pedalL/pedalR optional). Absent = not checked, since the
+  shipped bikes have no model. Whether a named bone exists in a real model is a
+  client-side question and is not tested offline.
+- `bmx_debug 2` draws each part's three axes (fork/bars, both wheels, cranks;
+  and every bone in `bones` on a model bike).
+- Tests: `tests/test_cable.lua` (endpoints at +-90 and every 15 degrees through
+  +-720, frame ends fixed, loop length constant, no crossing the head tube, the
+  drawn chain, debug axes, bones validation).
+- Left: the visual check by eye (cable colour/slack, does the lever blade look
+  right), and the real-model bone check once G20 ships a model.

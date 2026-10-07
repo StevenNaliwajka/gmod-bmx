@@ -84,8 +84,11 @@ hook.Add("Think", "BMX.Grind", function()
             if not s.patch then
                 s.patch = CreateSound(ent, S.path)
                 s.patch:SetSoundLevel(S.level)
-                s.patch:PlayEx(S.vol, S.pitch[1])
+                s.patch:PlayEx(S.vol * BMX.VolRide(), S.pitch[1])
             end
+            -- The scrape follows the same two switches as the rest of the sound
+            -- (cl_sound.lua): the player's ride volume, and the admin's mute.
+            s.patch:ChangeVolume(BMX.SoundsOn() and S.vol * BMX.VolRide() or 0, 0.1)
             s.patch:ChangePitch(Lerp(frac, S.pitch[1], S.pitch[2]), 0.1)
             sparks(ent, code, dt, frac)
         end

@@ -34,8 +34,9 @@ First upload (done 2026-10-05; kept for the record)
 Every later release
   Double-click update.bat. It reads the Workshop ID from workshop-id.txt and
   asks only for a one-line note of what changed. (Linux: ./publish.sh update
-  "what changed".) Then check the item page's description against addon.json;
-  paste the new one in if the page still shows the old.
+  "what changed".) Then check the item page's TITLE and description against
+  addon.json (the title is "BMX: Bikes, Grinds & Tony Hawk Combos"); paste the
+  new ones in if the page still shows the old.
 
 If the .bat cannot find gmpublish.exe
   It asks you to paste the path. It is in your Garry's Mod folder:

@@ -604,6 +604,8 @@ function M.Realm(world, which)
         TraceHull = trace,
         AddNetworkString = function(name) R.netStrings[name] = true end,
         PrecacheSound = function() end,
+        -- No water in the shim: a test that wants some replaces this (test_ambient.lua).
+        PointContents = function() return 0 end,
     }
     env.physenv = { GetGravity = function() return Vector(0, 0, -world.gravity) end }
     env.engine = { TickInterval = function() return world.dt end }

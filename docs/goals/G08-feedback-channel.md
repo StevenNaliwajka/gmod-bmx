@@ -43,3 +43,24 @@ GitLab CI already runs on push. Add a `mirror-github` job (deploy key, push
 Making the code public. `docs/DESIGN.md` is very detailed, and a
 competitor could read it. They are already ahead on reach, though, and an
 open repo is what got them their issue reports. The owner decides.
+
+## Status (2026-10-07)
+
+Only the in-repo parts are done, on the worktree branch. **No public repo, no
+mirror job** (the owner has not decided), and the Workshop description does not
+link a tracker yet.
+
+- `lua/bmx/cl_report.lua`: client command `bmx_report` prints and copies a block
+  with version, map, gamemode, SP/MP, tick rate, the bike you are on, every
+  setting that is not at its default (the tuning convars plus the server and
+  volume settings, each with its default), and the last 20 `[BMX]` console lines.
+  The console is buffered by wrapping `MsgN` / `ErrorNoHalt` once. Capped at
+  4000 bytes: oldest console lines go first, then the settings list; the header
+  never does. Only the client's console is covered; the report says so.
+- `.github/ISSUE_TEMPLATE/bug.yml`, `feel.yml`, `suggestion.yml` (GitHub issue
+  forms). They will take effect only once a GitHub repo exists; the GitLab
+  instance ignores them.
+- Tests: `tests/test_report.lua` (fields, defaults diff, 20-line window, 4 KB cap
+  and squeeze, command, template shape).
+- Left: the owner's choice of tracker, the mirror job if any, a Workshop
+  description link, and "Change Notes" naming fixed reports.

@@ -55,6 +55,9 @@ local SERVER_FILES = {
     "bmx/sv_tricks.lua",    -- frame/bar spins and style poses: before sv_physics too
     "bmx/sv_physics.lua",
     "bmx/sv_seat.lua",
+    "bmx/sv_compat_ragmod.lua", -- RagMod, if installed: before the crash path asks
+    "bmx/sv_bell.lua",      -- R on the ground rings the bell
+    "bmx/sv_water.lua",     -- drag, splash and ejection in water (sv_physics checks for it)
     "bmx/sv_rules.lua",     -- server-owner settings: bike limit, scoring on/off
     "bmx/sv_settings.lua",  -- changing and saving them: net message, server.json
     "bmx/sv_scores.lua",    -- personal bests + leaderboard; listens to the public hooks
@@ -81,6 +84,7 @@ local CLIENT_FILES = {
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
     "bmx/cl_grind.lua",     -- sparks and the scrape while a bike grinds
     "bmx/cl_tricks.lua",    -- the trick list overlay (bmx_tricks)
+    "bmx/cl_report.lua",    -- bmx_report: a paste-able block for a bug report
     "bmx/cl_city.lua",      -- draws the city, runs the subway trains
     "bmx/cl_options.lua",   -- spawn menu > Options > BMX, built from BMX.Settings
 }

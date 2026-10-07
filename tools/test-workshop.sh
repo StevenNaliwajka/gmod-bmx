@@ -73,6 +73,29 @@ ok '[[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]' "the version is MAJOR.MINOR.PATCH"
 ok 'python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$ROOT/addon.json"' "addon.json is valid JSON"
 ok 'python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if len(d[\"description\"]) < 8000 else 1)" "$ROOT/addon.json"' \
    "the Workshop description fits Steam's 8000 characters"
+# THE FIRST LINES ARE THE PITCH. A browser sees only the start of the description,
+# and what we have that Rideable Bicycles does not is grinds and combos (G29), so
+# the first 200 characters must say both. Also the title: "BMX Bike" with
+# "BMX bike attempt in gmod" was the page that got 72 subscribers.
+DESC200="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["description"][:200].lower())' "$ROOT/addon.json")"
+ok '[[ "$DESC200" == *grind* ]]' "the first 200 characters of the description mention grinds"
+ok '[[ "$DESC200" == *combo* ]]' "and combos"
+ok '! grep -qi "attempt" "$ROOT/addon.json"' "the description does not call it an attempt"
+TITLE="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["title"])' "$ROOT/addon.json")"
+ok '[[ "$TITLE" == *BMX* && "${TITLE,,}" == *grind* && "${TITLE,,}" == *combo* ]]' "the title names BMX, grinds and combos ($TITLE)"
+ok '[ "${#TITLE}" -le 128 ]' "the title fits Steam's 128 characters"
+
+# THE CONTROLS SECTION MATCHES THE INPUT CODE. Every key sv_input.lua reads has
+# its line in the description, so documentation that is already wrong cannot ship.
+declare -A KEYLINE=( [IN_FORWARD]="W / S" [IN_BACK]="W / S" [IN_MOVELEFT]="A / D" [IN_MOVERIGHT]="A / D"
+                     [IN_ATTACK2]="Right mouse" [IN_ATTACK]="Left mouse" [IN_JUMP]="SPACE"
+                     [IN_SPEED]="SHIFT" [IN_DUCK]="CTRL" [IN_RELOAD]="R  " )
+CONTROLS="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1]))["description"]; print(d.split("CONTROLS",1)[1].split("SERVER OWNERS",1)[0])' "$ROOT/addon.json")"
+for key in $(grep -o 'IN_[A-Z0-9]*' "$ROOT/lua/bmx/sv_input.lua" | sort -u); do
+  line="${KEYLINE[$key]:-}"
+  ok '[ -n "$line" ] && grep -qF -- "$line" <<<"$CONTROLS"' "the description's controls cover $key (${line:-UNMAPPED: add it to this test})"
+done
+
 for name in "BMX Cruiser" "Mini BMX" "Combos" "bmx_max_per_player" "bmx_scoring" "bmx_combos" "bmx_stick_deadzone"; do
   ok 'grep -q "$name" "$ROOT/addon.json"' "the Workshop description mentions $name"
 done

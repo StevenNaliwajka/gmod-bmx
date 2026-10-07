@@ -1,0 +1,48 @@
+name: Feel feedback
+description: It works, but the handling, a trick, or the camera feels off.
+labels: ["feel"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This one is for "it does what it should but it does not feel right":
+        too twitchy, too floaty, landings too harsh, a trick too hard to hold.
+        Tuning is by feel, so say what you felt.
+  - type: input
+    id: vehicle
+    attributes:
+      label: Which bike?
+      description: Or "All bikes".
+      placeholder: Stock BMX
+    validations:
+      required: false
+  - type: textarea
+    id: feel
+    attributes:
+      label: What feels off?
+      description: What you do, what you feel, and what you would want instead. Numbers help if you have them ("turns about twice as fast as I want").
+    validations:
+      required: true
+  - type: input
+    id: video
+    attributes:
+      label: Video or clip
+      description: A link, if you have one.
+    validations:
+      required: false
+  - type: input
+    id: ping
+    attributes:
+      label: Ping, if multiplayer
+      description: Riding is simulated on the server, so high ping feels mushier. It helps to know yours.
+      placeholder: 20 ms
+    validations:
+      required: false
+  - type: textarea
+    id: report
+    attributes:
+      label: bmx_report output
+      description: Type `bmx_report` in the console and paste it here (it lists any tuning you changed).
+      render: text
+    validations:
+      required: false

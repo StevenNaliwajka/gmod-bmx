@@ -58,3 +58,23 @@ limits. The video and screenshots can be scripted on the player test server
 ## Risks
 
 None technical. This is the highest return per hour in the list.
+
+## Status (2026-10-07)
+
+Text only, on the worktree branch. Nothing published; `dist/` untouched.
+
+- `addon.json`: title proposed as **"BMX: Bikes, Grinds & Tony Hawk Combos"**
+  (the only place the kit takes its title from: `tools/gmad.py` packs it into
+  the .gma and the kit's page edit is by hand, see `workshop/README.txt`). The
+  description is rewritten for players: grinds and combos in the first line, a
+  feature list, controls (including R for the bell, as `sv_input.lua` stands on
+  this branch; the barspin binding is a different branch and is not mentioned),
+  server settings, player console. "Attempt" is gone. 2,999 of 8,000 characters.
+- `tools/test-workshop.sh`: the first 200 characters contain "grind" and
+  "combo"; the title names BMX, grinds and combos and fits 128 characters; every
+  `IN_*` key `sv_input.lua` reads has its line in the CONTROLS section (an
+  unmapped key fails the test and says to add it).
+- Convar names are unchanged.
+- Left, all outside the repo or the owner's call: thumbnail, video, screenshots,
+  tags, a tracker link (G08), posting the update, and answering comments. When
+  the barspin branch lands, add its key to CONTROLS or the new test fails.

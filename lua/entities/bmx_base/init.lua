@@ -321,6 +321,9 @@ function ENT:Think()
         end
     end
 
+    -- Water: which wheels and whether the rider's chest is under (20 Hz).
+    if st and BMX.Water then BMX.Water.Think(self) end
+
     -- Live tuning. Reading a dozen convars 20 times a second is free and it
     -- means a tuner sees a change immediately instead of respawning the bike.
     BMX.ApplyConVars()
@@ -346,7 +349,7 @@ function ENT:OnLanded(tricks, front, rear)
     local phys = self:GetPhysicsObject()
     local fall = IsValid(phys) and math.abs(math.min(phys:GetVelocity().z, 0)) or 0
 
-    if fall > 40 then
+    if fall > 40 and BMX.SoundsOn() then
         local key = fall > 320 and "land_hard" or "land_soft"
         local L   = BMX.Sounds[key]
         self:EmitSound(BMX.SoundFile(key), L.level, math.random(94, 106),
@@ -496,6 +499,16 @@ function ENT:Crash(reason, severity)
         -- rider comes off the bike as a body rather than sliding out of it
         -- standing up. Hurt when they get up, so the damage lands on the
         -- player and not on a ragdoll. bmx_crash_ragdoll 0 is the old shove.
+        -- Somebody else's ragdoll first. BMX_RiderCrashed(ply, vel, bike) lets
+        -- ANY ragdoll addon take the rider without us knowing about each one:
+        -- return true from it and the rider is yours. Then RagMod, if
+        -- installed (sv_compat_ragmod.lua; false on any problem). Damage still
+        -- lands either way, straight away: there is no get-up of ours to wait for.
+        if hook.Run("BMX_RiderCrashed", ply, throw, bike) == true
+            or (BMX.Compat and BMX.Compat.Ragdoll and BMX.Compat.Ragdoll(ply, throw)) then
+            hurt()
+            return
+        end
         if GetConVar("bmx_crash_ragdoll"):GetBool() and BMX.Tumble(ply, throw, hurt) then
             return
         end
@@ -504,7 +517,7 @@ function ENT:Crash(reason, severity)
     end)
 
     local CS = BMX.Sounds.crash
-    self:EmitSound(BMX.SoundFile("crash"), CS.level, 100, CS.vol)
+    if BMX.SoundsOn() then self:EmitSound(BMX.SoundFile("crash"), CS.level, 100, CS.vol) end
 end
 
 --------------------------------------------------------------------------

@@ -80,12 +80,18 @@ function BMX.AirControl(ent, phys, cfg, dt, inp, st)
     ----------------------------------------------------------------------
     local damp = A.damping / tuck
 
+    -- RMB HELD IN THE AIR MAKES A/D A SPIN, NOT A ROLL. The README always
+    -- said so ("RMB + A/D: yaw"); the code added the yaw ON TOP of the roll,
+    -- so every 360 attempt was also a barrel roll and came down on its side.
+    -- `rollIn` is what A/D mean for the roll axis right now.
+    local rollIn = inp.wheelieMod and 0 or inp.lean
+
     local aPitch = inp.pitch * A.pitchAccel * tuck - damp * wPitch
-    local aRoll  = inp.lean  * A.rollAccel  * tuck - damp * wRoll
+    local aRoll  = rollIn    * A.rollAccel  * tuck - damp * wRoll
     local aYaw   =                                 - damp * wYaw
 
-    -- Yaw is deliberately weak and unbound to a key: bikes barely yaw in the
-    -- air, and giving the rider free yaw makes every landing survivable.
+    -- Yaw is unbound unless RMB is held: bikes barely yaw in the air on their
+    -- own, and free yaw on A/D would make every landing survivable.
     if inp.wheelieMod then
         aYaw = aYaw + inp.lean * A.yawAccel * tuck
     end
@@ -117,7 +123,7 @@ function BMX.AirControl(ent, phys, cfg, dt, inp, st)
         -- before it is falling at all.
         if vel.z < -40 or st.landRef then
             local roll = select(1, BMX.Attitude(ent, ref))
-            local hands = 1 - abs(inp.lean)
+            local hands = 1 - abs(rollIn)
             -- Not mid barrel roll: past a quarter turn the rider meant it,
             -- and letting go of the key must not wrench them back.
             if st.landRef and abs(st.spinRoll or 0) < math.pi * 0.5 then

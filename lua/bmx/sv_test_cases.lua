@@ -1345,6 +1345,98 @@ function(ctx)
 end)
 
 --------------------------------------------------------------------------
+-- THE BOT (sv_bot.lua): every trick in its list, on a real server, judged by
+-- the addon's own scoring rather than by what the bot thinks it did.
+--
+-- The bot is attached to the harness's own scripted rider and bike, so these
+-- run exactly like any other case. Each trick finds its own room on the map,
+-- its own launch (or puts a kicker down), and rides there itself.
+--------------------------------------------------------------------------
+local function botTrick(ctx, name, opts)
+    opts = opts or {}
+    local brain = BMX.Bot.Attach(ctx.bot, ctx.bike, {
+        quiet = true, home = ctx.ground,
+        allowSpawnRamp = opts.allowSpawnRamp, allowFindRamp = opts.allowFindRamp,
+    })
+    local result
+    BMX.Bot.Perform(brain, name, function(ok, why) result = { ok = ok, why = why } end)
+    ctx:waitUntil(function() return result ~= nil end, opts.timeout or 70, name .. " finished")
+    for _, line in ipairs(brain.log) do ctx:log(line) end
+    BMX.Bot.Detach(brain)
+    ctx:input({})
+    return result, brain
+end
+
+for _, name in ipairs(BMX.Bot.TrickList) do
+    T.Case("bot_" .. name:lower():gsub("[^%w]+", "_"), { timeout = 90,
+        desc = "the bot lands a " .. name .. ", by the scoring's own account" },
+    function(ctx)
+        local r = botTrick(ctx, name)
+        ctx:ok(r and r.ok, name .. " landed: " .. tostring(r and r.why or "no result"))
+        ctx:ok(IsValid(ctx.bike:GetDriver()), "and the rider is still on the bike")
+    end)
+end
+
+T.Case("bot_finds_a_ramp_in_the_world", { timeout = 90,
+    desc = "with no kicker of its own allowed, the bot finds a ramp it was not told about and flips off it" },
+function(ctx)
+    -- A plain tilted plate, put down the way a map's ramp or a player's prop
+    -- would be -- not through BMX.SpawnKicker, so nothing about it is known to
+    -- the bot except what its traces find.
+    local yaw, best = 0, 0
+    for k = 0, 7 do
+        local len = BMX.Launch.Runway(ctx.ground, BMX.Launch.DirOf(k * 45), 1800, { filter = { ctx.bike, ctx.bot } })
+        if len > best then yaw, best = k * 45, len end
+    end
+    local dir = BMX.Launch.DirOf(yaw)
+    local plate = ents.Create("prop_physics")
+    plate:SetModel("models/hunter/plates/plate4x4.mdl")
+    plate:Spawn()
+    local mn, mx = plate:OBBMins(), plate:OBBMaxs()
+    local centre, ang = BMX.Launch.KickerGeometry(ctx.ground + dir * 650, yaw,
+        math.max(mx.x - mn.x, mx.y - mn.y), mx.z - mn.z, math.rad(26))
+    plate:SetPos(centre)
+    plate:SetAngles(ang)
+    local pp = plate:GetPhysicsObject()
+    if IsValid(pp) then pp:EnableMotion(false) end
+    ctx:wait(0.2)
+    ctx:log(string.format("plate put %.0f deg off, %.0f u of runway that way", yaw, best))
+
+    local r, brain = botTrick(ctx, "Backflip", { allowSpawnRamp = false })
+    local found = false
+    for _, line in ipairs(brain.log) do if line:find("found a launch", 1, true) then found = true end end
+    ctx:ok(found, "it found the plate with its own traces")
+    ctx:ok(r and r.ok, "and backflipped off it: " .. tostring(r and r.why))
+    SafeRemoveEntity(plate)
+end)
+
+T.Case("bot_spawns_named_and_dressed", { rider = false, timeout = 40,
+    desc = "bmx_bot_spawn's bot has its name and model, sits on its bike, and rides" },
+function(ctx)
+    local oldName, oldModel = GetConVar("bmx_bot_name"):GetString(), GetConVar("bmx_bot_model"):GetString()
+    RunConsoleCommand("bmx_bot_name", "BMX Show Bot")
+    RunConsoleCommand("bmx_bot_model", "models/player/kleiner.mdl")
+    ctx:wait(0.2)
+    local b, err = BMX.Bot.Spawn(ctx.ground + Vector(0, 300, 0), 0)
+    if not ctx:ok(b ~= nil, "spawned: " .. tostring(err)) then return end
+    b.show = false
+    ctx:wait(0.5)
+    ctx:ok(b.ply:Nick() == "BMX Show Bot", "named by bmx_bot_name: " .. b.ply:Nick())
+    ctx:ok(b.ply:GetModel() == "models/player/kleiner.mdl", "dressed by bmx_bot_model: " .. b.ply:GetModel())
+    ctx:ok(b.bike:GetDriver() == b.ply, "sitting on its own bike")
+    local result
+    BMX.Bot.Perform(b, "Bunny Hop", function(ok, why) result = { ok = ok, why = why } end)
+    ctx:waitUntil(function() return result ~= nil end, 25, "the hop finished")
+    ctx:ok(result and result.ok, "and it rides: a bunny hop, " .. tostring(result and result.why))
+    local bike, ply = b.bike, b.ply
+    BMX.Bot.Detach(b)
+    SafeRemoveEntity(bike)
+    if IsValid(ply) then ply:Kick("test over") end
+    RunConsoleCommand("bmx_bot_name", oldName)
+    RunConsoleCommand("bmx_bot_model", oldModel)
+end)
+
+--------------------------------------------------------------------------
 -- THE OTHER SHIPPED BIKES, held to the same bands.
 --
 -- The cruiser and the mini are the stock bike with other geometry (see

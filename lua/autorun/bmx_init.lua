@@ -50,6 +50,8 @@ local SERVER_FILES = {
     "bmx/sv_physics.lua",
     "bmx/sv_seat.lua",
     "bmx/sv_rules.lua",     -- server-owner settings: bike limit, scoring on/off
+    "bmx/sv_launch.lua",    -- finding a ramp to get air off, or putting one down
+    "bmx/sv_bot.lua",       -- a bot rider that does tricks (bmx_bot_spawn)
     "bmx/sv_debug.lua",
 
     -- The headless harness loads last: its cases reference BMX.Config, the

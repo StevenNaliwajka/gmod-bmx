@@ -550,7 +550,14 @@ C.Air = {
     -- available on the ground.
     pitchAccel = 15.0,
     rollAccel  = 13.0,
-    yawAccel   = 4.0,          -- deliberately weak; bikes barely yaw in the air
+    -- RMB + A/D in the air only (sv_air.lua). It was 4, "deliberately weak",
+    -- and at 4 a 360 needed over two seconds of air: terminal spin is
+    -- yawAccel * tuck / (damping / tuck) = 4.9 rad/s tucked, and the spin-up
+    -- costs most of a second. At 12 a tucked spin's terminal rate is 14.6
+    -- rad/s and a 360 with room to stop fits in the ~1.3 s a hop off a kicker
+    -- gives (9 was tried first: 285 degrees, offline, by touchdown). Nothing
+    -- else reads it, so it cannot loosen riding.
+    yawAccel   = 12.0,
 
     -- Damping so releasing the stick stops the rotation rather than leaving you
     -- spinning like a thrown prop.

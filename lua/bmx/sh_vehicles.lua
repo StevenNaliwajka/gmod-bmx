@@ -92,7 +92,9 @@ BMX.BalanceModeNames = { singletrack = true, board = true, none = true }
 --   coaster    a coaster brake (G12): the pedal drive, freewheeling; its brake is S
 --              (the rear brake) and the vehicle has no front brake to speak of
 --   throttle   a motor: torque, falling to nothing at maxSpeed
---   push       reserved for the skateboard (G23): a kick every kickInterval
+--   push       the skateboard's (G23) and the kick scooter's (G24): a kick every
+--              kickInterval. footBrake = false drops the board's foot drag and
+--              kick-turn (a scooter brakes with its fender)
 --   none       coasts
 --------------------------------------------------------------------------
 BMX.DriveKinds = {
@@ -100,7 +102,7 @@ BMX.DriveKinds = {
     fixed    = {},
     coaster  = {},
     throttle = { torque = "number", maxSpeed = "number" },
-    push     = { torque = "number", maxSpeed = "number", kickInterval = "number" },
+    push     = { torque = "number", maxSpeed = "number", kickInterval = "number", footBrake = "boolean" },
     none     = {},
 }
 

@@ -2603,3 +2603,179 @@ function(ctx)
     if got then ctx:between(got.held or 0, 1.8, 4, "held for", "s") end
     ctx:ok(IsValid(ctx.bike:GetDriver()), "rider aboard after the rear came down")
 end)
+
+--------------------------------------------------------------------------
+-- THE KICK SCOOTER (G24), on the real engine. NOT RUN YET: no server was to hand when
+-- these were written, and the bands are wide for that reason. They ride
+-- `vehicle = "scooter"`: two small wheels, the bike's single-track balance and the
+-- board's push, so what they check is that the three work together on VPhysics.
+--
+-- The shipped riding cases that make no assumption about pedals also run on it, as
+-- "<case>@scooter" (below); the cases here are the ones that are about a scooter.
+--------------------------------------------------------------------------
+
+-- Write the scooter's keys the way the bike's decoder would: W is the kick (throttle on the
+-- ground), S the rear fender brake, A / D the lean. Anything omitted is neutral.
+local function scooterInput(ctx, t)
+    t = t or {}
+    ctx:input({ throttle = t.push and 1 or 0, brakeRear = t.brake and 1 or 0, lean = t.lean or 0,
+                pitch = t.pitch or 0 })
+    ctx.bike.input.whip, ctx.bike.input.bar = t.whip or 0, t.bar or 0
+end
+
+-- Kick until `speed`, or give up. Returns whether it got there on the ground.
+local function scooterTo(ctx, speed, timeout)
+    local got = false
+    scooterInput(ctx, { push = true })
+    local ok = ctx:runUntil(timeout or 10, function()
+        got = ctx:st().fwdSpeed >= speed
+        return got
+    end)
+    return ok and got
+end
+
+T.Case("scooter_pushes_to_speed", { vehicle = "scooter", timeout = 40,
+    desc = "the scooter: W kicks it up to speed, stroke by stroke, upright on two small wheels, and the fender brake (S) stops it" },
+function(ctx)
+    local b = ctx.bike
+    ctx:ok(#b.wheels == 2, "two wheels: " .. #b.wheels)
+    ctx:ok(b:Bike().balance == "singletrack" and b:Bike().drive.kind == "push", "the bike's balance and the board's push")
+    local start = b:GetPos()
+    local kicks, was, peakRoll = 0, false, 0
+    scooterInput(ctx, { push = true })
+    local grounded = ctx:runUntil(9, function()
+        local st = ctx:st()
+        local k = st.board and st.board.ps.kicking or false
+        if k and not was then kicks = kicks + 1 end
+        was = k
+        peakRoll = math.max(peakRoll, math.abs(st.roll))
+        if ctx.runway > 0 and b:GetPos():Distance(start) > ctx.runway then return true end
+        return st.fwdSpeed > 230
+    end)
+    ctx:ok(grounded, "it stayed on the ground")
+    local v = ctx:st().fwdSpeed
+    ctx:log(string.format("%.0f u/s after %d kicks, %.0f units", v, kicks, (b:GetPos() - start):Length()))
+    ctx:between(v, 110, 330, "speed from kicking", "u/s")
+    ctx:ok(kicks >= 3, "it kicked more than once: " .. kicks)
+    ctx:between(math.deg(peakRoll), 0, 25, "roll while kicking", "deg")
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+
+    scooterInput(ctx, {})
+    ctx:wait(1.0)
+    local coast = ctx:st().fwdSpeed
+    ctx:ok(coast > v * 0.7, "it coasts: " .. math.floor(v) .. " -> " .. math.floor(coast))
+    scooterInput(ctx, { brake = true })
+    ctx:wait(1.5)
+    ctx:ok(ctx:st().fwdSpeed < coast * 0.5, "the fender brake slows it: " .. math.floor(coast) .. " -> " .. math.floor(ctx:st().fwdSpeed))
+    ctx:ok(IsValid(b:GetDriver()), "and the rider is still on")
+    scooterInput(ctx, {})
+end)
+
+T.Case("scooter_carves_without_tipping", { vehicle = "scooter", timeout = 40,
+    desc = "the scooter: A and D lean it round, both ways, the bars follow, and the rider stays on" },
+function(ctx)
+    local b = ctx.bike
+    if not scooterTo(ctx, 110, 9) then ctx:ok(false, "it did not get up to speed") return end
+    local function turn(lean)
+        scooterInput(ctx, { lean = lean })
+        local last, total, steer, peakRoll = b:GetAngles().y, 0, 0, 0
+        ctx:runUntil(2.2, function()
+            local y = b:GetAngles().y
+            total = total + ((y - last + 540) % 360 - 180)
+            last = y
+            steer = math.max(steer, math.abs(ctx:wheels().steer or 0))
+            peakRoll = math.max(peakRoll, math.abs(ctx:st().roll))
+        end)
+        return total, steer, peakRoll
+    end
+    local right, steerR, rollR = turn(1)
+    ctx:log(string.format("right %.0f deg, steer %.2f, roll %.0f deg", right, steerR, math.deg(rollR)))
+    ctx:ok(right < -20, "D goes round to the right: " .. math.floor(right))
+    ctx:ok(steerR > 0.02, "the fork turned")
+    local left = turn(-1)
+    ctx:ok(left > 20, "A to the left: " .. math.floor(left))
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+    scooterInput(ctx, {})
+end)
+
+T.Case("scooter_tailwhip_lands", { vehicle = "scooter", timeout = 45,
+    desc = "the scooter: a hop, then LMB + A held for half a second in the air: the deck goes round the bars, finishes by itself, lands, and pays a Tailwhip" },
+function(ctx)
+    local b = ctx.bike
+    local landed, crashed = {}, nil
+    hook.Add("BMX_TrickLanded", "BMX.Test.ScooterWhip", function(ply, t) landed[#landed + 1] = t.name end)
+    hook.Add("BMX_Crash", "BMX.Test.ScooterWhip", function(e, ply, reason) if e == b then crashed = reason end end)
+    if not scooterTo(ctx, 140, 9) then ctx:ok(false, "it did not get up to speed") return end
+    scooterInput(ctx, { push = true })
+    ctx:hop()
+    local air = ctx:waitUntil(function() return ctx:st().airMode end, 2, "air mode to engage")
+    ctx:ok(air, "the hop left the ground")
+    -- LMB + A: the whip, the deck round the steer axis. Held 0.47 s (a turn is 0.55 s at the rate; past
+    -- 270 degrees it finishes by itself).
+    local t0, peak = CurTime(), 0
+    while CurTime() - t0 < 0.47 and ctx:st().airMode do
+        scooterInput(ctx, { whip = 1 })
+        peak = math.max(peak, math.abs(ctx:st().parts and ctx:st().parts.whip.angle or 0))
+        coroutine.yield()
+    end
+    scooterInput(ctx, {})
+    ctx:ok(peak > 3.5, "the deck went well round: " .. string.format("%.1f rad", peak))
+    ctx:waitUntil(function() return ctx:st().grounded and not ctx:st().airMode end, 3, "the landing")
+    ctx:wait(0.4)
+    hook.Remove("BMX_TrickLanded", "BMX.Test.ScooterWhip")
+    hook.Remove("BMX_Crash", "BMX.Test.ScooterWhip")
+    local paid = false
+    for _, n in ipairs(landed) do if n:find("Tailwhip", 1, true) then paid = true end end
+    ctx:ok(crashed == nil, "it did not crash: " .. tostring(crashed))
+    ctx:ok(paid, "a Tailwhip was paid: " .. table.concat(landed, ", "))
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+    ctx:ok(math.abs(ctx:st().parts.whip.angle or 0) < 0.05, "the deck is back in line")
+end)
+
+T.Case("scooter_50_50_on_rail", { vehicle = "scooter", timeout = 40,
+    desc = "the scooter: hopping onto a park flat rail along it locks a 50-50 with the deck on the rail, and pays it" },
+function(ctx)
+    local g = ctx.ground
+    local b = ctx.bike
+    local rail = BMX.Park.Build("flatrail", { 2 })
+    local at = Vector(g.x + 500, g.y, g.z)
+    if not parkPiece(ctx, "flatrail", { 2 }, at, 0) then return end
+    ctx:wait(0.3)
+    local line = BMX.Park.WorldGrind(rail, at, 0)[1]
+
+    local landed = {}
+    hook.Add("BMX_TrickLanded", "BMX.Test.Scooter5050", function(ply, t) landed[#landed + 1] = t.name end)
+    scooterInput(ctx, {})
+    local crank = BMX.GrindPointsFor(b:Bike(), ctx.cfg).crank
+    local ang = Angle(0, 0, 0)
+    local off = ang:Forward() * crank.x - ang:Right() * crank.y + ang:Up() * crank.z
+    local phys = b:GetPhysicsObject()
+    phys:SetAngles(ang)
+    phys:SetPos(Vector(line.a.x + 8, line.a.y, line.a.z + 5) - off)
+    phys:SetVelocity(Vector(240, 0, -30))
+    phys:SetAngleVelocity(Vector(0, 0, 0))
+    ctx:st().grounded, ctx:st().groundedFor = false, 0
+
+    local started, move, endedWhy = false, nil, nil
+    hook.Add("BMX_GrindEnded", "BMX.Test.Scooter5050", function(e, kind, why) if e == b then endedWhy = endedWhy or why end end)
+    ctx:waitUntil(function()
+        local gr = ctx:st().grind
+        if gr then started, move = true, gr.move end
+        return endedWhy ~= nil
+    end, 5, "the grind to end")
+    hook.Remove("BMX_GrindEnded", "BMX.Test.Scooter5050")
+    hook.Remove("BMX_TrickLanded", "BMX.Test.Scooter5050")
+    ctx:ok(started and move == "scooter_5050", "locked into a 50-50: " .. tostring(move))
+    ctx:ok(endedWhy == "end" or endedWhy == "slow", "let go where the rail ends: " .. tostring(endedWhy))
+    local paid = false
+    for _, n in ipairs(landed) do if n == "50-50" then paid = true end end
+    ctx:ok(paid, "a 50-50 was paid: " .. table.concat(landed, ", "))
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+end)
+
+-- THE SHIPPED RIDING CASES that make no assumption about pedals, on the scooter too.
+for _, name in ipairs({ "rest", "parked_on_stand", "fallen_is_picked_up", "lean_steers", "lean_tracks_target",
+                        "bunny_hop", "air_mode", "crash_ejects", "into_a_wall_stops", "climbs_curb_slow",
+                        "curb_no_pop" }) do
+    T.Variant(name, "scooter")
+end

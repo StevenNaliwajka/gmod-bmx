@@ -1,0 +1,302 @@
+--[[--------------------------------------------------------------------------
+    bmx/cl_scooter.lua
+
+    THE KICK SCOOTER, CLIENT SIDE (G24): the scooter drawn from tubes and boxes, as
+    the bike and the board are, and the rider on it.
+
+    DRAWN PROCEDURALLY (zero content, no ripped assets): a deck with a kicked-up tail
+    and a flex fender over the rear wheel, a steer tube, a fork, a T-bar with grips,
+    two small solid wheels. Where each part goes is a function of what the server
+    networks (shared.lua: the steer, the trick bits for the whip and the bar spin, the
+    push phase) and nothing is simulated here.
+
+    THE TRICKS ARE G03'S, DRAWN THE SAME WAY (cl_init.lua). A tailwhip turns the rear
+    group -- the deck, the fender and the rear wheel -- about the steer tube, which is
+    the head tube's line, while the bars and the rider stay; a barspin turns the bars,
+    the fork and the front wheel about it. On a bike that rear group is the frame; on
+    a scooter it is the deck, which is why a scooter tailwhip reads so much better.
+    The rider's feet are targeted at where the deck WAS (unwhipped), so they leave it
+    as it goes round and meet it again, and the hands are targeted at the bars without
+    the spin, so they let go while the bars turn.
+
+    THE RIDER stands on the deck, one foot ahead of the other, hands on the grips. The
+    base pose is the stock standing idle (the board's), the knees bend by lowering the
+    pelvis (the board's calibrated nudge, cl_board.lua) and both feet and both hands
+    are pinned by the bike's IK solver. Nobody has watched this on a real player model:
+    every offset is a number in BMX.Scooter.Tune.
+----------------------------------------------------------------------------]]
+
+BMX = BMX or {}
+local SC = BMX.Scooter
+local T = SC.Tune
+local B = BMX.Board
+
+local abs, min, max, sin, cos = math.abs, math.min, math.max, math.sin, math.cos
+
+local function rotVec(v, axis, ang)
+    if ang == 0 then return v end
+    local c, s = cos(ang), sin(ang)
+    return v * c + axis:Cross(v) * s + axis * (axis:Dot(v) * (1 - c))
+end
+
+local function rotAbout(p, origin, axis, ang)
+    if ang == 0 then return p end
+    return origin + rotVec(p - origin, axis, ang)
+end
+
+local function approachAngle(cur, target, rate, dt)
+    local d = (target - cur + math.pi) % (math.pi * 2) - math.pi
+    if abs(d) < 1e-4 then return target end
+    return cur + d * min(1, rate * dt)
+end
+
+local TRICK_FOLLOW = 40     -- 1/s: the drawn part follows the networked byte
+
+--------------------------------------------------------------------------
+-- THE FRAME'S POINTS, chassis space (x forward, y left, z up, the origin on the axle
+-- line), a pure function of the wheelbase so the suite can read it without a renderer.
+-- The steer axis runs from the head tube's foot to its top, leaning back.
+--------------------------------------------------------------------------
+function SC.Frame(half)
+    local headB = Vector(half - T.headFoot, 0, 2.2)
+    local headT = Vector(half - T.headFoot - T.headLean, 0, T.barHeight - 2.0)
+    return {
+        headB = headB, headT = headT,
+        axis = (headT - headB):GetNormalized(),
+        bars = headT + Vector(0, 0, 2.0),
+        deckMid = Vector((T.deckFront + T.deckBack) * 0.5, 0, T.deckTop - 0.45),
+        deckLen = T.deckFront - T.deckBack,
+    }
+end
+
+--------------------------------------------------------------------------
+-- THE POSE SET. The style poses (the bike's, BMX.RiderPoses) are written for a rider
+-- sat over a bike: a hand "up" is at 36 units. A scooter rider stands, so their hands
+-- go up 20 further; the feet and the body keep their numbers.
+--------------------------------------------------------------------------
+local SET = BMX.PoseSets.scooter
+SET.poses = {}
+for id, row in pairs(BMX.RiderPoses) do
+    local r = {}
+    for k, v in pairs(row) do r[k] = v end
+    for _, hand in ipairs({ "rHand", "lHand" }) do
+        if r[hand] then r[hand] = r[hand] + Vector(0, 0, 20) end
+    end
+    SET.poses[id] = r
+end
+
+-- The stock standing idle, in place of the seated drive pose (the board's, which is
+-- the same thing: a rider standing on a platform).
+SET.activity = function(ply, bike)
+    local board = BMX.PoseSets.board
+    return board.activity and board.activity(ply, bike)
+end
+
+-- The bone offsets for the ride: the knees bend with the hop's preload and a landing's
+-- crouch (the pelvis lowered), the torso leans into the steer and over the bars at
+-- speed, the head holds the horizon.
+SET.rider = function(s)
+    local ply = s.ply
+    local crouch = math.Clamp(s.hop or 0, 0, 1)
+    if ply and B and B.LowerPelvis then B.LowerPelvis(ply, crouch * (B.CrouchDepth or 9)) end
+    local speedLean = math.Clamp((s.speed or 0) / 330, 0, 1) * 6
+    local spine = crouch * 16 + speedLean + math.deg(s.pitch or 0) * 0.5
+    local twist = math.deg(s.steer or 0) * 0.3
+    return {
+        spine = Angle(0, spine, twist),
+        head  = Angle(0, -spine * 0.7, -twist * 0.5),
+    }
+end
+
+-- Both feet and both hands are the solver's. The bike's solver is handed the real
+-- vehicle: a scooter rider faces the way it goes. (Not the stance offsets of the seated
+-- rider, which are for sitting on a saddle.)
+SET.solveIK = function(ply, bike)
+    if bike.ikTargets and BMX.SolveRiderIK then BMX.SolveRiderIK(ply, bike.ikTargets, bike) end
+end
+
+--------------------------------------------------------------------------
+-- THE DRAWING.
+--------------------------------------------------------------------------
+local COL_GRIP   = Color(26, 26, 29)
+local COL_WHEEL  = Color(236, 232, 214)
+local COL_CORE   = Color(200, 204, 212)
+local COL_BAR    = Color(190, 194, 202)
+local COL_DARK   = Color(34, 34, 38)
+local MAT_MATTE  = "models/debug/debugwhite"
+local MAT_CHROME = "phoenix_storms/fender_chrome"
+
+local function wheel(kit, c, axis, fwd, up, spin, radius, lod)
+    local ww = 1.2
+    kit.tube(c - axis * (ww * 0.5), c + axis * (ww * 0.5), radius * 2, COL_WHEEL)
+    if lod < 2 then
+        kit.tube(c - axis * (ww * 0.6), c + axis * (ww * 0.6), radius * 0.9, COL_CORE)
+    end
+    if lod == 0 then
+        local pin = (fwd * cos(spin) + up * sin(spin)) * (radius * 0.6)
+        kit.tube(c + pin - axis * (ww * 0.65), c + pin + axis * (ww * 0.65), 0.5, COL_DARK)
+    end
+end
+
+BMX.DrawVehicle = BMX.DrawVehicle or {}
+BMX.DrawVehicle.scooter = function(ent, kit)
+    local bike = ent:Bike()
+    local C = ent:Cfg()
+    local WC = C.Wheel
+    local dt = FrameTime()
+    local debug = GetConVar("bmx_debug") and GetConVar("bmx_debug"):GetInt() > 0
+    local lod = kit.lod(ent, debug)
+    local half = WC.wheelbase * 0.5
+
+    local fwd, up, right = ent:GetForward(), ent:GetUp(), ent:GetRight()
+
+    -- The tricks, as networked: the whip and the bar spin arrive a byte at a time and are
+    -- followed, the pose blends over BMX.PoseBlendTime.
+    local whipA, barA, poseId = BMX.UnpackTrickBits(ent:GetTrickBits())
+    ent.drawWhip = approachAngle(ent.drawWhip or whipA, whipA, TRICK_FOLLOW, dt)
+    ent.drawBar  = approachAngle(ent.drawBar  or barA,  barA,  TRICK_FOLLOW, dt)
+    local whipAng, barAng = ent.drawWhip, ent.drawBar
+    local W = BMX.UpdatePoseWeights(ent, BMX.PoseNames[poseId], dt)
+    local bodyRoll = BMX.PoseDrawAngles(W, SET.poses)
+
+    -- A tabletop lays the whole scooter over about its long axis.
+    local bodyAng = ent:GetAngles()
+    if bodyRoll ~= 0 then
+        right, up = rotVec(right, fwd, bodyRoll), rotVec(up, fwd, bodyRoll)
+        bodyAng = fwd:AngleEx(up)
+    end
+
+    -- The steer is an output of the balance controller, networked (shared.lua).
+    local steer = BMX.VisualSteer(ent:GetSteer(), ent:GetSpeedUPS(), C)
+    local steeredFwd = fwd
+    if steer ~= 0 then
+        local c, s = cos(steer), sin(steer)
+        steeredFwd = fwd * c + right * s
+    end
+    local steeredRight = steeredFwd:Cross(up)
+    steeredRight:Normalize()
+
+    -- The wheels: where the suspension has them (the same trace the server's makes), or
+    -- at rest when far away.
+    local lift = WC.restLength
+    local g = physenv.GetGravity():Length()
+    local sag = math.Clamp(C.Chassis.mass * g * 0.5 / WC.spring, 0, WC.restLength)
+    local lift0 = Vector(0, 0, sag)
+    local fPos, fHit, rPos, rHit
+    if lod >= 2 then
+        fPos, rPos = ent:LocalToWorld(Vector(half, 0, sag)), ent:LocalToWorld(Vector(-half, 0, sag))
+        fHit = ent:GetGrounded(); rHit = fHit
+    else
+        fPos, fHit = kit.axlePos(ent, Vector(half, 0, lift))
+        rPos, rHit = kit.axlePos(ent, Vector(-half, 0, lift))
+    end
+    local fallen = abs((BMX.Attitude(ent, vector_up))) > C.Stand.maxRoll
+    local fSpin = ent:WheelSpin("front", fHit, fallen, dt)
+    local rSpin = ent:WheelSpin("rear", rHit, fallen, dt)
+
+    local bodyC = ent:LocalToWorld(Vector(0, 0, 10))
+    local function P(v)
+        local p = ent:LocalToWorld(v + lift0)
+        return bodyRoll ~= 0 and rotAbout(p, bodyC, fwd, bodyRoll) or p
+    end
+    if bodyRoll ~= 0 then
+        fPos, rPos = rotAbout(fPos, bodyC, fwd, bodyRoll), rotAbout(rPos, bodyC, fwd, bodyRoll)
+    end
+
+    local F = SC.Frame(half)
+    local headB, headT = P(F.headB), P(F.headT)
+    local steerAxis = (headT - headB):GetNormalized()
+    -- The rear group (deck, fender, rear wheel) turns by the whip; the front end (fork,
+    -- bars, front wheel) by the barspin.
+    local function Wh(p) return rotAbout(p, headB, steerAxis, whipAng) end
+    local function Wv(v) return rotVec(v, steerAxis, whipAng) end
+    local function Bs(p) return rotAbout(p, headB, steerAxis, barAng) end
+    local function Bv(v) return rotVec(v, steerAxis, barAng) end
+
+    local rPosD, fPosD = Wh(rPos), Bs(fPos)
+    local fwdW, upW, rightW = Wv(fwd), Wv(up), Wv(right)
+    local deckAng = whipAng ~= 0 and fwdW:AngleEx(upW) or bodyAng
+    local fAxis, fFwd, fUp = Bv(steeredRight), Bv(steeredFwd), Bv(up)
+
+    wheel(kit, fPosD, fAxis, fFwd, fUp, fSpin, WC.radius, lod)
+    wheel(kit, rPosD, rightW, fwdW, upW, rSpin, WC.radius, lod)
+
+    local col = BMX.PaletteColor(ent:GetColorIndex())
+
+    ------------------------------------------------------------------------
+    -- The deck (paint underneath, grip tape on top), the neck that ties it to the head
+    -- tube, and the rear: a ramp kicked up over the wheel and the flex fender on it.
+    ------------------------------------------------------------------------
+    local deckC = Wh(P(F.deckMid))
+    kit.solid("box", deckC, deckAng, Vector(F.deckLen, T.deckWidth, 0.9), col)
+    kit.solid("box", deckC + upW * 0.5, deckAng, Vector(F.deckLen - 0.4, T.deckWidth - 0.4, 0.12), COL_GRIP, MAT_MATTE)
+    kit.tube(Wh(P(Vector(T.deckFront, 0, T.deckTop - 0.6))), Wh(headB), 2.2, col)       -- the neck
+    local kickA = Wh(P(Vector(T.deckBack, 0, T.deckTop - 0.6)))
+    local kickB = Wh(P(Vector(-half - 5.5, 0, WC.radius + 1.3)))
+    kit.tube(kickA, kickB, 2.0, col)                                                    -- the kick-up
+    if lod < 2 then
+        kit.solid("box", Wh(P(Vector(-half - 3, 0, WC.radius + 1.6))), deckAng,
+            Vector(11, 4.2, 0.5), COL_DARK, MAT_MATTE)                                  -- the fender brake
+        for _, side in ipairs({ 1, -1 }) do
+            kit.tube(rPosD + rightW * (side * 1.8), Wh(P(Vector(-half - 3, side * 1.8, WC.radius + 1.0))),
+                0.8, COL_BAR)                                                           -- the dropouts
+        end
+    end
+
+    ------------------------------------------------------------------------
+    -- The steer tube and the fork, which turn with the bars, and the T-bar.
+    ------------------------------------------------------------------------
+    local headTop = Bs(headT)
+    local headBot = Bs(headB)
+    kit.tube(headBot, headTop, 2.0, COL_BAR)
+    for _, side in ipairs({ 1, -1 }) do
+        kit.tube(headBot + fAxis * (side * 1.4), fPosD + fAxis * (side * 1.4), 1.0, COL_BAR)    -- the fork legs
+    end
+    -- The bars sit on the head tube's top, turned with the steer.
+    local barsC = Bs(P(F.bars))
+    local barL, barR = barsC - fAxis * (T.barWidth * 0.5), barsC + fAxis * (T.barWidth * 0.5)
+    kit.tube(barL, barR, 1.4, COL_BAR)
+    kit.tube(headTop, barsC, 1.6, COL_BAR)
+    if lod < 2 then
+        for _, side in ipairs({ 1, -1 }) do
+            local e = barsC + fAxis * (side * T.barWidth * 0.5)
+            kit.tube(e - fAxis * (side * 3.6), e, 1.7, COL_GRIP)                        -- the grips
+        end
+    end
+
+    ------------------------------------------------------------------------
+    -- Where the rider's hands and feet belong (cl_rider.lua's IK reads
+    -- ent.ikTargets). The feet are on the deck as it was UNWHIPPED, so a tailwhip leaves
+    -- them behind and they meet it again; the hands are on the bars as they are without
+    -- the spin, so a barspin leaves them. The left foot leads.
+    ------------------------------------------------------------------------
+    local function C2W(v) return ent:LocalToWorld(v + lift0) end
+    local footZ = T.deckTop + 0.7
+    local ik = {
+        lFoot = C2W(Vector(T.footFront, 0.9, footZ)),
+        rFoot = C2W(Vector(T.footBack, -0.9, footZ)),
+    }
+    -- The back foot is the pushing one: it leaves the deck for the ground and returns,
+    -- driven by the server's push phase (B.PushFoot, the board's cycle).
+    local push = ent:GetPushPhase()
+    if push >= 0 and B and B.PushFoot then
+        local pf = B.PushFoot(push, Vector(T.footBack, -0.9, footZ), B.Tune)
+        ik.rFoot = C2W(pf)
+    end
+    local barsU = P(F.bars)
+    local barsRight = right
+    local gripR, gripL = barsU + barsRight * (T.barWidth * 0.5), barsU - barsRight * (T.barWidth * 0.5)
+    ik.rHand, ik.lHand = gripR - barsRight * 1.8, gripL + barsRight * 1.8
+    ik.rHandA, ik.rHandB = gripR - barsRight * 3.6, gripR
+    ik.lHandA, ik.lHandB = gripL + barsRight * 3.6, gripL
+    BMX.ApplyPoseTargets(ik, W, function(v)
+        local p = ent:LocalToWorld(v + lift0)
+        return bodyRoll ~= 0 and rotAbout(p, bodyC, fwd, bodyRoll) or p
+    end, SET.poses)
+    ent.ikTargets = ik
+
+    if debug then
+        render.DrawLine(headB, headT, Color(255, 200, 60), true)
+        render.DrawLine(deckC, deckC + upW * 10, Color(80, 120, 255), true)
+    end
+end

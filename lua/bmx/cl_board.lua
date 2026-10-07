@@ -231,6 +231,10 @@ local function lowerPelvis(ply, depth)
     ply.bmxPelvis = b
 end
 
+-- Shared with the other standing rider (cl_scooter.lua): lowering the pelvis is the
+-- same calibrated nudge whoever is crouching.
+B.LowerPelvis, B.CrouchDepth = lowerPelvis, CROUCH_DEPTH
+
 -- The bone offsets for the ride: the torso follows the lean and folds with the
 -- crouch, the head holds the horizon. Called from the rider hook BEFORE the IK
 -- solve (cl_rider.lua), which is why the pelvis is lowered from here.

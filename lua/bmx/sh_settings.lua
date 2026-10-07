@@ -311,7 +311,7 @@ server{ name = "bmx_allow_boards", kind = "bool", default = true, category = "ve
     help = "Players may spawn boards and skates, when there are any. Off stops new ones being spawned." }
 server{ name = "bmx_allow_scooters", kind = "bool", default = true, category = "vehicles",
     label = "Allow scooters",
-    help = "Players may spawn scooters, when there are any. Off stops new ones being spawned." }
+    help = "Players may spawn scooters. Off stops new ones being spawned." }
 server{ name = "bmx_allow_motor", kind = "bool", default = true, category = "vehicles",
     label = "Allow motor vehicles",
     help = "Players may spawn motorbikes and e-bikes, when there are any. Off stops new ones being spawned." }

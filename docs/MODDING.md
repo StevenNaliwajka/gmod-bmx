@@ -188,8 +188,8 @@ A vehicle that says nothing gets: `balance = "none"`, `drive = { kind = "none" }
 | `id` | Lower-case letters, digits and `_`. Becomes the class `bmx_<id>`. |
 | `family` | `"bike"`, `"board"`, `"skates"`, `"scooter"` or `"moto"`. Decides the spawn menu heading (Bikes, Boards, Scooters, Motor; skates are under Boards) and which `bmx_allow_*` setting can switch it off. |
 | `wheels` | A list of wheels, or a function of the config returning one. At least one, at most eight. See below. |
-| `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (the skateboard's, `sv_board.lua`: the chassis is held flat to the ground and the rider's lean is a state of its own that the steering reads; needs no particular wheel layout), or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
-| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "coaster" }` (the same, a coaster brake: freewheeling, S is the brake and, with the `bike_rearonly` map, that is all there is), `{ kind = "fixed" }` (a fixed gear, below), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", torque = N, maxSpeed = N, kickInterval = N }` (a skateboard rider's kick: `torque` is the speed one kick adds at a standstill, u/s, falling to nothing at `maxSpeed`, one kick every `kickInterval` seconds while the throttle is held; also the foot-drag brake and the kick-turn) or `{ kind = "none" }`. `pedal`, `fixed`, `coaster` and `throttle` need at least one wheel with `drive = true`. |
+| `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (the skateboard's, `sv_board.lua`: the chassis is held flat to the ground and the rider's lean is a state of its own that the steering reads; needs no particular wheel layout), `"none"` (nothing holds the vehicle up; it stands on its wheels). |
+| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "coaster" }` (the same, a coaster brake: freewheeling, S is the brake and, with the `bike_rearonly` map, that is all there is), `{ kind = "fixed" }` (a fixed gear, below), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", torque = N, maxSpeed = N, kickInterval = N }` (a skateboard rider's kick: `torque` is the speed one kick adds at a standstill, u/s, falling to nothing at `maxSpeed`, one kick every `kickInterval` seconds while the throttle is held; also the foot-drag brake and the kick-turn; add `footBrake = false` to drop both, for a vehicle that brakes with its wheel, as the scooter does) `{ kind = "none" }`. `pedal`, `fixed`, `coaster` and `throttle` need at least one wheel with `drive = true`. |
 | `seats` | `{ rider = {...}, pegs = {...}, child = {...} }` (G11): the vehicle's seats, each `{ model, offset, angles, massFactor }` with every key optional (an empty table is all defaults). `rider` is always there; omitted, it is the config's `Chassis.seatOffset` and `seatAngles`. `pegs` seats a second player on the rear pegs, `child` in a child seat. `offset` may be a `Vector` or a function of the config (so a seat can follow a frame's size); `massFactor` is the passenger's mass as a fraction of the bike's own `Chassis.mass` (default 0.6 on the pegs, 0.25 in the child seat). The old list form, `{ { model, offset, angles } }`, is still the rider's seat. Checked at registration: an unknown seat or key, a bad type, a `massFactor` outside 0-2. See "Passengers" below. |
 | `input` | An id in `BMX.InputMaps`: `"bike"`, `"drive"`, `"road"`, `"bike_rearonly"`, or one you register. |
 | `pose` | An id in `BMX.PoseSets` (the rider's pose on the client): `"bike"`, `"seated"`, `"road"` (tucked over the drops) or `"upright"`. |
@@ -280,6 +280,29 @@ touching down on a transition is a revert, LMB swaps feet (switch). Player setti
 Adding a board is a `BMX.RegisterVehicle` with `balance = "board"`, `drive = { kind =
 "push" }`, `input = "board"`, `pose = "board"` and its own `wheels`; add flips with
 `BMX.Board.Flips` before the first board is spawned.
+
+### The kick scooter (G24)
+
+`scooter` is registered in `sh_scooter.lua` (`BMX.Scooter`): a bike's single-track
+balance and input decoder, the board's `push` drive with `footBrake = false`, and a
+`physics` table for a small, light, twitchy machine (5-unit wheels on a 28-unit
+wheelbase, a high `Balance.steerRate` standing in for a small trail, a firm fender brake
+on the rear wheel and no front brake). Everything numeric is `BMX.Scooter.Tune` and the
+registration's `physics`. Spawn it from the Scooters tab or `bmx_spawn scooter`.
+
+Controls: W kicks (S is the rear fender brake), A / D lean, SPACE bunny hops, in the
+air LMB + A / D is a tailwhip (the **deck** turns round the steer tube, which is the part
+G03's tailwhip turns: let go past 270 degrees and it finishes by itself), R a barspin
+(LMB + R both), W / S flip, RMB + A / D a 360, ALT the style poses; a tailwhip and a
+flip in one air is a **bri flip**; RMB on the ground a manual. Grinds are automatic on
+contact, as the bike's: a **50-50** (the deck on a pipe or ledge), and on a ledge's
+edge with W held as it locks on a **smith** (the front peg) or with S a **feeble** (the
+back peg). Its input map is `scooter` (the bike's without a sprint or a ground front
+brake), its pose set `scooter` (both feet on the deck, hands on the grips).
+
+Adding a scooter is a `BMX.RegisterBike` with `family = "scooter"`, `input = "scooter"`,
+`pose = "scooter"`, `drive = { kind = "push", ..., footBrake = false }` and a small
+`physics` table, and `grindPoints = BMX.Scooter.GrindPoints` for the moves.
 
 ## 2. Tricks
 

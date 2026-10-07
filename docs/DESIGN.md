@@ -504,6 +504,42 @@ A powerslide is the turn and the cost is the tyres'.
 unattended it is lost in about three seconds whatever the phase, and held it stays
 held, so a manual or a grind is a skill and not a timer.
 
+## 6f. The kick scooter (G24)
+
+The third client of the platform, and the one that needed no new physics. A scooter is
+a single-track vehicle (so the bike's balance holds it up and steers it from the lean)
+that is pushed by a foot (so the board's `push` drive kicks it) and braked by a
+fender on the rear wheel (so S is the platform's rear brake, and the drive's
+`footBrake = false` switches off the board's foot drag, which would have fought it).
+Four decisions:
+
+**The small trail is a rate.** The balance derives the steer from the lean and lags
+the bars behind it, "standing in for trail" (`Balance.steerRate`). A scooter's steep
+head tube has almost none, which is the twitchiness, so it is a higher rate and a
+wider `maxSteer`, and nothing else about the controller changed.
+
+**The tailwhip is the deck.** G03's whip turns the rear group about the head tube
+while the bars and rider stay. On a bike that group is the frame; on a scooter it is
+the deck, rear wheel and fender, which is exactly what a scooter tailwhip turns. So the
+trick is the same state machine (auto-complete past 270 degrees, snap-back under
+90, a landing more than 30 degrees out of line bails), and only the drawing
+(`cl_scooter.lua`) is new. The bri flip is a merge of the whip and a flip in one air
+(`BMX.Scooter.MergeBri`), counted as two tricks by the combo.
+
+**The peg grinds have to fit the hull.** The pegs are on the axles, so a smith or a
+feeble hangs the wheels over a ledge's drop and rides a peg on the top, and a pose
+that puts any hull box inside the ledge is refused (`sv_grind.lua`). The wheel at the
+peg is a box 10 long and 2.4 wide, so the pose may be turned only about 18 degrees off
+the line, and the nose goes to the side that keeps the other wheel clear: onto the
+top for the smith (the tail swings out over the drop), out over the drop for the feeble.
+Found by running a smith on the plant, where a 20 degree yaw put the front wheel's
+corner 0.2 units over the ledge and the grind never locked.
+
+**Everything is the bike's where it can be.** The decoder, the air control, the
+trick scoring, the combo, the crash and the landing judge are the bike's, with three
+small wrappers (`sv_scooter.lua`: the grind sparks, the bri flip, and a manual being
+called a manual).
+
 ## 7. Roadmap
 
 | Phase | Deliverable | Status |

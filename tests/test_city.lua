@@ -8,32 +8,33 @@
       - a train runs out of its portal into open air, or through a wall
       - the server's colliders and the client's picture disagree
       - it builds a different city every session
-    The ramp footprints below are measured from gm_skatepark's own BSP (each
-    prop's origin and angles from the entity lump, its extent from the model's
-    vertices), 2026-10-07.
+    The ramp footprints below are each ramp's WorldSpaceAABB, read off the
+    running test server on gm_skatepark, 2026-10-07. (Not computed from the
+    BSP: a model's vertices are stored turned 90 degrees from entity space,
+    and the first layout, checked against those, put a pier on the halfpipe.)
 ----------------------------------------------------------------------------]]
 
 local F = require("lib.fixture")
 
 -- name, x0, y0, x1, y1, z0, z1
 local RAMPS = {
-    { "spiner2", -315, -1691, 263, -1317, 64, 178 },
-    { "flatramp", -127, 447, 159, 801, 64, 177 },
-    { "quarterpipe3", 348, 314, 645, 932, 64, 236 },
-    { "flatramp", 593, -1825, 879, -1471, 64, 177 },
-    { "funbox2", 604, -290, 1084, 256, 64, 149 },
-    { "halfpipe7", 628, -1358, 1195, -164, 64, 419 },
-    { "quarterpipe3", 972, 314, 1269, 932, 64, 237 },
-    { "spiner2", 1495, -1797, 1870, -1219, 64, 178 },
-    { "funbox2", 1887, -320, 2367, 225, 64, 149 },
-    { "flatramp", 2117, -975, 2471, -689, 64, 177 },
-    { "spiner2", 2343, -988, 2920, -613, 64, 178 },
-    { "funbox2", 2430, -1807, 2910, -1262, 64, 149 },
-    { "spiner2", 2711, -988, 3288, -613, 64, 178 },
-    { "flatramp", 2895, -223, 3249, 63, 64, 177 },
-    { "flatramp", 2895, 129, 3249, 415, 64, 177 },
-    { "rail2", 3070, -493, 3074, -179, 64, 86 },
-    { "quarterpipe3", 3130, -1525, 3748, -1228, 64, 237 },
+    { "spiner2", -221, -1785, 155, -1208, 63, 179 },
+    { "flatramp", -161, 481, 193, 767, 63, 177 },
+    { "quarterpipe3", 187, 475, 807, 774, 63, 237 },
+    { "halfpipe7", 324, -1037, 1515, -468, 64, 421 },
+    { "flatramp", 559, -1791, 913, -1505, 63, 177 },
+    { "funbox2", 572, -259, 1118, 222, 64, 150 },
+    { "quarterpipe3", 811, 475, 1431, 774, 64, 237 },
+    { "spiner2", 1386, -1703, 1963, -1327, 63, 179 },
+    { "funbox2", 1855, -290, 2401, 191, 64, 150 },
+    { "flatramp", 2151, -1009, 2437, -655, 63, 177 },
+    { "funbox2", 2398, -1776, 2944, -1295, 64, 150 },
+    { "spiner2", 2437, -1082, 2812, -505, 63, 179 },
+    { "spiner2", 2805, -1082, 3180, -505, 63, 179 },
+    { "rail2", 2914, -342, 3230, -330, 63, 139 },
+    { "flatramp", 2929, -257, 3215, 97, 63, 177 },
+    { "flatramp", 2929, 95, 3215, 449, 63, 177 },
+    { "quarterpipe3", 3291, -1687, 3590, -1067, 64, 237 },
 }
 local SPAWNS = { { 1008, -421 }, { 2562, 0 }, { 195, -764 }, { 1707, -673 }, { 3212, -814 } }
 local SKY_CEILING = 1720

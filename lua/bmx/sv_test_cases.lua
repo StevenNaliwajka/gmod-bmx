@@ -2304,3 +2304,57 @@ function(ctx)
     ctx:input({})
 end)
 
+--------------------------------------------------------------------------
+-- tandem_rides: a second bot boards the stoker's seat; with both pedalling the tandem
+-- gets away quicker than with the captain alone, the captain steers, and the stoker's
+-- seat is the one with pedals. Skipped, with a log line, when the server has no free
+-- player slot (like passenger_mount_and_crash, whose second bot this one shares).
+--------------------------------------------------------------------------
+T.Case("tandem_rides", { vehicle = "tandem", timeout = 60,
+    desc = "a second bot boards a tandem; both pedalling is quicker off the line than one, and the captain steers" },
+function(ctx)
+    local b = ctx.bike
+    local pax, why = ensurePaxBot()
+    if not pax then
+        ctx:log("SKIPPED the stoker: " .. tostring(why))
+        return
+    end
+    pax.BMXScripted = true
+    pax:SetPos(ctx.ground + Vector(-60, 0, 8))
+    if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+
+    ctx:wait(0.5)
+    BMX.Passenger.TryBoard(b, pax, true)
+    ctx:wait(0.4)
+    ctx:ok(pax:InVehicle(), "the stoker is seated")
+    ctx:ok(b:GetPaxPegs() == pax, "on the second seat")
+    ctx:ok(b.paxSeats and b.paxSeats.pegs and b.paxSeats.pegs.pedals == true, "which has pedals")
+    ctx:ok(b:GetDriver() == ctx.bot, "the captain is undisturbed")
+
+    -- Off the line, twice: the stoker coasting, then pedalling. Two seconds each.
+    local function launch(stoker)
+        b.input.paxThrottle = stoker
+        ctx:runUntil(2, nil, { throttle = 1 })
+        local v = ctx:st().speed
+        ctx:runUntil(8, function() return ctx:st().speed < 8 end, { brakeRear = 1 })
+        return v
+    end
+    local alone = launch(0)
+    local both = launch(1)
+    ctx:log(string.format("after 2 s: captain alone %.0f u/s, both pedalling %.0f u/s", alone, both))
+    ctx:ok(both > alone * 1.03, "two pairs of legs are quicker off the line")
+
+    -- The captain steers, the stoker's input does nothing: ride, lean right, yaw falls.
+    b.input.paxThrottle = 1
+    ctx:accelerateTo(110, 10)
+    local y0 = b:GetAngles().y
+    ctx:runUntil(1.5, nil, { throttle = 0.4, lean = 1 })
+    local dy = math.AngleDifference(b:GetAngles().y, y0)
+    ctx:log(string.format("right lean turned it %.0f deg", dy))
+    ctx:ok(dy < -8, "the captain's D turns it right")
+    ctx:ok(IsValid(b:GetDriver()) and b:GetPaxPegs() == pax, "both still aboard")
+    b.input.paxThrottle = 0
+    ctx:input({})
+    if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+end)
+

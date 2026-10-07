@@ -63,6 +63,7 @@ local SERVER_FILES = {
     "bmx/sv_fixie.lua",     -- the fixed-gear drive, its two tricks, its front-brake switch (G10)
     "bmx/sv_unicycle.lua",  -- one wheel on two axes: the unicycle balance mode, its pedals, its tricks (G13)
     "bmx/sv_penny.lua",     -- the penny-farthing's front drive and its header (G13)
+    "bmx/sv_tandem.lua",    -- a second pair of legs: the stoker's pedalling adds to the driver's (G13)
     "bmx/sv_seat.lua",
     "bmx/sv_passenger.lua", -- a second rider: boarding, mass, the crash (G11)
     "bmx/sv_basket.lua",    -- a city bike's basket: props ride in it until the ride is not gentle (G12)

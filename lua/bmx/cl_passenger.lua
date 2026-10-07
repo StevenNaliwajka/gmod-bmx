@@ -53,6 +53,11 @@ local SHOULDER = { r = "ValveBiped.Bip01_R_UpperArm", l = "ValveBiped.Bip01_L_Up
 -- `rider` may be nil (nobody at the bars): the hands then go to where the rider's
 -- shoulders would be.
 function BMX.PassengerTargets(ply, bike, kind, rider)
+    -- A TANDEM'S STOKER (G13) has their own pedals and bars, drawn where the
+    -- registration puts them (cl_oddbikes.lua), not the pegs and the rider's shoulders.
+    if kind == "pegs" and bike.ikTargetsStoker and bike.ikTargetsStoker.rFoot then
+        return bike.ikTargetsStoker
+    end
     local C = bike:Cfg()
     local half = C.Wheel.wheelbase * 0.5
     local so = C.Chassis.seatOffset

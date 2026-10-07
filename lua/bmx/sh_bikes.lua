@@ -668,6 +668,48 @@ BMX.RegisterVehicle({
 })
 
 --------------------------------------------------------------------------
+-- THE TANDEM (G13): a long frame, two saddles, two pairs of legs. The second saddle is
+-- G11's second seat (E at the back of an occupied tandem) with `pedals = true`: the
+-- stoker's W adds their throttle to the captain's, and the two torques sum
+-- (sv_tandem.lua). The front rider steers: a passenger's keys are not read for anything
+-- but the pedalling.
+--
+--   wheelbase 70                a long frame, x 70/39 = 1.8: slow to turn, steady at speed
+--   Wheel radius 13, spring 12000   28-inch wheels, and the spring for a bike that will carry
+--                               two (about 190 kg with the stoker)
+--   mass 118, stoker 0.6        the captain, the longer frame and its second set of
+--                               cranks; the stoker adds 0.6 of that (71 kg), 1.6x in all
+--   seats                       the captain at x = +9 over the front half, the stoker at
+--                               x = -18, 27 units behind: both over the frame's midpoint
+--   Drive gearRatio 2.4, maxCadence 11.5   three quarters of a road bike's gearing, for the
+--                               weight: the top speed is the legs' ceiling, 11.5 * 2.4 * 13
+--                               = 359 u/s, whoever is pedalling, and a tandem with both is
+--                               quicker to GET there
+--   tricks none                 it is a long bike with two people on it
+BMX.RegisterBike("tandem", {
+    printName   = "Tandem",
+    description = "A long two-seat bike. The captain (E) steers and brakes; get on behind them with E at the back for the second seat: the stoker's W adds their pedalling to the captain's, and the torques sum.",
+    colorIndex  = 8,
+    pose        = "upright",
+    input       = "bike_rearonly",
+    tricks      = {},
+    grindPoints = false,
+    drawer      = "tandem",
+    seats = {
+        rider = { pedals = true },
+        pegs  = { offset = Vector(-18, 0, 22), massFactor = 0.6, pedals = true },
+    },
+    physics = {
+        Chassis = { mass = 118, hullMin = Vector(-30, -4, 2), hullMax = Vector(24, 4, 38),
+                    massCenterExpected = Vector(-3, 0, 20), seatOffset = Vector(9, 0, 22) },
+        Wheel   = { radius = 13, wheelbase = 70, restLength = 10, spring = 12000, damper = 700 },
+        Drive   = { gearRatio = 2.4, maxCadence = 11.5, crankTorque = 340000, dragArea = 0.0075 },
+        Hop     = { popSpeed = 110 },
+        Balance = { maxLean = math.rad(34) },
+    },
+})
+
+--------------------------------------------------------------------------
 -- THE TEST CART: the platform's proof that it is not a bicycle.
 --
 -- Four wheels in a rectangle, no balance mode at all (`none`: it stands on its

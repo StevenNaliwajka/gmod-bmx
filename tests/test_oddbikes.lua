@@ -244,3 +244,172 @@ T.test("penny: it is drawn: a big wheel and a small one, cranks on the big hub, 
     T.ok(#cl.beams + (cl.drawnModels or 0) + #(cl.drawnCS or {}) > 10, "something was drawn")
 end)
 
+--------------------------------------------------------------------------
+-- The tandem
+--------------------------------------------------------------------------
+
+local function board(sv, bike, name)
+    local p = sv:player(name or "Stoker")
+    p._eyeTrace = { Hit = true, Entity = bike, HitPos = bike:LocalToWorld(sv.env.Vector(-30, 0, 8)) }
+    bike:Use(p)
+    return p
+end
+
+T.test("tandem: it registers clean: two seats, the second one pedals, the front one steers", function()
+    local sv = F.server()
+    local B = sv.env.BMX
+    local d = B.Bikes.tandem
+    T.ok(d, "registered")
+    T.eq(#sv.errors, 0, "nothing rejected: " .. table.concat(sv.errors, " | "))
+    local cfg = B.ConfigFor(d)
+    local cap, stk = B.SeatFor(d, cfg, "rider"), B.SeatFor(d, cfg, "pegs")
+    T.ok(cap and stk, "two seats")
+    T.eq(cap.pedals, true, "the captain pedals")
+    T.eq(stk.pedals, true, "and the stoker")
+    T.ok(stk.offset.x < cap.offset.x - 20, "the stoker is behind, far enough for a frame between: " .. (cap.offset.x - stk.offset.x))
+    T.near(stk.massFactor, 0.6, 1e-9, "the stoker weighs 0.6 of the bike's mass")
+    T.ok(not B.HasSeat(d, "child"), "no child seat")
+    T.ok(cfg.Wheel.wheelbase > 1.5 * B.Config.Wheel.wheelbase, "a long frame: " .. cfg.Wheel.wheelbase)
+    T.eq(d.drawer, "tandem", "drawn in code")
+    T.eq(sv.lists.SpawnableEntities.bmx_tandem.Subcategory, "Bikes", "in the spawn menu under Bikes")
+end)
+
+T.test("tandem: a seat that does not pedal adds nothing: the BMX's pegs", function()
+    local sv = F.server()
+    local B = sv.env.BMX
+    T.ok(B.Tandem.SeatPedals(B.Bikes.tandem, B.ConfigFor(B.Bikes.tandem), "pegs"), "the tandem's stoker")
+    T.ok(not B.Tandem.SeatPedals(B.Bikes.stock, B.ConfigFor(B.Bikes.stock), "pegs"), "a BMX's pegs")
+end)
+
+-- The drive's torque with a given driver and stoker throttle, at a standstill so the
+-- legs' falling curve is whole: the torque is then exactly linear in the throttle.
+local function torque(sv, e, driver, stoker)
+    local B = sv.env.BMX
+    local w = e.wheels[2]
+    w.omega = 0
+    e.st.stamina = 100
+    e.input.throttle, e.input.brakeRear, e.input.sprint = driver, 0, false
+    e.input.paxThrottle = stoker
+    return B.Drives.pedal(e, e:Cfg(), 1 / 66, e.input, e.st, w, e:Bike())
+end
+
+T.test("tandem: the torque is the SUM of the two riders'", function()
+    local sv, e = ridden("tandem")
+    local one = torque(sv, e, 1, 0)
+    T.ok(one > 0, "the captain alone drives: " .. one)
+    board(sv, e)
+    T.ok(e.passengers.pegs, "the stoker is aboard")
+    local both = torque(sv, e, 1, 1)
+    T.near(both, 2 * one, one * 0.001, "both at full effort: twice the torque")
+    local stokerOnly = torque(sv, e, 0, 1)
+    T.near(stokerOnly, one, one * 0.001, "the stoker alone, the captain coasting: still one rider's torque")
+    local half = torque(sv, e, 1, 0.5)
+    T.near(half, 1.5 * one, one * 0.001, "analog: a captain at full and a stoker at half")
+    local none = torque(sv, e, 0, 0)
+    T.near(none, 0, 1e-9, "nobody pedalling: nothing")
+end)
+
+T.test("tandem: a stoker who is not on the seat adds nothing, whatever the last throttle was", function()
+    local sv, e = ridden("tandem")
+    local one = torque(sv, e, 1, 0)
+    local p = board(sv, e)
+    T.near(torque(sv, e, 1, 1), 2 * one, one * 0.001, "aboard: two")
+    p:ExitVehicle()
+    T.near(torque(sv, e, 1, 1), one, one * 0.001, "got off: one, with the stale throttle still on the input")
+end)
+
+T.test("tandem: the stoker's W is read from their usercmd and nothing else is", function()
+    local sv, e, ply = ridden("tandem")
+    local p = board(sv, e)
+    p.BMXScripted = nil
+    local function cmd(buttons)
+        local c = { buttons = buttons or 0, fwd = 0, side = 0 }
+        function c:GetButtons() return self.buttons end
+        function c:GetForwardMove() return self.fwd end
+        function c:GetSideMove() return self.side end
+        function c:SetButtons(b) self.buttons = b end
+        function c:SetForwardMove(v) self.fwd = v end
+        function c:SetSideMove(v) self.side = v end
+        function c:SetUpMove(v) end
+        return c
+    end
+    e.input.leanTarget, e.input.brakeRear, e.input.brakeFront = 0, 0, 0
+    sv.env.hook.Run("StartCommand", p, cmd(IN.FORWARD))
+    T.eq(e.input.paxThrottle, 1, "the stoker's W is their pedalling")
+    sv.env.hook.Run("StartCommand", p, cmd(0))
+    T.eq(e.input.paxThrottle, 0, "and releasing it stops it")
+    sv.env.hook.Run("StartCommand", p, cmd(bit and bit.bor(IN.MOVERIGHT, IN.BACK, IN.ATTACK) or (IN.MOVERIGHT + IN.BACK + IN.ATTACK)))
+    T.eq(e.input.leanTarget, 0, "the stoker's A / D do not lean it: the front rider steers")
+    T.eq(e.input.brakeRear, 0, "nor brake it")
+    T.eq(e.input.brakeFront, 0, "nor the front")
+    T.eq(e.input.paxThrottle, 0, "and S is not W")
+end)
+
+T.test("tandem: on a BMX's pegs a passenger's W does not stamp a throttle (the seat does not pedal)", function()
+    local sv, e = ridden("stock")
+    local p = sv:player("Pax")
+    p._eyeTrace = { Hit = true, Entity = e, HitPos = e:LocalToWorld(sv.env.Vector(-16, 0, 8)) }
+    e:Use(p)
+    p.BMXScripted = nil
+    local c = { buttons = IN.FORWARD }
+    function c:GetButtons() return self.buttons end
+    function c:GetForwardMove() return 0 end
+    sv.env.hook.Run("StartCommand", p, c)
+    T.eq(e.input.paxThrottle, nil, "nothing")
+end)
+
+T.test("tandem: with both pedalling it gets away quicker than with one, and the stoker adds weight", function()
+    local speeds = {}
+    for _, stoker in ipairs({ false, true }) do
+        local sv, e = ridden("tandem")
+        if stoker then
+            local p = board(sv, e)
+            p.BMXScripted = true
+            e.input.paxThrottle = 1
+            T.near(e.paxMass, 0.6 * 118, 0.01, "the stoker's mass")
+        end
+        F.input(e, { throttle = 1 })
+        sv:run(2)
+        speeds[#speeds + 1] = e.st.speed
+        T.ok(sv.env.IsValid(e:GetDriver()), "aboard")
+    end
+    T.ok(speeds[2] > speeds[1] * 1.05, string.format("two riders are quicker off the line: %.0f vs %.0f", speeds[2], speeds[1]))
+end)
+
+T.test("tandem: it rides straight and steers, with both aboard", function()
+    local sv, e = ridden("tandem")
+    local p = board(sv, e)
+    p.BMXScripted = true
+    e.input.paxThrottle = 1
+    F.input(e, { throttle = 1 })
+    sv:run(15, function() return e.st.speed > 150 end)
+    T.ok(math.abs(e.st.roll) < math.rad(4), "upright")
+    local y0 = e:GetAngles().y
+    F.input(e, { throttle = 0.5, lean = 1 })
+    sv:run(1.5)
+    T.ok(turned(y0, e:GetAngles().y) < -10, "the captain's D turns it right: " .. turned(y0, e:GetAngles().y))
+    T.ok(sv.env.IsValid(e:GetDriver()) and sv.env.IsValid(e.passengers.pegs), "both aboard")
+end)
+
+T.test("tandem: it is drawn: both bottom brackets, both saddles, and the stoker has hands and feet of their own", function()
+    local sv, world = F.server()
+    local bike = F.bike(sv, classOf(sv, "tandem"))
+    local cl = F.client(world)
+    local cb = cl:clientEntity("bmx_tandem")
+    cb:SetPos(bike:GetPos())
+    cb:SetAngles(bike:GetAngles())
+    for k, v in pairs(bike._nw) do cb._nw[k] = v end
+    cl.lines, cl.beams, cl.drawnModels, cl.boxes3d = 0, {}, 0, 0
+    cl.drawnCS = {}
+    cb:Draw()
+    T.ok(cb.ikTargets and cb.ikTargets.rFoot and cb.ikTargets.rHand, "the captain's targets")
+    local s = cb.ikTargetsStoker
+    T.ok(s and s.rFoot and s.lFoot and s.rHand and s.lHand, "the stoker's targets")
+    T.ok(cb:WorldToLocal(s.rFoot).x < cb:WorldToLocal(cb.ikTargets.rFoot).x - 20, "behind the captain's")
+    -- and the passenger code hands the stoker those targets, not the pegs'
+    local t = cl.env.BMX.PassengerTargets(nil, cb, "pegs", nil)
+    T.ok(t == s, "the passenger pose takes them")
+    local t2 = cl.env.BMX.PassengerTargets(nil, cb, "child", nil)
+    T.ok(t2 ~= s, "(a child seat does not)")
+end)
+

@@ -34,8 +34,9 @@ local function flatButton(parent, label, font)
     b.Paint = function(self, w, h)
         draw.RoundedBox(4, 0, 0, w, h, self:IsHovered() and COL.hover or COL.panel)
         if self.Info then
-            draw.SimpleText(self.Label, font or "BMX.MenuItem", 12, 10, COL.text)
-            draw.DrawText(self.Info, "BMX.MenuInfo", 12, 36, COL.dim)
+            local x = self.TextX or 12
+            draw.SimpleText(self.Label, font or "BMX.MenuItem", x, 10, COL.text)
+            draw.DrawText(self.Info, "BMX.MenuInfo", x, 36, COL.dim)
         else
             draw.SimpleText(self.Label, font or "BMX.MenuItem", w / 2, h / 2, COL.text,
                 TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
@@ -71,8 +72,16 @@ local function vehicleTab(sheet, sec, frame)
     grid:SetSpaceY(8)
     for _, it in ipairs(sec.items) do
         local b = flatButton(grid, it.name)
-        b:SetSize(270, 92)
-        b.Info = wrap(it.info, "BMX.MenuInfo", 246, 2)
+        b:SetSize(300, 92)
+        b.TextX = 92
+        b.Info = wrap(it.info, "BMX.MenuInfo", 196, 2)
+        if it.icon then
+            local img = vgui.Create("DImage", b)
+            img:SetPos(10, 10)
+            img:SetSize(72, 72)
+            img:SetImage(it.icon)
+            img:SetMouseInputEnabled(false)
+        end
         b:SetTooltip(it.info)
         b.DoClick = function()
             RunConsoleCommand("bmx_spawn", it.id)
@@ -95,12 +104,18 @@ local function parkTab(sheet, sec)
         local row = scroll:Add("DPanel")
         row:Dock(TOP)
         row:DockMargin(0, 0, 0, 6)
-        row:SetTall(44)
+        row:SetTall(56)
         row.Paint = function(_, w, h) draw.RoundedBox(4, 0, 0, w, h, COL.panel) end
+
+        local pic = vgui.Create("DImage", row)
+        pic:Dock(LEFT)
+        pic:DockMargin(4, 4, 0, 4)
+        pic:SetWide(48)
+        pic:SetImage(it.icon)
 
         local name = vgui.Create("DLabel", row)
         name:Dock(LEFT)
-        name:DockMargin(12, 0, 0, 0)
+        name:DockMargin(10, 0, 0, 0)
         name:SetWide(170)
         name:SetFont("BMX.MenuItem")
         name:SetTextColor(COL.text)
@@ -108,12 +123,12 @@ local function parkTab(sheet, sec)
 
         local go = flatButton(row, "Spawn", "BMX.MenuInfo")
         go:Dock(RIGHT)
-        go:DockMargin(0, 6, 6, 6)
+        go:DockMargin(0, 12, 6, 12)
         go:SetWide(80)
 
         local size = vgui.Create("DComboBox", row)
         size:Dock(RIGHT)
-        size:DockMargin(0, 10, 8, 10)
+        size:DockMargin(0, 16, 8, 16)
         size:SetWide(90)
         for i, s in ipairs(BMX.Park.SIZES) do size:AddChoice(s.name, i, i == 2) end
 
@@ -121,10 +136,20 @@ local function parkTab(sheet, sec)
         if it.variants then
             variant = vgui.Create("DComboBox", row)
             variant:Dock(RIGHT)
-            variant:DockMargin(0, 10, 8, 10)
+            variant:DockMargin(0, 16, 8, 16)
             variant:SetWide(130)
             for i, v in ipairs(it.variants) do variant:AddChoice(v, i, i == 1) end
         end
+
+        -- The picture follows the size and variant picked, as the Q menu's do.
+        local function repic()
+            local _, sz = size:GetSelected()
+            local v = 1
+            if variant then local _, vv = variant:GetSelected(); v = vv or 1 end
+            pic:SetImage(M.ParkIcon(it.id, sz or 2, v))
+        end
+        size.OnSelect = repic
+        if variant then variant.OnSelect = repic end
 
         go.DoClick = function()
             local _, s = size:GetSelected()

@@ -131,3 +131,30 @@ T.test("menu: bmx_menu exists on the client", function()
     local _, cl = both()
     T.ok(cl.commands.bmx_menu, "the console command")
 end)
+
+T.test("menu: every entry in the window has a picture, and so does every size and variant of a park piece", function()
+    local gmod = require("lib.gmod")
+    local sv = F.server()
+    local E = sv.env
+    local function exists(rel)
+        local fh = io.open(gmod.ROOT .. "/materials/" .. rel, "rb")
+        if fh then fh:close() return true end
+        return false
+    end
+    local n = 0
+    for _, sec in ipairs(E.BMX.Menu.Catalog()) do
+        for _, it in ipairs(sec.items) do
+            n = n + 1
+            T.ok(it.icon and exists(it.icon), sec.title .. " > " .. it.name .. ": no picture (" .. tostring(it.icon) .. ")")
+            if sec.kind == "park" then
+                for s = 1, #E.BMX.Park.SIZES do
+                    for v = 1, (it.variants and #it.variants or 1) do
+                        local rel = E.BMX.Menu.ParkIcon(it.id, s, v)
+                        T.ok(exists(rel), it.name .. " size " .. s .. " variant " .. v .. ": no picture (" .. rel .. ")")
+                    end
+                end
+            end
+        end
+    end
+    T.ok(n > 10, "the window lists things (" .. n .. ")")
+end)

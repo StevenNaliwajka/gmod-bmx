@@ -280,14 +280,14 @@ end
 -- Signs
 --------------------------------------------------------------------------
 -- The looks:
---   ad        a billboard advertisement: a painted panel in a white frame,
---             a headline, a tagline, a brand line and a colour band, with
---             lamps along the top
+--   ad        a comic billboard ad: sunburst rays, a starburst badge that
+--             shouts (`burst`, "\\n" for a second line), an outlined headline,
+--             the gag line (`sub`) and the fine print that undoes it (`fine`)
 --   transit   a station sign: a coloured roundel with the line number and
 --             the station name, white on dark grey
 --   street    a green US street sign with a block number
--- Ad fields: text (headline), sub (tagline), brand (small line), bg / fg /
--- band colours as {r,g,b}.
+-- Ad colours as {r,g,b}: bg -> bg2 (the ground, top to bottom), fg (headline),
+-- band (the fine-print strip), burstColor, subColor.
 local fontsMade = false
 local function makeFonts()
     if fontsMade then return end
@@ -316,29 +316,98 @@ local function fit(prefix, sizes, text, room)
 end
 local function col(t, d) t = t or d return Color(t[1], t[2], t[3], t[4] or 255) end
 
-local function adSign(s, pw, ph)
-    local bg, fg, band = col(s.bg, { 245, 240, 225 }), col(s.fg or s.color, { 200, 30, 30 }), col(s.band, { 30, 60, 150 })
-    -- frame and a dark trim, like a painted board in its steel surround
-    surface.SetDrawColor(235, 235, 235, 255) surface.DrawRect(-pw / 2 - 14, -ph / 2 - 14, pw + 28, ph + 28)
-    surface.SetDrawColor(60, 60, 64, 255) surface.DrawRect(-pw / 2 - 4, -ph / 2 - 4, pw + 8, ph + 8)
-    surface.SetDrawColor(bg) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
-    -- the colour band across the bottom third, the brand line on it
-    surface.SetDrawColor(band) surface.DrawRect(-pw / 2, ph * 0.2, pw, ph * 0.3)
-    -- a big disc at the right, the way an ad puts its product
-    local r = ph * 0.34
-    draw.NoTexture()
-    surface.SetDrawColor(fg.r, fg.g, fg.b, 60)
-    local poly, cx, cy = {}, pw / 2 - r * 1.3, -ph * 0.08
-    for i = 0, 23 do local a = i / 24 * math.pi * 2 poly[#poly + 1] = { x = cx + math.cos(a) * r, y = cy + math.sin(a) * r } end
-    surface.DrawPoly(poly)
-    -- the headline and tagline stay clear of the disc
-    local room = (cx - r) - (-pw / 2 + pw * 0.05) - 16
-    draw.SimpleText(s.text, fit("BMXCityAd", { 120, 100, 84, 70, 58 }, s.text, room), -pw / 2 + pw * 0.05, -ph * 0.16, fg, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-    if s.sub then
-        draw.SimpleText(s.sub, fit("BMXCityAdSub", { 44, 36, 30 }, s.sub, room), -pw / 2 + pw * 0.05, ph * 0.08,
-            col(s.subColor, { 40, 40, 40 }), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+local function disc(cx, cy, r, n)
+    local poly = {}
+    for i = 0, (n or 24) - 1 do local a = i / (n or 24) * math.pi * 2 poly[#poly + 1] = { x = cx + math.cos(a) * r, y = cy + math.sin(a) * r } end
+    return poly
+end
+
+-- A convex polygon clipped to a rectangle (Sutherland-Hodgman): 3D2D has no
+-- scissor of its own, and a ray must stop at the board's edge.
+local function clipRect(poly, x0, y0, x1, y1)
+    local function clip(pts, inside, cross)
+        local out = {}
+        for i = 1, #pts do
+            local a, b = pts[i], pts[i % #pts + 1]
+            local ia, ib = inside(a), inside(b)
+            if ia then out[#out + 1] = a end
+            if ia ~= ib then out[#out + 1] = cross(a, b) end
+        end
+        return out
     end
-    if s.brand then draw.SimpleText(s.brand, "BMXCityAdBrand", -pw / 2 + pw * 0.05, ph * 0.35, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    local function lerpX(a, b, x) local t = (x - a.x) / (b.x - a.x) return { x = x, y = a.y + (b.y - a.y) * t } end
+    local function lerpY(a, b, y) local t = (y - a.y) / (b.y - a.y) return { x = a.x + (b.x - a.x) * t, y = y } end
+    poly = clip(poly, function(p) return p.x >= x0 end, function(a, b) return lerpX(a, b, x0) end)
+    if #poly < 3 then return poly end
+    poly = clip(poly, function(p) return p.x <= x1 end, function(a, b) return lerpX(a, b, x1) end)
+    if #poly < 3 then return poly end
+    poly = clip(poly, function(p) return p.y >= y0 end, function(a, b) return lerpY(a, b, y0) end)
+    if #poly < 3 then return poly end
+    return clip(poly, function(p) return p.y <= y1 end, function(a, b) return lerpY(a, b, y1) end)
+end
+City.ClipRect = clipRect
+
+-- A comic ad: a two-tone ground with sunburst rays behind a starburst badge,
+-- a fat outlined headline, the gag line, and the fine print that undoes it.
+local function adSign(s, pw, ph)
+    local bg, bg2 = col(s.bg, { 255, 220, 40 }), col(s.bg2 or s.bg, { 255, 140, 0 })
+    local fg, band = col(s.fg, { 230, 30, 60 }), col(s.band, { 20, 30, 80 })
+    local burst = col(s.burstColor, { 255, 40, 40 })
+    draw.NoTexture()
+    -- frame
+    surface.SetDrawColor(245, 245, 245, 255) surface.DrawRect(-pw / 2 - 14, -ph / 2 - 14, pw + 28, ph + 28)
+    surface.SetDrawColor(40, 40, 44, 255) surface.DrawRect(-pw / 2 - 4, -ph / 2 - 4, pw + 8, ph + 8)
+    -- ground: top to bottom, bg into bg2
+    for i = 0, 11 do
+        local f = i / 11
+        surface.SetDrawColor(bg.r + (bg2.r - bg.r) * f, bg.g + (bg2.g - bg.g) * f, bg.b + (bg2.b - bg.b) * f, 255)
+        surface.DrawRect(-pw / 2, -ph / 2 + ph * i / 12, pw, ph / 12 + 1)
+    end
+    -- sunburst rays from the badge, alternate wedges a shade lighter
+    local bx, by, br = pw / 2 - ph * 0.42, -ph * 0.08, ph * 0.3
+    surface.SetDrawColor(255, 255, 255, 46)
+    local reach = pw * 1.4
+    for i = 0, 15, 2 do
+        local a0, a1 = i / 16 * math.pi * 2, (i + 1) / 16 * math.pi * 2
+        local ray = clipRect({ { x = bx, y = by },
+            { x = bx + math.cos(a0) * reach, y = by + math.sin(a0) * reach },
+            { x = bx + math.cos(a1) * reach, y = by + math.sin(a1) * reach } }, -pw / 2, -ph / 2, pw / 2, ph / 2)
+        if #ray >= 3 then surface.DrawPoly(ray) end
+    end
+    -- the fine-print band along the bottom
+    surface.SetDrawColor(band) surface.DrawRect(-pw / 2, ph / 2 - ph * 0.17, pw, ph * 0.17)
+    -- headline: shadow, then outlined
+    local x0 = -pw / 2 + pw * 0.04
+    local room = (bx - br * 1.15) - x0
+    local hf = fit("BMXCityAd", { 120, 100, 84, 70, 58 }, s.text, room)
+    draw.SimpleText(s.text, hf, x0 + 6, -ph * 0.2 + 6, Color(0, 0, 0, 110), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    draw.SimpleTextOutlined(s.text, hf, x0, -ph * 0.2, fg, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 5, Color(20, 20, 30))
+    if s.sub then
+        draw.SimpleTextOutlined(s.sub, fit("BMXCityAdSub", { 44, 36, 30 }, s.sub, room), x0, ph * 0.08,
+            col(s.subColor, { 255, 255, 255 }), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 3, Color(20, 20, 30))
+    end
+    if s.fine then
+        draw.SimpleText(s.fine, "BMXCityAdBrand", x0, ph / 2 - ph * 0.085, Color(255, 255, 255, 230), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    end
+    -- the starburst badge: a 16-point star, a white rim, the shout inside
+    local star = {}
+    for i = 0, 31 do
+        local a = i / 32 * math.pi * 2 - math.pi / 2
+        local rr = (i % 2 == 0) and br * 1.12 or br * 0.86
+        star[#star + 1] = { x = bx + math.cos(a) * rr, y = by + math.sin(a) * rr }
+    end
+    surface.SetDrawColor(255, 255, 255, 255)
+    local rim = {}
+    for i, p in ipairs(star) do rim[i] = { x = bx + (p.x - bx) * 1.08, y = by + (p.y - by) * 1.08 } end
+    surface.DrawPoly(rim)
+    surface.SetDrawColor(burst) surface.DrawPoly(star)
+    if s.burst then
+        local lines = string.Explode("\n", s.burst)
+        for i, l in ipairs(lines) do
+            draw.SimpleTextOutlined(l, fit("BMXCityAdSub", { 44, 36, 30 }, l, br * 1.5), bx, by + (i - (#lines + 1) / 2) * br * 0.42,
+                Color(255, 255, 90), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER, 2, Color(60, 0, 0))
+        end
+    end
     -- lamps on arms along the top edge
     for i = 1, 4 do
         local lx = -pw / 2 + pw * (i - 0.5) / 4
@@ -391,7 +460,8 @@ local function drawSigns(layout)
             local scale = s.h / (PANEL_PX[s.look] or 360)
             local pw, ph = s.w / scale, s.h / scale
             local look = LOOKS[s.look or "ad"] or adSign
-            cam.Start3D2D(p + n * 0.5, ang, scale)
+            -- 14 units proud: in front of any cornice (they stick out 8)
+            cam.Start3D2D(p + n * (s.roof and 0.5 or 14), ang, scale)
                 look(s, pw, ph)
             cam.End3D2D()
         end

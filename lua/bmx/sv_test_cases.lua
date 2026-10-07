@@ -1871,3 +1871,82 @@ for _, bike in ipairs({ "cruiser", "mini" }) do
         T.Variant(name, bike)
     end
 end
+
+--------------------------------------------------------------------------
+-- THE PARK PIECES (sh_park.lua, bmx_park_piece), on the real engine.
+--
+-- Everything above builds its terrain from T.Solid hulls written out by hand,
+-- or leans on a prop the map happens to have. These two stand a real park
+-- piece on the test ground, so a quarter pipe and a rail are measured as the
+-- game ships them: the generator's own convex hulls in a real
+-- PhysicsInitMultiConvex, the rail's own grind tag to aim at. The goal
+-- (G27) is that G05, G06 and G16 cases build their terrain from these.
+--------------------------------------------------------------------------
+
+-- A park piece for one case, removed with it (teardown clears ctx.solids).
+local function parkPiece(ctx, shape, params, pos, yaw)
+    local e, why = BMX.Park.Place(nil, shape, params, pos, Angle(0, yaw or 0, 0))
+    if not ctx:ok(e, "the " .. shape .. " was placed: " .. tostring(why)) then return nil end
+    ctx.solids = ctx.solids or {}
+    ctx.solids[#ctx.solids + 1] = e
+    return e
+end
+
+T.Case("park_quarterpipe_ride_up", { timeout = 30,
+    desc = "sweep on: rolling up a low park quarter pipe at 11 mph the bike climbs it, comes back down onto the floor and is still ridden" },
+function(ctx)
+    sweepOn(ctx)
+    local g = ctx.ground
+    local b = BMX.Park.Build("quarterpipe", { 2, 1 })
+    local H = 36                                   -- the low quarter pipe's deck height
+    local xa = g.x + 600                           -- where the transition leaves the floor
+    if not parkPiece(ctx, "quarterpipe", { 2, 1 }, Vector(xa + b.hl, g.y, g.z), 0) then return end
+    ctx:wait(0.3)
+
+    local rest = BMX.RestHeight(ctx.cfg)
+    local peak = -math.huge
+    rideAt(ctx, xa - 280, 190, 0, 4, function()
+        peak = math.max(peak, ctx.bike:GetPos().z - g.z)
+    end)
+    ctx:log(string.format("peak %.1f u over the floor on a %d u quarter pipe (rest height %.1f)", peak, H, rest))
+    ctx:between(peak, rest + 0.35 * H, rest + H + 25, "how high up the transition it went", "u")
+    -- Down again: on the floor, upright, neither stuck on the curve nor thrown.
+    ctx:ok(ctx.bike.st.grounded, "back on its wheels")
+    ctx:between(ctx.bike:GetPos().z - g.z, rest - 3, rest + 6, "ride height on the floor again", "u")
+    ctx:between(math.deg(math.abs(ctx.bike.st.roll or 0)), 0, 25, "roll after the landing", "deg")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+end)
+
+T.Case("park_flat_rail_grind", { timeout = 25,
+    desc = "hopping onto a park flat rail along its tag locks into a crank grind and lets go where the rail ends" },
+function(ctx)
+    ctx:input({})
+    ctx:st().grindExitClamped = 0
+    local g = ctx.ground
+    local b = BMX.Park.Build("flatrail", { 2 })
+    local at = Vector(g.x + 500, g.y, g.z)
+    if not parkPiece(ctx, "flatrail", { 2 }, at, 0) then return end
+    ctx:wait(0.3)
+
+    -- The rail's own tag says where its top is: no guessing a point on a prop.
+    local line = BMX.Park.WorldGrind(b, at, 0)[1]
+    ctx:log(string.format("rail tag %.0f long, top at +%.0f", line.b.x - line.a.x, line.a.z - g.z))
+    launchAt(ctx, Vector(line.a.x + 8, line.a.y, line.a.z), 5, 8, Vector(240, 0, -30))
+
+    local worstUp, worstSide = 0, 0
+    local started, ended = watchGrind(ctx, 4, function(gr)
+        local c = ctx.bike:LocalToWorld(BMX.GrindCrankPoint(ctx.bike:Cfg()))
+        worstUp = math.max(worstUp, math.abs(c.z - gr.point.z))
+        worstSide = math.max(worstSide, math.abs(c.y - line.a.y))
+    end)
+    ctx:ok(started == "crank", "locked into a crank grind: " .. tostring(started))
+    if ended then
+        ctx:log(string.format("ended by %s after %.2fs", ended.why, ended.t))
+        ctx:ok(ended.why == "end", "let go where the rail ends")
+        ctx:between(ended.t, 0.2, 3, "grind time along the rail", "s")
+    end
+    ctx:between(worstUp, 0, 1.5, "chainring kept on the rail's top", "u")
+    ctx:between(worstSide, 0, 2.5, "and on its line", "u")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+    ctx:ok((ctx:st().grindExitClamped or 0) == 0, "let go without being shoved out of the rail")
+end)

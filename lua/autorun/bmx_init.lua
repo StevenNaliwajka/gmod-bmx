@@ -44,6 +44,7 @@ local SHARED = {
     "bmx/sh_stance.lua",    -- seated / standing / attack: IK offsets (G21)
     "bmx/sh_city.lua",      -- the city around the park: layout builder
     "bmx/sh_city_maps.lua", -- ...and which maps have one
+    "bmx/sh_park.lua",      -- the park pieces: one generator for collision and drawing
 }
 
 local SERVER_FILES = {
@@ -68,6 +69,7 @@ local SERVER_FILES = {
     "bmx/sv_games.lua",     -- SKATE, Trick Attack, Combo Mambo (loads bmx/games/*)
     "bmx/sv_debug.lua",
     "bmx/sv_city.lua",      -- the city's colliders and admin commands
+    "bmx/sv_park.lua",      -- park pieces: placing, the cap, save/load, presets
 
     -- The headless harness loads last: its cases reference BMX.Config, the
     -- wheel/balance state and the entity, so everything it asserts on must
@@ -90,6 +92,7 @@ local CLIENT_FILES = {
     "bmx/cl_tricks.lua",    -- the trick list overlay (bmx_tricks)
     "bmx/cl_report.lua",    -- bmx_report: a paste-able block for a bug report
     "bmx/cl_city.lua",      -- draws the city, runs the subway trains
+    "bmx/cl_park.lua",      -- draws the park pieces
     "bmx/cl_options.lua",   -- spawn menu > Options > BMX, built from BMX.Settings
 }
 

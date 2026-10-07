@@ -626,6 +626,18 @@ function M.Realm(world, which)
         -- the "does this sound ship with the game" question.
         Exists = function(name) return R.files[name] ~= nil end,
         IsDir = function() return true end,
+        -- A directory listing of what file.Write put there: names under
+        -- `dir`, matching the `*.ext` pattern.
+        Find = function(pattern)
+            local dir, ext = pattern:match("^(.*)/%*(%.?[%w]*)$")
+            local out = {}
+            for name in pairs(R.files) do
+                local d, base = name:match("^(.*)/([^/]+)$")
+                if d == dir and (ext == "" or base:sub(-#ext) == ext) then out[#out + 1] = base end
+            end
+            table.sort(out)
+            return out, {}
+        end,
     }
     env.list = { Set = function(group, key, val)
         R.lists[group] = R.lists[group] or {}
@@ -1574,6 +1586,16 @@ function M.Realm(world, which)
         env.ENT = nil
     end
 
+    -- Load a toolgun mode the way gmod_tool does: a fresh TOOL table, the
+    -- file run, the table kept as R.tools[name].
+    function R:loadStool(name)
+        env.TOOL = { Mode = name }
+        self:runFile("weapons/gmod_tool/stools/" .. name .. ".lua")
+        self.tools = self.tools or {}
+        self.tools[name] = env.TOOL
+        env.TOOL = nil
+    end
+
     -- The whole addon, in the engine's order: autorun, then entities, then one
     -- tick so the deferred work in sh_bikes (derive) runs.
     function R:boot()
@@ -1582,6 +1604,8 @@ function M.Realm(world, which)
         self:loadEntity("bmx_city_solid")
         self:loadEntity("bmx_leaderboard")
         self:loadEntity("bmx_filmer_cam")
+        self:loadEntity("bmx_park_piece")
+        self:loadStool("bmx_park")
         env.hook.Run("InitPostEntity")
         self:runTimers()
         return self

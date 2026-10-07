@@ -17,6 +17,7 @@
         BMX - Remove Any Bike          admin        remove other people's bikes (nothing uses it yet)
         BMX - Bot                      admin        bmx_bot_spawn and friends
         BMX - Unlock Any Lock          admin        bike locks (nothing uses it yet)
+        BMX - Build Parks              admin        bmx_park_save / _load / _preset / _clear
 
     The three marked "nothing uses it yet" belong to goals that have not been
     built. They are registered now so a server owner's permission setup does
@@ -51,6 +52,8 @@ BMX.Privileges = {
       desc = "Spawn and command bot riders (bmx_bot_*)." },
     { name = "BMX - Unlock Any Lock", min = "admin",
       desc = "Unlock bikes that other players have locked." },
+    { name = "BMX - Build Parks", min = "admin",
+      desc = "Save, load, build a preset and clear the park pieces (bmx_park_*)." },
 }
 
 local BY_NAME = {}

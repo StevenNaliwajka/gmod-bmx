@@ -59,6 +59,17 @@ function BMX.NewWheel(mountLocal, isFront)
         contactPos  = Vector(),
         contactNorm = Vector(0, 0, 1),
         spinAngle   = 0,      -- rad, accumulated, for the visual wheel
+
+        -- stick-slip anchor (see "STATIC FRICTION" in Wheel:Simulate)
+        anchor      = nil,    -- world point the contact patch is pinned to
+        anchorFree  = 0,      -- CurTime() after which it may stick again
+        hold        = false,  -- set by PhysicsStep: parked, so hold on a slope
+
+        -- swept contact (see "THE SWEPT WHEEL")
+        steepUntil  = 0,      -- CurTime() until which the full fan stays on
+        wall        = false,  -- the contact is a face too steep to roll up
+        rays        = 1,      -- traces fired last substep, for the cost tests
+        obstacle    = nil,    -- the second contact last substep, if any
     }, Wheel)
 end
 
@@ -119,6 +130,66 @@ local function effectiveMass(ent, phys, cfg, contact, dir)
 end
 
 --------------------------------------------------------------------------
+-- THE SWEPT WHEEL (bmx_wheel_sweep): the contacts a single ray cannot see.
+--
+-- The strut ray finds the floor under the axle. What it cannot find is a face
+-- IN FRONT of the tyre -- the foot of a wedge, a curb, a wall -- so the tyre
+-- sank into it (luttje/gmod-bicycle #5) or stuck against it (#16). Here the
+-- disc is probed by a fan of rays in its own plane (BMX.SweepContact), and the
+-- contact it finds is handled as a second, normal-only constraint next to the
+-- floor's, or as the wheel's only contact when there is no floor in reach.
+--
+-- Cost is the reason it is tiered (BMX.SweepProbe). On flat ground a wheel
+-- fires its strut ray and one bumper ray (two traces, against one without the
+-- sweep); the nine-ray fan only goes out when the bumper hit a face rising from
+-- the floor, the floor under the strut is steeper than 25 degrees, or a face
+-- was touched in the last Wheel.sweepHold seconds. 25 bikes at 66 ticks is the
+-- budget (the headless `crowd` case), and it is spent on the bikes that need it.
+--
+-- Returns the resolved contact (BMX.SweepResolve) or nil, and the ray count.
+--------------------------------------------------------------------------
+local function sweepProbe(self, ent, phys, WC, mountWorld, down, floorPoint, floorNormal, hot)
+    local centre = mountWorld + down * WC.restLength
+    local dir = (phys:GetVelocity():Dot(ent:GetForward()) >= -2) and 1 or -1
+    return BMX.SweepProbe(centre, down, ent:GetRight(), dir, WC.radius,
+        self._traceFn, floorPoint, floorNormal, hot)
+end
+
+--------------------------------------------------------------------------
+-- The force one contact applies along its normal: spring, damper and bump
+-- stop with the same stability cap as the main contact's. Used for the second
+-- (obstacle) contact, which has no tyre.
+--------------------------------------------------------------------------
+local function normalForce(ent, phys, cfg, dt, contact, normal, depth)
+    local WC = cfg.Wheel
+    local velAt = phys:GetVelocityAtPoint(contact)
+    local compVel = -velAt:Dot(normal)
+    local springF = WC.spring * min(depth, WC.restLength)
+    if depth > WC.restLength then springF = springF + WC.bumpStop * (depth - WC.restLength) end
+    local damperF = WC.damper * compVel
+    if compVel > 0 then
+        local cap = effectiveMass(ent, phys, cfg, contact, normal) * compVel / dt
+        if damperF > cap then damperF = cap end
+    end
+    local N = springF + damperF
+    if N < 0 then N = 0 end
+    local maxN = WC.maxLoadFactor * cfg.Chassis.mass * physenv.GetGravity():Length()
+    if N > maxN then N = maxN end
+    return N
+end
+
+-- Push the wheel out of a face the fan found. The force is along the contact's
+-- normal and applied at the contact: no tyre on it, because a face is not
+-- something a wheel is driven along. Pushing against a wall does not climb it.
+local function applyFace(self, ent, phys, cfg, dt, face)
+    local N = normalForce(ent, phys, cfg, dt, face.point, face.normal, face.depth)
+    local f = face.normal * N
+    if BMX.FiniteVec(f) then phys:ApplyForceOffset(f * dt, face.point) end
+    self.obstacle = face
+    self.faceLoad = N
+end
+
+--------------------------------------------------------------------------
 -- One physics substep for one wheel.
 --
 --   driveTorque  kg*units^2/s^2 delivered to THIS wheel by the drivetrain
@@ -136,6 +207,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
 
     local mountWorld = ent:LocalToWorld(self.mount)
     local down       = -ent:GetUp()
+    local now        = CurTime()
 
     local tr = util.TraceLine({
         start  = mountWorld,
@@ -154,13 +226,48 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     end
 
     ----------------------------------------------------------------------
+    -- THE SWEPT WHEEL (see sweepProbe). Fires only with bmx_wheel_sweep on.
+    -- `floor` is the strut's own contact, if it has one; `face` is what the
+    -- fan found that the floor does not explain.
+    ----------------------------------------------------------------------
+    local floor = s and s <= WC.restLength
+    local face, sweepComp, sweepNormal, sweepPoint
+    self.rays, self.obstacle, self.wall = 1, nil, false
+    if WC.sweep and WC.sweep > 0 then
+        if not self._traceFn then
+            self._traceFn = function(a, b)
+                self._rayCount = self._rayCount + 1
+                return util.TraceLine({ start = a, endpos = b,
+                    filter = self._filter, mask = MASK_SOLID })
+            end
+        end
+        self._filter, self._rayCount = filter, 1
+        local floorNormal = floor and tr.HitNormal or nil
+        local steepFloor = floor and tr.HitNormal.z < 0.906       -- over 25 degrees
+        local hot = steepFloor or now < self.steepUntil
+        face = sweepProbe(self, ent, phys, WC, mountWorld, down,
+            floor and contact or nil, floorNormal, hot)
+        self.rays = self._rayCount
+        if face or steepFloor then self.steepUntil = now + (WC.sweepHold or 0.15) end
+        if face and not floor and face.normal.z >= (WC.wallCos or 0.17) then
+            -- Nothing under the strut, but ground the tyre IS touching: the
+            -- fan's contact stands in for the floor, tyre forces and all.
+            -- (A wedge face seen from above is how a wheel rides over a lip.)
+            s, contact = WC.restLength - face.depth, face.point
+            sweepComp, sweepNormal = face.depth, face.normal
+            floor, face = true, nil
+        end
+    end
+
+    ----------------------------------------------------------------------
     -- Airborne: no ground in reach, or ground the disc cannot touch at full
     -- extension. The ray is longer than the strut so that a pitched wheel can
     -- still find the ground it is sitting on; the price is that a hit is no
     -- longer proof of contact on its own.
     ----------------------------------------------------------------------
-    if not s or s > WC.restLength then
+    if not floor then
         self.lastComp   = nil
+        self.anchor     = nil
         self.onGround   = false
         self.load       = 0
         self.slipLong   = 0
@@ -186,6 +293,12 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
         self.omega = self.omega * (1 - min(0.4 * dt, 0.5))
 
         self.spinAngle = self.spinAngle + self.omega * dt
+
+        -- Touching something steep with no floor under the strut: a wall.
+        if face then
+            self.wall = true
+            applyFace(self, ent, phys, C, dt, face)
+        end
         return
     end
 
@@ -193,6 +306,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     -- Suspension
     ----------------------------------------------------------------------
     local comp   = WC.restLength - s                -- >= 0
+    local normal = sweepNormal or tr.HitNormal
 
     ----------------------------------------------------------------------
     -- A STEP IS NOT A SPRING. The strut is a ray from the mount, and the
@@ -209,9 +323,11 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     -- at once), the ground under a wheel may rise at most Wheel.climbRate,
     -- and a rise of more than Wheel.stepMax in one substep is not ground.
     ----------------------------------------------------------------------
+    -- (A contact the FAN found is already geometry: it rises as smoothly as
+    -- the tyre rolls onto the face, so the limiter has nothing to limit.)
     local prev = self.lastComp
     self.stepBlocked = false
-    if prev and not self.soak then
+    if prev and not self.soak and not sweepComp then
         local rise = comp - prev
         if rise > WC.stepMax then
             comp = prev
@@ -221,7 +337,6 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
         end
     end
     self.lastComp = comp
-    local normal = tr.HitNormal
 
     local velAt   = phys:GetVelocityAtPoint(contact)
 
@@ -288,6 +403,10 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     self.compression = comp
     self.load        = N
 
+    -- The face beside the floor: the wheel is on the ground AND against
+    -- something (the foot of a ramp, a curb). Pushed out along its normal.
+    if face then applyFace(self, ent, phys, C, dt, face) end
+
     ----------------------------------------------------------------------
     -- Tyre
     ----------------------------------------------------------------------
@@ -337,6 +456,21 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
         else
             omegaFree = omegaFree - dOmega * (omegaFree > 0 and 1 or -1)
         end
+    end
+
+    ----------------------------------------------------------------------
+    -- A PARKED WHEEL ON A SLOPE IS A LOCKED ONE. The kickstand holds a bike
+    -- level (7c in sv_physics.lua) but it is the TYRES that have to carry the
+    -- bike's weight down the slope, and a wheel left free to roll would just
+    -- roll. Only on a slope: on the level there is nothing to hold, and
+    -- locking the patch there is how a parked bike's lean onto its stand got
+    -- fought by its own tyres.
+    ----------------------------------------------------------------------
+    local stick = WC.stiction and WC.stiction > 0
+    if stick and not locked and self.hold and abs(vFwd) < WC.stickSpeed
+       and normal.z < 0.9995 then
+        omegaFree = 0
+        locked    = true
     end
 
     -- Slip VELOCITY, not slip ratio. See the note in sh_config.lua: slip ratio
@@ -414,6 +548,64 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
         Flat = capLat * (Flat >= 0 and 1 or -1)
     end
 
+    ----------------------------------------------------------------------
+    -- STATIC FRICTION: THE STICK-SLIP ANCHOR.
+    --
+    -- A slip-velocity tyre answers a slip that already exists, so at zero slip
+    -- it gives zero force: a locked wheel on a slope creeps at
+    -- m*g*sin(slope)/stiffness, steadily, for as long as the brake is held.
+    -- That is luttje/gmod-bicycle's #4 ("a tiny incline causes it to slide
+    -- continuously"), and real tyres do not do it: below some speed the patch
+    -- STICKS, and what holds it is a displacement, not a velocity.
+    --
+    -- So a LOCKED wheel (brake held, or parked on a slope) that is slower than
+    -- stickSpeed pins its contact patch to where it is. From then on the force
+    -- is a spring-damper on how far the patch has been dragged from that
+    -- point, along and across the wheel, with the stiffness a critically
+    -- damped oscillator of natural frequency stickFreq has against the mass the
+    -- patch really feels (effectiveMass, as for the damper above).
+    --
+    -- INTEGRATED IMPLICITLY. The explicit damper elsewhere in this file needs
+    -- its cap because c*dt past the effective mass reverses the velocity it is
+    -- damping. This one is solved for the NEXT step's position and velocity,
+    -- F = -(k*x + (k*dt + c)*v) / (1 + c*dt/m + k*dt^2/m), which is stable for
+    -- any stiffness and any tickrate, so it needs no cap and cannot buzz at 33
+    -- or 66. At 25 rad/s the held patch sags F/k: a bike on 20 degrees takes
+    -- ~0.7 units, which is the sag of a spring, and it stays there.
+    --
+    -- LIMITED BY THE FRICTION CIRCLE. When the force it takes to hold the
+    -- patch exceeds grip*N the tyre lets go: the anchor is dropped, ordinary
+    -- sliding resumes, and it cannot stick again for stickCooldown. A wheel
+    -- that is rolling is never here at all, so free rolling is untouched.
+    ----------------------------------------------------------------------
+    local anchored = false
+    if stick and locked then
+        local vPatch = sqrt(vFwd * vFwd + vLat * vLat)
+        if not self.anchor and now >= self.anchorFree and vPatch < WC.stickSpeed then
+            self.anchor = Vector(contact)
+        end
+        if self.anchor then
+            local d = contact - self.anchor
+            local w = WC.stickFreq
+            local function spring(x, v, m)
+                local k, c = m * w * w, 2 * m * w
+                return -(k * x + (k * dt + c) * v) / (1 + c * dt / m + k * dt * dt / m)
+            end
+            local mL = effectiveMass(ent, phys, cfg, contact, fwdDir)
+            local mT = effectiveMass(ent, phys, cfg, contact, rightDir)
+            local aLong = spring(d:Dot(fwdDir),   vFwd, mL)
+            local aLat  = spring(d:Dot(rightDir), vLat, mT)
+            if sqrt(aLong * aLong + aLat * aLat) <= Fmax then
+                Flong, Flat, anchored = aLong, aLat, true
+            else
+                self.anchor     = nil
+                self.anchorFree = now + WC.stickCooldown
+            end
+        end
+    else
+        self.anchor = nil
+    end
+
     -- Friction circle: the tyre has one budget and braking spends the same
     -- money as cornering. This is the whole reason a bike washes out mid-corner
     -- when you grab the brake, and it costs four lines.
@@ -428,7 +620,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     end
 
     -- Rolling resistance, proportional to load, always opposing motion.
-    if abs(vFwd) > 1 then
+    if abs(vFwd) > 1 and not anchored then
         Flong = Flong - WC.rollingResistance * N * (vFwd > 0 and 1 or -1)
     end
 
@@ -449,7 +641,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
 
     -- Freewheel: a BMX cassette cannot be driven backwards by the ground, so a
     -- coasting rider feels no engine braking. Fixed-gear bikes skip this.
-    if not C.Drive.fixedGear and driveTorque <= 0 and brakeTorque <= 0 then
+    if not C.Drive.fixedGear and driveTorque <= 0 and brakeTorque <= 0 and not locked then
         local kinematic = vFwd / radius
         if self.omega < kinematic then self.omega = kinematic end
     end

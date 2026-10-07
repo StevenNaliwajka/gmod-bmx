@@ -127,6 +127,194 @@ function BMX.DiscContact(mount, down, axle, dist, normal, radius)
     return s, centre - inPlane * radius
 end
 
+--------------------------------------------------------------------------
+-- THE SWEPT WHEEL: what the tyre touches IN FRONT of the axle.
+--
+-- BMX.DiscContact answers one question: where does the disc touch the ground
+-- under the strut. A ray down the strut cannot see anything else. At the foot
+-- of a 45 degree wedge it still hits flat ground while the front of the tyre
+-- is already inside the ramp; against a curb it sees nothing until the axle is
+-- over the edge, and by then the tyre has been pushing on the face for a
+-- second with nothing to push back. That is luttje/gmod-bicycle's #5 and #16
+-- (wheels sinking into steep ramps, getting stuck on a curb), and it is the
+-- same missing contact in both.
+--
+-- So the tyre is probed with a FAN of rays from the axle in the wheel's own
+-- plane, over the quadrant it rolls into (and a little behind), each as long as
+-- the radius: a hit closer than the radius is the tyre inside something.
+--
+--   centre   the axle at the strut's full extension: the position from which
+--            "inside the ground" means "the spring is compressed"
+--   down     unit vector the strut runs along (chassis -up)
+--   axle     unit vector along the wheel's axle (chassis right)
+--   dir      +1 rolling forwards, -1 backwards: the fan points where it goes
+--   degs     angles from straight down toward travel, degrees
+--   trace    function(from, to) -> { Hit, HitPos, HitNormal, Fraction, ... }
+--   best     accumulator from an earlier call, so a lite fan and the rest of
+--            the fan can be fired separately and merged
+--   ignore   a surface normal: hits within ~25 degrees of it are the surface
+--            the strut ray already has (the floor under the wheel), and are
+--            skipped, so the fan reports only what is DIFFERENT. Without it a
+--            wheel resting on the floor, 3 units deep into it, always out-ranks
+--            the first unit of a curb beside it.
+--
+-- It takes a trace FUNCTION rather than calling util.TraceLine, so the offline
+-- suite can run it against a hand-built wedge and a step with no engine at all.
+--
+-- WHICH HIT. The deepest, ranked by how far inside the tyre it is along the
+-- ray (r - h). The doc this was written from said "shallowest penetration",
+-- and that cannot be right: resolving the shallowest of two overlaps leaves
+-- the deeper one inside the geometry, which is the bug. A wheel at the foot of
+-- a wedge is ON the floor (3 units deep) and a unit into the ramp; the one
+-- that most needs pushing out is the one that is most inside.
+--
+-- Returns the best raw hit (or nil) and the number of rays fired. Hand it to
+-- BMX.SweepResolve to turn it into a contact.
+--------------------------------------------------------------------------
+BMX.SWEEP_LITE  = { 35, 60, 85 }
+BMX.SWEEP_EXTRA = { -40, -20, 20, 48, 72, 92 }
+-- (Together: nine rays, 20 degrees or less apart over -40..92. LITE is what
+-- fires alone when there is no floor to rule hits out against.)
+
+function BMX.SweepContact(centre, down, axle, dir, radius, degs, trace, best, ignore)
+    local fwd = axle:Cross(down)           -- Source: forward = right x down
+    local rays = 0
+    for _, deg in ipairs(degs) do
+        local a = math.rad(deg) * dir
+        local d = down * math.cos(a) + fwd * math.sin(a)
+        local tr = trace(centre, centre + d * radius)
+        rays = rays + 1
+        if tr.Hit and not tr.StartSolid and tr.Fraction > 0 then
+            local h = radius * tr.Fraction
+            local dr = radius - h
+            local same = ignore and tr.HitNormal:Dot(ignore) > 0.9
+            if not same and (not best or dr > best.dr) then
+                best = { dr = dr, h = h, d = d, n = tr.HitNormal, P = tr.HitPos }
+            end
+        end
+    end
+    return best, rays
+end
+
+-- cos of the angle between a ray and the surface normal it hit, above which
+-- the hit is trusted as a plane without checking that the plane really extends
+-- under the tyre: the ray is within ~18 degrees of the normal, so what it hit
+-- is what the tyre would touch.
+BMX.SWEEP_PLANE_COS = 0.95
+
+--------------------------------------------------------------------------
+-- Turn the best raw hit into the contact the tyre really has.
+--
+-- TWO KINDS, because a ray hit on its own cannot say which it is:
+--
+--   a PLANE (a floor, a wedge, a wall). The tyre's contact is the foot of the
+--     perpendicular from the axle to the plane, wherever the ray happened to
+--     land, and the depth is exact however oblique the ray was: the centre's
+--     distance to the plane is h*cos(angle to the normal). The force acts
+--     along the plane's normal.
+--
+--   an EDGE (a curb's top corner). The tyre touches the corner, the force acts
+--     along the line from the corner to the axle -- which tilts UP as the
+--     wheel comes over it, and that tilt is what lifts a wheel onto a step
+--     -- and the depth is r minus the distance to the corner.
+--
+-- To tell them apart when the ray was oblique, a second ray is fired from the
+-- axle along the plane's normal: if it finds the same plane at the distance
+-- the first implied, the plane is real under the tyre; if it misses, the
+-- "plane" was the side of a step whose top is below the axle, and the contact
+-- is the corner. Perpendicular hits skip the check (SWEEP_PLANE_COS).
+--
+-- Returns { depth, normal, point, plane } or nil. `depth` is along `normal`
+-- and is what the spring is compressed by.
+--------------------------------------------------------------------------
+function BMX.SweepResolve(centre, axle, radius, trace, hit)
+    if not hit then return nil end
+    local n = hit.n
+    local inPlane = BMX.ProjectPerp(n, axle)
+    local cc = -hit.d:Dot(n)
+
+    local plane = false
+    if inPlane and cc > 0.05 then
+        if cc >= BMX.SWEEP_PLANE_COS then
+            plane = true
+        else
+            local k = inPlane:Dot(n)
+            local want = hit.h * cc / k            -- distance along -inPlane
+            local tr = trace(centre, centre - inPlane * (radius * 1.25))
+            if tr.Hit and not tr.StartSolid and tr.HitNormal:Dot(n) > 0.95 then
+                local got = radius * 1.25 * tr.Fraction
+                plane = math.abs(got - want) < 0.75
+            end
+        end
+    end
+
+    if plane then
+        local k = inPlane:Dot(n)
+        local depth = radius * k - hit.h * cc
+        if depth <= 0 then return nil end
+        -- The disc, pushed out by `depth`, touches at the end of the in-plane
+        -- normal from the displaced axle.
+        local touchCentre = centre + n * depth
+        return { depth = depth, normal = n, point = touchCentre - inPlane * radius,
+                 plane = true }
+    end
+
+    if hit.h < 1e-3 then return nil end
+    local u = (centre - hit.P) / hit.h
+    local depth = radius - hit.h
+    if depth <= 0 then return nil end
+    return { depth = depth, normal = u, point = hit.P, plane = false }
+end
+
+--------------------------------------------------------------------------
+-- The whole probe, tiered by cost. This is what the wheel runs each substep
+-- with bmx_wheel_sweep on, here rather than in sv_wheel.lua so the offline
+-- suite runs the production decision and not a copy of it.
+--
+-- FLAT GROUND COSTS ONE EXTRA RAY. The first idea was three lite probes at
+-- 35, 60 and 85 degrees, with the rest of the fan fired on any hit. It missed
+-- exactly what it was for: a 4-unit curb's corner sits at 59 degrees when the
+-- tyre first touches it, the 60 degree probe grazed past it onto the top, and
+-- the first thing that saw the curb was a tyre already 4 units into it. A fan
+-- has gaps and a corner lives in them.
+--
+-- So the lookout is a BUMPER: one ray along the travel direction, a unit above
+-- the floor, from under the axle, a little longer than the tyre reaches. A
+-- face rising from the floor ahead cannot hide from it, whatever its corner
+-- does, and it fires before the tyre is in anything. The fan is for
+-- RESOLVING the contact, not for finding the obstacle.
+--
+--   floorPoint, floorNormal   the strut ray's own contact, or nil if the wheel
+--                             has no floor under it (then the fan fires at
+--                             once: there is nothing to rule a hit out against)
+--   hot                       a face was touched lately, or the floor is steep:
+--                             skip the lookout and fan out
+--
+-- Returns the resolved contact or nil.
+--------------------------------------------------------------------------
+BMX.SWEEP_BUMPER_HEIGHT = 1
+BMX.SWEEP_BUMPER_EXTRA  = 4
+
+function BMX.SweepProbe(centre, down, axle, dir, radius, trace, floorPoint, floorNormal, hot)
+    if floorNormal and not hot then
+        local fwd = BMX.ProjectPerp(axle:Cross(down), floorNormal)
+        if not fwd then return nil end
+        local from = floorPoint + floorNormal * BMX.SWEEP_BUMPER_HEIGHT
+        local tr = trace(from, from + fwd * (dir * (radius + BMX.SWEEP_BUMPER_EXTRA)))
+        if not (tr.Hit and not tr.StartSolid and tr.HitNormal:Dot(floorNormal) < 0.9) then
+            return nil
+        end
+    end
+
+    local best = BMX.SweepContact(centre, down, axle, dir, radius,
+        BMX.SWEEP_LITE, trace, nil, floorNormal)
+    if best or floorNormal then
+        best = BMX.SweepContact(centre, down, axle, dir, radius,
+            BMX.SWEEP_EXTRA, trace, best, floorNormal)
+    end
+    return BMX.SweepResolve(centre, axle, radius, trace, best)
+end
+
 -- Where the entity origin sits above flat ground at rest: on the axle line,
 -- which is one wheel radius up less the static sag. Spawning anywhere higher
 -- is dropping the bike, and it bounced on its suspension every time it was

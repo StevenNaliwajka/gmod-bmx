@@ -42,3 +42,39 @@ the step's corner would. Do G05 and G16 as one change, with tests from both.
 ## Risks
 
 Same as G05.
+
+## Status (2026-10-07)
+
+**Implemented with G05, behind `bmx_wheel_sweep` (default 0); the offline half
+passes, the headless cases are written but unverified until CI runs them.**
+See the G05 status and `docs/DESIGN.md`.
+
+A correction to the goal's own numbers, which is why the cases differ from it:
+an "8 u curb" is 0.8 of a 20 inch tyre's 10 u radius, not 40% of it, and a
+curb that tall is not rollable at walking pace (the contact normal at first
+touch is nearly horizontal). The cases use heights as fractions of each bike's
+radius: **0.4 radius** for "a curb" (4 u on the BMX, 4.8 on the cruiser, 3.2 on
+the mini) and **1.6 radii** for "too tall" (the goal's 16 u), so the mini and the
+cruiser scale as the goal asks.
+
+- **At 3 mph both wheels climb the curb: done on the plant for all three
+  bikes** (the contact is found, the chassis ends on the curb's top, both wheels
+  down); `climbs_curb_slow` is written for the engine.
+- **A 1.6-radius step stops the front wheel, a manual gets it up: written
+  (`stops_at_step_then_manuals_up`), plant half done.** On the plant the tyre
+  stops at the face and does not climb it. "The rear then climbs on its own if
+  the step is <= 40% of the rear radius" is not tested: the step in the case is
+  four times that, so the rear cannot, and the case asserts only the stop and
+  the lift.
+- **Scale with radius: done** (both cases and offline tests use `0.4 * radius`).
+- **No pop, vertical acceleration under 3 g at 10 mph: written
+  (`curb_no_pop`), unverified, and probably tight.** Rolling a tyre onto a
+  4 u curb at 176 u/s takes ~0.05 s, an average vertical speed of ~75 u/s, so
+  the figure is measured over a 50 ms window (what a rider feels) rather than
+  tick to tick. Expect this band to be the first to move.
+  On the plant, 10 mph over a curb stays under 3 g tick to tick.
+
+The only thing the sweep does to the existing step handling is leave it alone:
+the climb-rate limiter and `stepMax` still govern the floor ray, and the fan's
+contacts bypass them because they are geometry and rise as smoothly as the tyre
+rolls onto the face.

@@ -237,6 +237,38 @@ C.Wheel = {
     -- Coasting losses. Rolling resistance is proportional to load; drag is
     -- proportional to v^2 and is what actually sets the coasting top speed.
     rollingResistance = 0.012,
+
+    -- STICK-SLIP ANCHOR (sv_wheel.lua, "static friction"). A slip-velocity tyre
+    -- has no static friction, so a braked or parked wheel on a slope creeps at
+    -- m*g*sin(slope)/stiffness. With the anchor, a wheel that is locked (or
+    -- parked on a slope) and slower than stickSpeed pins its contact patch to
+    -- the ground with a critically damped spring of natural frequency
+    -- stickFreq (rad/s), limited by the friction circle: past grip*N it lets go
+    -- and the ordinary sliding model takes over again, and may not re-stick for
+    -- stickCooldown seconds. Free rolling never reaches it.
+    --
+    -- stiction is the convar bmx_wheel_stiction (1/0). It is on by default
+    -- because it only ever acts on a wheel that is not rolling.
+    stiction       = 1,
+    stickSpeed     = 2,
+    stickFreq      = 25,
+    stickCooldown  = 0.25,
+
+    -- SWEPT CONTACT (sv_wheel.lua, "swept wheel"; BMX.SweepContact). The single
+    -- downward ray cannot see a face in front of the tyre, so a wheel at the
+    -- foot of a ramp, a curb or a wall sinks into it. With sweep on, a fan of
+    -- rays over the tyre's front quadrant finds the contact the disc really
+    -- has, and a second, normal-only contact pushes the wheel out of it.
+    --
+    -- sweep is the convar bmx_wheel_sweep (1/0) and is OFF by default: it
+    -- changes the wheel model under everything, so it is ridden before the
+    -- default is flipped. wallCos is the face steepness (cos of its angle from
+    -- level) past which a contact is a WALL: pushed against, never driven up.
+    -- sweepHold is how long the full fan stays on after a steep face was last
+    -- touched.
+    sweep     = 0,
+    wallCos   = 0.17,
+    sweepHold = 0.15,
 }
 
 --------------------------------------------------------------------------
@@ -843,6 +875,8 @@ C.ConVars = {
     { "bmx_air_pitch",   C.Air.pitchAccel,                "Air.pitchAccel"      },
     { "bmx_air_roll",    C.Air.rollAccel,                 "Air.rollAccel"       },
     { "bmx_autolevel",   C.Air.autoLevel,                 "Air.autoLevel"       },
+    { "bmx_wheel_stiction", C.Wheel.stiction,             "Wheel.stiction"      },
+    { "bmx_wheel_sweep",    C.Wheel.sweep,                "Wheel.sweep"         },
 }
 
 -- Live-tuning plumbing. A convar whose fourth element is true is authored in

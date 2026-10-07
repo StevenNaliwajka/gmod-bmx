@@ -46,3 +46,46 @@ force step.
 
 A spring anchor can buzz if it's under-damped. Critically damp it against the
 bike's mass, and test at 33 and 66 tick.
+
+## Status (2026-10-07)
+
+**Mostly done, with one deliberate difference from the spec.** The headless
+cases are written but **unverified until CI runs them**; the offline results
+below are on the shim's rigid-body plant, which is right in kind and is not
+VPhysics.
+
+Implemented: the stick-slip anchor in `Wheel:Simulate` (`sv_wheel.lua`,
+"STATIC FRICTION"), convar `bmx_wheel_stiction` (default 1), config
+`Wheel.stiction / stickSpeed / stickFreq / stickCooldown`. Critically damped
+against the effective mass at the patch, integrated implicitly (stable at any
+tickrate), limited by the friction circle, broken at `grip*N` with a cooldown. A
+riderless bike on its stand has its wheels treated as locked on a slope
+(`Wheel.hold`, set in `sv_physics.lua`). Documented in `docs/DESIGN.md`
+("Two things a ray and a slip velocity cannot do").
+
+Done-when, item by item:
+
+- **Brake held on a 10 degree slope, < 1 u in 10 s: done on the plant, with the
+  FRONT brake.** The rear brake key at a standstill is the paddle-backwards key
+  by design (`drivetrain` in `sv_physics.lua`: below 40 u/s it releases the
+  brake and pedals back), so it can never be what holds a bike, and I left that
+  alone. A front-only hold also depends on which way the bike faces (uphill the
+  weight is on the rear and a front-only hold gives up near 12 degrees on the
+  plant), so the 20 degree case faces downhill. Offline: 5 and 10 degrees
+  uphill and 20 downhill all hold under 1.5 u; with `bmx_wheel_stiction 0` the
+  same bike creeps over 3 u (the control).
+- **Parked on its stand on 10 degrees, < 1 u in 60 s: done on the plant** (also
+  20 degrees). Note that the existing kickstand hold (7c) already did this on the
+  plant; the anchor is what keeps the tyres from carrying the slope on their own.
+- **Rolling freely on 2 degrees still rolls: done** (offline and in
+  `rolls_on_gentle_slope`): free rolling never reaches the anchor.
+- **No new jitter at rest, RMS < 0.5 u/s while held: done on the plant**, at 66
+  and at 33 ticks. Unverified on VPhysics.
+
+Not done: the rear-brake wording of the goal (see above), and a measurement of
+whether the anchor's lateral spring fights a leaned, braked bike at a standstill
+(it measures raw contact displacement, so it may resist a lean a little).
+
+Tests: `tests/test_wheel_contact.lua` ("anchor: ..."), headless
+`holds_on_slope`, `parked_on_slope`, `rolls_on_gentle_slope` (and their
+`@cruiser` / `@mini` variants), written, not yet run on a server.

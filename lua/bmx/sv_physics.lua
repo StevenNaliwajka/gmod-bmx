@@ -273,6 +273,14 @@ function BMX.PhysicsStep(ent, phys, dt)
     local soak = hasDriver and (st.airMode or (st.recoverUntil or 0) > CurTime())
     front.soak, rear.soak = soak, soak
 
+    -- PARKED: nobody aboard, on the stand, and nobody leaning on it. A parked
+    -- wheel on a slope is held by the stick-slip anchor (Wheel:Simulate), which
+    -- needs to know it is parked because nothing in its inputs says so: a
+    -- parked bike has no brake held.
+    local parked = not hasDriver and st.onStand
+        and not ((st.pushedUntil or 0) > CurTime())
+    front.hold, rear.hold = parked, parked
+
     local filter = ent.traceFilter
     front:Simulate(ent, phys, C, dt, 0,           brakeFront, filter)
     rear:Simulate (ent, phys, C, dt, driveTorque, brakeRear,  filter)

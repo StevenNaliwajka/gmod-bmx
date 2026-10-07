@@ -83,6 +83,40 @@ function T.Variant(name, bike, opts)
     }, base.fn)
 end
 
+-- A solid convex shape for a case to ride into, as a bmx_city_solid carrying
+-- hulls (entities/bmx_city_solid/shared.lua, CustomHulls). Each hull is a list
+-- of world-space points. Removed with the case, pass or fail.
+function T.Solid(ctx, hulls)
+    local e = ents.Create("bmx_city_solid")
+    if not IsValid(e) then return nil end
+    local lo, hi = Vector(math.huge, math.huge, math.huge), Vector(-math.huge, -math.huge, -math.huge)
+    for _, h in ipairs(hulls) do
+        for _, p in ipairs(h) do
+            lo = Vector(math.min(lo.x, p.x), math.min(lo.y, p.y), math.min(lo.z, p.z))
+            hi = Vector(math.max(hi.x, p.x), math.max(hi.y, p.y), math.max(hi.z, p.z))
+        end
+    end
+    e.CustomHulls = hulls
+    e:SetPos((lo + hi) * 0.5)
+    e:Spawn()
+    ctx.solids = ctx.solids or {}
+    ctx.solids[#ctx.solids + 1] = e
+    return e
+end
+
+-- Set a server convar for the length of a case and give it back after, however
+-- the case ends: teardown runs the undo even when the case threw. Applied to
+-- the config at once (BMX.ApplyConVars), not at the next 20 Hz tick.
+function T.ConVar(ctx, name, value)
+    local cv = GetConVar(name)
+    if not cv then error("T.ConVar: no convar " .. tostring(name)) end
+    local old = cv:GetString()
+    ctx.undo = ctx.undo or {}
+    ctx.undo[#ctx.undo + 1] = function() cv:SetString(old) BMX.ApplyConVars() end
+    cv:SetString(tostring(value))
+    BMX.ApplyConVars()
+end
+
 --------------------------------------------------------------------------
 -- World setup
 --------------------------------------------------------------------------
@@ -392,6 +426,13 @@ local function teardown(ctx)
             ctx.bot:ExitVehicle()
         end
         if IsValid(ctx.bike) then SafeRemoveEntity(ctx.bike) end
+        -- Terrain a case built (T.Solid): it stays only as long as its case.
+        for _, e in ipairs(ctx.solids or {}) do SafeRemoveEntity(e) end
+        ctx.solids = nil
+        -- A case that turned a server convar for its duration gets it back
+        -- even when it threw (T.ConVar).
+        for _, undo in ipairs(ctx.undo or {}) do pcall(undo) end
+        ctx.undo = nil
     end
 end
 

@@ -26,6 +26,23 @@ end
 
 -- The boxes for this entity's name, as convex hulls in ENTITY space.
 function ENT:Convexes()
+    -- TEST GEOMETRY. The headless suite (sv_test_cases.lua) needs a wedge, a
+    -- curb and a wall to ride into on whatever map the server is on, and a
+    -- map's city layout is only boxes. A server-side caller may hand over
+    -- CustomHulls, convex point lists in WORLD space, before Spawn. Nothing in
+    -- the game sets it; a client never has it and so builds nothing, which is
+    -- right for geometry that exists for one test.
+    if self.CustomHulls then
+        local o = self:GetPos()
+        local out = {}
+        for _, h in ipairs(self.CustomHulls) do
+            local pts = {}
+            for i, p in ipairs(h) do pts[i] = p - o end
+            out[#out + 1] = pts
+        end
+        return out
+    end
+
     local L = BMX.City and BMX.City.Layout()
     local s = L and L.solids[self:GetSolidName()]
     if not s then return nil end

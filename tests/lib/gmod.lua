@@ -625,39 +625,8 @@ function M.Realm(world, which)
         -- Base-game content is not on this machine. The headless suite owns
         -- the "does this sound ship with the game" question.
         Exists = function(name) return R.files[name] ~= nil end,
-        CreateDir = function() end,
         IsDir = function() return true end,
     }
-    -- JSON for FLAT tables of strings, numbers and booleans: all the addon's
-    -- own files (data/bmx/server.json) are. Real GMod's util.TableToJSON
-    -- handles nesting; this shim deliberately does not pretend to.
-    env.util.TableToJSON = function(t)
-        local keys = {}
-        for k in pairs(t) do keys[#keys + 1] = k end
-        table.sort(keys)
-        local parts = {}
-        for _, k in ipairs(keys) do
-            local v = t[k]
-            local enc
-            if type(v) == "string" then enc = '"' .. v:gsub('[\\"]', '\\%0') .. '"'
-            elseif type(v) == "number" or type(v) == "boolean" then enc = tostring(v)
-            else error("the shim's TableToJSON is flat only: " .. k) end
-            parts[#parts + 1] = '"' .. k .. '": ' .. enc
-        end
-        return "{" .. table.concat(parts, ", ") .. "}"
-    end
-    env.util.JSONToTable = function(s)
-        if type(s) ~= "string" or not s:match("^%s*{.*}%s*$") then return nil end
-        local t = {}
-        for k, v in s:gmatch('"([^"]+)"%s*:%s*([^,}]+)') do
-            v = v:gsub("%s+$", "")
-            if v == "true" then t[k] = true
-            elseif v == "false" then t[k] = false
-            elseif tonumber(v) then t[k] = tonumber(v)
-            else t[k] = (v:gsub('^"', ""):gsub('"$', "")) end
-        end
-        return t
-    end
     env.list = { Set = function(group, key, val)
         R.lists[group] = R.lists[group] or {}
         R.lists[group][key] = val

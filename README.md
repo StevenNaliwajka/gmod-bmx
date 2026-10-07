@@ -124,6 +124,7 @@ disagrees with either.
 | `CTRL` | tuck: less drag | tuck: faster rotation |
 | `K` | next paint colour, in a puff of smoke | same |
 | `L` | cinematic camera on/off | same |
+| `O` | auto ride on/off: the bike rides itself, the way the trick bot does (needs BMX (Mode)) | same |
 
 **Chase camera.** It eases after the bike's turns and ramps rather than being
 bolted to it; `bmx_cam_smooth 0` bolts it back on. In the air, a lean key
@@ -142,6 +143,16 @@ between GTA-style external shots, trackside cameras you ride past, a low chase,
 a side dolly, a front shot looking back, a wide air shot while you are airborne
 and a slow orbit when you stop, with letterbox bars. A crash is filmed too: it
 holds a shot on your tumbling body until you are back up. Getting off ends it.
+
+**Auto ride.** `O` while riding (or `bmx_autoride`, or the button in the `/bike`
+window) hands the bike to the trick bot's brain: it rides the park on the
+navmesh, picks its ramps, rails and runways, does the bot's tricks, gets
+itself unstuck and climbs back on after a fall, with you aboard. `O` again, or
+any ride key (`W` `A` `S` `D`, `SPACE`, the mouse buttons, `E`), and the bars
+are yours on that same keypress. The bot is part of the BMX (Mode) gamemode, so
+on a server without it the key says there is no auto rider. What it lands is
+never scored for you. `bmx_autoride_key` (client) moves the key, 0 for none;
+`bmx_autoride_allow 0` (server) turns it off.
 
 **Colour.** Fourteen, red to pink plus white and black. `K` while riding cycles
 them; hold `C` and right-click a bike for **Bike colour** to pick one; or

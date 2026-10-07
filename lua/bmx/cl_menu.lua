@@ -194,6 +194,20 @@ function M.Open()
         local panel = sec.kind == "park" and parkTab(sheet, sec) or vehicleTab(sheet, sec, f)
         sheet:AddSheet(sec.title, panel)
     end
+
+    -- AUTO RIDE (sh_autoride.lua), from here as well as O: the bike rides
+    -- itself, the way the trick bot does. Off the bike the server says so.
+    local on = BMX.AutoRide and BMX.AutoRide.Active(LocalPlayer())
+    local ar = flatButton(f, on and "Stop auto ride" or "Auto ride", "BMX.MenuInfo")
+    ar:SetSize(120, 24)
+    ar:SetPos(f:GetWide() - 120 - 110, 8)
+    ar:SetTooltip("The bike rides itself round the park and does tricks, the way the trick bot does. "
+        .. "O, or any ride key, gives you the bars back.")
+    ar.DoClick = function()
+        RunConsoleCommand("bmx_autoride")
+        surface.PlaySound("ui/buttonclick.wav")
+        f:Close()
+    end
 end
 
 net.Receive(M.NET_OPEN, function() M.Open() end)

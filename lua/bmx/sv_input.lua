@@ -111,6 +111,10 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     -- the harness needs, and it is here rather than in the harness because hook
     -- ordering in GLua is not guaranteed: racing this function is not something
     -- a test should have to win.
+    --
+    -- Except for auto ride (sh_autoride.lua), which is scripted too: a ride
+    -- key freshly pressed ends it first, and is then read below as usual.
+    if ply.BMXAutoRide and BMX.AutoRide then BMX.AutoRide.TakeOver(ply, cmd) end
     if ply.BMXScripted then return end
 
     local buttons = cmd:GetButtons()

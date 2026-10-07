@@ -241,6 +241,9 @@ client{ name = "bmx_flip_doubletap", kind = "bool", default = false, category = 
 client{ name = "bmx_lmb_mode", kind = "choice", default = "brake", choices = { "brake", "lean" },
     category = "rider", label = "Left mouse",
     help = "What left mouse does on the ground. brake: the front brake (hold Ctrl as well to lean forward over the bars). lean: lean forward, like other bike mods (hold Ctrl as well to brake, for a stoppie)." }
+client{ name = "bmx_autoride_key", kind = "int", default = 25, min = 0, max = 159, category = "rider",
+    label = "Auto ride key",
+    help = "The key that lets the bike ride itself, the way the trick bot rides, and gives you the bars back, as a Garry's Mod key number (25 is O, 0 turns the key off). Any ride key also takes the bars back. You can also bind bmx_autoride to any key." }
 client{ name = "bmx_rider_anim", kind = "bool", default = true, category = "rider",
     label = "Animate riders",
     help = "Riders pedal, lean and crouch with the bike. Off leaves everyone sitting in the plain seated pose." }
@@ -304,6 +307,9 @@ server{ name = "bmx_scoring", kind = "bool", default = true, category = "rules",
 server{ name = "bmx_combos", kind = "bool", default = true, category = "rules",
     label = "Combos",
     help = "Tricks chained together build a combo that pays a bonus when the rider lands it." }
+server{ name = "bmx_autoride_allow", kind = "bool", default = true, category = "rules",
+    label = "Auto ride",
+    help = "Riders may let their bike ride itself (O, or bmx_autoride), the way the trick bot rides. Needs the BMX (Mode) gamemode, which has the bot. What an auto ride lands never counts towards scores." }
 server{ name = "bmx_max_per_player", kind = "int", default = 0, min = 0, max = 50, category = "rules",
     label = "Bikes per player",
     help = "How many bikes one player may have out at once. 0 means no limit from BMX (the sandbox's own entity limit still applies)." }

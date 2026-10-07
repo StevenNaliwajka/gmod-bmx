@@ -59,6 +59,7 @@ local SHARED = {
     "bmx/sh_park.lua",      -- the park pieces: one generator for collision and drawing
     "bmx/sh_menu.lua",      -- /bike: what the spawn window lists (after bikes and park)
     "bmx/sh_rental.lua",    -- the free bike rental machine (bmx_rental): after the menu it borrows from
+    "bmx/sh_autoride.lua",  -- auto ride: O hands the bike to the trick bot's brain (BMX (Mode)) and back
 }
 
 local SERVER_FILES = {

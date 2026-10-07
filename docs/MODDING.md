@@ -645,6 +645,26 @@ name; these go in the next release.
 *Server.* Deprecated alias: a combo of any length ended, banked (`landed`) or
 bailed. Use `BMX_ComboBanked` / `BMX_ComboBailed`.
 
+### Auto ride
+
+`O` (or `bmx_autoride`) lets the bike ride itself. This addon has the button and
+the hand-over, not the riding: whoever drives listens to these. BMX (Mode)'s
+trick bot does (`sv_autoride.lua` there).
+
+### `BMX_AutoRideStart` (ply, bike)
+
+*Server.* `ply`, riding `bike`, asked for auto ride. Return `true` to take the
+bike: from then on, set `ply.BMXScripted` and write `bike.input` every tick, as
+the headless harness does. Return `false, "why"` to refuse with a reason the
+rider is shown. Nobody returning `true` is "this server has no auto rider".
+
+### `BMX_AutoRideStop` (ply, bike, why)
+
+*Server.* Let go: the rider pressed a ride key (`"took the bars"`), pressed
+`O` again (`"toggled off"`), died, left, or the bike is gone. Clear
+`ply.BMXScripted` before returning, and the key that ended it is read on the
+same tick. A driver that gives up by itself calls `BMX.AutoRide.Stop(ply, why)`.
+
 ### Scores, games and the bot
 
 Personal bests, the leaderboard, SKATE / Trick Attack / Combo Mambo and the

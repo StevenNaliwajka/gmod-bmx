@@ -572,6 +572,40 @@ C.Pitch = {
     -- Pitch damping on the ground, so the bike settles instead of porpoising.
     groundDamping = 2.6,
 
+    ------------------------------------------------------------------
+    -- WEIGHT FORWARD AND THE NOSE MANUAL (G02).
+    --
+    -- Leaning forward (LMB + Ctrl, or LMB with bmx_lmb_mode lean) moves the
+    -- rider's weight over the bars: the mass centre `leanShift` units forward.
+    -- That is a gravity torque of m*g*leanShift about the mass centre, applied
+    -- where nothing else is holding the pitch (see PitchControl); the rider's
+    -- IK shows the same shift (cl_rider.lua). 7 u is ~18 cm: a rider lying
+    -- over the bars, and ~360,000 of torque against the ~800,000 it takes to
+    -- lift the rear, so leaning alone only loads the front tyre and the front
+    -- brake is still what lifts the rear (a stoppie).
+    ------------------------------------------------------------------
+    leanShift = 7,
+    leanRate  = 6,           -- per second the shift comes on and off (smooths a key)
+
+    -- THE NOSE MANUAL: rolling on the front wheel. The stoppie's hold PD, kept
+    -- on after the brake comes off while the weight is still forward. It aims
+    -- at noseAim, short of the ~47 degree balance point the bike goes over the
+    -- bars at, and W / S trim it by +-noseTrim. Like the wheelie's, the hold
+    -- settles SHORT of its aim where the yank and the PD cross gravity: on the
+    -- tests' plant a 30 degree aim holds at about 20, and 22 / 38 (S / W) at
+    -- about 13 / 30. It needs the rear at least noseMinPitch up so a rider who
+    -- merely leans does not start one, and it lets go below noseMinSpeed:
+    -- the front wheel has stopped rolling, so this is a stoppie that ended.
+    noseAim      = math.rad(30),
+    noseTrim     = math.rad(8),
+    noseMinPitch = math.rad(5),
+    noseMinSpeed = 25,
+    -- Its yank, as a share of Pitch.torque, ramping out as the nose comes down to
+    -- the aim exactly as the wheelie's does (see PitchControl): a PD alone cannot
+    -- hold a bike on its front wheel, because gravity's torque about the front
+    -- axle (m*g*R*sin(47 - pitch), ~0.8M at 14 degrees) is several times what
+    -- holdKp can produce for the error that is left.
+    noseYank = 1.0,
 }
 
 --------------------------------------------------------------------------
@@ -808,6 +842,11 @@ C.Tricks = {
 
     wheeliePerSec = 150,
     stoppiePerSec = 200,    -- harder, and much shorter
+    -- A nose manual is a stoppie that carries on rolling (Pitch.nose*): held a
+    -- second to count, and worth a little more a second than a wheelie because
+    -- it is harder to stay on and a rider has to keep trimming it.
+    noseManualMin    = 1.0,
+    noseManualPerSec = 220,
 
     ------------------------------------------------------------------
     -- FRAME AND BAR SPINS, AND STYLE POSES (sv_tricks.lua, G03 and G17)

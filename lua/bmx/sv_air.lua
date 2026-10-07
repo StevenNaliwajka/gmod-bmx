@@ -422,7 +422,8 @@ end
 -- wheel reporting no contact for a substep while the bike is plainly still on
 -- its back wheel, which is what `grace` is for.
 --------------------------------------------------------------------------
-local MANUAL_NAME = { wheelie = BMX.Tricks.wheelie.name, stoppie = BMX.Tricks.stoppie.name }
+local MANUAL_NAME = { wheelie = BMX.Tricks.wheelie.name, stoppie = BMX.Tricks.stoppie.name,
+    nosemanual = BMX.Tricks.nose_manual.name }
 
 function BMX.TrackManual(st, cfg, front, rear, speed, dt)
     local K = cfg.Tricks
@@ -432,6 +433,10 @@ function BMX.TrackManual(st, cfg, front, rear, speed, dt)
         shape = "wheelie"
     elseif front.onGround and not rear.onGround then
         shape = "stoppie"
+        -- A stoppie that carries on with the brake off and the weight forward is
+        -- a nose manual (PitchControl sets st.noseHold): its own trick, paid by
+        -- the second, which chains from the stoppie it grew out of.
+        if st.noseHold and BMX.VehicleAllows(st.def, "nose_manual") then shape = "nosemanual" end
     end
 
     local m = st.manual
@@ -464,10 +469,12 @@ function BMX.TrackManual(st, cfg, front, rear, speed, dt)
         st.manual = { kind = shape, held = dt, gone = 0 }
     end
 
-    local min = m.kind == "stoppie" and K.stoppieMin or K.manualMin
+    local min = m.kind == "stoppie" and K.stoppieMin
+        or (m.kind == "nosemanual" and K.noseManualMin or K.manualMin)
     if m.held < min then return nil end
 
-    local per = m.kind == "wheelie" and K.wheeliePerSec or K.stoppiePerSec
+    local per = m.kind == "wheelie" and K.wheeliePerSec
+        or (m.kind == "nosemanual" and K.noseManualPerSec or K.stoppiePerSec)
     return { {
         name   = MANUAL_NAME[m.kind],
         count  = 1,

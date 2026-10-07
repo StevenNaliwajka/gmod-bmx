@@ -316,6 +316,9 @@ function Ctx:input(t)
     i.tuck        = t.tuck        or false
     i.sprint      = t.sprint      or false
     i.wheelieMod  = t.wheelieMod  or false
+    -- Weight forward and the nose manual's trim (G02, sv_input.lua).
+    i.leanFwd     = t.leanFwd     or false
+    i.noseTrim    = t.noseTrim    or 0
 end
 
 function Ctx:st() return self.bike.st end

@@ -350,6 +350,41 @@ function BMX.PitchControl(ent, phys, cfg, dt, inp, st, wheels)
     local frontUp = front and not front.onGround
     local rearUp  = rear  and not rear.onGround
 
+    ----------------------------------------------------------------------
+    -- WEIGHT FORWARD (G02). The rider leaning over the bars (inp.leanFwd: LMB +
+    -- Ctrl, or LMB with bmx_lmb_mode lean) comes on and off over 1 / leanRate
+    -- seconds, st.leanFwd 0..1, which is also what is networked for the rider's
+    -- IK. RMB (weight back) wins.
+    --
+    -- Its effect is the mass centre moved Pitch.leanShift forward: a gravity
+    -- torque of m*g*leanShift nose-down. Applied wherever nothing is HOLDING the
+    -- pitch (the plain branch below, and the nose manual's hold), not under a
+    -- wheelie's or a stoppie's own hold, whose PDs would only be pushed off their
+    -- aim by it.
+    ----------------------------------------------------------------------
+    local wantLean = (inp.leanFwd and not inp.wheelieMod) and 1 or 0
+    local stepLean = P.leanRate * dt
+    local curLean = st.leanFwd or 0
+    st.leanFwd = curLean + BMX.Clamp(wantLean - curLean, -stepLean, stepLean)
+    local shiftTorque = st.leanFwd * P.leanShift * phys:GetMass() * gravity()
+
+    ----------------------------------------------------------------------
+    -- THE NOSE MANUAL (G02, bmx_nose_manual): rolling on the front wheel. A
+    -- stoppie that outlives the brake: weight still forward, brake off, the rear
+    -- at least noseMinPitch up (so merely leaning never starts one), rolling at
+    -- noseMinSpeed or more (below it the front wheel has stopped and it is just a
+    -- stoppie that ended). Once held it needs only the lean, not the pitch.
+    -- st.noseHold is what BMX.TrackManual reads to call it a Nose Manual.
+    ----------------------------------------------------------------------
+    local nose = false
+    if BMX.NoseManualOn and BMX.NoseManualOn() and rearUp and not frontUp
+        and inp.leanFwd and (inp.brakeFront or 0) < 0.5 and not inp.wheelieMod
+        and (st.speed or 0) >= P.noseMinSpeed
+        and (st.noseHold or st.pitch < -P.noseMinPitch) then
+        nose = true
+    end
+    st.noseHold = nose
+
     -- THE YANK AND THE BALANCE ARE DIFFERENT ACTS, and only one of them is in
     -- charge at a time. Getting the front wheel up is a shove: the rider throws
     -- their weight back against a gravity torque that is resisting the whole
@@ -407,12 +442,28 @@ function BMX.PitchControl(ent, phys, cfg, dt, inp, st, wheels)
             local alpha = P.holdKp * (target - st.pitch) - P.holdKd * st.pitchRate
             torque = torque + BMX.TorqueFor(iEff, alpha)
         end
-    elseif rearUp and not frontUp and inp.pitch < 0 then
+    elseif rearUp and not frontUp and (inp.pitch < 0 or nose) then
         ------------------------------------------------------------------
         -- Stoppie. Same idea mirrored. The front brake does the lifting;
         -- this only keeps you from going over the bars instantly.
+        --
+        -- AND THE NOSE MANUAL, which is the wheelie's hold above, mirrored about
+        -- the front contact patch: the same yank ramping out as the nose comes
+        -- down to its aim, plus the same PD, with the weight shift standing in
+        -- for the rider's push. It aims at noseAim, trimmed by W / S, and the
+        -- same ceiling (stoppieMax) is where it stops helping and the bike can
+        -- go over the bars. A PD alone is not enough here, for the reason it is
+        -- not for a wheelie: gravity's torque about the front axle is several
+        -- times what the error left under a PD can supply.
         ------------------------------------------------------------------
         local target = inp.pitch * -P.stoppieMax
+        if nose then
+            target = -(P.noseAim + BMX.Clamp(inp.noseTrim or 0, -1, 1) * P.noseTrim)
+        end
+        if nose and st.pitch > P.stoppieMax then
+            local reach = BMX.Clamp((target - st.pitch) / target, 0, 1)
+            torque = torque - P.noseYank * P.torque * reach - shiftTorque
+        end
         if st.pitch > P.stoppieMax then
             -- The wheelie's lesson, applied to its mirror image, where it had
             -- not been. A bike on its FRONT wheel pivots about the front axle,
@@ -427,7 +478,7 @@ function BMX.PitchControl(ent, phys, cfg, dt, inp, st, wheels)
     else
         -- Nothing is being held, so the rider's weight shift acts directly.
         -- This is the yank that STARTS a wheelie or a stoppie.
-        torque = torque + inp.pitch * P.torque
+        torque = torque + inp.pitch * P.torque - shiftTorque
 
         if not frontUp and not rearUp then
             -- Both wheels down: damp pitch so the bike settles rather than

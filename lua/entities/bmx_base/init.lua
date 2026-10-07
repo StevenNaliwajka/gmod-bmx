@@ -310,6 +310,7 @@ function ENT:Think()
         self:SetStamina(st.stamina)
         self:SetCadence(st.cadence)
         self:SetSprinting(st.sprinting or false)
+        self:SetLeanFwd(st.leanFwd or 0)
         self:SetHopCharge(self.hopHeld
             and math.min(1, (self.hopCharge or 0) / self:Cfg().Hop.chargeTime) or 0)
     end

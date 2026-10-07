@@ -239,6 +239,9 @@ client{ name = "bmx_stick_deadzone", kind = "float", default = 0.1, min = 0, max
 client{ name = "bmx_flip_doubletap", kind = "bool", default = false, category = "rider",
     label = "Double-tap flips",
     help = "Double-tap W or S in the air for a whole flip that stops itself near a full turn. Off: hold the key to rotate." }
+client{ name = "bmx_lmb_mode", kind = "choice", default = "brake", choices = { "brake", "lean" },
+    category = "rider", label = "Left mouse",
+    help = "What left mouse does on the ground. brake: the front brake (hold Ctrl as well to lean forward over the bars). lean: lean forward, like other bike mods (hold Ctrl as well to brake, for a stoppie)." }
 client{ name = "bmx_rider_anim", kind = "bool", default = true, category = "rider",
     label = "Animate riders",
     help = "Riders pedal, lean and crouch with the bike. Off leaves everyone sitting in the plain seated pose." }
@@ -314,6 +317,10 @@ server{ name = "bmx_allow_motor", kind = "bool", default = true, category = "veh
 server{ name = "bmx_air_assist", kind = "bool", default = true, category = "feel",
     label = "Air assist on vert ramps",
     help = "Off a vertical ramp A/D turn the bike round to ride back down (an Air 180), the landing aims back into the ramp, and a W press at the top carries a spine transfer. Off leaves the air entirely to the rider." }
+
+server{ name = "bmx_nose_manual", kind = "bool", default = false, category = "feel",
+    label = "Nose manual",
+    help = "Lean forward (left mouse with Ctrl) and let go of the brake to keep rolling on the front wheel, W and S trimming the balance. Off by default until it has been ridden on your server: with it off, a stoppie ends when the brake does." }
 
 server{ name = "bmx_crash_ragdoll", kind = "bool", default = true, category = "rules",
     label = "Crashes throw the rider",

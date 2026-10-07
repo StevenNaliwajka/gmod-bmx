@@ -2139,3 +2139,78 @@ function(ctx)
     ctx:ok(ctx.bike:GetPos().x > xa + b.hl, "landed on the far face, past the coping")
     ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
 end)
+
+--------------------------------------------------------------------------
+-- THE NOSE MANUAL (G02, bmx_nose_manual): rolling on the front wheel.
+--
+-- The stoppie's hold, kept on after the brake comes off while the weight is
+-- still forward (sv_balance.lua, PitchControl). At 15 mph, the front brake and
+-- the lean until the rear is up, then the brake off with the lean held: the rear
+-- stays off the ground for the better part of three seconds and the bike does
+-- not go over the bars. The offline plant holds it at ~20 degrees; this is the
+-- case that says what VPhysics does with it, and the reason the convar ships
+-- off until somebody has looked at the log line.
+--------------------------------------------------------------------------
+T.Case("nose_manual_holds", { timeout = 40,
+    desc = "bmx_nose_manual on: at 15 mph, front brake with the weight forward until the rear is up, then the brake off with the lean held: the rear stays off the ground for over 2 s, no flip, it pays as a Nose Manual" },
+function(ctx)
+    T.ConVar(ctx, "bmx_nose_manual", 1)
+    local g = ctx.ground
+    -- Already at speed, from the start of the test ground: an acceleration run
+    -- to 264 u/s uses most of a short runway, and a bike that reaches the edge
+    -- has its input zeroed by runUntil, which lets go of the lean.
+    ctx:input({})
+    putBike(ctx, Vector(g.x, g.y, g.z + BMX.RestHeight(ctx.cfg)), Angle(0, 0, 0), Vector(264, 0, 0))
+    ctx:wait(0.2)
+
+    local paid = {}
+    hook.Add("BMX_TricksLanded", "BMX.TestNose", function(e, d, tricks)
+        if e ~= ctx.bike then return end
+        for _, t in ipairs(tricks) do paid[#paid + 1] = t end
+    end)
+
+    -- What StartCommand writes for LMB + Ctrl: the brake, and the lean.
+    ctx:input({ brakeFront = 1, pitch = -0.6, leanFwd = true })
+    local f, r = ctx:wheels()
+    local lifted = ctx:waitUntil(function()
+        return f.onGround and not r.onGround and ctx:st().pitch < -0.12
+    end, 3, "the stoppie to lift the rear")
+    if not ctx:ok(lifted, "the front brake with the weight forward lifted the rear") then
+        hook.Remove("BMX_TricksLanded", "BMX.TestNose")
+        return
+    end
+
+    -- The brake comes off; the lean stays (what the keys give with LMB released
+    -- and Ctrl held: -0.35, nothing braking).
+    ctx:input({ pitch = -0.35, leanFwd = true })
+    local t0 = CurTime()
+    local last, upFor, deepest, flips = t0, 0, 0, false
+    ctx:waitUntil(function()
+        local now = CurTime()
+        if not r.onGround then upFor = upFor + (now - last) end
+        last = now
+        deepest = math.min(deepest, ctx:st().pitch)
+        if ctx:st().pitch < -math.rad(55) or ctx:st().pitch > math.rad(30) then flips = true end
+        return now - t0 >= 2.6
+    end, 6, "the nose manual")
+    local held = ctx:st().noseHold
+    local speed = ctx:st().speed
+    ctx:log(string.format("rear up %.2f s of 2.6, deepest %.0f deg, nose hold %s, %.0f u/s%s",
+        upFor, math.deg(deepest), tostring(held), speed, ctx.stoppedAtEdge and " (reached the edge)" or ""))
+    ctx:between(upFor, 2.0, 2.7, "the rear off the ground after the brake came off", "s")
+    ctx:ok(not flips, "the bike did not flip")
+    ctx:between(math.deg(deepest), -45, -5, "deepest pitch", "deg")
+    ctx:ok(held, "still a nose manual at the end")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "the rider is still aboard")
+
+    -- Let go of the lean: the rear comes down and it pays.
+    ctx:input({})
+    ctx:waitUntil(function() return r.onGround end, 3, "the rear to come back down")
+    ctx:wait(0.5)
+    hook.Remove("BMX_TricksLanded", "BMX.TestNose")
+    local got
+    for _, t in ipairs(paid) do if t.name == "Nose Manual" then got = t end end
+    ctx:ok(got, "paid as a Nose Manual")
+    if got then ctx:between(got.held or 0, 1.8, 4, "held for", "s") end
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider aboard after the rear came down")
+end)

@@ -120,6 +120,13 @@ usually needs more lean, not more Kp.
 
 ### 5. Pitch: `bmx_pitch`
 
+Weight forward and the nose manual (`bmx_nose_manual`, off by default):
+`Pitch.leanShift` (units the mass centre moves forward, a gravity torque of
+m*g*shift), `noseAim` / `noseTrim` (where it aims, and W / S's share), `noseYank`
+(the yank that carries it, as a share of `torque`), `noseMinPitch` and
+`noseMinSpeed` (when it starts and lets go). Like the wheelie's, the hold settles
+short of its aim, so tune by the pitch it reaches, not the number written.
+
 Wheelies and stoppies. `Pitch.torque` is the rider's weight shift;
 `Pitch.holdKp`/`holdKd` are the hold assist that makes a wheelie last longer
 than 0.4 seconds.

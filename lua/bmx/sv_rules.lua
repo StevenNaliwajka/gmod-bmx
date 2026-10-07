@@ -8,6 +8,8 @@
                              Counted across every kind of bike.
       bmx_scoring 0|1        tricks score at all: points, callouts, combos.
       bmx_combos  0|1        tricks chain into combos for a bonus.
+      bmx_nose_manual 0|1    the nose manual: rolling on the front wheel (G02).
+                             Off by default until it has been ridden live.
       bmx_air_assist 0|1     the air turn, landing aim and spine transfer off a
                              vert ramp (G06).
 
@@ -44,6 +46,15 @@ local combos  = CreateConVar("bmx_combos", "1", FLAGS,
 local airAssist = CreateConVar("bmx_air_assist", "1", FLAGS,
     "BMX: 1 = A/D turn the bike round off a vert ramp, the landing aims back down it and a W press carries a spine transfer; 0 = off.")
 function BMX.AirAssistOn() return airAssist:GetBool() end
+
+-- THE NOSE MANUAL (G02): rolling on the front wheel after the brake comes off,
+-- weight still forward (sv_balance.lua, PitchControl). It touches the pitch
+-- controller every rider uses, so it stays OFF until it has been ridden on a real
+-- server: with it off, leaning forward only shifts the weight and a stoppie ends
+-- when the brake does, exactly as before.
+local noseManual = CreateConVar("bmx_nose_manual", "0", FLAGS,
+    "BMX: 1 = lean forward (LMB + Ctrl) and let go of the brake to hold a nose manual; 0 = no nose manual.")
+function BMX.NoseManualOn() return noseManual:GetBool() end
 
 -- VEHICLES SWITCHED ON AND OFF, per spawn menu heading (G22): bmx_allow_bikes,
 -- _boards, _scooters, _motor, one per BMX.SpawnCategories entry, described in

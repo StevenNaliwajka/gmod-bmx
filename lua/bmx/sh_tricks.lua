@@ -243,6 +243,8 @@ BMX.RegisterTrick{ id = "wheelie", name = "Wheelie", kind = "ground",
     points = K.wheeliePerSec, input = "RMB (weight back), with W for power" }
 BMX.RegisterTrick{ id = "stoppie", name = "Stoppie", kind = "ground",
     points = K.stoppiePerSec, input = "LMB (front brake) at speed" }
+BMX.RegisterTrick{ id = "nose_manual", name = "Nose Manual", kind = "ground",
+    points = K.noseManualPerSec, input = "lean forward (LMB + CTRL), let go of the brake, W / S trim (bmx_nose_manual)" }
 BMX.RegisterTrick{ id = "crank_grind", name = "Crank Grind", kind = "grind",
     points = G.pointsPerSec, input = "bunny hop onto a pipe, along it" }
 BMX.RegisterTrick{ id = "peg_grind", name = "Double Peg Grind", kind = "grind",

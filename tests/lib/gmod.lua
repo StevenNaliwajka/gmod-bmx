@@ -1495,6 +1495,7 @@ function M.Realm(world, which)
     function R:boot()
         self:runFile("autorun/bmx_init.lua")
         self:loadEntity("bmx_base")
+        self:loadEntity("bmx_city_solid")
         env.hook.Run("InitPostEntity")
         self:runTimers()
         return self

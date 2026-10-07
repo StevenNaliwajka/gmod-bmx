@@ -38,6 +38,8 @@ local SHARED = {
     "bmx/sh_bikes.lua",
     "bmx/sh_sound.lua",
     "bmx/sh_color.lua",     -- the palette and the ways to choose from it
+    "bmx/sh_city.lua",      -- the city around the park: layout builder
+    "bmx/sh_city_maps.lua", -- ...and which maps have one
 }
 
 local SERVER_FILES = {
@@ -53,6 +55,7 @@ local SERVER_FILES = {
     "bmx/sv_launch.lua",    -- finding a ramp to get air off, or putting one down
     "bmx/sv_bot.lua",       -- a bot rider that does tricks (bmx_bot_spawn)
     "bmx/sv_debug.lua",
+    "bmx/sv_city.lua",      -- the city's colliders and admin commands
 
     -- The headless harness loads last: its cases reference BMX.Config, the
     -- wheel/balance state and the entity, so everything it asserts on must
@@ -68,6 +71,7 @@ local CLIENT_FILES = {
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
     "bmx/cl_grind.lua",     -- sparks and the scrape while a bike grinds
+    "bmx/cl_city.lua",      -- draws the city, runs the subway trains
 }
 
 if SERVER then

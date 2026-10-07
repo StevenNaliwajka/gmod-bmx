@@ -37,3 +37,14 @@ Keep the lead, and make it visible.
 ## Risks
 
 None.
+
+## Status (2026-10-07)
+
+- **Everything is in G19's Rider panel:** done. Every `bmx_cam_*`, `bmx_units`,
+  `bmx_hud`, `bmx_stick_deadzone` and `bmx_cinematic`, with help text and reset
+  (see `lua/bmx/sh_settings.lua`; the panel is unverified in a live client).
+- Trick camera (`bmx_cam_air`): not done (later wave).
+- Filmer camera entity: not done (later wave).
+- Rider pose options: not done (later wave).
+- Speedometer combo and airtime line: not done.
+- Skateboard parity: not applicable yet (G23).

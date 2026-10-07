@@ -181,7 +181,7 @@ end
 local TUMBLE_TIME = 1.6
 BMX.TumbleTime = TUMBLE_TIME
 
-CreateConVar("bmx_crash_ragdoll", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY),
+CreateConVar("bmx_crash_ragdoll", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED),
     "Throw crashed riders off as a ragdoll for a moment (0 = the old shove).")
 
 function BMX.Tumble(ply, vel, after)
@@ -411,7 +411,13 @@ hook.Add("PhysgunPickup", "BMX.NoPodGrab", function(ply, ent)
     -- substep, and the rider is in a pod parented to the whole argument. There
     -- is no useful behaviour to define here, only degrees of mess, so the
     -- answer is no while it is occupied. An empty bike picks up normally.
+    --
+    -- EXCEPT for someone holding the CAMI privilege "BMX - Physgun Ridden"
+    -- (admin by default): a moderator moving a rider who is stuck somewhere
+    -- is a reason to take the mess, and the choice is the server owner's.
     if ent.IsBMX and IsValid(ent:GetDriver()) then
+        -- nil, not true, for the privileged: leave the other hooks their say.
+        if IsValid(ply) and BMX.Can(ply, "BMX - Physgun Ridden") then return end
         return false
     end
 end)

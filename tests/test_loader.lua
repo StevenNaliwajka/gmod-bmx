@@ -23,7 +23,7 @@ T.test("the server realm loads every server file without an error", function()
     local sv = F.server()
     T.eq(#sv.errors, 0, "ErrorNoHalt during load: " .. table.concat(sv.errors, " | "))
     T.ok(sv.env.BMX.Version, "BMX.Version is set")
-    T.ok(sv.log[#sv.log]:find("loaded %(server%)"), "the load line is printed")
+    T.ok(sv.log[#sv.log]:find("loaded %(server%)"), "the load line is printed: " .. tostring(sv.log[#sv.log]))
 end)
 
 T.test("the client realm loads every client file without an error", function()

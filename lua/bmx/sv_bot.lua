@@ -41,9 +41,9 @@ local Bot = BMX.Bot
 
 Bot.brains = Bot.brains or {}
 
-local cvName  = CreateConVar("bmx_bot_name", "Peter Griffin", FCVAR_ARCHIVE,
+local cvName  = CreateConVar("bmx_bot_name", "Peter Griffin", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED),
     "BMX: what a bot rider spawned by bmx_bot_spawn is called.")
-local cvModel = CreateConVar("bmx_bot_model", "", FCVAR_ARCHIVE,
+local cvModel = CreateConVar("bmx_bot_model", "", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED),
     "BMX: player model for bot riders (empty = the default). The server must have it mounted.")
 
 local TAU = math.pi * 2
@@ -895,8 +895,10 @@ function Bot.Spawn(at, yaw, bikeId)
     return b
 end
 
+-- The console always may; a player needs the CAMI privilege "BMX - Bot"
+-- (admin by default, see sh_permissions.lua).
 local function allowed(ply)
-    return not IsValid(ply) or ply:IsAdmin()
+    return BMX.Can(ply, "BMX - Bot")
 end
 
 concommand.Add("bmx_bot_spawn", function(ply, _, args)

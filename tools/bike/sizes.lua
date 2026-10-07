@@ -15,4 +15,11 @@ return {
     moped    = { wheelbase = 48, radius = 11,   seat = { -12.9, 0, 20.3 } },
     unicycle = { wheelbase = 0,  radius = 10,   seat = { 0, 0, 19 } },
     penny    = { wheelbase = 44, radius = 26,   rearRadius = 6, seat = { 8, 0, 33 } },
+    -- the three with drawers of their own (cl_board.lua, cl_scooter.lua, cl_skates.lua);
+    -- `preview` adds the copies the preview needs to show a group drawn turned round
+    skateboard = { wheelbase = 16, radius = 2.2, extra = { track = 4.6, preview = true } },
+    scooter  = { wheelbase = 28, radius = 5,    seat = { -3, 0, 1.9 },
+                 extra = { deckTop = 1.7, deckFront = 12.2, deckBack = -9, deckWidth = 5.0, barHeight = 35,
+                           barWidth = 22, headFoot = 1.6, headLean = 4.0, pegY = 3.6, preview = true } },
+    skates   = { wheelbase = 9,  radius = 1.6,  extra = { wheelPitch = 3.0, preview = true } },
 }

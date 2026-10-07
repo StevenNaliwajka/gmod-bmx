@@ -4,9 +4,12 @@
     THE KICK SCOOTER, CLIENT SIDE (G24): the scooter drawn from tubes and boxes, as
     the bike and the board are, and the rider on it.
 
-    DRAWN PROCEDURALLY (zero content, no ripped assets): a deck with a kicked-up tail
-    and a flex fender over the rear wheel, a steer tube, a fork, a T-bar with grips,
-    two small solid wheels. Where each part goes is a function of what the server
+    A MODEL BUILT IN CODE (zero content, no ripped assets; cl_geo_board.lua's
+    "scooter", docs/MODELS.md): a box-section deck with grip, a neck to an integrated
+    head tube, fork-less rear dropouts, a flex fender brake, a threadless fork under a
+    4-bolt clamp, an oversized T-bar with grips and a bell, metal-cored wheels, pegs.
+    Until it is built (or with bmx_bike_model 0, or bmx_debug) tubes and boxes stand
+    in. Where each part goes is a function of what the server
     networks (shared.lua: the steer, the trick bits for the whip and the bar spin, the
     push phase) and nothing is simulated here.
 
@@ -138,6 +141,65 @@ local function wheel(kit, c, axis, fwd, up, spin, radius, lod)
     end
 end
 
+--------------------------------------------------------------------------
+-- THE MODEL (cl_geo_board.lua's "scooter"): the frame's numbers it is built to, and
+-- where its groups go. The rear group (deck, neck, head tube, fender, rear wheel)
+-- turns by the whip about the steer axis; the front (fork, bars, front wheel) by the
+-- steer and the barspin about it, as the primitive scooter's parts do. The wheels
+-- are on the model's own axles, turning: a stiff scooter's wheels stay in its
+-- dropouts (the suspension's travel is the rider's legs).
+--------------------------------------------------------------------------
+function SC.ModelExtra()
+    return { deckTop = T.deckTop, deckFront = T.deckFront, deckBack = T.deckBack, deckWidth = T.deckWidth,
+             barHeight = T.barHeight, barWidth = T.barWidth, headFoot = T.headFoot, headLean = T.headLean,
+             pegY = T.pegY }
+end
+
+local function matFromMap(f)
+    local o = f(Vector(0, 0, 0))
+    return BMX.BikeMesh.Matrix(o, f(Vector(1, 0, 0)) - o, f(Vector(0, 1, 0)) - o, f(Vector(0, 0, 1)) - o)
+end
+
+local function wheelMat(map, centre, spin)
+    local o = map(centre)
+    local ex = map(centre + Vector(1, 0, 0)) - o
+    local ey = map(centre + Vector(0, 1, 0)) - o
+    local ez = map(centre + Vector(0, 0, 1)) - o
+    return BMX.BikeMesh.Matrix(o, rotVec(ex, ey, spin), ey, rotVec(ez, ey, spin))
+end
+
+-- `d`: P (chassis space to world, as the drawer has it), headB and steerAxis (world),
+-- whip, bar, steer (radians), fSpin, rSpin, paint, lod. Returns the maps it drew with.
+function SC.ModelMaps(model, d)
+    local P, hb, ax = d.P, d.headB, d.steerAxis
+    local maps = {}
+    maps.deck = function(m) return rotAbout(P(m), hb, ax, d.whip or 0) end
+    maps.front = function(m) return rotAbout(P(m), hb, ax, (d.bar or 0) - (d.steer or 0)) end
+    return maps
+end
+
+function SC.DrawModel(ent, model, d)
+    local BM = BMX.BikeMesh
+    local lay = model.layout
+    local maps = SC.ModelMaps(model, d)
+    local paint, lod = d.paint, d.lod
+    BM.BeginLighting(ent:LocalToWorld(Vector(0, 0, 14)), ent)
+        BM.DrawGroup(model, "deck", matFromMap(maps.deck), paint, lod)
+        BM.DrawGroup(model, "fork", matFromMap(maps.front), paint, lod)
+        BM.DrawGroup(model, "bars", matFromMap(maps.front), paint, lod)
+        BM.DrawGroup(model, "wheel", wheelMat(maps.deck, lay.rear, d.rSpin or 0), paint, lod)
+        BM.DrawGroup(model, "wheel", wheelMat(maps.front, lay.front, d.fSpin or 0), paint, lod)
+        if lay.bellPivot and model.groups.bellLever then
+            local ang = math.rad(38) * (BMX.BellFlick and BMX.BellFlick(CurTime() - (ent.bellRungAt or -10)) or 0)
+            local pv, bx = lay.bellPivot, lay.bellAxis or Vector(0, 0, 1)
+            BM.DrawGroup(model, "bellLever", matFromMap(function(m)
+                return maps.front(pv + rotVec(m - pv, bx, ang))
+            end), paint, lod)
+        end
+    BM.EndLighting()
+    return maps
+end
+
 BMX.DrawVehicle = BMX.DrawVehicle or {}
 BMX.DrawVehicle.scooter = function(ent, kit)
     local bike = ent:Bike()
@@ -218,49 +280,67 @@ BMX.DrawVehicle.scooter = function(ent, kit)
     local deckAng = whipAng ~= 0 and fwdW:AngleEx(upW) or bodyAng
     local fAxis, fFwd, fUp = Bv(steeredRight), Bv(steeredFwd), Bv(up)
 
-    wheel(kit, fPosD, fAxis, fFwd, fUp, fSpin, WC.radius, lod)
-    wheel(kit, rPosD, rightW, fwdW, upW, rSpin, WC.radius, lod)
-
     local col = BMX.PaletteColor(ent:GetColorIndex())
+
+    -- THE BUILT MODEL (cl_geo_board.lua's "scooter"), once it is built and unless
+    -- bmx_bike_model is 0 or bmx_debug wants the simple one; the primitives below stand
+    -- in meanwhile. The rider's targets further down are the same either way.
+    local BM = BMX.BikeMesh
+    local model = not debug and bike.look and BM and BM.Get(WC.wheelbase / 39, WC.radius, bike.look, {
+        wheelbase = WC.wheelbase, restLength = WC.restLength,
+        seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
+        extra = SC.ModelExtra(),
+    }) or nil
+    if model then
+        SC.DrawModel(ent, model, {
+            P = P, headB = headB, steerAxis = steerAxis, whip = whipAng, bar = barAng, steer = steer,
+            fSpin = fSpin, rSpin = rSpin, paint = col, lod = lod,
+        })
+    else
+        wheel(kit, fPosD, fAxis, fFwd, fUp, fSpin, WC.radius, lod)
+        wheel(kit, rPosD, rightW, fwdW, upW, rSpin, WC.radius, lod)
+    end
 
     ------------------------------------------------------------------------
     -- The deck (paint underneath, grip tape on top), the neck that ties it to the head
     -- tube, and the rear: a ramp kicked up over the wheel and the flex fender on it.
     ------------------------------------------------------------------------
     local deckC = Wh(P(F.deckMid))
-    kit.solid("box", deckC, deckAng, Vector(F.deckLen, T.deckWidth, 0.9), col)
-    kit.solid("box", deckC + upW * 0.5, deckAng, Vector(F.deckLen - 0.4, T.deckWidth - 0.4, 0.12), COL_GRIP, MAT_MATTE)
-    kit.tube(Wh(P(Vector(T.deckFront, 0, T.deckTop - 0.6))), Wh(headB), 2.2, col)       -- the neck
-    local kickA = Wh(P(Vector(T.deckBack, 0, T.deckTop - 0.6)))
-    local kickB = Wh(P(Vector(-half - 5.5, 0, WC.radius + 1.3)))
-    kit.tube(kickA, kickB, 2.0, col)                                                    -- the kick-up
-    if lod < 2 then
-        kit.solid("box", Wh(P(Vector(-half - 3, 0, WC.radius + 1.6))), deckAng,
-            Vector(11, 4.2, 0.5), COL_DARK, MAT_MATTE)                                  -- the fender brake
-        for _, side in ipairs({ 1, -1 }) do
-            kit.tube(rPosD + rightW * (side * 1.8), Wh(P(Vector(-half - 3, side * 1.8, WC.radius + 1.0))),
-                0.8, COL_BAR)                                                           -- the dropouts
+    if not model then
+        kit.solid("box", deckC, deckAng, Vector(F.deckLen, T.deckWidth, 0.9), col)
+        kit.solid("box", deckC + upW * 0.5, deckAng, Vector(F.deckLen - 0.4, T.deckWidth - 0.4, 0.12), COL_GRIP, MAT_MATTE)
+        kit.tube(Wh(P(Vector(T.deckFront, 0, T.deckTop - 0.6))), Wh(headB), 2.2, col)       -- the neck
+        local kickA = Wh(P(Vector(T.deckBack, 0, T.deckTop - 0.6)))
+        local kickB = Wh(P(Vector(-half - 5.5, 0, WC.radius + 1.3)))
+        kit.tube(kickA, kickB, 2.0, col)                                                    -- the kick-up
+        if lod < 2 then
+            kit.solid("box", Wh(P(Vector(-half - 3, 0, WC.radius + 1.6))), deckAng,
+                Vector(11, 4.2, 0.5), COL_DARK, MAT_MATTE)                                  -- the fender brake
+            for _, side in ipairs({ 1, -1 }) do
+                kit.tube(rPosD + rightW * (side * 1.8), Wh(P(Vector(-half - 3, side * 1.8, WC.radius + 1.0))),
+                    0.8, COL_BAR)                                                           -- the dropouts
+            end
         end
-    end
 
-    ------------------------------------------------------------------------
-    -- The steer tube and the fork, which turn with the bars, and the T-bar.
-    ------------------------------------------------------------------------
-    local headTop = Bs(headT)
-    local headBot = Bs(headB)
-    kit.tube(headBot, headTop, 2.0, COL_BAR)
-    for _, side in ipairs({ 1, -1 }) do
-        kit.tube(headBot + fAxis * (side * 1.4), fPosD + fAxis * (side * 1.4), 1.0, COL_BAR)    -- the fork legs
-    end
-    -- The bars sit on the head tube's top, turned with the steer.
-    local barsC = Bs(P(F.bars))
-    local barL, barR = barsC - fAxis * (T.barWidth * 0.5), barsC + fAxis * (T.barWidth * 0.5)
-    kit.tube(barL, barR, 1.4, COL_BAR)
-    kit.tube(headTop, barsC, 1.6, COL_BAR)
-    if lod < 2 then
+        ------------------------------------------------------------------------
+        -- The steer tube and the fork, which turn with the bars, and the T-bar.
+        ------------------------------------------------------------------------
+        local headTop = Bs(headT)
+        local headBot = Bs(headB)
+        kit.tube(headBot, headTop, 2.0, COL_BAR)
         for _, side in ipairs({ 1, -1 }) do
-            local e = barsC + fAxis * (side * T.barWidth * 0.5)
-            kit.tube(e - fAxis * (side * 3.6), e, 1.7, COL_GRIP)                        -- the grips
+            kit.tube(headBot + fAxis * (side * 1.4), fPosD + fAxis * (side * 1.4), 1.0, COL_BAR)    -- the fork legs
+        end
+        -- The bars sit on the head tube's top, turned with the steer.
+        local barsC = Bs(P(F.bars))
+        local barL, barR = barsC - fAxis * (T.barWidth * 0.5), barsC + fAxis * (T.barWidth * 0.5)
+        kit.tube(barL, barR, 1.4, COL_BAR)
+        kit.tube(headTop, barsC, 1.6, COL_BAR)
+        if lod < 2 then
+            for _, side in ipairs({ 1, -1 }) do
+                local e = barsC + fAxis * (side * T.barWidth * 0.5)
+                kit.tube(e - fAxis * (side * 3.6), e, 1.7, COL_GRIP)                        -- the grips
+            end
         end
     end
 

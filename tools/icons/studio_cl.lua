@@ -37,21 +37,21 @@ end
 -- Things with no entity of their own, drawn the way the game draws them.
 local CUSTOM = {}
 CUSTOM.weapon_bmx_skates = {
-    mins = Vector(-10, -8, 0), maxs = Vector(10, 8, 9),
+    -- the pair side by side, the left a little ahead, standing on the stage: drawn by
+    -- the function that draws them on a skater's feet (cl_skates.lua S.DrawBoots), so
+    -- the picture is the built skate model
+    mins = Vector(-8, -8, 0), maxs = Vector(11, 8, 13),
+    -- the model is built a slice a frame: the warm-up waits for it
+    ready = function() return BMX.Skates.Model() ~= nil end,
     draw = function(o)
         local SK = BMX.Skates
         local radius = BMX.ConfigFor(BMX.Vehicles[SK.ID]).Wheel.radius
-        render.SetColorMaterial()
-        for _, y in ipairs({ -4.5, 4.5 }) do
-            local sole = o + Vector(y > 0 and 2.5 or -1, y, radius + 0.4)
-            local fr = SK.BootFrame(sole, 0, radius)
-            -- the boot: a shell, and a cuff up the ankle
-            render.DrawBox(fr.shell, fr.ang, Vector(-5.2, -1.6, -1.6), Vector(5.8, 1.6, 2.2), Color(24, 24, 28))
-            render.DrawBox(fr.shell, fr.ang, Vector(-5.2, -1.7, 2.2), Vector(-0.5, 1.7, 7.5), Color(36, 36, 42))
-            render.DrawBox(fr.shell, fr.ang, Vector(-5.4, -1.8, 6.2), Vector(-0.3, 1.8, 7.0), Color(220, 60, 50))
-            render.DrawBox(fr.frame, fr.ang, Vector(-6.6, -0.6, -0.3), Vector(6.6, 0.6, 0.3), Color(170, 176, 188))
-            for _, c in ipairs(fr.wheels) do render.DrawSphere(c, radius, 16, 12, Color(236, 222, 120)) end
-        end
+        -- BootFrame stands the wheels 2 * radius - 0.4 under the sole
+        local up = 2 * radius - 0.4
+        SK.DrawBoots(nil, {
+            { sole = o + Vector(2.5, 4.5, up), side = 1 },
+            { sole = o + Vector(-1, -4.5, up), side = -1 },
+        }, 0, radius, 0, false)
     end,
 }
 CUSTOM.weapon_bmx_lock = {
@@ -142,7 +142,7 @@ local function shoot(class, group, ent, stage, gmins, gmaxs)
         if not custom and not IsValid(ent) then hook.Remove("PostRender", "bmxstudio") return done(class .. ": gone") end
         -- WARM UP: the bike eases its lean, bars and pose toward the networked state a
         -- frame at a time, so it is drawn (off screen) until it has stopped moving.
-        if frames < 45 then
+        if frames < 45 or (custom and custom.ready and not custom.ready() and frames < 1500) then
             render.PushRenderTarget(rt)
             cam.Start3D(pos, ang, fov, 0, 0, SZ, SZ, 2, 20000)
             pcall(drawIt)

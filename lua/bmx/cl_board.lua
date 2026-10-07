@@ -4,9 +4,11 @@
     THE SKATEBOARD, CLIENT SIDE (G23): the player's three board settings, the
     board drawn from tubes and boxes like the bike is, and the rider on it.
 
-    THE BOARD IS DRAWN PROCEDURALLY, as the bike is (zero content, no ripped
-    assets): a deck with a kicked nose and tail, grip tape, two trucks, four
-    wheels. A real deck model is G23's M5; this is the placeholder that ships.
+    THE BOARD IS A MODEL BUILT IN CODE, as the bike is (zero content, no ripped
+    assets; cl_geo_board.lua's "skateboard", docs/MODELS.md): a 7-ply popsicle deck
+    with grip, a graphic and its bolts, two trucks whose hangers stay level as the
+    deck leans and turn as it carves, four 54 mm wheels. Until it is built (or with
+    bmx_bike_model 0, or bmx_debug) a deck of boxes and wheels of tubes stand in.
     Everything the server networks about it (shared.lua: the lean, the crouch,
     the push phase, the deck's three flip angles, the flags) is turned into where
     the parts go here, and nothing is simulated.
@@ -293,6 +295,71 @@ local function approachAngle(cur, target, rate, dt)
     return cur + d * min(1, rate * dt)
 end
 
+-- THE MODEL'S DRAWING (cl_geo_board.lua's "skateboard"): the deck where the primitive
+-- deck is (the frame's P), each truck's baseplate on the deck (the rear one turned half
+-- round, kingpins facing each other), each hanger about its pivot, level with the
+-- ground while the deck leans over it and turned by the truck's steer as the board
+-- carves, and the wheels on the hangers' axles, turning. `d`: P, level (B.Frame without
+-- the lean), center, wheels (BMX.WheelDefs), spins, simRadius (the simulation's wheel,
+-- which the spins are for), paint, lod, steer (B.TruckSteer).
+local function matFromMap(f)
+    local o = f(Vector(0, 0, 0))
+    return BMX.BikeMesh.Matrix(o, f(Vector(1, 0, 0)) - o, f(Vector(0, 1, 0)) - o, f(Vector(0, 0, 1)) - o)
+end
+
+function B.ModelMaps(model, d)
+    local lay = model.layout
+    local P = d.P
+    local lf, ll, lu = d.level.f, d.level.l, d.level.u
+    local maps = { deck = P, trucks = {}, hangers = {}, wheels = {} }
+    local function world(b) return lf * b.x + ll * b.y + lu * b.z end
+    for ti, sg in ipairs({ 1, -1 }) do
+        local ta = lay.truckAt
+        -- truck space -> board space: the rear truck is the front one turned half round
+        local function Tk(m) return Vector(ta.x * sg + m.x * sg, m.y * sg, ta.z + m.z) end
+        maps.trucks[ti] = function(m) return P(Tk(m)) end
+        local pv = lay.pivot
+        local O = P(Tk(pv))
+        local yaw = -sg * (d.steer or 0)          -- a right turn yaws the front truck clockwise
+        local c, sn = cos(yaw), sin(yaw)
+        local function dirB(b) return world(Vector(b.x * c - b.y * sn, b.x * sn + b.y * c, b.z)) end
+        local function H(m)
+            local q = m - pv
+            return O + dirB(Vector(q.x * sg, q.y * sg, q.z))
+        end
+        maps.hangers[ti] = H
+        -- the wheels on this truck, by their board-space side
+        for i, wd in ipairs(d.wheels) do
+            if (wd.pos.x >= 0) == (sg > 0) then
+                local ty = (wd.pos.y >= 0 and 1 or -1) * lay.track * sg
+                local cen = H(Vector(lay.axle.x, ty, lay.axle.z))
+                local ex, ey, ez = dirB(Vector(1, 0, 0)), dirB(Vector(0, 1, 0)), dirB(Vector(0, 0, 1))
+                -- WheelSpin turns the simulation's wheel (radius 2.2): the drawn one is a
+                -- real wheel's size and turns faster for the same speed
+                local spin = (d.spins and d.spins[i] or 0) * ((d.simRadius or lay.wheelR) / lay.wheelR)
+                maps.wheels[i] = { o = cen, ex = rotVec(ex, ey, spin), ey = ey, ez = rotVec(ez, ey, spin) }
+            end
+        end
+    end
+    return maps
+end
+
+function B.DrawModel(ent, model, d)
+    local BM = BMX.BikeMesh
+    local maps = B.ModelMaps(model, d)
+    local paint, lod = d.paint, d.lod
+    BM.BeginLighting(d.center, ent)
+        BM.DrawGroup(model, "deck", matFromMap(maps.deck), paint, lod)
+        for ti = 1, 2 do
+            BM.DrawGroup(model, "truck", matFromMap(maps.trucks[ti]), paint, lod)
+            BM.DrawGroup(model, "hanger", matFromMap(maps.hangers[ti]), paint, lod)
+        end
+        for _, w in pairs(maps.wheels) do
+            BM.DrawGroup(model, "wheel", BM.Matrix(w.o, w.ex, w.ey, w.ez), paint, lod)
+        end
+    BM.EndLighting()
+end
+
 BMX.DrawVehicle = BMX.DrawVehicle or {}
 BMX.DrawVehicle.board = function(ent, kit)
     local bike = ent:Bike()
@@ -333,20 +400,31 @@ BMX.DrawVehicle.board = function(ent, kit)
     local col = BMX.PaletteColor(ent:GetColorIndex())
     local half = WC.wheelbase * 0.5
 
+    -- THE BUILT MODEL (cl_geo_board.lua), once it is built and unless bmx_bike_model is
+    -- 0 or bmx_debug wants the simple board; the primitives below stand in meanwhile.
+    local BM = BMX.BikeMesh
+    local wheels = BMX.WheelDefs(bike, C)
+    local model = not debug and bike.look and BM and BM.Get(WC.wheelbase / 39, WC.radius, bike.look, {
+        wheelbase = WC.wheelbase, restLength = WC.restLength,
+        extra = { track = wheels[1] and math.abs(wheels[1].pos.y) or 4.6 },
+    }) or nil
+
     ------------------------------------------------------------------------
     -- Deck: the paint underneath, grip tape on top, the nose and tail kicked up.
     ------------------------------------------------------------------------
-    kit.solid("box", P(Vector(0, 0, DECK_Z)), ang, Vector(DECK_LEN, DECK_W, DECK_T), col)
-    kit.solid("box", P(Vector(0, 0, DECK_Z + DECK_T * 0.5 + 0.06)), ang,
-        Vector(DECK_LEN - 0.4, DECK_W - 0.4, 0.12), COL_GRIP, MAT_MATTE)
-    for _, sgn in ipairs({ 1, -1 }) do
-        local tf = rotVec(bf, bl, -sgn * TIP_RISE)           -- the end tilts up, away from the middle
-        local tu = rotVec(bu, bl, -sgn * TIP_RISE)
-        local at = DECK_LEN * 0.5 + TIP_LEN * 0.5 * cos(TIP_RISE) - 0.4
-        local p = P(Vector(sgn * at, 0, DECK_Z + sin(TIP_RISE) * TIP_LEN * 0.5))
-        kit.solid("box", p, tf:AngleEx(tu), Vector(TIP_LEN, DECK_W, DECK_T), col)
-        kit.solid("box", p + tu * (DECK_T * 0.5 + 0.06), tf:AngleEx(tu),
-            Vector(TIP_LEN - 0.3, DECK_W - 0.4, 0.12), COL_GRIP, MAT_MATTE)
+    if not model then
+        kit.solid("box", P(Vector(0, 0, DECK_Z)), ang, Vector(DECK_LEN, DECK_W, DECK_T), col)
+        kit.solid("box", P(Vector(0, 0, DECK_Z + DECK_T * 0.5 + 0.06)), ang,
+            Vector(DECK_LEN - 0.4, DECK_W - 0.4, 0.12), COL_GRIP, MAT_MATTE)
+        for _, sgn in ipairs({ 1, -1 }) do
+            local tf = rotVec(bf, bl, -sgn * TIP_RISE)           -- the end tilts up, away from the middle
+            local tu = rotVec(bu, bl, -sgn * TIP_RISE)
+            local at = DECK_LEN * 0.5 + TIP_LEN * 0.5 * cos(TIP_RISE) - 0.4
+            local p = P(Vector(sgn * at, 0, DECK_Z + sin(TIP_RISE) * TIP_LEN * 0.5))
+            kit.solid("box", p, tf:AngleEx(tu), Vector(TIP_LEN, DECK_W, DECK_T), col)
+            kit.solid("box", p + tu * (DECK_T * 0.5 + 0.06), tf:AngleEx(tu),
+                Vector(TIP_LEN - 0.3, DECK_W - 0.4, 0.12), COL_GRIP, MAT_MATTE)
+        end
     end
 
     ------------------------------------------------------------------------
@@ -354,7 +432,7 @@ BMX.DrawVehicle.board = function(ent, kit)
     -- speed (the bike's WheelSpin), with a hub bolt so the spin shows. Where the
     -- axle is comes from the same trace the suspension makes.
     ------------------------------------------------------------------------
-    local wheels = BMX.WheelDefs(bike, C)
+    local spins = {}
     for i, wd in ipairs(wheels) do
         local local_ = Vector(wd.pos.x, wd.pos.y, wd.pos.z)
         local grounded = ent:GetGrounded()
@@ -367,14 +445,17 @@ BMX.DrawVehicle.board = function(ent, kit)
         end
         local c = P(local_)
         local spin = ent:WheelSpin("w" .. i, grounded, false, dt)
-        local ww = 1.6
-        kit.tube(c - bl * (ww * 0.5), c + bl * (ww * 0.5), WC.radius * 2, COL_WHEEL)
-        if lod == 0 then
-            local pin = (bf * cos(spin) + bu * sin(spin)) * (WC.radius * 0.55)
-            kit.tube(c + pin - bl * (ww * 0.55), c + pin + bl * (ww * 0.55), 0.5, COL_HUB)
+        spins[i] = spin
+        if not model then
+            local ww = 1.6
+            kit.tube(c - bl * (ww * 0.5), c + bl * (ww * 0.5), WC.radius * 2, COL_WHEEL)
+            if lod == 0 then
+                local pin = (bf * cos(spin) + bu * sin(spin)) * (WC.radius * 0.55)
+                kit.tube(c + pin - bl * (ww * 0.55), c + pin + bl * (ww * 0.55), 0.5, COL_HUB)
+            end
         end
     end
-    if lod < 2 then
+    if not model and lod < 2 then
         for _, sgn in ipairs({ 1, -1 }) do
             local x = sgn * half
             local hanger = P(Vector(x, 0, 0.2))
@@ -382,6 +463,19 @@ BMX.DrawVehicle.board = function(ent, kit)
             kit.solid("box", P(Vector(x, 0, DECK_Z - DECK_T * 0.5 - 0.35)), ang,
                 Vector(4.2, 3.4, 0.7), COL_TRUCK, MAT_CHROME)
         end
+    end
+    if model then
+        -- The deck's flip without the lean: the hangers stay level on the ground while
+        -- the deck leans over them, as a truck's do.
+        local level = B.Frame({
+            ent = ent, lean = 0, roll = df.roll, yaw = df.yaw, pitch = df.pitch,
+            lift = lift, liftPitch = liftPitch, ground = -(WC.radius - sag),
+        })
+        B.DrawModel(ent, model, {
+            P = P, level = level, center = frame.center, wheels = wheels, spins = spins, simRadius = WC.radius,
+            paint = col, lod = lod,
+            steer = B.TruckSteer(ent:GetBoardLean(), ent.GetSpeedUPS and ent:GetSpeedUPS() or 0, WC.wheelbase),
+        })
     end
 
     ------------------------------------------------------------------------

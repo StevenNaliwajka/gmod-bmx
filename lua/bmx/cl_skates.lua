@@ -9,9 +9,10 @@
         turns here, in CreateMove, at the same rate the server will allow: a keyboard carve
         and a mouse carve are then the same thing, and the view and the skater agree.
       * THE SKATES THEMSELVES, on every skater's feet, from what the server networks on the
-        player (NW values: sv_skates.lua, `sync`): a boot shell and a frame with four
-        wheels under each foot, drawn from boxes and spheres like the bike and the board
-        (no content), the wheels turning with the skater's speed.
+        player (NW values: sv_skates.lua, `sync`): aggressive skates built in code
+        (cl_geo_board.lua's "skates": a hard shell, a cuff, liner, laces, buckles and a
+        power strap, a soul plate, an H-block frame, four wheels), boxes and spheres until
+        the model is built, the wheels turning with the skater's speed.
       * THE LEGS. The stock walk or run animation would have a gliding player running on
         the spot, so a skater is held in a standing pose with the knees bent (the pelvis
         lowered by the board's calibrated nudge, cl_board.lua), the torso leaning into the
@@ -191,34 +192,103 @@ end
 
 local FEET = { "ValveBiped.Bip01_L_Foot", "ValveBiped.Bip01_R_Foot" }
 
+-- THE MODEL (cl_geo_board.lua's "skates"): one boot built about BootFrame's sole point,
+-- its wheels standing where BootFrame stands them. nil until it is built, with
+-- bmx_bike_model 0, or without Mesh support: the boxes below stand in.
+function S.Model()
+    local BM = BMX.BikeMesh
+    local def = BMX.Vehicles and BMX.Vehicles[S.ID]
+    if not (BM and def and def.look) then return nil end
+    local cfg = BMX.ConfigFor(def)
+    return BM.Get(1, cfg.Wheel.radius, def.look, {
+        wheelbase = cfg.Wheel.wheelbase, extra = { wheelPitch = T.wheelPitch },
+    })
+end
+
+-- The skates' colour: the registration's palette entry, else the first.
+function S.Paint()
+    local def = BMX.Vehicles and BMX.Vehicles[S.ID]
+    return BMX.PaletteColor and BMX.PaletteColor(def and def.colorIndex or 1) or Color(205, 35, 45)
+end
+
+-- Where each group of one boot goes: `sole` (BootFrame's), `yaw` (degrees), `side` 1 a
+-- left boot, -1 a right one (the buckles' levers are on the outside), `spin` (radians,
+-- the wheels' roll). A list of { group, origin, ex, ey, ez }.
+function S.BootPlacements(model, sole, yaw, side, spin)
+    local lay = model.layout
+    local f = Vector(cos(math.rad(yaw)), sin(math.rad(yaw)), 0)
+    local l = Vector(-f.y, f.x, 0)
+    local u = Vector(0, 0, 1)
+    local function at(m) return sole + f * m.x + l * m.y + u * m.z end
+    local out = {
+        { "skate", sole, f, l, u },
+        { side > 0 and "skateOutL" or "skateOutR", sole, f, l, u },
+    }
+    local c, sn = cos(spin or 0), sin(spin or 0)
+    -- positive spin rolls the top of a wheel forward, as the bike's do
+    local ex, ez = f * c - u * sn, u * c + f * sn
+    for _, w in ipairs(lay.wheels or {}) do out[#out + 1] = { "wheel", at(w), ex, l, ez } end
+    for _, w in ipairs(lay.antiRockers or {}) do out[#out + 1] = { "wheelAR", at(w), ex, l, ez } end
+    return out
+end
+
+-- Draw a pair (or any number) of skates: `boots` = { { sole = Vector, side = 1 | -1 }, ... },
+-- all at `yaw` degrees, their wheels rolled by `speed` (u/s) since the map began.
+-- `radius` is the registration's wheel (the primitive boots' size). `lightEnt` caches
+-- the lighting (a player; nil for none). The model once it is built, the boxes and
+-- spheres until then. Shared with the icon studio (tools/icons/studio_cl.lua).
+function S.DrawBoots(lightEnt, boots, yaw, radius, speed, grind)
+    local model = S.Model()
+    if model then
+        local BM = BMX.BikeMesh
+        local r = model.layout.wheelR or radius
+        local spin = (CurTime() * (speed or 0) / r) % (math.pi * 2)
+        local paint = S.Paint()
+        BM.BeginLighting(boots[1].sole + Vector(0, 0, 4), lightEnt)
+        for _, bt in ipairs(boots) do
+            for _, pl in ipairs(S.BootPlacements(model, bt.sole, yaw, bt.side, spin)) do
+                BM.DrawGroup(model, pl[1], BM.Matrix(pl[2], pl[3], pl[4], pl[5]), paint, 0)
+            end
+        end
+        BM.EndLighting()
+        return true
+    end
+    local spin = (CurTime() * (speed or 0) / radius) % (math.pi * 2)
+    render.SetColorMaterial()
+    for _, bt in ipairs(boots) do
+        local fr = S.BootFrame(bt.sole, yaw, radius)
+        render.DrawBox(fr.shell, fr.ang, Vector(-5.2, -1.6, -1.6), Vector(5.8, 1.6, 2.2), COL_BOOT)
+        render.DrawBox(fr.frame, fr.ang, Vector(-6.6, -0.6, -0.3), Vector(6.6, 0.6, 0.3), COL_FRAME)
+        for _, c in ipairs(fr.wheels) do
+            -- On a rail the wheels hang clear of it, beside the soul plate.
+            local at = grind and (c + Vector(0, 0, 0.6)) or c
+            render.DrawSphere(at, radius, 8, 6, COL_WHEEL)
+            -- A hub bolt, so the spin shows: in the vertical plane of the boot's heading.
+            local pin = fr.forward * (cos(spin) * radius * 0.6) + Vector(0, 0, sin(spin) * radius * 0.6)
+            render.DrawLine(at, at + pin, COL_HUB, true)
+        end
+    end
+    return false
+end
+
 hook.Add("PostPlayerDraw", "BMX.Skates.Draw", function(ply)
     if not wearing(ply) then return end
     local cfg = BMX.ConfigFor(BMX.Vehicles[S.ID])
     local radius = cfg.Wheel.radius
     local yaw = ply:GetRenderAngles().y
     local v = ply:GetVelocity()
-    local spin = (CurTime() * math.sqrt(v.x * v.x + v.y * v.y) / radius) % (math.pi * 2)
     local grind = bit.band(ply:GetNWInt("BMXSkateFlags", 0), S.Flag.grind) ~= 0
-    render.SetColorMaterial()
-    for _, name in ipairs(FEET) do
+    local boots = {}
+    for i, name in ipairs(FEET) do
         local b = ply:LookupBone(name)
         local pos = b and ply:GetBonePosition(b)
         if pos then
             -- The foot bone is at the ankle: the sole is a couple of units under it.
-            local sole = Vector(pos.x, pos.y, pos.z - 2.6)
-            local fr = S.BootFrame(sole, yaw, radius)
-            render.DrawBox(fr.shell, fr.ang, Vector(-5.2, -1.6, -1.6), Vector(5.8, 1.6, 2.2), COL_BOOT)
-            render.DrawBox(fr.frame, fr.ang, Vector(-6.6, -0.6, -0.3), Vector(6.6, 0.6, 0.3), COL_FRAME)
-            for _, c in ipairs(fr.wheels) do
-                -- On a rail the wheels hang clear of it, beside the soul plate.
-                local at = grind and (c + Vector(0, 0, 0.6)) or c
-                render.DrawSphere(at, radius, 8, 6, COL_WHEEL)
-                -- A hub bolt, so the spin shows: in the vertical plane of the boot's heading.
-                local pin = fr.forward * (cos(spin) * radius * 0.6) + Vector(0, 0, sin(spin) * radius * 0.6)
-                render.DrawLine(at, at + pin, COL_HUB, true)
-            end
+            boots[#boots + 1] = { sole = Vector(pos.x, pos.y, pos.z - 2.6), side = i == 1 and 1 or -1 }
         end
     end
+    if #boots == 0 then return end
+    S.DrawBoots(ply, boots, yaw, radius, math.sqrt(v.x * v.x + v.y * v.y), grind)
 end)
 
 --------------------------------------------------------------------------

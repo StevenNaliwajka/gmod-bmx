@@ -8,6 +8,11 @@ A Workshop update goes out only when the owner says so. GitLab (`main`) and
 the test server (VM 110149, which the pipeline's `deploy-dev` + `headless`
 jobs feed) get changes as fast as possible.
 
+**Competing with "Rideable Bicycles"** (Workshop 3810718443): one goal
+document per competitor issue and per missing feature, the vehicle-suite plan
+(skateboard first) and the priority order are in
+[`docs/goals/`](goals/README.md).
+
 ## Where it stands
 
 - The Workshop item was posted 2026-10-05, from a build that was not recorded

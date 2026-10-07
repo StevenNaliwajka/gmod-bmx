@@ -94,7 +94,7 @@ it once the upload is done):
 
 | Version | Kit built | From commit | Uploaded |
 |---|---|---|---|
-| 1.1.0 | 2026-10-07 | BUILDSHA | waiting on the upload from the owner's PC |
+| 1.1.0 | 2026-10-07 | b67a0996e41c51cbbac1fc6b8e23bd538f54a45c | waiting on the upload from the owner's PC |
 
 The same number lives in `workshop/workshop-id.txt`, which the kit ships and
 both `update.bat` and `publish.sh update` read, so an update needs nothing

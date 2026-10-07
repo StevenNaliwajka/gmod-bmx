@@ -13,12 +13,16 @@ BMX = BMX or {}
 
 -- Where sparks come from, entity-local, for a grind code.
 function BMX.GrindContacts(ent, code)
-    local C = ent:Cfg()
-    local G = C.Grind
-    if code == 1 then return { BMX.GrindCrankPoint(C) } end
-    local half = C.Wheel.wheelbase * 0.5
-    local y = (code == 2 and 1 or -1) * G.pegY
-    return { Vector(half, y, G.pegZ), Vector(-half, y, G.pegZ) }
+    -- From the vehicle's own grind points (`grindPoints`, sh_vehicles.lua): the
+    -- same ones the server grinds on.
+    local gp = BMX.GrindPointsFor(ent:Bike(), ent:Cfg())
+    if code == 1 then return gp.crank and { gp.crank } or {} end
+    local p = gp.pegs
+    if not p then return {} end
+    local y = (code == 2 and 1 or -1) * p.y
+    local out = {}
+    for _, x in ipairs(p.x) do out[#out + 1] = Vector(x, y, p.z) end
+    return out
 end
 
 local SPARK_RATE = 40      -- per second per contact, at full speed

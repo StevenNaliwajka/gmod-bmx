@@ -556,7 +556,7 @@ function ENT:Draw()
     self.drawBar  = approachAngle(self.drawBar  or barA,  barA,  TRICK_FOLLOW, dt)
     local whipAng, barAng = self.drawWhip, self.drawBar
     local W = BMX.UpdatePoseWeights(self, BMX.PoseNames[poseId], dt)
-    local bodyRoll, barsTurn, barsSpin = BMX.PoseDrawAngles(W)
+    local bodyRoll, barsTurn, barsSpin = BMX.PoseDrawAngles(W, BMX.PoseSetFor(self).poses)
 
     -- Tabletop: the whole bike laid over about its own long axis. Everything
     -- below is then built from the laid-over up and right.
@@ -812,7 +812,7 @@ function ENT:Draw()
     BMX.ApplyPoseTargets(ik, W, function(v)
         local p = self:LocalToWorld(v * k + lift0)
         return bodyRoll ~= 0 and rotAbout(p, bodyC, fwd, bodyRoll) or p
-    end)
+    end, BMX.PoseSetFor(self).poses)
 
     ----------------------------------------------------------------------
     -- Kickstand, when it is DOWN (networked: put down by a rider stopping, or

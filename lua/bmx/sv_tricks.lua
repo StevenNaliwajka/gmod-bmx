@@ -358,7 +358,7 @@ function BMX.TricksTick(ent, phys, cfg, dt, inp, st)
     -- Whatever else is registered (a modder's trick, a vehicle's grab).
     ------------------------------------------------------------------
     for _, tr in ipairs(BMX.TickList) do
-        if not tr.canStart or tr.canStart(st, inp) then
+        if BMX.VehicleAllows(st.def, tr.id) and (not tr.canStart or tr.canStart(st, inp)) then
             local pts = tr.onTick(ent, st, inp, dt)
             if type(pts) == "number" and pts > 0 then
                 st.trickBank = st.trickBank or {}

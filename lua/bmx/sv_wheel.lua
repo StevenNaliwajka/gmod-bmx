@@ -37,14 +37,26 @@ local abs, min, max, sqrt = math.abs, math.min, math.max, math.sqrt
 -- Putting it on the axle line instead makes the spring read full compression at
 -- the nominal ride height with no travel left, which is a hundredfold force
 -- error and a bike that launches. See the comment in ENT:Initialize.
-function BMX.NewWheel(mountLocal, isFront)
+--
+-- `def` is the wheel's entry in the vehicle's `wheels` list (sh_vehicles.lua),
+-- and is optional: the suite builds bare wheels without one. It is what makes
+-- the wheel loop N wheels rather than a front and a rear: which share of the
+-- drive torque it takes (`drive`), how it steers (`steerMode`: "fork" is the
+-- single-track balance's to set, a function is called every grounded substep)
+-- and its own radius, if it has one.
+function BMX.NewWheel(mountLocal, isFront, def)
+    def = def or {}
     return setmetatable({
         mount     = mountLocal,
         isFront   = isFront,
+        def       = def,
+        drive     = def.drive or false,
+        steerMode = def.steer or false,
+        radiusOverride = def.radius,
 
         -- state
         omega       = 0,      -- rad/s, positive = rolling forwards
-        steer       = 0,      -- rad, front wheel only
+        steer       = 0,      -- rad, steered wheels only
         compression = 0,      -- units
         lastComp    = 0,
         onGround    = false,
@@ -71,6 +83,26 @@ function BMX.NewWheel(mountLocal, isFront)
         rays        = 1,      -- traces fired last substep, for the cost tests
         obstacle    = nil,    -- the second contact last substep, if any
     }, Wheel)
+end
+
+--------------------------------------------------------------------------
+-- THIS WHEEL'S Wheel config group: the vehicle's, or -- when the wheel has a
+-- radius of its own (a unicycle's, a scooter's small front) -- that group seen
+-- through an overlay with just the radius replaced. Reading through __index
+-- rather than copying keeps live tuning working on every other field, and the
+-- overlay is cached against the group it overlays, which is rebuilt when a
+-- convar moves a per-vehicle config. A wheel with no radius of its own (every
+-- bike's) gets the group itself, so nothing changes for them.
+--------------------------------------------------------------------------
+function Wheel:WheelConfig(cfg)
+    local WC = cfg.Wheel
+    local r = self.radiusOverride
+    if not r or r == WC.radius then return WC end
+    if self._ovBase ~= WC or self._ovR ~= r then
+        self._ovBase, self._ovR = WC, r
+        self._ov = setmetatable({ radius = r }, { __index = WC })
+    end
+    return self._ov
 end
 
 --------------------------------------------------------------------------
@@ -201,7 +233,7 @@ end
 --------------------------------------------------------------------------
 function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     local C     = cfg
-    local WC    = C.Wheel
+    local WC    = self:WheelConfig(C)
     local radius = WC.radius
     local maxLen = BMX.WheelReach(WC)
 
@@ -695,7 +727,7 @@ end
 -- NOT simply the mount point.
 --------------------------------------------------------------------------
 function Wheel:VisualOffset(cfg)
-    local WC = (cfg or BMX.Config).Wheel
+    local WC = self:WheelConfig(cfg or BMX.Config)
     local drop = self.onGround
         and (WC.restLength - math.min(self.compression, WC.restLength))
         or WC.restLength

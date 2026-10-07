@@ -6,7 +6,9 @@
         sh_config    defines BMX.Config, which every other file reads at load
                      time as well as at run time
         sh_util      defines the maths helpers sh_bikes and the sim both use
-        sh_bikes     registers bikes, which needs ClassFor and the config
+        sh_vehicles  the vehicle vocabulary (families, input maps, pose sets) and
+                     the registration checks: before the registry that uses them
+        sh_bikes     registers vehicles, which needs ClassFor and the config
         sv_* / cl_*  the simulation and the presentation, in dependency order
 
     Getting this wrong produces "attempt to index a nil value (field 'Wheel')"
@@ -38,6 +40,7 @@ local SHARED = {
     "bmx/sh_permissions.lua", -- CAMI privileges and BMX.Can
     "bmx/sh_util.lua",
     "bmx/sh_tricks.lua",    -- the trick registry; the scoring and the overlay read it
+    "bmx/sh_vehicles.lua",  -- what a vehicle is: families, input maps, pose sets, the checks
     "bmx/sh_bikes.lua",
     "bmx/sh_sound.lua",
     "bmx/sh_color.lua",     -- the palette and the ways to choose from it

@@ -1,10 +1,19 @@
 --[[--------------------------------------------------------------------------
     bmx/sh_bikes.lua
 
-    The bike registry. Adding a bike is one table in here plus its model files.
+    The vehicle registry. Adding a bike is one table in here plus its model files.
 
-    An entry describes a bike's APPEARANCE, its mount points, and -- since the
+    An entry describes a vehicle's APPEARANCE, its mount points, and -- since the
     per-bike physics work -- an optional `physics` table of config overrides.
+
+    SINCE G22 THE REGISTRY IS A VEHICLE PLATFORM. BMX.RegisterVehicle{...} is the
+    one door (wheels, balance mode, drive, seats, input map, pose set, tricks,
+    grind points, physics; the vocabulary and the checks are sh_vehicles.lua), and
+    BMX.RegisterBike(id, def) is the bike-shaped way in: it fills in the bike's
+    wheels, balance, drive, input map and pose set and hands over. BMX.Bikes is
+    the same table as BMX.Vehicles, so everything written against the bike
+    registry -- bmx_spawn <id>, the spawn menu rows, the duplicator, the
+    `bmx_base` class and the `bmx_<id>` classes, the convars -- still works.
 
     THE OVERRIDES ARE CHECKED AT REGISTRATION, against the real config, and a
     key that does not exist is a loud error rather than a value that goes
@@ -14,7 +23,9 @@
 ----------------------------------------------------------------------------]]
 
 BMX = BMX or {}
-BMX.Bikes = BMX.Bikes or {}
+-- BMX.Vehicles and its alias BMX.Bikes: one table (sh_vehicles.lua).
+BMX.Vehicles = BMX.Vehicles or BMX.Bikes or {}
+BMX.Bikes    = BMX.Vehicles
 
 -- The tyre model the client draws (cl_init.lua). Precached on the server so it
 -- is in the model table every client receives; a client-only precache of a
@@ -116,9 +127,38 @@ function BMX.ValidateBones(id, bones)
 end
 
 --------------------------------------------------------------------------
--- Register a bike.
+-- Register a vehicle.
 --
 --   id            unique, lowercase. Becomes entity class "bmx_<id>".
+--   family        "bike" | "board" | "skates" | "scooter" | "moto": the spawn
+--                 menu heading and the admin toggle that switches it off.
+--   wheels        a list of { pos, radius, steer, drive, front, name }, or a
+--                 function of the config returning one (a bike's wheelbase is
+--                 per-bike). `pos` is the AXLE in chassis space; the suspension
+--                 mount is restLength above it. `radius` overrides the config's
+--                 for this wheel. `steer` is false, "fork" (the single-track
+--                 balance steers it) or a function
+--                 (wheel, ent, st, inp, cfg, dt, speed) -> radians, called
+--                 every grounded substep: a skateboard's truck lean is one.
+--                 `drive` takes a share of the drive torque. `front` is which
+--                 axle's brake it takes (default: pos.x > 0).
+--   balance       "singletrack" | "board" | "none": sv_balance.lua.
+--   drive         { kind = "pedal" | "throttle" | "push" | "none", ... }
+--   seats         { { model, offset, angles } }: the rider's seat. Omitted, it
+--                 is the config's Chassis.seatOffset / seatAngles.
+--   input         an id in BMX.InputMaps (sh_vehicles.lua).
+--   pose          an id in BMX.PoseSets (cl_rider.lua fills each in).
+--   tricks        "all", or a list of trick ids this vehicle can do.
+--   grindPoints   false, or { crank = Vector|fn(cfg)|false, pegs = {y, z, x}|fn|false }
+--   physics       per-vehicle config overrides, below.
+--   hidden        left out of the spawn menu and BikeIDs.
+--   debugOnly     bmx_spawn needs bmx_debug >= 1 (the test cart).
+--
+-- Every field is CHECKED (BMX.ValidateVehicle), and a bad one is a loud error
+-- and the vehicle is NOT registered: it could not ride anyway.
+--
+-- The appearance fields are the ones RegisterBike has always taken:
+--
 --   def.printName spawnmenu label
 --   def.model     frame model. Optional: without one the whole bike is drawn
 --                 procedurally, which is what the stock bike does.
@@ -148,11 +188,35 @@ end
 --
 --   def.bones     optional rig map for a model, checked at registration: see
 --                 BMX.ValidateBones above. Unknown keys are a loud error.
+--
+-- An invalid `physics` or `bones` is reported and the vehicle is still
+-- registered, as it always was: those two were checked before there was a
+-- platform, and the tests pin it.
 --------------------------------------------------------------------------
-function BMX.RegisterBike(id, def)
-    id = string.lower(id)
+function BMX.RegisterVehicle(def)
+    if not istable(def) then
+        ErrorNoHalt("[BMX] RegisterVehicle wants a table.\n")
+        return false
+    end
+    if isstring(def.id) then def.id = string.lower(def.id) end
 
-    def.id        = id
+    -- What a vehicle that says nothing gets: it stands on its wheels, takes the
+    -- plain controls, sits in the stock pose, does no tricks and cannot grind.
+    -- Everything the bike needs is spelled out by RegisterBike instead.
+    if def.balance == nil then def.balance = "none" end
+    if def.drive == nil then def.drive = { kind = "none" } end
+    if def.input == nil then def.input = "drive" end
+    if def.pose == nil then def.pose = "seated" end
+    if def.tricks == nil then def.tricks = {} end
+    if def.grindPoints == nil then def.grindPoints = false end
+
+    -- Loudly, and before anything can ride it.
+    local valid = BMX.ValidateVehicle(def)
+    local id = def.id
+    BMX.ValidatePhysics(id, def.physics)
+    BMX.ValidateBones(id, def.bones)
+    if not valid then return false end
+
     def.printName = def.printName or id
     -- NO MODEL MEANS DRAWN IN CODE (cl_init.lua): tubes, fork, bars, seat,
     -- cranks and chain, sized from the bike's own geometry. The entity still
@@ -165,11 +229,7 @@ function BMX.RegisterBike(id, def)
     def.frameAngles = def.frameAngles or Angle(0, 0, 0)
     def.scale     = def.scale or 1
 
-    -- Loudly, and before anything can ride it.
-    BMX.ValidatePhysics(id, def.physics)
-    BMX.ValidateBones(id, def.bones)
-
-    BMX.Bikes[id] = def
+    BMX.Vehicles[id] = def
 
     -- "stock" IS bmx_base rather than a derivative, so the base class stays
     -- spawnable on its own and a broken registry still leaves something to ride.
@@ -187,13 +247,43 @@ function BMX.RegisterBike(id, def)
         end
     end
 
-    list.Set("SpawnableEntities", BMX.ClassFor(id), {
-        PrintName = def.printName,
-        ClassName = BMX.ClassFor(id),
-        Category  = "BMX",
-        Author    = def.author or "naliwajka",
-        Information = def.description or "",
-    })
+    -- THE SPAWN MENU. `Category` stays "BMX" -- the one heading every vehicle
+    -- has always been under, and what the suite pins -- and the family's heading
+    -- (Bikes, Boards, Scooters, Motor) rides along as `Subcategory`, so moving
+    -- the menu over to the four headings is a change to this one row, not to
+    -- the registry. A hidden vehicle (the test cart) gets no row at all.
+    if not def.hidden then
+        list.Set("SpawnableEntities", BMX.ClassFor(id), {
+            PrintName = def.printName,
+            ClassName = BMX.ClassFor(id),
+            Category  = "BMX",
+            Subcategory = BMX.Families[def.family].category,
+            Family    = def.family,
+            Author    = def.author or "naliwajka",
+            Information = def.description or "",
+        })
+    end
+    return def
+end
+
+--------------------------------------------------------------------------
+-- Register a bike: RegisterVehicle with the bike's platform fields filled in
+-- (two wheels in line, the front one steered by the fork; single-track balance;
+-- the pedal drive; the bike's keys and rider pose; every trick; a chainring and
+-- pegs to grind on). Anything the table says itself wins.
+--------------------------------------------------------------------------
+function BMX.RegisterBike(id, def)
+    def = def or {}
+    def.id          = string.lower(id)
+    def.family      = def.family      or "bike"
+    if def.wheels == nil then def.wheels = BMX.BikeWheels end
+    def.balance     = def.balance     or "singletrack"
+    def.drive       = def.drive       or { kind = "pedal" }
+    def.input       = def.input       or "bike"
+    def.pose        = def.pose        or "bike"
+    if def.tricks == nil then def.tricks = "all" end
+    if def.grindPoints == nil then def.grindPoints = BMX.BikeGrindPoints end
+    return BMX.RegisterVehicle(def)
 end
 
 function BMX.ClassFor(id)
@@ -202,9 +292,22 @@ function BMX.ClassFor(id)
     return id == "stock" and "bmx_base" or ("bmx_" .. id)
 end
 
+-- The vehicles a player can see and spawn: everything but the hidden ones.
+-- (Named for the bikes it was written for; boards and scooters are in it.)
 function BMX.BikeIDs()
     local out = {}
-    for id in pairs(BMX.Bikes) do out[#out + 1] = id end
+    for id, def in pairs(BMX.Vehicles) do
+        if not def.hidden then out[#out + 1] = id end
+    end
+    table.sort(out)
+    return out
+end
+
+-- Every registered vehicle, hidden ones too: what "is this entity class one of
+-- ours?" and the per-player limit have to count.
+function BMX.VehicleIDs()
+    local out = {}
+    for id in pairs(BMX.Vehicles) do out[#out + 1] = id end
     table.sort(out)
     return out
 end

@@ -400,7 +400,13 @@ function BMX.TryGrind(ent, phys, cfg, st, vel)
     local vh = Vector(vel.x, vel.y, 0)
     if vh:Length() < G.minSpeed then return false end
 
-    local crank = BMX.GrindCrankPoint(cfg)
+    -- THE VEHICLE'S GRIND POINTS (`grindPoints` in its registration): the crank
+    -- point is where a rail is looked for and what a pipe is ridden on, the pegs
+    -- are what an edge is ridden on. A vehicle with none cannot grind at all; one
+    -- with only a crank grinds pipes and not edges.
+    local gp = BMX.GrindPointsFor(ent.Bike and ent:Bike(), cfg)
+    local crank = gp.crank
+    if not crank then return false end
     local point = ent:LocalToWorld(crank)
     if not BMX.MightBeRail(point, cfg, ent.traceFilter) then return false end
     local centre = phys:LocalToWorld(phys:GetMassCenter())
@@ -427,9 +433,10 @@ function BMX.TryGrind(ent, phys, cfg, st, vel)
         g.yawSide = (dh.x * f.y - dh.y * f.x) >= 0 and 1 or -1
     else
         -- Pegs on the side the top is on; the bike hangs off the other.
+        if not gp.pegs then return false end
         local left = UP:Cross(dh)
         local sgn = left:Dot(rail.side) > 0 and 1 or -1
-        g.localPoint = Vector(0, sgn * G.pegY, G.pegZ)
+        g.localPoint = Vector(0, sgn * gp.pegs.y, gp.pegs.z)
         g.point = g.point + rail.side * G.pegInset
     end
     g.n = perp(dh)

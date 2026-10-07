@@ -79,6 +79,13 @@ game client: the IK poses, the board rider, the replay stand-ins, the menus and
 the 3D2D signs all need eyes. Feel tuning (`docs/TUNING.md`) needs a person on
 the test server.
 
+**Where assets live (owner, 2026-10-07):** every BMX *vehicle* asset (vehicle
+code, models, materials, sounds, and anything a bike, board, scooter, skate or
+motor vehicle needs to be drawn or heard) goes in **this addon**,
+`root/gmod-bmx`. The gamemode (`root/gmod-bmx-mode`) holds only game rules,
+scores and the bot; the map (`root/petopia_bmx_fall`) holds only the map and
+city. A vehicle that only works with the mode or the map installed is a bug.
+
 **Waiting on the owner:**
 
 1. **Model licence (G20):** allow CC-BY 4.0 with credits, alongside original

@@ -56,3 +56,38 @@ raw convar replication.
 
 Low. It's mostly UI. The settings table is a refactor of `sh_config.lua`
 access, so do it before the convar count grows further with these goals.
+
+## Status (2026-10-07)
+
+The settings table is `lua/bmx/sh_settings.lua`, the menu is
+`lua/bmx/cl_options.lua`, saving and the net message are
+`lua/bmx/sv_settings.lua`, CAMI is `lua/bmx/sh_permissions.lua`. Tests:
+`tests/test_settings.lua`. The panels have not been looked at in a real client
+(no vgui offline), so the layout is **unverified on a live game**.
+
+- **Options > BMX > Rider (client):** done for what exists today: camera
+  (first/chase, distance, height, roll, smoothing, cinematic), units, HUD,
+  stick deadzone, rider animation and IK, bike colour, city drawing, bike
+  detail, tuning overlay. Not done: volumes (G18), trick keybinds (G03, G17),
+  trick list overlay (those features do not exist yet).
+- **Options > BMX > Server (admin):** done for scoring, combos, bikes per
+  player, crash ragdoll, the city, bot name/model, and all twelve physics feel
+  sliders. Not done: passengers, air assist, water, ragmod, motor vehicles
+  (their goals add rows with `BMX.Settings.Add`). Reset button per row and per
+  page: done.
+- **Vehicles panel (enable/disable each type):** not done; it needs the vehicle
+  platform (G22). The category list in `sh_settings.lua` is the extension point.
+- **`bmx_reset_client`, `bmx_reset_server`:** done.
+- **Persistence:** done: `data/bmx/server.json`, written on any change (debounced),
+  loaded at `InitPostEntity`.
+- **CAMI:** done: all six privileges registered (retried at `InitPostEntity`),
+  `BMX.Can(ply, name)` with an admin/superadmin fallback. Gating in place:
+  `bmx_bot_*` and physgun on a ridden bike. Registered but nothing to gate yet:
+  Spawn Motor Vehicles, Remove Any Bike, Unlock Any Lock.
+- **Tooltips for every setting:** done, and a test fails without them.
+- **Tests:** done: help and range on every row, JSON round trip, load at boot,
+  non-admin rejected, CAMI grant and deny, and a guard that fails if a `bmx_`
+  convar exists that the table does not describe.
+- `bmx_dump_config` now also prints every setting, starring changed ones.
+- Server convars for scoring, combos, bike limit, crash ragdoll and bot name/model
+  became `FCVAR_REPLICATED` so the panel can show their value. Names unchanged.

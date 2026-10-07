@@ -34,6 +34,8 @@ BMX.Version = "1.1.0"
 
 local SHARED = {
     "bmx/sh_config.lua",
+    "bmx/sh_settings.lua",    -- every player and admin setting, in one list (after sh_config: reads its defaults)
+    "bmx/sh_permissions.lua", -- CAMI privileges and BMX.Can
     "bmx/sh_util.lua",
     "bmx/sh_bikes.lua",
     "bmx/sh_sound.lua",
@@ -52,6 +54,7 @@ local SERVER_FILES = {
     "bmx/sv_physics.lua",
     "bmx/sv_seat.lua",
     "bmx/sv_rules.lua",     -- server-owner settings: bike limit, scoring on/off
+    "bmx/sv_settings.lua",  -- changing and saving them: net message, server.json
     "bmx/sv_launch.lua",    -- finding a ramp to get air off, or putting one down
     "bmx/sv_bot.lua",       -- a bot rider that does tricks (bmx_bot_spawn)
     "bmx/sv_debug.lua",
@@ -72,6 +75,7 @@ local CLIENT_FILES = {
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
     "bmx/cl_grind.lua",     -- sparks and the scrape while a bike grinds
     "bmx/cl_city.lua",      -- draws the city, runs the subway trains
+    "bmx/cl_options.lua",   -- spawn menu > Options > BMX, built from BMX.Settings
 }
 
 if SERVER then

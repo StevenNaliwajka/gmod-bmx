@@ -198,4 +198,7 @@ concommand.Add("bmx_dump_config", function(ply)
         end
         out("}")
     end
+
+    -- ...and every player/admin setting, from the one list (sh_settings.lua).
+    for _, line in ipairs(BMX.Settings.DumpLines()) do out(line) end
 end)

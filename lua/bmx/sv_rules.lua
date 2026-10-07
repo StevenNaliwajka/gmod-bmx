@@ -24,7 +24,10 @@
 
 BMX = BMX or {}
 
-local FLAGS = bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY)
+-- REPLICATED so the Options > BMX > Server panel can show every player (and an
+-- admin) what the server is using; changing them still only happens on the
+-- server, through sv_settings.lua.
+local FLAGS = bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED)
 
 local maxPer  = CreateConVar("bmx_max_per_player", "0", FLAGS,
     "BMX: bikes one player may have spawned at once (0 = no BMX limit; sbox_maxsents still applies).")

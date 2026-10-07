@@ -137,6 +137,7 @@ function M.World(opts)
         -- them (a grind positions the bike itself, and that is what is tested).
         solids = opts.solids or {},
         convars  = {},
+        cvarCallbacks = {},
         wire     = {},
     }
 end
@@ -194,7 +195,15 @@ local function newConVar(name, default, flags, help)
     function cv:GetString() return self.value end
     function cv:GetName() return self.name end
     function cv:GetDefault() return self.default end
-    function cv:SetString(v) self.value = tostring(v) end
+    function cv:SetString(v)
+        local old = self.value
+        self.value = tostring(v)
+        -- cvars.AddChangeCallback, as the engine runs them: on a real change.
+        local cbs = self.world and self.world.cvarCallbacks[self.name]
+        if cbs and old ~= self.value then
+            for _, fn in pairs(cbs) do fn(self.name, old, self.value) end
+        end
+    end
     cv.SetFloat, cv.SetInt = cv.SetString, cv.SetString
     function cv:SetBool(b) self.value = b and "1" or "0" end
     return cv
@@ -348,6 +357,10 @@ function M.Realm(world, which)
             R.timers[#R.timers + 1] = { at = world.time + (delay or 0), fn = fn }
         end,
         Create = function(name, delay, reps, fn)
+            -- Replaces a timer of the same name, as the engine does.
+            for i = #R.timers, 1, -1 do
+                if R.timers[i].name == name then table.remove(R.timers, i) end
+            end
             R.timers[#R.timers + 1] = { at = world.time + delay, fn = fn,
                 name = name, every = delay, reps = reps }
         end,
@@ -372,17 +385,23 @@ function M.Realm(world, which)
         end
         if not world.convars[name] then
             world.convars[name] = newConVar(name, default, flags, help)
+            world.convars[name].world = world
         end
         return world.convars[name]
     end
     function env.CreateClientConVar(name, default, save, userinfo, help)
         if not world.convars[name] then
             world.convars[name] = newConVar(name, default, 0, help)
+            world.convars[name].world = world
             world.convars[name].userinfo = userinfo
         end
         return world.convars[name]
     end
     function env.GetConVar(name) return world.convars[name] end
+    env.cvars = { AddChangeCallback = function(name, fn, id)
+        world.cvarCallbacks[name] = world.cvarCallbacks[name] or {}
+        world.cvarCallbacks[name][id or fn] = fn
+    end }
     function env.RunConsoleCommand(name, ...)
         if world.convars[name] then world.convars[name]:SetString(...) return end
         if R.commands[name] then R.commands[name](nil, name, { ... }) end
@@ -432,6 +451,13 @@ function M.Realm(world, which)
                 error("net.Start(" .. name .. ") without util.AddNetworkString", 2)
             end
             out = { name = name, items = {}, from = which, unreliable = unreliable }
+        end,
+        -- Client -> server: the server realm's handler gets it, with the sender
+        -- the test names in R.localPlayer.
+        SendToServer = function()
+            out.to = "server"
+            world.wire[#world.wire + 1] = out
+            out = nil
         end,
         Send = function(to)
             out.to = to
@@ -590,7 +616,39 @@ function M.Realm(world, which)
         -- Base-game content is not on this machine. The headless suite owns
         -- the "does this sound ship with the game" question.
         Exists = function(name) return R.files[name] ~= nil end,
+        CreateDir = function() end,
+        IsDir = function() return true end,
     }
+    -- JSON for FLAT tables of strings, numbers and booleans: all the addon's
+    -- own files (data/bmx/server.json) are. Real GMod's util.TableToJSON
+    -- handles nesting; this shim deliberately does not pretend to.
+    env.util.TableToJSON = function(t)
+        local keys = {}
+        for k in pairs(t) do keys[#keys + 1] = k end
+        table.sort(keys)
+        local parts = {}
+        for _, k in ipairs(keys) do
+            local v = t[k]
+            local enc
+            if type(v) == "string" then enc = '"' .. v:gsub('[\\"]', '\\%0') .. '"'
+            elseif type(v) == "number" or type(v) == "boolean" then enc = tostring(v)
+            else error("the shim's TableToJSON is flat only: " .. k) end
+            parts[#parts + 1] = '"' .. k .. '": ' .. enc
+        end
+        return "{" .. table.concat(parts, ", ") .. "}"
+    end
+    env.util.JSONToTable = function(s)
+        if type(s) ~= "string" or not s:match("^%s*{.*}%s*$") then return nil end
+        local t = {}
+        for k, v in s:gmatch('"([^"]+)"%s*:%s*([^,}]+)') do
+            v = v:gsub("%s+$", "")
+            if v == "true" then t[k] = true
+            elseif v == "false" then t[k] = false
+            elseif tonumber(v) then t[k] = tonumber(v)
+            else t[k] = (v:gsub('^"', ""):gsub('"$', "")) end
+        end
+        return t
+    end
     env.list = { Set = function(group, key, val)
         R.lists[group] = R.lists[group] or {}
         R.lists[group][key] = val

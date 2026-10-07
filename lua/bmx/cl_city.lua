@@ -526,7 +526,7 @@ local function makeFonts()
     fontsMade = true
     surface.CreateFont("BMXCitySign", { font = "Coolvetica", size = 120, weight = 800, antialias = true })
     surface.CreateFont("BMXCitySignSub", { font = "Roboto", size = 40, weight = 700, antialias = true })
-    for _, sz in ipairs({ 120, 100, 84, 70, 58, 48 }) do
+    for _, sz in ipairs({ 120, 100, 84, 70, 58, 48, 40, 34 }) do
         surface.CreateFont("BMXCityAd" .. sz, { font = "Impact", size = sz, weight = 500, antialias = true })
     end
     for _, sz in ipairs({ 44, 36, 30 }) do
@@ -537,7 +537,7 @@ local function makeFonts()
     for _, sz in ipairs({ 110, 90, 72, 60, 48 }) do
         surface.CreateFont("BMXCityNeon" .. sz, { font = "Coolvetica", size = sz, weight = 500, antialias = true })
     end
-    for _, sz in ipairs({ 110, 90, 72, 60, 48 }) do
+    for _, sz in ipairs({ 110, 90, 72, 60, 48, 40, 34 }) do
         surface.CreateFont("BMXCitySerif" .. sz, { font = "Georgia", size = sz, weight = 700, antialias = true })
     end
     for _, sz in ipairs({ 40, 32, 26, 22, 18 }) do
@@ -744,7 +744,20 @@ function STYLES.classic(s, pw, ph, pic)
         surface.SetDrawColor(accent) surface.DrawRect(cx - rw / 2, -ph * 0.36, rw, 40)
         draw.SimpleText(rib, fit("BMXCitySerifSub", { 32, 26, 22 }, rib, rw - 20), cx, -ph * 0.36 + 20, paper, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
-    draw.SimpleText(s.text, fit("BMXCitySerif", { 110, 90, 72, 60, 48 }, s.text, room), cx, -ph * 0.1, ink, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    -- a title too long for one line at a readable size goes on two
+    local sizes = { 110, 90, 72, 60, 48, 40, 34 }
+    local f1 = fit("BMXCitySerif", sizes, s.text, room)
+    surface.SetFont(f1)
+    if surface.GetTextSize(s.text) > room or f1 == "BMXCitySerif34" then
+        local words = string.Explode(" ", s.text)
+        local half = math.ceil(#words / 2)
+        local l1, l2 = table.concat(words, " ", 1, half), table.concat(words, " ", half + 1)
+        local f2 = fit("BMXCitySerif", { 60, 48, 40, 34 }, #l1 > #l2 and l1 or l2, room)
+        draw.SimpleText(l1, f2, cx, -ph * 0.17, ink, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.SimpleText(l2, f2, cx, -ph * 0.04, ink, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    else
+        draw.SimpleText(s.text, f1, cx, -ph * 0.1, ink, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
     surface.SetDrawColor(ink) surface.DrawRect(cx - room * 0.3, ph * 0.04, room * 0.6, 3)
     if s.sub then draw.SimpleText(s.sub, fit("BMXCitySerifSub", { 40, 32, 26 }, s.sub, room), cx, ph * 0.15, accent, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER) end
     if s.fine then draw.SimpleText(s.fine, fit("BMXCitySerifSub", { 26, 22, 18 }, s.fine, room), cx, ph * 0.33, Color(ink.r, ink.g, ink.b, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER) end
@@ -771,25 +784,31 @@ function STYLES.tv(s, pw, ph, pic)
     local bar, tag = col(s.band, { 14, 40, 120 }), col(s.burstColor, { 210, 20, 30 })
     frame(pw, ph, "bezel")
     gradient(-pw / 2, -ph / 2, pw, ph, col(s.bg, { 30, 50, 110 }), col(s.bg2, { 8, 12, 40 }))
-    -- the shot fills the picture; scanlines over it
-    local psz = ph
-    photo(pic, pw / 2 - psz, -ph / 2, psz)
-    surface.SetDrawColor(0, 0, 0, 40)
+    -- the shot, framed on the right like the picture-in-picture box
+    local psz = ph * 0.66
+    local px, py = pw / 2 - psz - 30, -ph / 2 + 30
+    if pic then
+        photo(pic, px, py, psz)
+        surface.SetDrawColor(255, 255, 255, 230) surface.DrawOutlinedRect(px - 4, py - 4, psz + 8, psz + 8, 4)
+    end
+    surface.SetDrawColor(0, 0, 0, 34)
     for y = -ph / 2, ph / 2, 6 do surface.DrawRect(-pw / 2, y, pw, 2) end
     -- LIVE bug
+    local live = s.burst and s.burst:gsub("\n", " ") or "LIVE"
     surface.SetDrawColor(tag) surface.DrawRect(-pw / 2 + 24, -ph / 2 + 22, 120, 46)
-    draw.SimpleText(s.burst and s.burst:gsub("\n", " ") or "LIVE", fit("BMXCityAdSub", { 36, 30, 24 }, s.burst and s.burst:gsub("\n", " ") or "LIVE", 110),
-        -pw / 2 + 84, -ph / 2 + 45, WHITE, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    -- lower third: BREAKING tag, headline bar, ticker
-    local ly = ph * 0.08
+    draw.SimpleText(live, fit("BMXCityAdSub", { 36, 30, 24 }, live, 110), -pw / 2 + 84, -ph / 2 + 45, WHITE, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    -- lower third, left of the picture: BREAKING tag, headline bar, tagline
+    local lw = (pic and px - 20 or pw / 2 - 24) - (-pw / 2 + 24)
+    local ly = -ph * 0.1
     surface.SetDrawColor(tag) surface.DrawRect(-pw / 2 + 24, ly - 40, 200, 40)
     draw.SimpleText("BREAKING", "BMXCityAdSub30", -pw / 2 + 124, ly - 20, WHITE, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    surface.SetDrawColor(255, 255, 255, 240) surface.DrawRect(-pw / 2 + 24, ly, pw - 48, 96)
-    draw.SimpleText(s.text, fit("BMXCityAd", { 84, 70, 58 }, s.text, pw - 80), -pw / 2 + 40, ly + 48, bar, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-    surface.SetDrawColor(bar) surface.DrawRect(-pw / 2 + 24, ly + 96, pw - 48, 56)
-    if s.sub then draw.SimpleText(s.sub, fit("BMXCityAdSub", { 36, 30, 24 }, s.sub, pw - 80), -pw / 2 + 40, ly + 124, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    surface.SetDrawColor(255, 255, 255, 240) surface.DrawRect(-pw / 2 + 24, ly, lw, 96)
+    draw.SimpleText(s.text, fit("BMXCityAd", { 84, 70, 58, 48, 40 }, s.text, lw - 32), -pw / 2 + 40, ly + 48, bar, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    surface.SetDrawColor(bar) surface.DrawRect(-pw / 2 + 24, ly + 96, lw, 56)
+    if s.sub then draw.SimpleText(s.sub, fit("BMXCityAdSub", { 36, 30, 24, 20 }, s.sub, lw - 32), -pw / 2 + 40, ly + 124, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    -- the ticker along the bottom
     surface.SetDrawColor(10, 10, 14, 255) surface.DrawRect(-pw / 2, ph / 2 - 40, pw, 40)
-    if s.fine then draw.SimpleText(s.fine .. "   *   " .. s.fine, "BMXCityAdBrand", -pw / 2 + 20, ph / 2 - 20, Color(255, 220, 60), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    if s.fine then draw.SimpleText("*  " .. s.fine .. "  *", "BMXCityAdBrand", -pw / 2 + 20, ph / 2 - 20, Color(255, 220, 60), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
 end
 
 function STYLES.sale(s, pw, ph, pic)
@@ -819,7 +838,7 @@ function STYLES.sale(s, pw, ph, pic)
         surface.DrawPoly({ { x = -w / 2, y = 0 }, { x = -w / 2 + h / 2, y = -h / 2 }, { x = w / 2, y = -h / 2 }, { x = w / 2, y = h / 2 }, { x = -w / 2 + h / 2, y = h / 2 } })
         surface.SetDrawColor(bg) surface.DrawPoly(disc(-w / 2 + h * 0.42, 0, h * 0.1, 12))
         local price = s.price or "$9.99"
-        draw.SimpleText(price, fit("BMXCityAd", { 84, 70, 58, 48 }, price, w * 0.62), w * 0.1, 0, WHITE, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.SimpleText(price, fit("BMXCityAd", { 84, 70, 58, 48, 40, 34 }, price, w * 0.58), w * 0.12, 0, WHITE, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end)
 end
 
@@ -835,8 +854,11 @@ function STYLES.split(s, pw, ph, pic)
     local x0 = -pw / 2 + pw * 0.04
     local room = pw * 0.5
     draw.SimpleTextOutlined(s.text, fit("BMXCityAd", { 120, 100, 84, 70, 58 }, s.text, room + pw * 0.08), x0, -ph * 0.2, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 5, INK)
-    if s.sub then draw.SimpleTextOutlined(s.sub, fit("BMXCityAdSub", { 40, 34, 28, 24 }, s.sub, room), x0, ph * 0.08, col(s.subColor, { 255, 255, 200 }), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 3, INK) end
-    if s.fine then draw.SimpleText(s.fine, fit("BMXCityAdSub", { 24, 20, 18 }, s.fine, room), x0, ph * 0.34, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    -- the diagonal runs from x = pw*0.05 at the top to -pw*0.12 at the
+    -- bottom: a line at height y has until there, less a margin
+    local function until_(y) return (pw * 0.05 + (-pw * 0.17) * ((y + ph / 2) / ph)) - x0 - 24 end
+    if s.sub then draw.SimpleTextOutlined(s.sub, fit("BMXCityAdSub", { 40, 34, 28, 24, 20 }, s.sub, until_(ph * 0.14)), x0, ph * 0.08, col(s.subColor, { 255, 255, 200 }), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 3, INK) end
+    if s.fine then draw.SimpleText(s.fine, fit("BMXCityAdSub", { 24, 20, 18 }, s.fine, until_(ph * 0.4)), x0, ph * 0.34, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
     if pic then
         local psz = ph * 0.7
         tilted(pw / 2 - psz * 0.72, 0, -6, function()

@@ -270,6 +270,8 @@ local TOP_LEVEL = {
     physics = true,
     -- the bikes' extras: gears (G09), a score multiplier (G09), the bar shape (G09)
     gears = true, scoreMult = true, barStyle = true,
+    -- the built-in detailed model to draw: "bmx" (cl_bikegeo.lua), or nil for the simple bike
+    look = true,
     -- a box small props ride in (G12, sv_basket.lua)
     basket = true,
     -- appearance and mount points (as RegisterBike always took them)

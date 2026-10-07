@@ -23,6 +23,7 @@ SS = 2  # supersampling
 # ---- load ----
 buckets = []
 steerAxis = None
+kscale = 1.0
 with open(src) as f:
     lines = f.read().split('\n')
 i = 0
@@ -31,6 +32,7 @@ while i < len(lines):
     if l.startswith('L '):
         p = l.split()
         steerAxis = np.array([float(p[2]), float(p[3]), float(p[4])])
+        kscale = float(p[1])
         i += 1
     elif l.startswith('B '):
         _, g, mat, det, n = l.split()
@@ -43,6 +45,7 @@ while i < len(lines):
 
 FR = dict(bb=np.array([-4.5, 0, 2.5]), headB=np.array([14.5, 0, 10.5]),
           rear=np.array([-19.5, 0, 0]), front=np.array([19.5, 0, 0]))
+FR = {k: v * kscale for k, v in FR.items()}    # pivots scale with the bike
 
 def rotm(axis, ang):
     a = axis / np.linalg.norm(axis)
@@ -72,8 +75,8 @@ def xf(g):
     if g == 'pedal':
         out = []
         for s, d in ((-1, 1), (1, -1)):
-            tip = FR['bb'] + Ry(crank) @ np.array([6.8 * d, 0, 0])
-            out.append((np.eye(3), tip + np.array([0, (3.4 + 1.8) * s, 0])))
+            tip = FR['bb'] + Ry(crank) @ np.array([6.8 * d * kscale, 0, 0])
+            out.append((np.eye(3), tip + np.array([0, (3.4 + 1.8) * s * kscale, 0])))
         return out
     return [(np.eye(3), np.zeros(3))]
 
@@ -87,6 +90,9 @@ MAT = {  # base colour, spec strength, spec exponent, reflectivity
     'gum':     ((0.55, 0.38, 0.22), 0.08, 10, 0.0),
     'seat':    ((0.04, 0.04, 0.045), 0.25, 18, 0.02),
     'plastic': ((0.06, 0.06, 0.065), 0.2, 16, 0.02),
+    # textured in the game; a flat stand-in here
+    'decal':    ((0.9, 0.9, 0.9), 0.5, 60, 0.1),
+    'tyretext': ((0.3, 0.22, 0.14), 0.05, 10, 0.0),
 }
 names = list(MAT.keys())
 
@@ -176,7 +182,8 @@ def raster(T, w, h, proj, attrs=True):
     return zb, ib, bw
 
 # ground quad under the tyres
-gz = -10.0
+# the ground: under the tyres, whatever their size
+gz = -max(np.sqrt(a[:, 0] ** 2 + a[:, 2] ** 2).max() for g, m, d, a in buckets if g == 'wheelR')
 G = np.array([[[-80, -60, gz], [80, -60, gz], [80, 60, gz]], [[-80, -60, gz], [80, 60, gz], [-80, 60, gz]]], float)
 GN = np.tile(np.array([0, 0, 1.0]), (2, 3, 1))
 ALL = np.concatenate([T, G]); ALLN = np.concatenate([TN, GN]); ALLM = np.concatenate([TM, [-1, -1]])

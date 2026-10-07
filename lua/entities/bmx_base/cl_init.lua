@@ -788,14 +788,16 @@ function ENT:Draw()
     local rPosD, rearAxleD = Wh(rPos), Wv(rearAxle)
     local fPosD, frontAxleD = Bs(fPos), Bv(frontAxle)
 
-    -- The detailed model, once it is built (bmx_bike_model). bmx_debug draws
+    -- The detailed model, once it is built (bmx_bike_model), for the bikes
+    -- whose registry entry asks for it (`look = "bmx"`: the BMX, the cruiser
+    -- and the mini; a road bike drawn as a BMX would be wrong). bmx_debug draws
     -- the simple bike instead: its red no-ground tyres and part axes are the
     -- debugging aid.
     local model = not debug and not bike.hasModel and not bike.wheelModel
-        and (bike.family or "bike") == "bike"
+        and bike.look == "bmx"
         and BMX.BikeMesh and BMX.BikeMesh.Get(k, WC.radius)
     if model then
-        self.crankAngle = rSpin / C.Drive.gearRatio
+        self.crankAngle = rSpin / BMX.GearRatio(self, C)
         self:DrawDetailed(model, {
             k = k, lift0 = lift0, fwd = fwd, up = up, right = right,
             bodyRoll = bodyRoll, bodyC = bodyC, fPos = fPos, rPos = rPos,

@@ -73,17 +73,29 @@ end
 BMX.RiderPoses.heelclicker = { rFoot = Vector(-17, -3, 24), lFoot = Vector(-17, 3, 24), spineLean = 10 }
 BMX.RiderPoses.cliffhanger = { rFoot = Vector(12, -6, 33), lFoot = Vector(12, 6, 33), spineLean = -12 }
 
+-- THE ATTACK POSITION, seated: torso forward over the tank, head up, elbows up and
+-- out, knees in against the tank, both legs alike (there are no pedals: the BMX's
+-- pedalling swing at a still crank is asymmetric, one knee open and one closed).
+local MOTO = { lean = 14, leanFast = 8, thigh = -10, calf = 18 }
+BMX.MotoPose = MOTO
 if BMX.PoseSets and BMX.PoseSets.moto then
     BMX.PoseSets.moto.rider = function(s)
         local t = {}
         for k, v in pairs(s) do t[k] = v end
         t.crank = 0                      -- nothing pedals
         local pose = BMX.RiderPose(t)
-        local spine = pose.spine.y + 8   -- sat forward, over the tank
+        local frac = math.Clamp((s.speed or 0) / math.max(s.topSpeed or 1, 1), 0, 1)
+        local spine = pose.spine.y + MOTO.lean + MOTO.leanFast * frac
         pose.spine = Angle(pose.spine.p, spine, pose.spine.r)
-        pose.head = Angle(0, -spine * 0.7, 0)
+        pose.head = Angle(0, -spine * 0.85, 0)
+        -- the legs alike, folded to the pegs; the hop/landing crouch still adds to both
+        local crouch = (s.hop or 0) * 24
+        local th, ca = MOTO.thigh - crouch, MOTO.calf + crouch * 1.4
+        pose.rThigh, pose.lThigh = Angle(0, th, 0), Angle(0, th, 0)
+        pose.rCalf, pose.lCalf = Angle(0, ca, 0), Angle(0, ca, 0)
         return pose
     end
+    BMX.PoseSets.moto.poles = { arm = Vector(-0.15, 1, 0.45), leg = Vector(1, -0.3, 0.25) }
     BMX.PoseSets.moto.poses = BMX.RiderPoses
 end
 

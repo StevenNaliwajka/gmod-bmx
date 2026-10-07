@@ -433,9 +433,19 @@ local function spineReach(ply, targets)
     refresh(ply)
 end
 
+-- WHICH WAY THE ELBOWS AND KNEES POINT, in the bike's own frame: x forward, y out to
+-- the limb's own side, z up. A cyclist's elbows hang out, down and back and the knees
+-- go forward; a motocross rider's elbows are UP and out and the knees grip the tank.
+-- A pose set may bring its own (`poles = { arm = ..., leg = ... }`).
+local ARM_POLE = Vector(-0.3, 1, -0.6)
+local LEG_POLE = Vector(1, 0, 0.2)
+BMX.RiderPoles = { arm = ARM_POLE, leg = LEG_POLE }
+
 function BMX.SolveRiderIK(ply, targets, bike)
     ply.bmxIK = ply.bmxIK or {}
     local fwd, up, right = bike:GetForward(), bike:GetUp(), bike:GetRight()
+    local set = BMX.PoseSetFor and BMX.PoseSetFor(bike)
+    local poles = set and set.poles or {}
     for _, limb in ipairs(LIMBS) do
         local T = targets[limb.target]
         -- A hand takes the point on its grip nearest its shoulder.
@@ -450,9 +460,9 @@ function BMX.SolveRiderIK(ply, targets, bike)
             targets[limb.target .. "Held"] = T
         end
         if T then
-            -- Knees forward and up; elbows out, down and back.
-            local pole = limb.leg and (fwd + up * 0.2)
-                or (right * limb.side - up * 0.6 - fwd * 0.3)
+            -- Knees forward and up; elbows out, down and back (or the set's own).
+            local pp = limb.leg and (poles.leg or LEG_POLE) or (poles.arm or ARM_POLE)
+            local pole = fwd * pp.x + right * (pp.y * limb.side) + up * pp.z
             solveLimb(ply, limb, T, pole:GetNormalized())
 
             local s = limb.side == 1 and "R" or "L"

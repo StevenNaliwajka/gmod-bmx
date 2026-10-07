@@ -840,14 +840,3 @@ T.test("overlay: a trick registered later is listed with no change to the overla
     T.eq(found.input, "KICK", "with its input")
 end)
 
-T.test("bot: Tailwhip, Barspin and Superman are tricks the bot knows", function()
-    local B, sv = realm()
-    local Bot = sv.env.BMX.Bot
-    for _, n in ipairs({ "Tailwhip", "Barspin", "Superman", "Superman Backflip" }) do
-        T.ok(Bot.Tricks[n], n .. " has a routine")
-        local listed = false
-        for _, m in ipairs(Bot.TrickList) do if m == n then listed = true end end
-        T.ok(listed, n .. " is in the show")
-    end
-    T.ok(sv.world, "world")
-end)

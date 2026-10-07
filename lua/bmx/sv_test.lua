@@ -90,11 +90,11 @@ function T.Variant(name, bike, opts)
     }, base.fn)
 end
 
--- A solid convex shape for a case to ride into, as a bmx_city_solid carrying
--- hulls (entities/bmx_city_solid/shared.lua, CustomHulls). Each hull is a list
+-- A solid convex shape for a case to ride into, as a bmx_test_solid carrying
+-- hulls (entities/bmx_test_solid/shared.lua, CustomHulls). Each hull is a list
 -- of world-space points. Removed with the case, pass or fail.
 function T.Solid(ctx, hulls)
-    local e = ents.Create("bmx_city_solid")
+    local e = ents.Create("bmx_test_solid")
     if not IsValid(e) then return nil end
     local lo, hi = Vector(math.huge, math.huge, math.huge), Vector(-math.huge, -math.huge, -math.huge)
     for _, h in ipairs(hulls) do

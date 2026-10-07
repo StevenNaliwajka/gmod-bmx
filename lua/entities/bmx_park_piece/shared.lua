@@ -8,7 +8,7 @@
     player-movement prediction, and cl_park.lua draws the same build's faces.
     No model file, no vertex ever sent.
 
-    Generalises bmx_city_solid, which does the same for a name instead of a
+    Generalises bmx_city_solid (the petopia_bmx_fall map's city), which does the same for a name instead of a
     parameter list. Unlike the city's, a piece is furniture: it can be
     physgunned and unfrozen, it dupes (the datatable is saved and restored),
     and it is FROZEN by default, which is what keeps a whole park cheap: a

@@ -7,7 +7,15 @@ a Workshop update goes out only when the owner says so.
 
 ## 1.1.0 -- on `main` and the test server, not yet on the Workshop
 
-**New**
+**Split into three pieces.** This addon is now only the vehicle mod. The
+games (SKATE, Trick Attack, Combo Mambo), personal bests and the leaderboard,
+and the trick bot moved to the **BMX (Mode)** gamemode (root/gmod-bmx-mode);
+the city around the park moved to the **petopia_bmx_fall** map
+(root/petopia_bmx_fall). None of them was ever on the Workshop, so nothing a
+subscriber had is taken away. New for them: `BMX.AddPrivilege`, and the
+offline suite can boot another repository's files on top of the addon.
+
+**New** (the bot below now ships with BMX (Mode))
 
 - **/bike**: type it in chat (or `!bike`, `/bmx`, or `bmx_menu` in the
   console) for a window listing every bike and park piece; a click spawns it

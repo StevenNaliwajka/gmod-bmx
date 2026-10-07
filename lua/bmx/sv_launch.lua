@@ -6,7 +6,7 @@
     An air trick needs more air than a bunny hop gives. A flip is a full turn
     of the bike, and the air controls (C.Air) spin it at most ~18 rad/s tucked,
     which takes about 0.9 s of flight; a hop off flat ground is ~0.75 s. So a
-    rider -- or the bot (sv_bot.lua) -- needs a LAUNCH: a slope that ends in a
+    rider -- or BMX (Mode)'s trick bot (its sv_bot.lua) -- needs a LAUNCH: a slope that ends in a
     lip, ridden at speed and hopped off the top.
 
     BMX.FindLaunch looks for one in the world as it is, by tracing the ground

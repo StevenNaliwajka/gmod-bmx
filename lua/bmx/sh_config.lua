@@ -669,6 +669,15 @@ C.Air = {
     landAssistMax = math.rad(60),
     landRollKp = 40,
     landRollKd = 7,
+    -- ...and pitch too, with the same reasoning. Rolling off a ledge the
+    -- front wheel drops while the rear is still on the edge, so the bike
+    -- leaves nose-down and turning; 12/3 left a 113-unit drop at 230 u/s
+    -- landing 32 degrees nose-down on the front wheel (live server), and the
+    -- rear then slapped down and the bike rocked front to back. Matching the
+    -- surface firmly once it is in sight puts both wheels down together.
+    -- Never mid-flip, and never against a held pitch key (see AirControl).
+    landPitchKp = 40,
+    landPitchKd = 9,
 
     -- Both wheels must be off the ground for this long before air mode engages,
     -- so a bump in the road is not a "trick".
@@ -787,6 +796,11 @@ C.Crash = {
     -- and met the ground on the wheel boxes, whose corner levered a
     -- nose-down landing end over end. An arcade assist, and it says so.
     soakSpeed = 250,
+    -- ...and NOT SPRINGING BACK UP. For reboundWindow after a landing, upward
+    -- speed along the ground's normal past reboundSpeed is soaked too (see
+    -- sv_physics.lua, 4c): the bounce that rocked a landed bike front to back.
+    reboundSpeed  = 15,
+    reboundWindow = 0.4,
     -- ALL of the pitch spin too. At 0.75 a flip landed on a tyre (pitch 21,
     -- live server) kept a quarter of its rotation and went on over the front
     -- onto the bars: sticking a landing on the wheels ends the trick.

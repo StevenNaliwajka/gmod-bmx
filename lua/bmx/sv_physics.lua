@@ -447,6 +447,27 @@ function BMX.PhysicsStep(ent, phys, dt)
     end
 
     ----------------------------------------------------------------------
+    -- 4c. NO BOUNCE OFF A LANDING (Crash.reboundSpeed). Just landed, with a
+    -- rider aboard and a wheel down: what the springs give back pushing the
+    -- bike up off the ground, past reboundSpeed along the ground's normal, is
+    -- taken off at the mass centre -- the rider's legs soak the landing and do
+    -- not spring it back. Without it a 113-unit drop on the live park came
+    -- back up at 56 u/s, the rear wheel left the ground and then the front: a
+    -- see-saw on the two tyres. Along the normal, so riding on up a slope is
+    -- untouched; never just after a hop (the pop is the rider meaning it).
+    ----------------------------------------------------------------------
+    local CR = C.Crash
+    if hasDriver and anyDown and CR.reboundSpeed and (st.landedAt or -1) + (CR.reboundWindow or 0) > CurTime()
+        and CurTime() - (st.hopAt or -1) > 0.3 and not ent.hopHeld then
+        local n = st.groundNormal or vector_up
+        local v = phys:GetVelocity()
+        local vn = v:Dot(n)
+        if vn > CR.reboundSpeed then
+            phys:ApplyForceCenter(n * ((CR.reboundSpeed - vn) * phys:GetMass()))
+        end
+    end
+
+    ----------------------------------------------------------------------
     -- Skid state, for the client's tyre sound. A tyre is skidding when it is
     -- ON the ground, at the limit of its friction circle, AND actually sliding
     -- -- saturation alone is not enough, because a wheel sitting still under a
@@ -750,6 +771,7 @@ function BMX.PhysicsStep(ent, phys, dt)
             end
 
             ent.hopReady = CurTime() + H.cooldown
+            st.hopAt = CurTime()
             local H = BMX.Sounds.hop
             if BMX.SoundsOn() then ent:EmitSound(BMX.SoundFile("hop"), H.level, 110, H.vol) end
         end

@@ -311,7 +311,13 @@ function BMX.AirControl(ent, phys, cfg, dt, inp, st)
         ------------------------------------------------------------------
         if inp.pitch == 0 and abs(st.spinPitch or 0) < math.pi * 0.5 then
             local pitch = select(2, BMX.Attitude(ent, ref))
-            aPitch = aPitch - A.pitchLevelKp * pitch - A.pitchLevelKd * wPitch
+            if st.landRef and A.landPitchKp then
+                -- A surface is coming: match it as firmly as roll is.
+                local k = A.autoLevel / 1.6
+                aPitch = aPitch - (A.landPitchKp * pitch + A.landPitchKd * wPitch) * k
+            else
+                aPitch = aPitch - A.pitchLevelKp * pitch - A.pitchLevelKd * wPitch
+            end
         end
     end
 

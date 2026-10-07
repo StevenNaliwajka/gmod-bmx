@@ -90,3 +90,60 @@ T.test("landing: a barrel roll under way is not wrenched back when the key is le
     T.ok(rate0 * rate1 > 0, "still turning the same way after letting go")
     T.ok(math.abs(bike.st.spinRoll) >= math.abs(before), "the roll carried on, not back")
 end)
+
+--[[--------------------------------------------------------------------------
+    NO SEE-SAW OFF A LEDGE. A rider on the live server: "when a user goes off
+    a ledge and lands the bike is a bit bouncy ... it can almost bounce back
+    and forth on the front and back wheels". Measured there off a 113-unit
+    ledge at 230 u/s: 32 degrees nose-down onto the front wheel, the rear
+    slapping down 0.27 s later, then the whole bike back up at 56 u/s and
+    each wheel leaving the ground in turn. Now: the surface is matched in the
+    air (Air.landPitchKp) and the spring-back is soaked (Crash.reboundSpeed).
+----------------------------------------------------------------------------]]
+
+local function ledge(h, noseDown, speed)
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    F.scripted(sv, bike)
+    sv:run(0.3)
+    local z0 = bike:GetPos().z
+    F.place(bike, E.Vector(0, 0, z0 + h), E.Angle(noseDown, 0, 0))
+    bike:GetPhysicsObject():SetVelocity(E.Vector(speed, 0, 0))
+    bike:GetPhysicsObject():SetAngleVelocity(E.Vector(0, 0, 0))
+    bike.st.angVel, bike.st.prevF = E.Vector(0, 0, 0), nil
+    bike.st.grounded, bike.st.airMode = false, false
+    F.input(bike, {})
+    local fw, rw = F.wheels(bike)
+    sv:run(3, function() return fw.onGround or rw.onGround end)
+    local touch = bike:GetAngles().p
+    return sv, bike, fw, rw, touch
+end
+
+T.test("landing: off a ledge nose-down, it comes down on both wheels and does not see-saw", function()
+    for _, c in ipairs({ { 60, 20 }, { 113, 25 }, { 113, 40 }, { 180, 20 } }) do
+        local sv, bike, fw, rw, touch = ledge(c[1], c[2], 230)
+        local maxUp, lifts, lf, lr = 0, 0, true, true
+        sv:run(1.2, function()
+            maxUp = math.max(maxUp, bike:GetPhysicsObject():GetVelocity().z)
+            if lf and not fw.onGround then lifts = lifts + 1 end
+            if lr and not rw.onGround then lifts = lifts + 1 end
+            lf, lr = fw.onGround, rw.onGround
+        end)
+        local label = string.format("%d-unit ledge, leaving %d deg nose-down", c[1], c[2])
+        T.between(math.abs(touch), 0, 15, label .. ": nose-down at touchdown, deg")
+        T.eq(lifts, 0, label .. ": a wheel left the ground again after touchdown")
+        T.between(maxUp, -1e9, 30, label .. ": fastest back up after touchdown, u/s (live: 56)")
+    end
+end)
+
+T.test("landing: a bunny hop straight after a landing still pops", function()
+    local sv, bike, fw, rw = ledge(60, 0, 200)
+    sv:run(0.1)
+    bike.hopHeld, bike.hopCharge = true, 0
+    sv:run(0.45)
+    bike.hopRelease = true
+    local peak = 0
+    sv:run(0.8, function() peak = math.max(peak, bike:GetPhysicsObject():GetVelocity().z) end)
+    T.between(peak, 120, 1e9, "the pop's upward speed, u/s (the rebound soak must not eat it)")
+end)

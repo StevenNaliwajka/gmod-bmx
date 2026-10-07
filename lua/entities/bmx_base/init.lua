@@ -423,6 +423,7 @@ function ENT:OnLanded(tricks, front, rear)
     else
         -- Landed on the wheels: help it back up (Crash.recoverTime).
         self.st.recoverUntil = CurTime() + self:Cfg().Crash.recoverTime
+        self.st.landedAt = CurTime()
     end
 end
 

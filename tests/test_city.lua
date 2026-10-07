@@ -605,6 +605,8 @@ T.test("plants are drawn every frame they are in view, whatever the distance", f
     for kind, m in pairs(City._plantEnts) do
         if m then T.eq(m.lod, 0, kind .. " pinned to LOD 0") end
     end
+end)
+
 T.test("every ad sells something you can see: a product picture, never only an optional model", function()
     local City, L = city()
     local ads = 0

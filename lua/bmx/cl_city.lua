@@ -663,8 +663,10 @@ local function tilted(cx, cy, deg, fn)
     m:Translate(Vector(cx, cy, 0))
     m:Rotate(Angle(0, deg, 0))
     cam.PushModelMatrix(m, true)
-        fn()
+        -- always popped: a matrix left pushed skews every frame after it
+        local ok, err = pcall(fn)
     cam.PopModelMatrix()
+    if not ok then error(err, 0) end
 end
 
 local function star(cx, cy, r, points, inner)

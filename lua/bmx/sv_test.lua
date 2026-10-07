@@ -106,6 +106,9 @@ function T.Solid(ctx, hulls)
     e.CustomHulls = hulls
     e:SetPos((lo + hi) * 0.5)
     e:Spawn()
+    -- Say so loudly if the engine built no body: a case then measures an
+    -- empty map and every number in it is about nothing (CI 2663).
+    ctx:ok(IsValid(e:GetPhysicsObject()), "the test geometry has a physics body")
     ctx.solids = ctx.solids or {}
     ctx.solids[#ctx.solids + 1] = e
     return e

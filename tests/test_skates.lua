@@ -459,7 +459,7 @@ T.test("skates equip: bmx_spawn skates and bmx_give_skates give the weapon, thro
     T.ok(not p4:HasWeapon("weapon_bmx_skates"), "BMX_CanSpawn can say no")
     -- No such bike, as before.
     local p5 = sv:player("Fifth")
-    sv:command("bmx_spawn", p5, "tandem")
+    sv:command("bmx_spawn", p5, "hovercraft")
     T.ok(p5._chat and p5._chat[#p5._chat]:find("no such bike", 1, true), "an unknown id is still an error")
 end)
 

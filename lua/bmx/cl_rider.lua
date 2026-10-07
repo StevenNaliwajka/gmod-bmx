@@ -568,6 +568,19 @@ BMX.PoseSets.upright.rider = function(s)
 end
 BMX.PoseSets.upright.poses = BMX.RiderPoses
 
+-- UNICYCLE (G13): sat straight on the saddle, the torso following the vehicle's pitch a
+-- little (a rider rocks forward as they pedal), arms out (the IK's: hands out to the
+-- sides, cl_oddbikes.lua), the legs pedalling in step with the wheel, as a fixed gear
+-- does. No style poses: there are no hands free to strike one with.
+BMX.PoseSets.unicycle.rider = function(s)
+    local pose = BMX.RiderPose(s)
+    local spine = pose.spine.y * 0.3
+    pose.spine = Angle(pose.spine.p, spine, pose.spine.r)
+    pose.head  = Angle(0, -spine * 0.7, 0)
+    return pose
+end
+BMX.PoseSets.unicycle.poses = {}
+
 local POSE_HANDS = { "rHand", "lHand" }
 local POSE_LIMBS = { "rHand", "lHand", "rFoot", "lFoot" }
 

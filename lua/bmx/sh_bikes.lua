@@ -409,6 +409,7 @@ registerDuplicator("bmx_base")
 -- A real model is a `model` line here plus frameOffset / frameAngles to line
 -- it up with the axle line. See docs/DESIGN.md, "Content".
 BMX.RegisterBike("stock", {
+    look        = "bmx",          -- the detailed BMX model (cl_bikegeo.lua)
     printName   = "BMX",
     description = "Street BMX with lean-driven handling.",
     colorIndex  = 1,            -- red; see BMX.Palette in sh_color.lua
@@ -435,6 +436,7 @@ BMX.RegisterBike("stock", {
 -- slower off the line: crankTorque is raised only far enough that it still
 -- climbs a funbox. Steadier, because a longer wheelbase is.
 BMX.RegisterBike("cruiser", {
+    look        = "bmx",          -- the detailed BMX model (cl_bikegeo.lua)
     printName   = "BMX Cruiser",
     description = "24-inch cruiser: longer, heavier and faster at the top end, slower off the line.",
     colorIndex  = 8,            -- blue
@@ -454,6 +456,7 @@ BMX.RegisterBike("cruiser", {
 -- 16-inch mini: short and light. Lower top speed (~270 u/s), quicker to turn,
 -- and a ridden mini is mostly a big rider on a small bike, which is the joke.
 BMX.RegisterBike("mini", {
+    look        = "bmx",          -- the detailed BMX model (cl_bikegeo.lua)
     printName   = "Mini BMX",
     description = "16-inch mini: short, light and twitchy, with a low top speed.",
     colorIndex  = 3,            -- yellow
@@ -584,6 +587,199 @@ BMX.RegisterBike("city", {
         Drive   = { maxCadence = 9.5, gearRatio = 2.0, crankTorque = 360000, dragArea = 0.0065 },
         Hop     = { popSpeed = 150 },
         Balance = { maxLean = math.rad(34) },
+    },
+})
+
+--------------------------------------------------------------------------
+-- THE UNICYCLE (G13): one 20-inch wheel, a fixed gear (the cranks ARE the wheel's
+-- axle: no freewheel, no brake, S pedals backwards) and nothing to hold it up but the
+-- rider. The `unicycle` balance mode (sv_unicycle.lua) balances it on two axes at
+-- once, with bmx_unicycle_assist (default 0.6) doing a share of the work.
+--
+--   wheelbase 0, one wheel at the origin   a one-wheeled vehicle: the hull is one wheel
+--                               box and the body (sh_util.lua, BMX.CollisionBoxes)
+--   mass 66, mass centre 20 up  a rider and a light frame, the weight a hand above the
+--                               hub; with the 10-unit wheel, the contact is 30 below it
+--   spring 15000, damper 650, loadShare 1   ONE wheel carries all of the weight, where a
+--                               bike's two carry half each: the spring is stiffer to match
+--                               (3 units of sag at 66 kg), and the rest height is derived
+--                               from the share (BMX.RestHeight)
+--   Drive gearRatio 1, maxCadence 15       direct drive: the top speed is the legs'
+--                               ceiling, 15 * 10 = 150 u/s (3.8 m/s, 13.7 km/h), which is
+--                               what a rider gets out of a 20-inch wheel
+--   crankTorque 120000          a tenth of a g of acceleration is what a unicycle does and
+--                               a good deal of what the pedals are FOR: the tyre force at
+--                               the patch is also the fore-and-aft balance's actuator
+--   Hop popSpeed 130, no kick   a pop straight up: no nose-up kick to roll into a manual
+--   Crash tipRoll 36, tipPitch 40 deg   falls over and throws the rider long before a
+--                               bike's 65 and 75: past ~32 the assist has let go anyway
+--   tricks uni_idle, uni_hop    no flips, no grinds: a rider who spins a unicycle in the
+--                               air is not what this vehicle is for
+BMX.RegisterVehicle({
+    id          = "unicycle",
+    family      = "bike",
+    printName   = "Unicycle",
+    description = "One wheel, a fixed gear and no brake. W / S pedal forward and back to stay under yourself, A / D lean, the mouse twists you round. bmx_unicycle_assist sets how much is done for you. Tricks: idle (rock in place) and hop. Falls are ragdolls.",
+    colorIndex  = 6,
+    wheels = { { pos = Vector(0, 0, 0), drive = true, steer = false, name = "wheel" } },
+    balance = "unicycle",
+    drive   = { kind = "fixed", reverse = true },
+    input   = "unicycle",
+    pose    = "unicycle",
+    tricks  = { "uni_idle", "uni_hop" },
+    grindPoints = false,
+    drawer  = "unicycle",
+    physics = {
+        Chassis = { mass = 66, hullMin = Vector(-4, -4, 2), hullMax = Vector(4, 4, 38),
+                    massCenterExpected = Vector(0, 0, 20), seatOffset = Vector(0, 0, 19),
+                    barHullCentre = false, pegHullHalfWidth = false },
+        Wheel   = { radius = 10, wheelbase = 0, restLength = 8, spring = 15000, damper = 650, loadShare = 1,
+                    grip = 1.4 },
+        Drive   = { gearRatio = 1, maxCadence = 15, crankTorque = 120000, dragArea = 0.0045 },
+        Hop     = { popSpeed = 130, forwardBias = 0, pitchImpulse = 0 },
+        Crash   = { tipRoll = math.rad(36), tipPitch = math.rad(40) },
+    },
+})
+
+--------------------------------------------------------------------------
+-- THE PENNY-FARTHING (G13): a 26-unit front wheel with the cranks on its hub
+-- (`front-direct`: the front wheel is the drive wheel), a 6-unit wheel at the back, and
+-- a rider sat a long way up. The `pennyfarthing` balance is the single-track one with
+-- the header on its pitch (sv_penny.lua): hard on the front brake at speed and the whole
+-- thing goes over the bars. That is the physics, not a script: the mass centre is 62 units
+-- off the ground and 18 behind the front patch, which a brake harder than ~0.3 g
+-- (g * 18 / 62) takes the back wheel off with.
+--
+--   Wheel radius 26, rearRadius 6   the big wheel and the small one. The rear axle is
+--                               radius - rearRadius LOWER on the chassis (-20): the
+--                               wheels' registration gives it, and the hull is built
+--                               from the same two numbers (BMX.CollisionBoxes)
+--   wheelbase 44, loadShare 0.75   the axles' distance and the front's share of the weight:
+--                               the rider is over the big wheel, which carries about three
+--                               quarters of it (rest height is derived from the share)
+--   mass centre (4, 0, 36)      36 above the front axle = 62 above the ground, and 18
+--                               behind the front patch (the header's lever)
+--   seat (8, 0, 33)             the saddle, behind the top of the big wheel
+--   Drive gearRatio 1, maxCadence 9, crankTorque 340000   direct drive: a stroke is a
+--                               wheel turn. The legs' ceiling is 9 * 26 = 234 u/s
+--                               (21 km/h), a penny-farthing's top gear
+--   frontBrake 700000           the spoon brake: ~0.5 g at the tyre, so a full pull is
+--                               over the 0.3 g the header needs and half a pull is not
+--   inertia 600                 the big wheel's flywheel; the small one's is that times
+--                               (6/26)^2 (BMX.Wheel:WheelConfig), as a disc's goes
+--   Balance maxLean 28, maxSteer 30 deg   it leans less than a BMX and steers less: it
+--                               is a big wheel under a high rider
+--   tricks none                 the header is the trick
+BMX.RegisterVehicle({
+    id          = "penny",
+    family      = "bike",
+    printName   = "Penny-Farthing",
+    description = "A 26-unit front wheel with the pedals on its hub, a tiny one behind, the rider a long way up. It leans and steers like a bike, and a hard front brake at speed takes you over the bars: a header.",
+    colorIndex  = 7,
+    wheels = function(cfg)
+        local half = cfg.Wheel.wheelbase * 0.5
+        local rr = cfg.Wheel.rearRadius or 6
+        return {
+            { pos = Vector( half, 0, 0), steer = "fork", drive = true,  name = "front" },
+            { pos = Vector(-half, 0, -(cfg.Wheel.radius - rr)), radius = rr, steer = false, drive = false, name = "rear" },
+        }
+    end,
+    balance = "pennyfarthing",
+    drive   = { kind = "front-direct" },
+    input   = "penny",
+    pose    = "upright",
+    tricks  = {},
+    grindPoints = false,
+    drawer  = "pennyfarthing",
+    physics = {
+        Chassis = { mass = 84, hullMin = Vector(-6, -4, 14), hullMax = Vector(18, 4, 62),
+                    massCenterExpected = Vector(4, 0, 36), seatOffset = Vector(8, 0, 33),
+                    barHullCentre = false, pegHullHalfWidth = false },
+        Wheel   = { radius = 26, rearRadius = 6, wheelbase = 44, restLength = 8, spring = 16000, damper = 800,
+                    loadShare = 0.75, inertia = 600, grip = 1.3, rollingResistance = 0.010 },
+        Drive   = { gearRatio = 1, maxCadence = 11, crankTorque = 340000, frontBrake = 700000, dragArea = 0.0065 },
+        Balance = { maxLean = math.rad(28), maxSteer = math.rad(30) },
+        Hop     = { popSpeed = 70 },
+    },
+})
+
+--------------------------------------------------------------------------
+-- THE TANDEM (G13): a long frame, two saddles, two pairs of legs. The second saddle is
+-- G11's second seat (E at the back of an occupied tandem) with `pedals = true`: the
+-- stoker's W adds their throttle to the captain's, and the two torques sum
+-- (sv_tandem.lua). The front rider steers: a passenger's keys are not read for anything
+-- but the pedalling.
+--
+--   wheelbase 70                a long frame, x 70/39 = 1.8: slow to turn, steady at speed
+--   Wheel radius 13, spring 12000   28-inch wheels, and the spring for a bike that will carry
+--                               two (about 190 kg with the stoker)
+--   mass 118, stoker 0.6        the captain, the longer frame and its second set of
+--                               cranks; the stoker adds 0.6 of that (71 kg), 1.6x in all
+--   seats                       the captain at x = +9 over the front half, the stoker at
+--                               x = -18, 27 units behind: both over the frame's midpoint
+--   Drive gearRatio 2.4, maxCadence 11.5   three quarters of a road bike's gearing, for the
+--                               weight: the top speed is the legs' ceiling, 11.5 * 2.4 * 13
+--                               = 359 u/s, whoever is pedalling, and a tandem with both is
+--                               quicker to GET there
+--   tricks none                 it is a long bike with two people on it
+BMX.RegisterBike("tandem", {
+    printName   = "Tandem",
+    description = "A long two-seat bike. The captain (E) steers and brakes; get on behind them with E at the back for the second seat: the stoker's W adds their pedalling to the captain's, and the torques sum.",
+    colorIndex  = 8,
+    pose        = "upright",
+    input       = "bike_rearonly",
+    tricks      = {},
+    grindPoints = false,
+    drawer      = "tandem",
+    seats = {
+        rider = { pedals = true },
+        pegs  = { offset = Vector(-18, 0, 22), massFactor = 0.6, pedals = true },
+    },
+    physics = {
+        Chassis = { mass = 118, hullMin = Vector(-30, -4, 2), hullMax = Vector(24, 4, 38),
+                    massCenterExpected = Vector(-3, 0, 20), seatOffset = Vector(9, 0, 22) },
+        Wheel   = { radius = 13, wheelbase = 70, restLength = 10, spring = 12000, damper = 700 },
+        Drive   = { gearRatio = 2.4, maxCadence = 11.5, crankTorque = 340000, dragArea = 0.0075 },
+        Hop     = { popSpeed = 110 },
+        Balance = { maxLean = math.rad(34) },
+    },
+})
+
+--------------------------------------------------------------------------
+-- THE DOWNHILL BIKE (G13): long travel, big tyres, heavy, and stable at speed. It is the
+-- stock bike with other numbers and no new code (the platform's `physics` overrides,
+-- DESIGN 6c), which is the point: spring and damper are what a DH bike IS.
+--
+--   Wheel restLength 16, spring 8000, damper 900, bumpStop 90000   the travel is double a BMX's
+--                               (8) and the spring a bit softer, so it sags 4.4 units and has
+--                               11.6 left; the damper is heavy (about critical against the
+--                               effective mass) so a drop is soaked and does not bounce, and
+--                               the bump stop is the last resort. w * dt = 0.30 at 66 Hz
+--   stepMax 6.5                 THE SAG MUST BE UNDER stepMax. A wheel's compression may rise
+--                               at most stepMax in one substep (sv_wheel.lua, "a step is not
+--                               a spring"), and a spawned wheel starts from none: a sag of
+--                               more than stepMax is refused as a step, every substep, and the
+--                               bike sits on its hull. (The stock 5 against a sag of 5.06 did
+--                               exactly that: the spring never compressed.) Half the radius
+--                               is the tallest step a wheel rolls onto, which is 6.75
+--   radius 13.5, grip 1.7       27.5-inch wheels and knobbly tyres: grip, and more rolling loss
+--   mass 118, wheelbase 46      heavy and long: steady, slow to turn
+--   Crash soakSpeed 380, maxImpactSpeed 520   the landing soak and the hard-hit threshold,
+--                               raised for the travel: a 4 m drop is a Tuesday
+--   Balance leanKp 300, fadeInHigh 90   the lean answered a little faster and whole by
+--                               90 u/s, as the road bike's is: stable at speed is the brief
+BMX.RegisterBike("dh", {
+    printName   = "Downhill Bike",
+    description = "Long-travel downhill bike: big tyres, a soft heavy suspension that eats drops, heavy and very stable at speed. Built for the hill.",
+    colorIndex  = 9,
+    physics = {
+        Chassis = { mass = 118, seatOffset = Vector(-12.4, 0, 21.2) },     -- x 46/39
+        Wheel   = { radius = 13.5, wheelbase = 46, restLength = 16, spring = 8000, damper = 900,
+                    bumpStop = 90000, stepMax = 6.5, grip = 1.7, rollingResistance = 0.016 },
+        Drive   = { gearRatio = 2.2, crankTorque = 380000, maxCadence = 11, dragArea = 0.0062 },
+        Hop     = { popSpeed = 160 },
+        Crash   = { soakSpeed = 380, maxImpactSpeed = 520 },
+        Balance = { leanKp = 300, fadeInHigh = 90 },
     },
 })
 

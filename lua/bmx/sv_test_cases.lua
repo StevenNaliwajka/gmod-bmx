@@ -2605,6 +2605,241 @@ function(ctx)
 end)
 
 --------------------------------------------------------------------------
+-- THE OTHER BIKES (G13), on the real engine: the unicycle, the penny-farthing's header,
+-- the tandem's two pairs of legs and the downhill bike's drop. Each rides its own
+-- vehicle (`vehicle = "<id>"`, like test_cart_drives), and each was first written against
+-- the offline plant (tests/test_unicycle.lua, tests/test_oddbikes.lua) and NOT yet run on
+-- VPhysics: bands are wide, and what can differ there is said in each case.
+--------------------------------------------------------------------------
+
+--------------------------------------------------------------------------
+-- unicycle_balances: a scripted INPUT CONTROLLER, in the case and not the bot, keeps it up
+-- for 10 s. The controller is what a rider is: lean (A / D) against the roll, pedal (W / S)
+-- against the pitch, a little of each one's rate for phase lead. It is given a shove
+-- first, so "stands still" is not the whole claim, and then rides, so it is not either.
+--
+-- The assist is held at its default 0.6 for the case (T.ConVar), whatever the server has
+-- it at. What can differ on VPhysics is the inertia the engine measures, which the
+-- vehicle's spring is a FRACTION OF (Unicycle.holdRoll, see sv_unicycle.lua): the break-even
+-- assist is 1 - hold at any inertia, and 0.6 is above it with room.
+--------------------------------------------------------------------------
+T.Case("unicycle_balances", { vehicle = "unicycle", timeout = 45,
+    desc = "a scripted rider (lean against roll, pedal against pitch) keeps the unicycle up for 10 s, standing and riding, after a shove" },
+function(ctx)
+    T.ConVar(ctx, "bmx_unicycle_assist", 0.6)
+    local b = ctx.bike
+    local function controller(base)
+        local st = ctx:st()
+        local lean = math.Clamp(-4 * (st.roll + 0.15 * st.rollRate), -1, 1)
+        local thr = math.Clamp((base or 0) - 4 * (st.pitch + 0.15 * st.pitchRate), -1, 1)
+        ctx:input({ lean = lean, throttle = math.max(thr, 0), brakeRear = math.max(-thr, 0) })
+    end
+
+    ctx:ok(b:Bike().balance == "unicycle", "it runs the unicycle balance mode")
+    ctx:ok(#b.wheels == 1, "on one wheel")
+    ctx:wait(0.6)
+    ctx:ok(ctx:st().grounded, "standing on its wheel")
+
+    -- A shove, then 6 s of it held in place.
+    b:GetPhysicsObject():SetAngleVelocity(Vector(30, 30, 0))
+    local worstR, worstP = 0, 0
+    local function watch()
+        worstR = math.max(worstR, math.abs(ctx:st().roll))
+        worstP = math.max(worstP, math.abs(ctx:st().pitch))
+        return false
+    end
+    ctx:runUntil(6, function() controller(0) return watch() end)
+    ctx:ok(IsValid(b:GetDriver()), "still aboard after the shove")
+    ctx:log(string.format("worst lean %.1f, worst pitch %.1f deg", math.deg(worstR), math.deg(worstP)))
+    ctx:between(math.deg(worstR), 0, 14, "worst roll", "deg")
+    ctx:between(math.deg(worstP), 0, 14, "worst pitch", "deg")
+
+    -- Then riding, 4 s: pedalling forward, the same controller.
+    local start = b:GetPos()
+    ctx:runUntil(4, function() controller(0.5) return watch() end)
+    ctx:ok(IsValid(b:GetDriver()), "still aboard after riding")
+    local moved = (b:GetPos() - start):Length()
+    ctx:log(string.format("rode %.0f units, speed %.0f u/s", moved, ctx:st().speed))
+    ctx:ok(moved > 60 or ctx.stoppedAtEdge, "it went somewhere: " .. math.floor(moved))
+    ctx:between(math.deg(worstR), 0, 14, "worst roll over the whole 10 s", "deg")
+    ctx:input({})
+end)
+
+--------------------------------------------------------------------------
+-- penny_header: full front brake at 15 mph takes the rider over the bars, forward.
+--
+-- Written against the plant, where a header is what 0.5 g at the front patch does to a
+-- mass centre 62 units up and 18 behind it. The penny-farthing's own rule (sv_penny.lua)
+-- only decides it is a crash once the nose is 14 degrees down with the brake held; what
+-- VPhysics can change is how soon the nose gets there, so the wait is long and the claim
+-- is the reason ("header") and the direction of the throw.
+--------------------------------------------------------------------------
+T.Case("penny_header", { vehicle = "penny", timeout = 45,
+    desc = "full front brake at 15 mph ejects the penny-farthing's rider forward, as a header" },
+function(ctx)
+    local b = ctx.bike
+    ctx:ok(#b.wheels == 2 and b.wheels[1].drive and not b.wheels[2].drive, "the front wheel is the drive wheel")
+    ctx:wait(0.5)
+    if not ctx:accelerateTo(255, 16) then return end
+    local why, throw, fwd
+    hook.Add("BMX_Crashed", "BMX.TestHeader", function(bike, ply, reason)
+        if bike == b then why = reason end
+    end)
+    hook.Add("BMX_RiderCrashed", "BMX.TestHeader", function(ply, v, bike)
+        if bike == b then throw, fwd = v, bike:GetForward() end
+    end)
+    local v0 = ctx:st().speed
+    ctx:log(string.format("braking from %.0f u/s (%.1f mph)", v0, BMX.ToMPH(v0)))
+    ctx:input({ brakeFront = 1 })
+    local out = ctx:waitUntil(function() return not IsValid(b:GetDriver()) end, 4, "the rider to go over the bars")
+    ctx:wait(0.3)
+    hook.Remove("BMX_Crashed", "BMX.TestHeader")
+    hook.Remove("BMX_RiderCrashed", "BMX.TestHeader")
+    ctx:ok(out, "the rider came off")
+    ctx:ok(why == "header", "and it was a header: " .. tostring(why))
+    if throw then
+        ctx:log(string.format("thrown %.0f u/s forward, %.0f up", throw:Dot(fwd), throw.z))
+        ctx:ok(throw:Dot(fwd) > v0 * 0.5, "thrown FORWARD, over the bars")
+    else
+        ctx:ok(false, "BMX_RiderCrashed did not fire")
+    end
+    ctx:input({})
+end)
+
+--------------------------------------------------------------------------
+-- tandem_rides: a second bot boards the stoker's seat; with both pedalling the tandem
+-- gets away quicker than with the captain alone, the captain steers, and the stoker's
+-- seat is the one with pedals. Skipped, with a log line, when the server has no free
+-- player slot (like passenger_mount_and_crash, whose second bot this one shares).
+--------------------------------------------------------------------------
+T.Case("tandem_rides", { vehicle = "tandem", timeout = 60,
+    desc = "a second bot boards a tandem; both pedalling is quicker off the line than one, and the captain steers" },
+function(ctx)
+    local b = ctx.bike
+    local pax, why = ensurePaxBot()
+    if not pax then
+        ctx:log("SKIPPED the stoker: " .. tostring(why))
+        return
+    end
+    pax.BMXScripted = true
+    pax:SetPos(ctx.ground + Vector(-60, 0, 8))
+    if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+
+    ctx:wait(0.5)
+    BMX.Passenger.TryBoard(b, pax, true)
+    ctx:wait(0.4)
+    ctx:ok(pax:InVehicle(), "the stoker is seated")
+    ctx:ok(b:GetPaxPegs() == pax, "on the second seat")
+    ctx:ok(b.paxSeats and b.paxSeats.pegs and b.paxSeats.pegs.pedals == true, "which has pedals")
+    ctx:ok(b:GetDriver() == ctx.bot, "the captain is undisturbed")
+
+    -- Off the line, twice: the stoker coasting, then pedalling. Two seconds each.
+    local function launch(stoker)
+        b.input.paxThrottle = stoker
+        ctx:runUntil(2, nil, { throttle = 1 })
+        local v = ctx:st().speed
+        ctx:runUntil(8, function() return ctx:st().speed < 8 end, { brakeRear = 1 })
+        return v
+    end
+    local alone = launch(0)
+    local both = launch(1)
+    ctx:log(string.format("after 2 s: captain alone %.0f u/s, both pedalling %.0f u/s", alone, both))
+    ctx:ok(both > alone * 1.03, "two pairs of legs are quicker off the line")
+
+    -- The captain steers, the stoker's input does nothing: ride, lean right, yaw falls.
+    b.input.paxThrottle = 1
+    ctx:accelerateTo(110, 10)
+    local y0 = b:GetAngles().y
+    ctx:runUntil(1.5, nil, { throttle = 0.4, lean = 1 })
+    local dy = math.AngleDifference(b:GetAngles().y, y0)
+    ctx:log(string.format("right lean turned it %.0f deg", dy))
+    ctx:ok(dy < -8, "the captain's D turns it right")
+    ctx:ok(IsValid(b:GetDriver()) and b:GetPaxPegs() == pax, "both still aboard")
+    b.input.paxThrottle = 0
+    ctx:input({})
+    if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+end)
+
+--------------------------------------------------------------------------
+-- dh_lands_drop: a 4 m drop onto flat ground is soaked by the long travel: no crash, the
+-- rider aboard, the bike on its wheels, and well short of bottoming out (peak compression
+-- under 90% of the travel, where a BMX uses all of its).
+--
+-- The drop is the way crash_ejects makes its fall: through the physics object, from 160
+-- units up, with a little forward speed. What can differ on VPhysics is the spring's
+-- w * dt at the soak (the damper is clamped to the effective mass, so it is stable at any
+-- setting) and so how much of the travel the drop takes; the band is wide.
+--------------------------------------------------------------------------
+T.Case("dh_lands_drop", { vehicle = "dh", timeout = 40,
+    desc = "the downhill bike lands a 4 m drop: no crash, rider aboard, the suspension does not bottom out" },
+function(ctx)
+    local b = ctx.bike
+    local travel = ctx.cfg.Wheel.restLength
+    ctx:ok(travel >= 14, "long travel: " .. travel)
+    ctx:wait(ctx.cfg.Crash.grace + 0.3)
+    local crashed
+    hook.Add("BMX_Crashed", "BMX.TestDhDrop", function(bike, ply, reason) if bike == b then crashed = reason end end)
+    local phys = b:GetPhysicsObject()
+    phys:SetPos(b:GetPos() + Vector(0, 0, 160), true)
+    phys:SetAngles(Angle(0, b:GetAngles().y, 0))
+    phys:SetVelocity(Vector(100, 0, 0))
+    phys:Wake()
+    local peak = 0
+    local landed = false
+    ctx:waitUntil(function()
+        for _, w in ipairs(b.wheels) do peak = math.max(peak, w.compression or 0) end
+        if not ctx:st().grounded then landed = false elseif not landed then landed = CurTime() end
+        return landed and CurTime() - landed > 1
+    end, 6, "the landing")
+    hook.Remove("BMX_Crashed", "BMX.TestDhDrop")
+    ctx:log(string.format("peak compression %.1f of %.0f", peak, travel))
+    ctx:ok(landed, "it landed")
+    ctx:ok(crashed == nil, "no crash: " .. tostring(crashed))
+    ctx:ok(IsValid(b:GetDriver()), "the rider is aboard")
+    ctx:ok(ctx:st().grounded, "on its wheels")
+    ctx:between(peak, 4, travel * 0.9, "peak compression", "u")
+    ctx:input({})
+end)
+
+--------------------------------------------------------------------------
+-- G30: PREDICTION IS DISPLAY-ONLY, and the lag compensation is a no-op for a
+-- rider who is on the ground.
+--
+-- A bot cannot be given net_fakelag, so this is the half that CAN be asserted
+-- headless: the client's prediction code is not on this realm at all (nothing the
+-- server simulates can read it), and with bmx_lagcomp ON a scripted rider's ride
+-- is the ride it always was -- the lean follows the shared controller's own
+-- smoothing, and a hop released on the ground still leaves it (the grace only
+-- ever turns a press that arrived in the air into one that counts on the ground).
+--------------------------------------------------------------------------
+T.Case("predict_display_only", { timeout = 40,
+    desc = "bmx_lagcomp 1 changes nothing for a rider on the ground: the lean reaches its target at BMX.Lean's rate, a ground hop still hops, and no client prediction exists server-side" },
+function(ctx)
+    T.ConVar(ctx, "bmx_lagcomp", 1)
+    ctx:ok(BMX.PredictRollOffset == nil, "the client's prediction is not loaded on the server")
+    ctx:ok(BMX.Lean and BMX.Predict, "the shared controller is loaded on the server")
+    if not ctx:accelerateTo(160, 12) then return end
+
+    ctx:input({ throttle = 0.5, lean = 1 })
+    local t0 = CurTime()
+    ctx:waitUntil(function() return CurTime() - t0 >= 0.6 end, 3, "the lean")
+    ctx:between(ctx.bike.input.lean, 0.95, 1.0001, "the smoothed lean reached its target (3/s, so 0.34 s)")
+    ctx:ok(ctx:st().roll > math.rad(5), "the bike leaned right")
+    ctx:ok((ctx.bike.input.cmdAge or 0) == 0, "no back-dating for a scripted rider")
+
+    ctx:input({ throttle = 0.5 })
+    ctx:wait(1.0)
+    local z0 = ctx.bike:GetPos().z
+    ctx:hop()
+    local up = ctx:waitUntil(function()
+        local f, r = ctx:wheels()
+        return not f.onGround and not r.onGround
+    end, 1.5, "both wheels to leave the ground")
+    ctx:ok(up, "a hop released on the ground leaves it with bmx_lagcomp on")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider aboard")
+end)
+
+--------------------------------------------------------------------------
 -- THE KICK SCOOTER (G24), on the real engine. NOT RUN YET: no server was to hand when
 -- these were written, and the bands are wide for that reason. They ride
 -- `vehicle = "scooter"`: two small wheels, the bike's single-track balance and the

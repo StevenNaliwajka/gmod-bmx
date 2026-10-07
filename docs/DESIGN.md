@@ -247,6 +247,18 @@ deliberately *not* attempted is local prediction, which in the absence of engine
 support means reconciling two divergent physics simulations and produces
 rubber-banding worse than the latency it hides.
 
+**G30 adds two opt-in things, neither of which is that.** `bmx_predict` (client,
+default 0) does not simulate a second bike: it draws the rider's own bike's lean
+and steer a moment *ahead* of the networked state, by replaying the rider's recent
+input through the shared lean/steer arithmetic (`sh_lean.lua`, `sh_predict.lua`),
+rooted in the networked state every frame so nothing accumulates to be snapped
+back. It is a picture and nothing else: the server never reads it, so the
+simulation stays authoritative. `bmx_lagcomp` (server, default 0) stamps each
+usercmd's input with its age and judges takeoff decisions (hop release, ollie
+pop, spine W) against the bike's recorded state at that moment; it changes which
+tick an input is attributed to and nothing it does. Measure with
+`bmx_latency_probe` (docs/TUNING.md).
+
 What actually crosses the wire:
 
 - **Usercmds** (free, already sent every tick, already ordered, already
@@ -504,7 +516,50 @@ A powerslide is the turn and the cost is the tyres'.
 unattended it is lost in about three seconds whatever the phase, and held it stays
 held, so a manual or a grind is a skill and not a timer.
 
-## 6f. The kick scooter (G24)
+## 6f. The oddballs (G13)
+
+The unicycle, penny-farthing, tandem and downhill bike, then a rack and a lock. Each
+took a small change to shared code (an optional field, one guard) and the rest is new
+files. What they taught the platform:
+
+- **A balance mode is allowed to be two inverted pendulums.** The single-track mode's
+  trick is that the front wheel's angle is derived from the lean. A unicycle has no front
+  wheel to derive and no second wheel to hold it fore and aft, so `sv_unicycle.lua`
+  balances roll and pitch each as `-assist * topple + Kp (target - angle) - Kd (rate)`, and
+  the fore-and-aft actuator is not faked at all: the fixed drive's torque at the tyre
+  patch pitches the body, which is what pedalling a unicycle is.
+- **Write a spring as a fraction of the plant's own gradient, not as a number.** The
+  engine measures the inertia; the offline plant approximates it (the unicycle's roll
+  inertia is 10,900 there and ~7,500 by hand). A spring of `hold * m g h / I` makes the
+  break-even assist `1 - hold` whatever the inertia is, so the same tuning stands on both,
+  and a test scales the inertia 30% either way to say so.
+- **The assist is one convar and the part of the toppling it switches on.** Scaling the
+  whole controller by the assist (what the bike does) leaves a rider with no authority at
+  assist 0: the lean target goes through the scaled spring and does nothing. The spring is
+  the rider's own legs and stays on; the assist is the feed-forward.
+- **A guard that a new vehicle walked into.** `Wheel.stepMax` refuses a compression rise of
+  more than 5 units in one substep, to stop a ledge being read as a spring. A spawned wheel
+  starts from zero compression, so a bike whose static sag is over 5 (the first DH numbers:
+  5.06) is refused its own weight every substep and sits on its hull: `comp 0, load 9,000
+  of 70,000`. Nothing flags it; the rest height looks right. The note in the registry and a
+  test (`dh: it rests ON ITS SPRINGS`) are the defence.
+- **A hull is built from the wheels.** `BMX.CollisionBoxes` put a box on each of two
+  identical wheels; a one-wheeled vehicle and a penny-farthing's two sizes needed it to ask
+  how many axles and how big. `Wheel.rearRadius` and a wheelbase of nothing are the two
+  words it learned.
+- **A header does not need a script.** A mass centre 62 units up and 18 behind the front
+  patch goes over under a ~0.3 g front brake on the same tyre model every bike rides on; the
+  `pennyfarthing` balance only decides that it is a crash and which way the rider goes.
+- **A second pair of legs is one number added inside one function.** The pedal drive's
+  push is `crankTorque * (1 - spin) * throttle`; the stoker's throttle is added to the
+  driver's, so two riders' torque sum through the same falling curve and the legs run out of
+  cadence at the same speed (a stronger start, not a higher top speed).
+- **A prop that carries a bike must switch the bike off.** Welding a bike to a car and
+  leaving its tyre model on shakes both; `ent.BMXRack` stops the physics step. The offline
+  shim records constraints rather than simulating them, because the rules (capacity, the
+  permission to unlock) are what is worth testing and they do not need a solver.
+
+## 6g. The kick scooter (G24)
 
 The third client of the platform, and the one that needed no new physics. A scooter is
 a single-track vehicle (so the bike's balance holds it up and steers it from the lean)
@@ -540,7 +595,7 @@ trick scoring, the combo, the crash and the landing judge are the bike's, with t
 small wrappers (`sv_scooter.lua`: the grind sparks, the bri flip, and a manual being
 called a manual).
 
-## 6g. Worn vehicles: the skates (G25)
+## 6h. Worn vehicles: the skates (G25)
 
 The first vehicle that is not an entity. A skater has no chassis and no seat: the player
 is the thing that moves, and the platform's idea of a vehicle (a registry entry, a state,
@@ -689,13 +744,35 @@ once on a timer and anything later joined a queue that had already been drained.
 
 ## 8. Content and licensing
 
-The stock bike ships no model at all. `cl_init.lua` draws a 20-inch BMX from
-camera-facing beams and boxes: frame, fork, tall swept bars that turn with the
-steer angle, seat, cranks that turn at the networked cadence, chain, pegs, and a
-kickstand when parked. It is sized from the bike's own wheelbase, and the stays
-and fork run to where the wheels actually are, so the drawing still shows exactly
-where the simulation has its wheels: the debugging property the old placeholder
-(a Hunter plate with wheel rings) was kept for. Zero content dependencies, clone
+The stock bike ships no model file. Its model is BUILT, in code:
+`bmx/cl_bikegeo.lua` makes a mid-school street BMX at real dimensions as
+triangles (swept and lathed tubes, extruded plates, lofted saddle and cranks:
+~75k triangles), `bmx/cl_bikemesh.lua` turns it into IMeshes once per bike size
+(in a coroutine, a few ms a frame; the simple bike stands in meanwhile), makes
+its VertexLitGeneric materials over render-target textures (white base, flat
+normal map for Phong, a fixed HL2 reflection cubemap, the down-tube graphic and
+tyre lettering drawn at runtime), and lights it. `cl_init.lua`'s `DrawDetailed`
+places each rigid part -- frame, fork, bars, both wheels, cranks, two pedals --
+by one matrix read off a point map, so the tricks (whip, barspin, turndown)
+compose exactly the rotations the simple bike uses, and the rider's hands and
+feet come from the same maps. The frame is rigid, so it is pitched about the
+rear axle until its front dropouts meet the front wheel: the rear wheel is
+exactly where the simulation has it, the front within a fraction of a unit.
+
+Three things about drawing IMeshes in GMod that cost an evening each:
+an IMesh is not lit by the engine (engine lighting is suppressed and an
+ambient cube sampled with `render.ComputeLighting` along the six axes is set,
+plus one directional light from the bright side); a local light given without
+its falloff terms divides by zero and turns everything flat full-bright; and
+Source's front faces are wound the other way from the builder's right-handed
+convention, so the converter swaps each triangle's last two vertices (with
+`$nocull` the model looked fine and drew every back face too).
+
+The simple bike -- camera-facing beams, XQM cylinders and spheres, the stays
+and fork running to where the wheels actually are -- remains as
+`bmx_bike_model 0` and as what `bmx_debug` draws: it shows exactly where the
+simulation has its wheels, the debugging property the old placeholder (a
+Hunter plate with wheel rings) was kept for. Zero content dependencies, clone
 and ride.
 
 A real model needs: a frame, a fork that steers with the front wheel, two

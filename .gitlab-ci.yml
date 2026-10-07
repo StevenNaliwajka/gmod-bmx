@@ -71,7 +71,10 @@ headless:
   stage: headless
   tags: [deploy]
   resource_group: gmod-dev
-  timeout: 40m
+  # Above bmx-test's own ceiling (BMX_RUN_MAX 2700 s) plus boot, deploy and the
+  # two server restarts, so the script's clear "no results after Ns" error fires
+  # before GitLab's blunt kill. It was 40m when the suite was a few dozen cases.
+  timeout: 60m
   # Not `needs: [deploy-dev]`: that job does not exist on a feature branch, and a
   # needs on a job that was never created skips this one silently. Stage order
   # already gives the sequencing on the default branch.

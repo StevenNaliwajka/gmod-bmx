@@ -238,6 +238,8 @@ function ENT:Use(activator)
     if activator:InVehicle() then return end
     local pod = self:GetPod()
     if not IsValid(pod) then return end
+    -- ON A RACK (G13): E lets it down; the next E gets on (sv_rack.lua).
+    if self.BMXRack and BMX.Rack then BMX.Rack.Release(self, activator) return end
     -- E ON AN OCCUPIED BIKE is a second rider boarding, at the rear: the pegs, or
     -- the child seat if it is on (sv_passenger.lua). Nothing else about getting on
     -- a ridden bike was ever possible, so nothing changes for anyone else.
@@ -554,6 +556,9 @@ function ENT:Crash(reason, severity)
     if BMX.Passenger and BMX.Passenger.Eject then BMX.Passenger.Eject(self, vel, severity) end
 
     local throw = vel + Vector(0, 0, CR.ejectLift * severity)
+    -- OVER THE BARS (G13, the penny-farthing's header): a crash that says where the rider
+    -- goes adds it to the throw, once.
+    if self.crashBoost then throw = throw + self.crashBoost self.crashBoost = nil end
     local dmg = math.floor(severity * vel:Length() * CR.damageScale)
     local bike = self
     local function hurt()

@@ -47,7 +47,7 @@ T.test("bikes: the BMXs and the road bike are registered, with their own classes
     for _, id in ipairs(B.BikeIDs()) do
         if B.Bikes[id].family == "bike" then ids[#ids + 1] = id end
     end
-    T.eq(table.concat(ids, ","), "city,cruiser,fixie,mini,road,stock", "the shipped bikes, sorted")
+    T.eq(table.concat(ids, ","), "city,cruiser,dh,fixie,mini,penny,road,stock,tandem,unicycle", "the shipped bikes, sorted")
     T.eq(B.ClassFor("cruiser"), "bmx_cruiser", "cruiser class")
     T.eq(B.ClassFor("mini"), "bmx_mini", "mini class")
     T.eq(B.ClassFor("CRUISER"), "bmx_cruiser", "ids are case-insensitive")
@@ -389,9 +389,9 @@ end)
 T.test("bikes: an unknown bike name lists every vehicle", function()
     local sv = F.server()
     local ply = looker(sv)
-    sv:command("bmx_spawn", ply, "tandem")
+    sv:command("bmx_spawn", ply, "monowheel")
     local said = table.concat(ply._chat, "\n")
-    T.ok(said:find("city, cruiser, fixie, mini, road, scooter, skateboard, skates, stock", 1, true), "lists them: " .. said)
+    T.ok(said:find("city, cruiser, dh, fixie, mini, penny, road, scooter, skateboard, skates, stock, tandem, unicycle", 1, true), "lists them: " .. said)
 end)
 
 --------------------------------------------------------------------------

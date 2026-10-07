@@ -102,26 +102,39 @@ BMX.City.Maps.gm_skatepark = {
           postFrom = 1000 + 224 + 16, postTo = 1400 - 40 - 64 },
     },
 
-    -- Lit text panels, drawn by cl_city.lua. pos is the panel's centre on the
-    -- face, normal points at the park.
+    -- The signs, in Petopia's look (the server's site, naliwajka.com/petopia:
+    -- a 1998 desktop, navy and silver, Peter's sayings). Family friendly.
+    -- pos is the panel's centre on the face; normal points at the park.
     signs = {
-        { text = "BMX", sub = "PARK  &  PLAZA", pos = { 1000, 760, 640 }, normal = { 0, -1, 0 },
-          w = 512, h = 192, color = { 255, 200, 40 } },
-        { text = "LINE 1", sub = "UPTOWN", pos = { 1685, 758, 1320 }, normal = { 0, -1, 0 },
-          w = 192, h = 48, color = { 230, 70, 60 } },
-        { text = "LINE 1", sub = "DOWNTOWN", pos = { 1685, -1782, 1320 }, normal = { 0, 1, 0 },
-          w = 192, h = 48, color = { 230, 70, 60 } },
-        { text = "LINE 2", sub = "UPTOWN", pos = { 2665, 758, 1320 }, normal = { 0, -1, 0 },
-          w = 192, h = 48, color = { 60, 150, 230 } },
-        { text = "LINE 2", sub = "DOWNTOWN", pos = { 2665, -1782, 1320 }, normal = { 0, 1, 0 },
-          w = 192, h = 48, color = { 60, 150, 230 } },
-        { text = "LINE 3", sub = "CROSSTOWN", pos = { -246, 20, 1480 }, normal = { 1, 0, 0 },
-          w = 192, h = 48, color = { 80, 200, 90 } },
-        { text = "LINE 3", sub = "CROSSTOWN", pos = { 3574, -620, 1480 }, normal = { -1, 0, 0 },
-          w = 192, h = 48, color = { 80, 200, 90 } },
-        { text = "SKATE", sub = "OPEN LATE", pos = { -248, 200, 400 }, normal = { 1, 0, 0 },
-          w = 384, h = 128, color = { 90, 220, 255 } },
-        { text = "RIDE", sub = "NO WALKING ON RAMPS", pos = { 3576, -1300, 620 }, normal = { -1, 0, 0 },
-          w = 384, h = 128, color = { 255, 90, 160 } },
+        { look = "window", title = "BMX.EXE", text = "BMX PARK", sub = "Hold on to your butts.",
+          pos = { 1000, 760, 660 }, normal = { 0, -1, 0 }, w = 560, h = 280, color = { 0, 255, 255 } },
+        { look = "window", title = "Petopia Metro", text = "LINE 1", sub = "SPOONER ST",
+          pos = { 1685, 758, 1350 }, normal = { 0, -1, 0 }, w = 256, h = 112, color = { 255, 80, 80 } },
+        { look = "window", title = "Petopia Metro", text = "LINE 1", sub = "SPOONER ST",
+          pos = { 1685, -1782, 1350 }, normal = { 0, 1, 0 }, w = 256, h = 112, color = { 255, 80, 80 } },
+        { look = "window", title = "Petopia Metro", text = "LINE 2", sub = "TOY FACTORY",
+          pos = { 2665, 758, 1350 }, normal = { 0, -1, 0 }, w = 256, h = 112, color = { 0, 255, 255 } },
+        { look = "window", title = "Petopia Metro", text = "LINE 2", sub = "TOY FACTORY",
+          pos = { 2665, -1782, 1350 }, normal = { 0, 1, 0 }, w = 256, h = 112, color = { 0, 255, 255 } },
+        { look = "window", title = "Petopia Metro", text = "LINE 3", sub = "CROSSTOWN",
+          pos = { -246, 20, 1480 }, normal = { 1, 0, 0 }, w = 256, h = 112, color = { 0, 255, 0 } },
+        { look = "window", title = "Petopia Metro", text = "LINE 3", sub = "CROSSTOWN",
+          pos = { 3574, -620, 1480 }, normal = { -1, 0, 0 }, w = 256, h = 112, color = { 0, 255, 0 } },
+        { look = "neon", text = "ROADHOUSE", sub = "OPEN LATE",
+          pos = { -248, 200, 420 }, normal = { 1, 0, 0 }, w = 448, h = 140, color = { 255, 0, 255 } },
+        { look = "window", title = "Notepad - RULEZ.TXT", text = "RIDE", sub = "No walking on the ramps.",
+          pos = { 3576, -1300, 640 }, normal = { -1, 0, 0 }, w = 480, h = 240, color = { 255, 255, 0 } },
+        { look = "neon", text = "FREAKIN' SWEET", sub = "PETOPIA BMX CITY",
+          pos = { 2200, -1784, 620 }, normal = { 0, 1, 0 }, w = 640, h = 160, color = { 255, 255, 0 } },
+        { look = "neon", text = "HEHEHEHE", sub = "PETER'S TIP: PEDAL",
+          pos = { 400, -1784, 640 }, normal = { 0, 1, 0 }, w = 512, h = 140, color = { 0, 255, 255 } },
+    },
+
+    -- Rooftop billboards, standing on whatever frontage building is there.
+    billboards = {
+        { look = "billboard", side = "north", at = 1150, w = 1280, h = 380, back = 64,
+          text = "PETOPIA", sub = "PETER GRIFFIN'S BMX CITY", color = { 255, 255, 0 } },
+        { look = "billboard", side = "east", at = 200, w = 960, h = 300, back = 64,
+          text = "HEHEHEHE", sub = "TRICKS  *  GRINDS  *  COMBOS", color = { 255, 0, 255 } },
     },
 }

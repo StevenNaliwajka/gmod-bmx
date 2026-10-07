@@ -327,3 +327,105 @@ T.test("the client builds its meshes: four vertices a quad, every one finite", f
     T.eq(env.BMX.City.Material("truss").params["$alphatest"], "1", "truss alpha-tested")
     T.eq(env.BMX.City.Material("brick_win").params["$alphatest"], nil, "facade opaque")
 end)
+
+-- A client with the city built against stub meshes, and the draw calls
+-- recorded. Signs and trains are switched off: this is about the meshes.
+local function drawnClient()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local env = cl.env
+    env.game.GetMap = function() return "gm_skatepark" end
+    local draws = {}
+    env.Mesh = function(mat) local m = { mat = mat } function m:Draw() draws[#draws + 1] = self end function m:Destroy() end return m end
+    env.MATERIAL_QUADS = 4
+    env.CreateMaterial = function(name, shader, params) return { name = name, shader = shader, params = params } end
+    env.mesh = { Begin = function() end, Position = function() end, TexCoord = function() end,
+                 Color = function() end, AdvanceVertex = function() end, End = function() end }
+    env.SysTime = function() return 0 end
+    env.render.SetMaterial = function() end
+    env.render.GetViewSetup = function() return { fov = 100, aspect = 16 / 9 } end
+    env.GetConVar("bmx_city_trains"):SetInt(0)
+    env.GetConVar("bmx_city_signs"):SetInt(0)
+    T.ok(env.BMX.City.ClientBuild(), "built")
+    return env, draws
+end
+
+T.test("drawn on frames where GMod says bDrawingSkybox: it is true on every frame of this map", function()
+    local env, draws = drawnClient()
+    local eye, ang = env.Vector(1700, -500, 120), env.Angle(-20, 90, 0)
+    env.EyePos = function() return eye end
+    env.EyeAngles = function() return ang end
+    -- what a live gm_skatepark client passed, 63 frames of 63
+    env.hook.Run("PostDrawOpaqueRenderables", false, true, false)
+    T.ok(#draws > 10, "meshes drawn on an ordinary frame: " .. #draws)
+    local n = #draws
+    env.hook.Run("PostDrawOpaqueRenderables", true, false, false)
+    T.eq(#draws, n, "the depth pass draws nothing")
+    env.hook.Run("PostDrawOpaqueRenderables", false, true, true)
+    T.eq(#draws, n, "the 3D skybox's own pass draws nothing")
+end)
+
+T.test("culling: what is in view is drawn, what is behind is not, and the corners count", function()
+    local env = drawnClient()
+    local City = env.BMX.City
+    local V = env.Vector
+    local fwd = V(1, 0, 0)
+    local half = math.rad(60)
+    local c, s = math.cos(half), math.sin(half)
+    T.ok(City.InView(V(1000, 0, 0), 10, V(0, 0, 0), fwd, c, s), "straight ahead")
+    T.ok(not City.InView(V(-1000, 0, 0), 10, V(0, 0, 0), fwd, c, s), "behind")
+    T.ok(City.InView(V(-50, 0, 0), 100, V(0, 0, 0), fwd, c, s), "around the camera")
+    T.ok(City.InView(V(1000, 1700, 0), 10, V(0, 0, 0), fwd, c, s), "inside the edge (59.5 deg)")
+    T.ok(not City.InView(V(1000, 1800, 0), 10, V(0, 0, 0), fwd, c, s), "outside the edge (61 deg)")
+    T.ok(City.InView(V(1000, 1800, 0), 200, V(0, 0, 0), fwd, c, s), "a big thing straddling the edge")
+end)
+
+T.test("looking at one wall skips most of the city, and nothing on screen is skipped", function()
+    local env, draws = drawnClient()
+    local City = env.BMX.City
+    env.EyePos = function() return env.Vector(1700, -500, 120) end
+    env.EyeAngles = function() return env.Angle(0, 90, 0) end        -- facing north
+    env.hook.Run("PostDrawOpaqueRenderables", false, true, false)
+    T.ok(City.Stats.culled > 0, "something culled")
+    T.ok(City.Stats.drawn > 0, "something drawn")
+    -- the north frontage is in front of the camera: every mesh of it drawn
+    local drawn = {}
+    for _, m in ipairs(draws) do drawn[m] = true end
+    for _, m in ipairs(City.meshes) do
+        if m.group == "front:north" then T.ok(drawn[m.mesh], "north frontage mesh " .. m.key .. " drawn") end
+        if m.group == "front:south" and m.center.y < -2500 then
+            T.ok(not drawn[m.mesh], "south frontage behind the camera culled")
+        end
+    end
+end)
+
+T.test("nearest first: viaducts, then the frontage, the back row, the skyline", function()
+    local env = drawnClient()
+    local rank = { via = 1, front = 2, back = 3, sky = 4 }
+    local last = 0
+    for _, m in ipairs(env.BMX.City.meshes) do
+        local r = rank[m.group:match("^(%w+)")] or 5
+        T.ok(r >= last, "mesh order " .. m.group)
+        last = r
+    end
+    local _, L = city()
+    for mat, list in pairs(L.faces) do
+        for _, q in ipairs(list) do T.ok(q[18] and q[18] ~= "misc", mat .. " quad has a group") break end
+    end
+end)
+
+T.test("the rooftop billboards stand on their building's roof, out of reach", function()
+    local City, L = city()
+    local n = 0
+    for _, s in ipairs(L.signs) do
+        if s.roof then
+            n = n + 1
+            T.ok(s.pos[3] - s.h / 2 > s.roof, s.text .. " above its roof")
+            T.ok(s.pos[3] - s.h / 2 > 528, s.text .. " above the wall")
+            -- outside the play box: nobody rides into it
+            local p = City.Maps.gm_skatepark.park
+            T.ok(s.pos[1] < p[1] or s.pos[1] > p[4] or s.pos[2] < p[2] or s.pos[2] > p[5], s.text .. " outside the box")
+        end
+    end
+    T.eq(n, #City.Maps.gm_skatepark.billboards, "every billboard found a roof")
+end)

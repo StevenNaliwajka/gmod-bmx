@@ -68,19 +68,55 @@ end
 --------------------------------------------------------------------------
 local function clamp255(x) x = math.floor(x * 255 + 0.5) if x < 0 then return 0 elseif x > 255 then return 255 end return x end
 
+-- Draw order: what is nearest the park first, so the GPU's depth test throws
+-- away the pixels of everything behind it before shading them. The viaducts
+-- cross in front of everything, the frontage hides most of the back row, the
+-- back row hides most of the skyline.
+City.GroupRank = { via = 1, front = 2, back = 3, sky = 4, misc = 5 }
+
+local function rankOf(group)
+    return City.GroupRank[group:match("^(%w+)") or "misc"] or 5
+end
+
 function City.BuildMeshes(layout)
     City.FreeMeshes()
+    -- bucket every quad by (group, material): a group is one part of the
+    -- city with its own bounds, so a part out of view costs nothing
+    local buckets, order = {}, {}
+    for key, list in pairs(layout.faces) do
+        for _, q in ipairs(list) do
+            local g = q[18] or "misc"
+            local id = g .. "|" .. key
+            local b = buckets[id]
+            if not b then
+                b = { group = g, key = key, quads = {},
+                      mins = { math.huge, math.huge, math.huge }, maxs = { -math.huge, -math.huge, -math.huge } }
+                buckets[id] = b
+                order[#order + 1] = b
+            end
+            b.quads[#b.quads + 1] = q
+            for c = 0, 3 do
+                for a = 1, 3 do
+                    local v = q[c * 3 + a]
+                    if v < b.mins[a] then b.mins[a] = v end
+                    if v > b.maxs[a] then b.maxs[a] = v end
+                end
+            end
+        end
+    end
+    table.sort(order, function(a, b)
+        local ra, rb = rankOf(a.group), rankOf(b.group)
+        if ra ~= rb then return ra < rb end
+        if a.group ~= b.group then return a.group < b.group end
+        return a.key < b.key
+    end)
+
     local out = {}
-    -- stable order, so the draw order (and anything that depends on it) is
-    -- the same every build
-    local keys = {}
-    for k in pairs(layout.faces) do keys[#keys + 1] = k end
-    table.sort(keys)
-    for _, key in ipairs(keys) do
-        local list = layout.faces[key]
-        local M = City.Materials[key]
+    for _, b in ipairs(order) do
+        local M = City.Materials[b.key]
         local col = M.color or { 1, 1, 1 }
-        local mat = City.Material(key)
+        local mat = City.Material(b.key)
+        local list = b.quads
         local i = 1
         while i <= #list do
             local n = math.min(#list - i + 1, QUADS_PER_MESH)
@@ -89,19 +125,35 @@ function City.BuildMeshes(layout)
             for j = i, i + n - 1 do
                 local q = list[j]
                 local s = q[17]
-                local r, g, b = clamp255(s * col[1]), clamp255(s * col[2]), clamp255(s * col[3])
-                mesh.Position(Vector(q[1], q[2], q[3])) mesh.TexCoord(0, q[13], q[14]) mesh.Color(r, g, b, 255) mesh.AdvanceVertex()
-                mesh.Position(Vector(q[4], q[5], q[6])) mesh.TexCoord(0, q[15], q[14]) mesh.Color(r, g, b, 255) mesh.AdvanceVertex()
-                mesh.Position(Vector(q[7], q[8], q[9])) mesh.TexCoord(0, q[15], q[16]) mesh.Color(r, g, b, 255) mesh.AdvanceVertex()
-                mesh.Position(Vector(q[10], q[11], q[12])) mesh.TexCoord(0, q[13], q[16]) mesh.Color(r, g, b, 255) mesh.AdvanceVertex()
+                local r, g, bl = clamp255(s * col[1]), clamp255(s * col[2]), clamp255(s * col[3])
+                mesh.Position(Vector(q[1], q[2], q[3])) mesh.TexCoord(0, q[13], q[14]) mesh.Color(r, g, bl, 255) mesh.AdvanceVertex()
+                mesh.Position(Vector(q[4], q[5], q[6])) mesh.TexCoord(0, q[15], q[14]) mesh.Color(r, g, bl, 255) mesh.AdvanceVertex()
+                mesh.Position(Vector(q[7], q[8], q[9])) mesh.TexCoord(0, q[15], q[16]) mesh.Color(r, g, bl, 255) mesh.AdvanceVertex()
+                mesh.Position(Vector(q[10], q[11], q[12])) mesh.TexCoord(0, q[13], q[16]) mesh.Color(r, g, bl, 255) mesh.AdvanceVertex()
             end
             mesh.End()
-            out[#out + 1] = { mesh = m, mat = mat, key = key, quads = n }
+            local cx, cy, cz = (b.mins[1] + b.maxs[1]) / 2, (b.mins[2] + b.maxs[2]) / 2, (b.mins[3] + b.maxs[3]) / 2
+            local dx, dy, dz = b.maxs[1] - cx, b.maxs[2] - cy, b.maxs[3] - cz
+            out[#out + 1] = { mesh = m, mat = mat, key = b.key, group = b.group, quads = n,
+                              center = Vector(cx, cy, cz), radius = math.sqrt(dx * dx + dy * dy + dz * dz) }
             i = i + n
         end
     end
     City.meshes = out
     return out
+end
+
+-- Is a sphere anywhere in the view? A cone test against the camera, with the
+-- wider of the two half-angles, so it never culls something on screen.
+function City.InView(center, radius, eye, fwd, cosHalf, sinHalf)
+    local d = center - eye
+    local along = d:Dot(fwd)
+    if along < -radius then return false end            -- wholly behind
+    local dist2 = d:Dot(d)
+    if dist2 <= radius * radius then return true end    -- around the camera
+    local perp = math.sqrt(math.max(dist2 - along * along, 0))
+    -- distance from the sphere's centre to the cone's surface
+    return perp * cosHalf - along * sinHalf <= radius
 end
 
 function City.FreeMeshes()
@@ -227,35 +279,112 @@ end
 --------------------------------------------------------------------------
 -- Signs
 --------------------------------------------------------------------------
+-- Three looks, after Petopia's own pages (naliwajka.com/petopia: a 1998
+-- desktop -- navy title bars, silver bevels, cyan and yellow on navy):
+--   window     a Windows-98 window: title bar, three buttons, silver body
+--   neon       a dark panel with a coloured frame and glowing text
+--   billboard  a big rooftop board: navy, a yellow rule, huge type
+-- `text` is the headline, `sub` the line under it, `title` the window's
+-- title bar. Colours are {r,g,b}.
 local fontsMade = false
 local function makeFonts()
     if fontsMade then return end
     fontsMade = true
     surface.CreateFont("BMXCitySign", { font = "Coolvetica", size = 120, weight = 800, antialias = true })
     surface.CreateFont("BMXCitySignSub", { font = "Roboto", size = 40, weight = 700, antialias = true })
+    surface.CreateFont("BMXCityWin", { font = "Tahoma", size = 110, weight = 900, antialias = true })
+    surface.CreateFont("BMXCityWinTitle", { font = "Tahoma", size = 30, weight = 800, antialias = true })
+    surface.CreateFont("BMXCityWinSub", { font = "Tahoma", size = 34, weight = 700, antialias = true })
 end
+
+local NAVY, NAVY2 = Color(0, 0, 128), Color(16, 132, 208)
+local SILVER, WHITE, GREY, DARK = Color(192, 192, 192), Color(255, 255, 255), Color(128, 128, 128), Color(40, 40, 40)
+
+local function bevel(x, y, w, h, raised)
+    local tl, br = raised and WHITE or GREY, raised and GREY or WHITE
+    surface.SetDrawColor(tl) surface.DrawRect(x, y, w, 3) surface.DrawRect(x, y, 3, h)
+    surface.SetDrawColor(br) surface.DrawRect(x, y + h - 3, w, 3) surface.DrawRect(x + w - 3, y, 3, h)
+end
+
+local function windowSign(s, pw, ph, c)
+    local tb = math.min(ph * 0.2, 44)
+    surface.SetDrawColor(SILVER) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    bevel(-pw / 2, -ph / 2, pw, ph, true)
+    -- title bar: navy fading to blue, as 98 drew it
+    local x0, y0, w0 = -pw / 2 + 6, -ph / 2 + 6, pw - 12
+    for i = 0, 15 do
+        local f = i / 15
+        surface.SetDrawColor(NAVY.r + (NAVY2.r - NAVY.r) * f, NAVY.g + (NAVY2.g - NAVY.g) * f, NAVY.b + (NAVY2.b - NAVY.b) * f, 255)
+        surface.DrawRect(x0 + w0 * i / 16, y0, w0 / 16 + 1, tb)
+    end
+    draw.SimpleText(s.title or "Petopia", "BMXCityWinTitle", x0 + 10, y0 + tb / 2, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    for i = 1, 3 do
+        local bx = x0 + w0 - i * (tb + 2) - 2
+        surface.SetDrawColor(SILVER) surface.DrawRect(bx, y0 + 4, tb - 6, tb - 8)
+        bevel(bx, y0 + 4, tb - 6, tb - 8, true)
+        draw.SimpleText(({ "x", "o", "_" })[i], "BMXCityWinTitle", bx + (tb - 6) / 2, y0 + tb / 2, DARK, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    -- the body: a sunken field, the headline in the sign's colour
+    local by = y0 + tb + 8
+    local bh = ph / 2 - 6 - by - 6
+    surface.SetDrawColor(s.field and Color(s.field[1], s.field[2], s.field[3]) or NAVY)
+    surface.DrawRect(x0 + 4, by, w0 - 8, bh)
+    bevel(x0 + 4, by, w0 - 8, bh, false)
+    local hasSub = s.sub ~= nil
+    draw.SimpleText(s.text, "BMXCityWin", 0, by + bh * (hasSub and 0.4 or 0.5), Color(c[1], c[2], c[3]), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    if hasSub then
+        draw.SimpleText(s.sub, "BMXCityWinSub", 0, by + bh * 0.82, WHITE, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+end
+
+local function neonSign(s, pw, ph, c)
+    surface.SetDrawColor(c[1], c[2], c[3], 255)
+    surface.DrawRect(-pw / 2 - 10, -ph / 2 - 10, pw + 20, ph + 20)
+    surface.SetDrawColor(14, 16, 22, 255)
+    surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    local glow = Color(c[1], c[2], c[3], 60)
+    for _, o in ipairs({ { -3, 0 }, { 3, 0 }, { 0, -3 }, { 0, 3 } }) do
+        draw.SimpleText(s.text, "BMXCitySign", o[1], -ph * 0.1 + o[2], glow, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    draw.SimpleText(s.text, "BMXCitySign", 0, -ph * 0.1, Color(c[1], c[2], c[3], 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    if s.sub then
+        draw.SimpleText(s.sub, "BMXCitySignSub", 0, ph * 0.32, Color(235, 235, 235, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+end
+
+local function billboardSign(s, pw, ph, c)
+    surface.SetDrawColor(NAVY) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    surface.SetDrawColor(255, 255, 0, 255)
+    surface.DrawRect(-pw / 2, -ph / 2, pw, 8) surface.DrawRect(-pw / 2, ph / 2 - 8, pw, 8)
+    surface.DrawRect(-pw / 2, ph * 0.18, pw, 4)
+    draw.SimpleText(s.text, "BMXCitySign", 0, -ph * 0.14, Color(c[1], c[2], c[3]), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    if s.sub then
+        draw.SimpleText(s.sub, "BMXCitySignSub", 0, ph * 0.34, Color(0, 255, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+end
+
+local LOOKS = { window = windowSign, neon = neonSign, billboard = billboardSign }
 
 local function drawSigns(layout)
     makeFonts()
+    local eye = EyePos()
     for _, s in ipairs(layout.signs) do
         local n = Vector(s.normal[1], s.normal[2], s.normal[3])
-        local ang = n:Angle()
-        ang:RotateAroundAxis(ang:Up(), 90)
-        ang:RotateAroundAxis(ang:Forward(), 90)
-        -- 120 px of title font is 55% of the panel's height
-        local scale = (s.h * 0.55) / 120
-        local pw, ph = s.w / scale, s.h / scale
-        local c = s.color
-        cam.Start3D2D(Vector(s.pos[1], s.pos[2], s.pos[3]), ang, scale)
-            surface.SetDrawColor(c[1], c[2], c[3], 255)
-            surface.DrawRect(-pw / 2 - 10, -ph / 2 - 10, pw + 20, ph + 20)
-            surface.SetDrawColor(14, 16, 22, 255)
-            surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
-            draw.SimpleText(s.text, "BMXCitySign", 0, -ph * 0.1, Color(c[1], c[2], c[3], 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-            if s.sub then
-                draw.SimpleText(s.sub, "BMXCitySignSub", 0, ph * 0.32, Color(235, 235, 235, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-            end
-        cam.End3D2D()
+        local p = Vector(s.pos[1], s.pos[2], s.pos[3])
+        -- only from the front: a sign is one-sided
+        if (eye - p):Dot(n) > 0 then
+            local ang = n:Angle()
+            ang:RotateAroundAxis(ang:Up(), 90)
+            ang:RotateAroundAxis(ang:Forward(), 90)
+            -- neon/billboard: the headline font is 55% of the panel's height;
+            -- a window is laid out 360 px tall, title bar and all
+            local scale = (s.look == "window") and (s.h / 360) or ((s.h * 0.55) / 120)
+            local pw, ph = s.w / scale, s.h / scale
+            local look = LOOKS[s.look or "neon"] or neonSign
+            cam.Start3D2D(p + n * 0.5, ang, scale)
+                look(s, pw, ph, s.color)
+            cam.End3D2D()
+        end
     end
 end
 
@@ -284,17 +413,39 @@ end
 
 hook.Add("InitPostEntity", "BMXCity", function() City.ClientBuild() end)
 
+-- PostDrawOpaqueRenderables(bDrawingDepth, bDrawingSkybox, isDraw3DSkybox).
+-- ONLY the depth pass and the 3D skybox's own pass are skipped. bDrawingSkybox
+-- is NOT "this is the skybox pass": on gm_skatepark it is true on every
+-- ordinary frame (measured on a live client, 63 of 63 frames), and skipping on
+-- it drew the city never -- built, all 70 meshes, and invisible.
+City.Stats = { drawn = 0, culled = 0 }
 function City.Draw(bDepth, bSkybox, b3DSky)
-    if bDepth or bSkybox or b3DSky then return end
+    if bDepth or b3DSky then return end
     if not City.meshes then return end
     if not cvDraw:GetBool() or not City.Enabled() then
         for name in pairs(City._sounds) do lineSound(name, nil, false) end
         return
     end
+    local eye, fwd = EyePos(), EyeAngles():Forward()
+    local vs = render.GetViewSetup and render.GetViewSetup()
+    -- the cone must reach the screen's CORNERS: the half-angle of the
+    -- diagonal, from the horizontal fov and the aspect, plus a margin
+    local fov = (vs and vs.fov) or 120
+    local aspect = (vs and vs.aspect) or (ScrW() / math.max(ScrH(), 1))
+    local t = math.tan(math.rad(math.min(fov, 170)) / 2)
+    local half = math.min(math.atan(t * math.sqrt(1 + 1 / (aspect * aspect))) + math.rad(6), math.rad(89))
+    local cosH, sinH = math.cos(half), math.sin(half)
+    local drawn, culled, last = 0, 0, nil
     for _, m in ipairs(City.meshes) do
-        render.SetMaterial(m.mat)
-        m.mesh:Draw()
+        if City.InView(m.center, m.radius, eye, fwd, cosH, sinH) then
+            if m.mat ~= last then render.SetMaterial(m.mat) last = m.mat end
+            m.mesh:Draw()
+            drawn = drawn + 1
+        else
+            culled = culled + 1
+        end
     end
+    City.Stats.drawn, City.Stats.culled = drawn, culled
     local L = City._layout
     if not L then return end
     if cvTrains:GetBool() then
@@ -304,7 +455,7 @@ function City.Draw(bDepth, bSkybox, b3DSky)
     end
     if cvSigns:GetBool() then drawSigns(L) end
 end
-hook.Add("PostDrawOpaqueRenderables", "BMXCity", City.Draw)
+hook.Add("PostDrawOpaqueRenderables", "BMXCity", function(a, b, c) City.Draw(a, b, c) end)
 
 concommand.Add("bmx_city_rebuild_client", function()
     City.ClientClear()

@@ -32,7 +32,10 @@
     OUTPUT. BMX.City.Build(def) returns plain numbers, not Vectors, so it runs
     as fast in the test shim as in the game:
         layout.faces[mat]  = { {x1,y1,z1, x2,y2,z2, x3,y3,z3, x4,y4,z4,
-                                u1,v1, u2,v2, shade}, ... }   (quads, TL TR BR BL)
+                                u1,v1, u2,v2, shade, group}, ... }   (quads, TL TR BR BL)
+                             group: which part of the city ("via:line1",
+                             "front:north", "sky:3"...), so the client can
+                             draw near parts first and skip ones out of view
         layout.solids      = { {name, {x0,y0,z0, x1,y1,z1}, ...}, ... }
         layout.lines       = subway lines the trains run on
         layout.signs       = text panels
@@ -116,17 +119,17 @@ City.Materials = {
 -- and may pick a second as an accent column.
 --------------------------------------------------------------------------
 City.Styles = {
-    brick  = { ground = { "brick_door", "brick_board", "brick_plain" }, win = { "brick_win" },
+    brick  = { ground = { "brick_door", "brick_board" }, win = { "brick_win" },
                plain = "brick_plain", trim = "brick_trim" },
     white  = { ground = { "white_door", "white_niche", "white_plain" }, win = { "white_win", "white_win2", "white_win3" },
                plain = "white_plain", trim = "white_trim" },
     grey   = { ground = { "grey_shop", "grey_arch" }, win = { "grey_win", "grey_win2" },
                plain = "grey_plain", trim = "grey_trim" },
-    ped    = { ground = { "ped_shutter", "ped_plain" }, win = { "ped_win", "ped_win2", "ped_shutter" },
+    ped    = { ground = { "stone_door", "ped_shutter" }, win = { "ped_win", "ped_win2", "ped_shutter" },
                plain = "ped_plain", trim = "ped_trim" },
-    yellow = { ground = { "yel_arch2", "yel_plain" }, win = { "yel_win", "yel_arch", "olive_win" },
+    yellow = { ground = { "ochre_door", "yel_arch2" }, win = { "yel_win", "yel_arch", "olive_win" },
                plain = "yel_plain", trim = "yel_trim" },
-    ochre  = { ground = { "ochre_door", "ochre_plain" }, win = { "ochre_win", "ochre_win2", "ochre_win3" },
+    ochre  = { ground = { "ochre_door", "ochre_win2" }, win = { "ochre_win", "ochre_win2", "ochre_win3" },
                plain = "ochre_plain", trim = "yel_trim" },
     tan    = { ground = { "tan_door", "tan_arch" }, win = { "tan_win", "tan_win2" },
                plain = "tan_plain", trim = "grey_trim" },
@@ -136,11 +139,11 @@ City.Styles = {
                plain = "stone_plain", trim = "stone_trim" },
     dark   = { ground = { "conc_shop", "conc_shop2" }, win = { "dark_win", "dark_win2", "dark_win3" },
                plain = "dark_plain", trim = "grey_trim" },
-    cream  = { ground = { "conc_shop", "cream_plain" }, win = { "cream_win", "cream_win2", "cream_ribbon" },
+    cream  = { ground = { "conc_shop2", "conc_shop" }, win = { "cream_win", "cream_win2", "cream_ribbon" },
                plain = "cream_plain", trim = "white_trim" },
     office = { ground = { "conc_shop", "conc_shop2" }, win = { "conc_ribbon", "conc_ribbon2", "conc_ribbon3" },
                plain = "conc_plain", trim = "grey_trim" },
-    glass  = { ground = { "conc_shop" }, win = { "glass_grey", "glass_dark", "glass_black" },
+    glass  = { ground = { "conc_shop2", "conc_shop" }, win = { "glass_grey", "glass_dark", "glass_black" },
                plain = "conc_plain", trim = "grey_trim" },
 }
 
@@ -217,7 +220,7 @@ function B:quad(mat, o, u, w, len, hgt, n, tint, u0, v0, cull)
     u0, v0 = u0 or 0, v0 or 0
     list[#list + 1] = { x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4,
         u0 / M.w, v0 / M.h, (u0 + len) / M.w, (v0 + hgt) / M.h,
-        self:shade(n[1], n[2], n[3], tint) }
+        self:shade(n[1], n[2], n[3], tint), self.group or "misc" }
     self.quads = self.quads + 1
 end
 
@@ -486,6 +489,9 @@ function B:skyline(sk, rng)
             bx.street = false
             bx.cornice = rng.chance(0.6)
             bx.side = "skyline"
+            -- eight sectors round the park, for the client's culling
+            local sector = math.floor(((math.atan2(y - cy, x - cx) + math.pi) / (2 * math.pi)) * 8) % 8
+            self.group = "sky:" .. sector
             placed[#placed + 1] = bx
             self:building(bx, rng)
             -- a crown on some: a smaller block and a mast
@@ -647,6 +653,65 @@ function B:pier(p, name)
 end
 
 --------------------------------------------------------------------------
+-- A rooftop billboard: a sign on steel legs, standing on whichever frontage
+-- building is under it, set back from its front edge.
+--
+--   { side = "north", at = 1800, w = 1024, h = 320, back = 96, text = ... }
+--
+-- `at` is the position along the wall. The height comes from the building,
+-- so a new seed never buries the sign or leaves it floating.
+--------------------------------------------------------------------------
+function B:billboard(bb)
+    local side = self.sidesByName[bb.side]
+    local row = self.rows[bb.side]
+    if not side or not row then return end
+    local ax = side.axis == "x" and 1 or 2
+    local out = side.out
+    -- how far out from the wall a box's front face is
+    local function nearOf(bx)
+        local lo, hi = bx[side.axis == "x" and 2 or 1], bx[side.axis == "x" and 5 or 4]
+        return ((out > 0) and lo or hi) * out - side.at * out
+    end
+    local roof, setback
+    for _, bd in ipairs(row) do
+        if bd[ax] <= bb.at and bd[ax + 3] >= bb.at then
+            -- on a setback tower, the sign goes up on the tower's roof
+            local top = bd.tower or bd
+            roof, setback = top[6], nearOf(top)
+        end
+    end
+    if not roof then return end
+    local front = side.at + out * (setback + (bb.back or 96))   -- the sign's face line
+    local legH = bb.legs or 96
+    local z0 = roof + legH
+    local cz = z0 + bb.h / 2
+    -- legs: three pairs of steel posts behind the panel, and a catwalk
+    for _, f in ipairs({ -0.4, 0, 0.4 }) do
+        local a = bb.at + f * bb.w
+        for _, d in ipairs({ 8, 72 }) do
+            local n0 = front + out * d
+            local x0, y0, x1, y1
+            if side.axis == "x" then x0, x1, y0, y1 = a - 8, a + 8, math.min(n0, n0 + out * 16), math.max(n0, n0 + out * 16)
+            else y0, y1, x0, x1 = a - 8, a + 8, math.min(n0, n0 + out * 16), math.max(n0, n0 + out * 16) end
+            self:box(x0, y0, roof, x1, y1, z0 + bb.h * 0.9, "steel", 0.75)
+        end
+    end
+    local n0, n1 = front + out * 2, front + out * 90
+    local lo, hi = math.min(n0, n1), math.max(n0, n1)
+    if side.axis == "x" then
+        self:box(bb.at - bb.w / 2, lo, z0 - 12, bb.at + bb.w / 2, hi, z0, { side = "steel", top = "grate", bottom = "steel" }, 0.8)
+    else
+        self:box(lo, bb.at - bb.w / 2, z0 - 12, hi, bb.at + bb.w / 2, z0, { side = "steel", top = "grate", bottom = "steel" }, 0.8)
+    end
+    local nrm = side.axis == "x" and { 0, -out, 0 } or { -out, 0, 0 }
+    local pos = side.axis == "x" and { bb.at, front, cz } or { front, bb.at, cz }
+    local sg = {}
+    for k, v in pairs(bb) do sg[k] = v end
+    sg.pos, sg.normal, sg.roof = pos, nrm, roof
+    self.signs[#self.signs + 1] = sg
+end
+
+--------------------------------------------------------------------------
 -- Build a map definition into a layout.
 --------------------------------------------------------------------------
 function City.Build(def)
@@ -680,6 +745,7 @@ function City.Build(def)
 
     b.rows = {}
     for _, key in ipairs({ "north", "south", "west", "east" }) do
+        b.group = "front:" .. key
         b.rows[key] = b:row(S[key], fr, rng, cover)
     end
     -- the second row: taller, further back, gaps between
@@ -688,15 +754,22 @@ function City.Build(def)
             local s = S[key]
             local s2 = { name = key .. "2", axis = s.axis, at = s.at, out = s.out,
                 from = s.from - (s.axis == "y" and over or 0), to = s.to + (s.axis == "y" and over or 0) }
+            b.group = "back:" .. key
             b:row(s2, def.backRow, rng)
         end
     end
     if def.skyline then b:skyline(def.skyline, rng) end
 
-    for i, v in ipairs(def.viaducts or {}) do b:viaduct(v, v.name or ("line" .. i)) end
+    for i, v in ipairs(def.viaducts or {}) do
+        b.group = "via:" .. (v.name or ("line" .. i))
+        b:viaduct(v, v.name or ("line" .. i))
+    end
+    b.group = "via:piers"
     for i, pr in ipairs(def.piers or {}) do b:pier(pr, pr.name or ("pier" .. i)) end
 
     for _, sg in ipairs(def.signs or {}) do b.signs[#b.signs + 1] = sg end
+    b.group = "front:roof"
+    for _, bb in ipairs(def.billboards or {}) do b:billboard(bb) end
 
     return {
         faces = b.faces, solids = b.solids, lines = b.lines, signs = b.signs,

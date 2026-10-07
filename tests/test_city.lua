@@ -438,3 +438,17 @@ T.test("the rooftop billboards stand on their building's roof, out of reach", fu
     end
     T.eq(n, #City.Maps.gm_skatepark.billboards, "every billboard found a roof")
 end)
+
+T.test("an ad's sunburst rays stop at the board's edge", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local clip = cl.env.BMX.City.ClipRect
+    -- a ray from inside the board reaching far past its right edge
+    local out = clip({ { x = 0, y = 0 }, { x = 1000, y = -50 }, { x = 1000, y = 50 } }, -100, -60, 100, 60)
+    T.ok(#out >= 3, "still a polygon")
+    for _, p in ipairs(out) do
+        T.between(p.x, -100.001, 100.001, "x inside") T.between(p.y, -60.001, 60.001, "y inside")
+    end
+    -- and one entirely outside is gone
+    T.ok(#clip({ { x = 200, y = 0 }, { x = 300, y = 10 }, { x = 300, y = -10 } }, -100, -60, 100, 60) < 3, "outside dropped")
+end)

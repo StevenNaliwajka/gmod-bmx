@@ -109,8 +109,7 @@ BMX.City.Maps.gm_skatepark = {
     -- pos is the panel's centre on the face; normal points at the park.
     signs = {
         -- north wall
-        { look = "ad", text = "THE DRUNKEN CLAM", sub = "Best clam chowder in Quahog",
-          brand = "OPEN DAILY  *  SPOONER ST", bg = { 250, 244, 228 }, fg = { 200, 60, 20 }, band = { 20, 70, 120 },
+        { look = "ad", text = "THE DRUNKEN CLAM", sub = "Our chowder is now 40% clam!", burst = "NOW WITH\nSPOONS!", fine = "*The other 60% is a mystery. Ask Horace.", bg = { 255, 214, 60 }, bg2 = { 255, 120, 30 }, fg = { 220, 30, 40 }, band = { 20, 60, 120 }, burstColor = { 230, 30, 30 },
           pos = { 1000, 758, 640 }, normal = { 0, -1, 0 }, w = 640, h = 240 },
         { look = "street", text = "SPOONER ST", sub = "31",
           pos = { 2200, 762, 300 }, normal = { 0, -1, 0 }, w = 320, h = 72 },
@@ -128,36 +127,27 @@ BMX.City.Maps.gm_skatepark = {
         { look = "transit", line = "3", text = "DOWNTOWN", sub = "Quahog Metro", color = { 30, 160, 70 },
           pos = { 3574, -620, 1480 }, normal = { -1, 0, 0 }, w = 480, h = 120 },
         -- west wall
-        { look = "ad", text = "GOLDMAN'S", sub = "Your neighbourhood pharmacy",
-          brand = "QUAHOG  *  SINCE 1972", bg = { 235, 248, 240 }, fg = { 20, 120, 60 }, band = { 20, 120, 60 },
+        { look = "ad", text = "GOLDMAN'S PHARMACY", sub = "Feeling sick? Have you tried feeling better?", burst = "ASK\nMORT!", fine = "*Mort is not a doctor. Mort is barely a pharmacist.", bg = { 120, 255, 170 }, bg2 = { 20, 170, 110 }, fg = { 255, 255, 255 }, band = { 10, 80, 50 }, burstColor = { 240, 40, 160 },
           pos = { -248, 200, 440 }, normal = { 1, 0, 0 }, w = 560, h = 210 },
         { look = "street", text = "SPOONER ST", sub = "",
           pos = { -250, -1000, 300 }, normal = { 1, 0, 0 }, w = 320, h = 72 },
         -- east wall
-        { look = "ad", text = "QUAHOG 5 NEWS", sub = "Weeknights at 6 with Tom Tucker",
-          brand = "CHANNEL 5  *  QUAHOG'S NEWS LEADER", bg = { 20, 30, 70 }, fg = { 255, 210, 40 }, band = { 200, 30, 30 },
-          subColor = { 230, 230, 230 },
+        { look = "ad", text = "QUAHOG 5 NEWS", sub = "Local man rides bike. Film at 11.", burst = "LIVE\nAT 6!", fine = "Tom Tucker: usually right, always confident.", bg = { 60, 110, 255 }, bg2 = { 10, 20, 90 }, fg = { 255, 220, 40 }, band = { 200, 20, 30 }, burstColor = { 230, 20, 30 },
           pos = { 3576, -1300, 640 }, normal = { -1, 0, 0 }, w = 600, h = 225 },
         -- south wall
-        { look = "ad", text = "HAPPY-GO-LUCKY", sub = "Toys that make you go \"Freakin' sweet!\"",
-          brand = "HAPPY-GO-LUCKY TOY FACTORY", bg = { 255, 236, 120 }, fg = { 220, 40, 120 }, band = { 40, 90, 200 },
+        { look = "ad", text = "HAPPY-GO-LUCKY TOYS", sub = "So safe, we tested them on Peter!", burst = "SAFE-\nISH!", fine = "*Batteries, instructions and happiness sold separately.", bg = { 255, 150, 220 }, bg2 = { 170, 60, 255 }, fg = { 255, 255, 80 }, band = { 60, 20, 120 }, burstColor = { 255, 120, 0 },
           pos = { 2200, -1784, 620 }, normal = { 0, 1, 0 }, w = 680, h = 255 },
-        { look = "ad", text = "SPOONER ST BMX", sub = "Ride like Peter. Hehehehehe.",
-          brand = "BIKES  *  PARTS  *  REPAIRS", bg = { 240, 240, 240 }, fg = { 30, 30, 30 }, band = { 230, 120, 20 },
+        { look = "ad", text = "SPOONER ST BMX", sub = "Brakes sold separately. Hehehehehe.", burst = "SALE!\nSALE!", fine = "Helmets strongly recommended. Ask Peter why.", bg = { 120, 230, 255 }, bg2 = { 0, 140, 220 }, fg = { 255, 90, 0 }, band = { 20, 30, 60 }, burstColor = { 255, 200, 0 },
           pos = { 400, -1784, 640 }, normal = { 0, 1, 0 }, w = 600, h = 225 },
     },
 
     -- Rooftop billboards, standing on whatever frontage building is there.
     billboards = {
         { look = "ad", side = "north", at = 1150, w = 1280, h = 480, back = 64,
-          text = "VISIT PETORIA", sub = "The nation in Peter's back yard",
-          brand = "PETOPIA TOURISM BOARD  *  NO PASSPORT NEEDED", bg = { 120, 200, 255 }, fg = { 255, 255, 255 }, band = { 0, 60, 140 },
-          subColor = { 20, 40, 90 } },
+          text = "VISIT PETORIA", sub = "The world's smallest nation! (It's a back yard.)", burst = "NO\nPASSPORT!", fine = "Customs: please wipe your feet and do not pet the dog.", bg = { 130, 220, 255 }, bg2 = { 30, 120, 230 }, fg = { 255, 255, 255 }, band = { 0, 50, 120 }, burstColor = { 255, 60, 60 } },
         { look = "ad", side = "east", at = 200, w = 1024, h = 384, back = 64,
-          text = "WELCOME TO QUAHOG", sub = "Rhode Island's finest town",
-          brand = "QUAHOG CHAMBER OF COMMERCE", bg = { 250, 246, 236 }, fg = { 30, 70, 150 }, band = { 200, 40, 40 } },
+          text = "WELCOME TO QUAHOG", sub = "Rhode Island's #1 town for giant chicken fights", burst = "EST.\n1635", fine = "Pop. 75,000 and one very large chicken.", bg = { 255, 240, 200 }, bg2 = { 255, 170, 90 }, fg = { 30, 80, 170 }, band = { 160, 30, 30 }, burstColor = { 30, 140, 60 } },
         { look = "ad", side = "south", at = 2900, w = 960, h = 360, back = 64,
-          text = "JAMES WOODS HIGH", sub = "Go Fighting Clams!",
-          brand = "HOME GAME FRIDAY", bg = { 255, 250, 235 }, fg = { 120, 20, 40 }, band = { 120, 20, 40 } },
+          text = "JAMES WOODS HIGH", sub = "Home of the Fighting Clams. Go... Clams?", burst = "GO\nTEAM!", fine = "Mascot still missing. Last seen near the Drunken Clam.", bg = { 255, 90, 90 }, bg2 = { 150, 10, 40 }, fg = { 255, 255, 255 }, band = { 60, 0, 20 }, burstColor = { 255, 210, 0 } },
     },
 }

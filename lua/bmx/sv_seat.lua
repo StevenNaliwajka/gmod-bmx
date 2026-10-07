@@ -36,6 +36,10 @@ local function bind(ply, bike)
 
     BMX.PickUp(bike)
 
+    -- PUBLIC NAME FIRST (docs/MODDING.md): BMX_Mounted(ply, bike). The old
+    -- BMX_RiderMounted(bike, ply) is kept for one version as an alias, so a
+    -- listener written against 1.1.0 keeps working while it is renamed.
+    hook.Run("BMX_Mounted", ply, bike)
     hook.Run("BMX_RiderMounted", bike, ply)
 end
 
@@ -294,7 +298,8 @@ local function unbind(ply, bike)
         bike.input = BMX.BlankInput()
         bike.hopHeld, bike.hopRelease, bike.hopCharge = false, false, 0
         bike:RebuildTraceFilter()
-        hook.Run("BMX_RiderDismounted", bike, ply)
+        hook.Run("BMX_Dismounted", ply, bike)
+        hook.Run("BMX_RiderDismounted", bike, ply)     -- deprecated alias
     end
 end
 
@@ -478,6 +483,10 @@ concommand.Add("bmx_spawn", function(ply, _, args)
     if CurTime() < (ply.BMXNextSpawn or 0) then return end
     ply.BMXNextSpawn = CurTime() + SPAWN_COOLDOWN
 
+    -- The public veto (docs/MODDING.md) asks about the bike by registry id and
+    -- runs before the stock PlayerSpawnSENT door, so a gamemode that wants "no
+    -- bikes this round" does not need to know our entity class names.
+    if hook.Run("BMX_CanSpawn", ply, string.lower(id)) == false then return end
     if hook.Run("PlayerSpawnSENT", ply, class) == false then return end
 
     local tr = ply:GetEyeTrace()

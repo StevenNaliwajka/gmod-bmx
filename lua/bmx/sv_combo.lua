@@ -69,7 +69,19 @@ function BMX.ComboEnd(ent, landed)
         bonus = c.base * (c.n - 1)
         ent:SetScore(ent:GetScore() + bonus)
     end
-    hook.Run("BMX_ComboEnded", ent, ent:GetDriver(), c, landed, bonus)
+    local rider = ent:GetDriver()
+    -- What a listener wants to know about the chain, on the chain itself.
+    c.bonus, c.total = bonus, c.base + bonus
+    -- Public names (docs/MODDING.md). A "combo" is two or more tricks: a lone
+    -- trick that lands or is lost is a trick (BMX_TrickLanded), not a combo.
+    if IsValid(rider) and c.n >= 2 then
+        if landed and bonus > 0 then
+            hook.Run("BMX_ComboBanked", rider, c, c.total)
+        elseif not landed then
+            hook.Run("BMX_ComboBailed", rider, c)
+        end
+    end
+    hook.Run("BMX_ComboEnded", ent, rider, c, landed, bonus)    -- deprecated alias
     send(ent, landed and STATE.landed or STATE.bailed, c, bonus)
     return bonus
 end

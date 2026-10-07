@@ -227,6 +227,11 @@ function BMX.ScoreAir(st)
         out[#out + 1] = { name = "Air Time", count = 1, points = math.floor(t * 120) }
     end
 
+    -- Every trick of this landing says how long the bike was up, so a score
+    -- table (sv_scores.lua) can keep "biggest air" without a second hook. The
+    -- table is the same shape it always was, with one more field.
+    for _, o in ipairs(out) do o.air = st.airTime or 0 end
+
     return out
 end
 

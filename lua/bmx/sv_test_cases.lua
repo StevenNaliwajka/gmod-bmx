@@ -1437,6 +1437,54 @@ function(ctx)
 end)
 
 --------------------------------------------------------------------------
+-- A GAME OF SKATE (sv_games.lua, bmx/games/skate.lua) between two bots: the
+-- whole path on a real server -- bots invited to a lobby, the setter sent off
+-- to land something, the scoring's own BMX_TrickLanded setting the trick, the
+-- other bot sent after the same one, a letter for a miss -- to a result with
+-- no Lua errors. It does not assert WHO wins, only that the game gets there:
+-- two bots on a real map are not a deterministic match.
+--
+-- One letter ("S") so the first miss ends it, and generous clocks because a
+-- bot has to ride to a ramp first (the bot_* cases above allow 90 s for one).
+--------------------------------------------------------------------------
+T.Case("skate_game_with_bots", { rider = false, timeout = 300,
+    desc = "two bots play SKATE to a result: a trick set, followed, and a letter or a win" },
+function(ctx)
+    local G = BMX.Games
+    if not ctx:ok(G and G.defs.skate, "the SKATE game is registered") then return end
+    local a = BMX.Bot.Spawn(ctx.ground + Vector(0, 400, 0), 0)
+    local b = BMX.Bot.Spawn(ctx.ground + Vector(0, -400, 0), 0)
+    if not ctx:ok(a and b, "two bots spawned") then return end
+    for _, bot in ipairs({ a, b }) do
+        bot.show = false                     -- they play, they do not put on their show
+        bot.ply.BMXGameBot = true
+    end
+    ctx:wait(0.5)
+
+    local ended, letters = nil, 0
+    hook.Add("BMX_GameEnded", "BMX.Test.Skate", function(_, r) ended = r end)
+    hook.Add("BMX_GameLetter", "BMX.Test.Skate", function() letters = letters + 1 end)
+
+    local game = G.Start("skate", nil, { letters = "S", setTime = 60, tryTime = 60 })
+    if not ctx:ok(game, "a lobby opened") then return end
+    game.guests = { a.ply, b.ply }
+    ctx:ok(game:Join(a.ply) and game:Join(b.ply), "both joined")
+    ctx:ok(game:Begin(), "and it began")
+
+    ctx:waitUntil(function() return ended ~= nil end, 280, "the game reached a result")
+    ctx:log(string.format("SKATE result: winner %s, %d letter(s), state %s",
+        ended and IsValid(ended.winner) and ended.winner:Nick() or "none", letters, game.state))
+    ctx:ok(game.state == "done", "state is done")
+    ctx:ok(ended and #ended.ranking == 2, "both are ranked")
+
+    hook.Remove("BMX_GameEnded", "BMX.Test.Skate")
+    hook.Remove("BMX_GameLetter", "BMX.Test.Skate")
+    local bikes = { a.bike, b.bike }
+    G.Retire(game)                           -- kicks the bots and takes their bikes
+    for _, bike in ipairs(bikes) do SafeRemoveEntity(bike) end
+end)
+
+--------------------------------------------------------------------------
 -- THE OTHER SHIPPED BIKES, held to the same bands.
 --
 -- The cruiser and the mini are the stock bike with other geometry (see

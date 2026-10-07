@@ -244,6 +244,7 @@ function M.Realm(world, which)
     env.MASK_SOLID, env.MASK_SOLID_BRUSHONLY = 33570827, 16395
     env.MOVETYPE_VPHYSICS, env.SOLID_VPHYSICS = 6, 6
     env.SIM_NOTHING = 0
+    env.MOVETYPE_NOCLIP = 8
     env.SIMPLE_USE = 1
     env.KEY_K = 21
     env.KEY_L = 22
@@ -584,8 +585,13 @@ function M.Realm(world, which)
         MaxPlayers = function() return 8 end,
         ConsoleCommand = function(s) R.log[#R.log + 1] = "console: " .. s end,
     }
+    local JSON = require("lib.json")
+    env.util.TableToJSON = JSON.encode
+    env.util.JSONToTable = JSON.decode
+    R.dirs = {}
     env.file = {
         Write = function(name, data) R.files[name] = data end,
+        CreateDir = function(name) R.dirs[name] = true end,
         Read = function(name) return R.files[name] end,
         -- Base-game content is not on this machine. The headless suite owns
         -- the "does this sound ship with the game" question.
@@ -1137,6 +1143,11 @@ function M.Realm(world, which)
     function Ply:Nick() return self._nick end
     function Ply:Name() return self._nick end
     function Ply:IsBot() return self._bot end
+    -- A stable id per human, as the engine's is per account; a bot has none
+    -- (nil), as in the engine. A test can name one with opts.sid.
+    function Ply:SteamID64() return self._sid end
+    function Ply:GetMoveType() return self._moveType or 2 end
+    function Ply:Kick(why) self._kicked = why or "" end
     function Ply:IsSuperAdmin() return self._superadmin or false end
     function Ply:IsAdmin() return self._superadmin or self._admin or false end
     function Ply:Alive() return true end
@@ -1228,6 +1239,7 @@ function M.Realm(world, which)
         opts = opts or {}
         local p = makeEntity("player")
         p._nick, p._bot = nick or "Player", opts.bot or false
+        p._sid = opts.sid or (not p._bot and ("7656119800000" .. (1000 + #self.players)) or nil)
         -- Somewhere out of the way: a player standing at the origin would be
         -- "touching" every bike a test spawns there.
         p:SetPos(Vector(5000, 5000, 0))
@@ -1310,6 +1322,7 @@ function M.Realm(world, which)
     ----------------------------------------------------------------------
     if not SERVER then
         env.surface = { CreateFont = function() end, SetFont = function() end,
+                        PlaySound = function(s) R.played = R.played or {}; R.played[#R.played + 1] = s end,
                         GetTextSize = function() return 10, 10 end,
                         SetDrawColor = function() end,
                         DrawRect = function(x, y, w, h) R.rects = R.rects or {}
@@ -1496,6 +1509,7 @@ function M.Realm(world, which)
         self:runFile("autorun/bmx_init.lua")
         self:loadEntity("bmx_base")
         self:loadEntity("bmx_city_solid")
+        self:loadEntity("bmx_leaderboard")
         env.hook.Run("InitPostEntity")
         self:runTimers()
         return self

@@ -205,7 +205,10 @@ function ENT:Use(activator)
     if activator:InVehicle() then return end
     local pod = self:GetPod()
     if not IsValid(pod) or IsValid(self:GetDriver()) then return end
-    if hook.Run("BMX_CanMount", self, activator) == false then return end
+    -- (ply, bike) like every public hook that has a rider in it. Through 1.1.0
+    -- this was (bike, ply), and the name is the same, so it cannot be kept as
+    -- an alias: MODDING.md says so.
+    if hook.Run("BMX_CanMount", activator, self) == false then return end
     if activator.BMXTumbling or self.pickingUp then return end
     -- A bike lying down is picked up first, where the player can see it
     -- (BMX.BeginPickUp), and they get on at the end of it.
@@ -381,7 +384,16 @@ function ENT:AwardTricks(tricks)
     if total <= 0 then return 0 end
 
     self:SetScore(self:GetScore() + total)
-    hook.Run("BMX_TricksLanded", self, self:GetDriver(), tricks, total)
+    -- One public BMX_TrickLanded per trick (docs/MODDING.md), so a scoreboard
+    -- hook never has to unpack a list; the whole-landing BMX_TricksLanded
+    -- stays for one version as the alias.
+    local rider = self:GetDriver()
+    if IsValid(rider) then
+        for _, t in ipairs(tricks) do
+            hook.Run("BMX_TrickLanded", rider, t, t.points or 0, self)
+        end
+    end
+    hook.Run("BMX_TricksLanded", self, rider, tricks, total)
     self:SendTrickCallout(tricks, total)
     if BMX.ComboAdd then BMX.ComboAdd(self, tricks) end
     return total

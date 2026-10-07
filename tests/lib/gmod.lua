@@ -113,6 +113,7 @@ M.bit = bitlib
 M.IN = {
     ATTACK = 1, JUMP = 2, DUCK = 4, FORWARD = 8, BACK = 16, USE = 32,
     MOVELEFT = 512, MOVERIGHT = 1024, ATTACK2 = 2048, SPEED = 131072,
+    RELOAD = 8192, WALK = 262144,
 }
 
 --------------------------------------------------------------------------

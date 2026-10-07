@@ -64,3 +64,26 @@ round, not just be animated.
 The binding collision is the real risk: changing what RMB + A/D does in the air
 would break riders' muscle memory. So we add bindings and keep the existing
 ones.
+
+## Status (2026-10-07)
+
+Built on branch `worktree-agent-a4c9798db73feff8f`; offline suite green
+(`tests/test_tricks.lua`). The headless cases are written but have **not**
+been run on a real server, and nothing has been looked at in the game: the
+drawing and the IK are checked only for "runs, finite, parts where the maths
+says".
+
+| Done when | |
+|---|---|
+| Tailwhip: frame turns 360 about the steer axis, bars and rider stay, feet leave the pedals and return | **Done**, drawing unseen in-game. `cl_init.lua` rotates the rear group about the head tube; the foot IK targets stay at the unwhipped pedals. |
+| Barspin: bars (and fork) turn 360, hands let go and catch | **Done**, drawing unseen in-game. Hand targets come from the bars *without* the spin. The front wheel turns with the fork, as the goal says. |
+| Scored and chained, 600 / 400, x N, "Tailwhip to Barspin" | **Done.** Both in one air merge into one entry, e.g. "2x Tailwhip to Barspin" (1600), which the combo counts as two tricks (`tricks = 2`). |
+| Auto-complete over 270, snap back under 90, between = out of line | **Done** (`sv_tricks.lua`, config `Tricks.autoComplete` / `snapBack`). |
+| Landing more than 30 deg out of line bails through the existing path, combo lost | **Done** (`BMX.LandingFault`, read by `ENT:JudgeLanding`, reason `whip` / `bars`). Tested on the entity and on the plant. |
+| Barspin also works in a manual | **Done**; a finished barspin pays on the spot. |
+| Bindings: LMB + A/D whip, R bars, LMB + R both; RMB + A/D stays 360 | **Done.** |
+| Rebindable (G19) | **Not done**: waits on G19's settings panel. The keys are read in one place (`sv_input.lua`). |
+| `st.whipAngle` / `st.barAngle` networked as one byte each | **Done, slightly different**: `st.parts.whip.angle` / `.bar.angle`, packed with the pose id into one int `TrickBits` (a byte each, three bytes). |
+| Counter-torque on the chassis | **Done**, small (`Tricks.whipKick`); the plant shows a few degrees of yaw. |
+| Bot: `tailwhip`, `barspin` in `bmx_bot_trick` | **Done** (`Tailwhip`, `Barspin` in `Bot.TrickList`). |
+| Tests: 280 / 80 deg whip, 40 deg bail, points and names for whip x2 + bars, headless `tailwhip_lands` | **Done offline**; `tailwhip_lands` written, **not run**. |

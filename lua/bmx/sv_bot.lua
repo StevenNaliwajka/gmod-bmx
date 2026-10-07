@@ -51,7 +51,8 @@ local UP = Vector(0, 0, 1)
 
 -- The order the show runs in, and the names the scoring uses.
 Bot.TrickList = { "Bunny Hop", "Wheelie", "Stoppie", "Combo", "Backflip",
-                  "Frontflip", "Barrel Roll", "360", "Crank Grind", "Double Peg Grind" }
+                  "Frontflip", "Barrel Roll", "360", "Crank Grind", "Double Peg Grind",
+                  "Tailwhip", "Barspin", "Superman", "Superman Backflip" }
 
 Bot.Config = {
     flipSpeed  = 340,   -- u/s at a launch's foot, for the air tricks
@@ -117,6 +118,10 @@ function Brain:set(t)
     i.tuck        = t.tuck       or false
     i.sprint      = t.sprint     or false
     i.wheelieMod  = t.wheelieMod or false
+    -- Frame and bar spins and style poses (sv_tricks.lua).
+    i.whip        = t.whip or 0
+    i.bar         = t.bar or 0
+    i.pose        = t.pose
 end
 
 function Brain:st() return self.bike.st or {} end
@@ -351,7 +356,7 @@ end
 
 -- Fly one air trick. `axis` is pitch / roll / yaw, `sign` its direction
 -- (+1 nose up / right / left), `target` the spin to finish on, radians.
-function Brain:flySpin(axis, sign, target)
+function Brain:flySpin(axis, sign, target, pose)
     local Ax = AXES[axis]
     local A = self.bike:Cfg().Air
     local accel = A[Ax.accel]
@@ -378,6 +383,9 @@ function Brain:flySpin(axis, sign, target)
             u = sign * math.Clamp(-Bot.Config.spinGain * 2 * w / accel, -1, 0)
         end
         local inp = { tuck = remaining > 0 }
+        -- A pose to hold during the spin: pose(spun, target) -> a pose name
+        -- or nil (the Superman Backflip's superman).
+        if pose then inp.pose = pose(spun, target) end
         inp[Ax.input] = u
         if Ax.wheelieMod then inp.wheelieMod = true end
         self:set(inp)
@@ -538,7 +546,7 @@ Bot.AirTricks = {
 -- The part of an air trick done in the air: from takeoff to touchdown, and
 -- the landing checked. Its own function so a bike already in the air -- off
 -- a map's gap, or a test's launch -- can do it too.
-function Brain:airPart(name, t0)
+function Brain:airPart(name, t0, pose, scored)
     local A = Bot.AirTricks[name]
     -- Aim to finish on a turn plus margin; a frontflip leaves a nose-up ramp,
     -- so it turns that much further to come down level.
@@ -548,10 +556,10 @@ function Brain:airPart(name, t0)
         target = math.max(target, TAU + p0)
     end
     self:say(string.format("airborne: %.2f s to land, aiming for %.0f deg", self:timeToLand(), math.deg(target)))
-    self:flySpin(A.axis, A.sign, target)
+    self:flySpin(A.axis, A.sign, target, pose)
     self:set({})
     self:waitLanded(0.8, 3)
-    if self:scoredSince(t0, name) and self:riding() then return true end
+    if self:scoredSince(t0, scored or name) and self:riding() then return true end
     local got = self:scoredSince(t0)
     return false, got and ("scored " .. got.name .. " instead") or "nothing scored"
 end
@@ -566,6 +574,90 @@ for name in pairs(Bot.AirTricks) do
         return b:airPart(name, t0)
     end
 end
+
+--------------------------------------------------------------------------
+-- Frame and bar spins, and poses (G03, G17). Written to the same bike.input a
+-- rider's keys make: inp.whip / inp.bar / inp.pose (sv_input.lua).
+--------------------------------------------------------------------------
+
+-- Turn a part (st.parts[field]) in the air until it is past the 270 degrees
+-- from which letting go finishes it, then let go. `name` is what the scoring
+-- calls it.
+function Brain:airPartSpin(name, field, t0)
+    local want = TAU * 0.85
+    self:say(string.format("airborne: %.2f s to land, spinning the %s", self:timeToLand(), field))
+    local landedFor = 0
+    while true do
+        if not self:riding() then return false end
+        local st = self:st()
+        if st.grounded and not st.airMode then
+            landedFor = landedFor + engine.TickInterval()
+            if landedFor > 0.1 then break end
+        else
+            landedFor = 0
+        end
+        local part = st.parts and st.parts[field]
+        local inp = {}
+        if st.airMode and (not part or math.abs(part.angle) < want) then inp[field] = 1 end
+        self:set(inp)
+        tick()
+    end
+    self:set({})
+    self:waitLanded(0.8, 3)
+    if self:scoredSince(t0, name) and self:riding() then return true end
+    local got = self:scoredSince(t0)
+    return false, got and ("scored " .. got.name .. " instead") or "nothing scored"
+end
+
+-- Hold a pose through the middle of the air, and be out of it well before
+-- touchdown (landing in a pose bails).
+function Brain:airPose(name, pose, t0)
+    self:say(string.format("airborne: %.2f s to land, holding %s", self:timeToLand(), pose))
+    local landedFor = 0
+    while true do
+        if not self:riding() then return false end
+        local st = self:st()
+        if st.grounded and not st.airMode then
+            landedFor = landedFor + engine.TickInterval()
+            if landedFor > 0.1 then break end
+        else
+            landedFor = 0
+        end
+        local inp = {}
+        if st.airMode and (st.airTime or 0) >= 0.12 and self:timeToLand() > 0.4 then inp.pose = pose end
+        self:set(inp)
+        tick()
+    end
+    self:set({})
+    self:waitLanded(0.8, 3)
+    if self:scoredSince(t0, name) and self:riding() then return true end
+    local got = self:scoredSince(t0)
+    return false, got and ("scored " .. got.name .. " instead") or "nothing scored"
+end
+
+local function partTrick(name, fn)
+    T[name] = function(b)
+        local l = b:launch()
+        if not l then return false, "nowhere to get air" end
+        local t0 = CurTime()
+        local ok, why = b:hitLaunch(l, Bot.Config.flipSpeed)
+        if not ok then return false, why end
+        return fn(b, t0)
+    end
+end
+partTrick("Tailwhip", function(b, t0) return b:airPartSpin("Tailwhip", "whip", t0) end)
+partTrick("Barspin",  function(b, t0) return b:airPartSpin("Barspin",  "bar",  t0) end)
+partTrick("Superman", function(b, t0) return b:airPose("Superman", "superman", t0) end)
+
+-- A backflip with the superman held through the middle of it: one compound,
+-- "Backflip Superman". The pose is up from a fifth of the way round to
+-- three quarters, long enough to count and over before it comes down.
+partTrick("Superman Backflip", function(b, t0)
+    return b:airPart("Backflip", t0, function(spun, target)
+        local f = spun / target
+        return (f >= 0.2 and f <= 0.72) and "superman" or nil
+    end, "Backflip Superman")
+end)
 
 -- Run just the air part of a trick on a bike already in the air.
 function Bot.PerformAir(b, name, done)

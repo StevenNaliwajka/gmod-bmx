@@ -35,6 +35,7 @@ BMX.Version = "1.1.0"
 local SHARED = {
     "bmx/sh_config.lua",
     "bmx/sh_util.lua",
+    "bmx/sh_tricks.lua",    -- the trick registry; the scoring and the overlay read it
     "bmx/sh_bikes.lua",
     "bmx/sh_sound.lua",
     "bmx/sh_color.lua",     -- the palette and the ways to choose from it
@@ -49,6 +50,7 @@ local SERVER_FILES = {
     "bmx/sv_input.lua",
     "bmx/sv_grind.lua",     -- before sv_physics, which calls it
     "bmx/sv_combo.lua",     -- chained tricks: before sv_physics too
+    "bmx/sv_tricks.lua",    -- frame/bar spins and style poses: before sv_physics too
     "bmx/sv_physics.lua",
     "bmx/sv_seat.lua",
     "bmx/sv_rules.lua",     -- server-owner settings: bike limit, scoring on/off
@@ -71,6 +73,7 @@ local CLIENT_FILES = {
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
     "bmx/cl_grind.lua",     -- sparks and the scrape while a bike grinds
+    "bmx/cl_tricks.lua",    -- the trick list overlay (bmx_tricks)
     "bmx/cl_city.lua",      -- draws the city, runs the subway trains
 }
 

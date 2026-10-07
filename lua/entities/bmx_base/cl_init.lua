@@ -42,6 +42,32 @@ function ENT:Initialize()
 end
 
 --------------------------------------------------------------------------
+-- ROTATIONS FOR THE TRICKS: a tailwhip swings the frame about the steer axis,
+-- a barspin turns the bars about it, a tabletop lays the whole bike over.
+-- Rodrigues, right-handed, so the three agree with each other.
+--------------------------------------------------------------------------
+local function rotVec(v, axis, ang)
+    if ang == 0 then return v end
+    local c, s = math.cos(ang), math.sin(ang)
+    return v * c + axis:Cross(v) * s + axis * (axis:Dot(v) * (1 - c))
+end
+
+local function rotAbout(p, origin, axis, ang)
+    if ang == 0 then return p end
+    return origin + rotVec(p - origin, axis, ang)
+end
+
+-- The signed short way from `cur` to `target` (both radians mod a turn),
+-- closed at `rate` a second: the drawn part follows the networked angle, which
+-- arrives a byte at a time, without jumping.
+local function approachAngle(cur, target, rate, dt)
+    local d = (target - cur + math.pi) % (math.pi * 2) - math.pi
+    if math.abs(d) < 1e-4 then return target end
+    return cur + d * math.min(1, rate * dt)
+end
+local TRICK_FOLLOW = 40     -- 1/s
+
+--------------------------------------------------------------------------
 -- Where a wheel's axle is in world space right now, and whether it found
 -- ground. Same geometry as Wheel:Simulate, forces omitted.
 --------------------------------------------------------------------------
@@ -437,6 +463,28 @@ function ENT:Draw()
     local fwd       = self:GetForward()
     local up        = self:GetUp()
     local right     = self:GetRight()
+
+    ----------------------------------------------------------------------
+    -- THE TRICKS, as networked (sv_tricks.lua): how far the frame and the
+    -- bars are round their turn, and which pose the rider holds. The angles
+    -- arrive a byte at a time, so they are FOLLOWED rather than shown; the
+    -- pose weights blend over BMX.PoseBlendTime (cl_rider.lua).
+    ----------------------------------------------------------------------
+    local whipA, barA, poseId = BMX.UnpackTrickBits(self:GetTrickBits())
+    self.drawWhip = approachAngle(self.drawWhip or whipA, whipA, TRICK_FOLLOW, dt)
+    self.drawBar  = approachAngle(self.drawBar  or barA,  barA,  TRICK_FOLLOW, dt)
+    local whipAng, barAng = self.drawWhip, self.drawBar
+    local W = BMX.UpdatePoseWeights(self, BMX.PoseNames[poseId], dt)
+    local bodyRoll, barsTurn, barsSpin = BMX.PoseDrawAngles(W)
+
+    -- Tabletop: the whole bike laid over about its own long axis. Everything
+    -- below is then built from the laid-over up and right.
+    local bodyAng = self:GetAngles()
+    if bodyRoll ~= 0 then
+        right = rotVec(right, fwd, bodyRoll)
+        up    = rotVec(up,    fwd, bodyRoll)
+        bodyAng = fwd:AngleEx(up)
+    end
     local rearAxle  = right
     local frontAxle = right
 
@@ -476,38 +524,62 @@ function ENT:Draw()
     local fSpin = self:WheelSpin("front", fHit, fallen, dt)
     local rSpin = self:WheelSpin("rear",  rHit, fallen, dt)
 
-    if not bike.wheelModel then
-        drawWheel(self, "front", fPos, frontAxle, fSpin, WC.radius, fHit, debug, lod)
-        drawWheel(self, "rear",  rPos, rearAxle,  rSpin, WC.radius, rHit, debug, lod)
-    end
-
-    if bike.hasModel then return end
-
     ----------------------------------------------------------------------
-    -- The frame. Chassis points sit on the axle line the bike RIDES at, which
-    -- is the design line lifted by the static sag, so an unladen frame lines
-    -- up with wheels at their resting compression.
+    -- The frame's own measures, up here because the tricks move parts about
+    -- the steer axis (the head tube), and the wheels hang off those parts.
+    -- Chassis points sit on the axle line the bike RIDES at, which is the
+    -- design line lifted by the static sag, so an unladen frame lines up with
+    -- wheels at their resting compression.
     ----------------------------------------------------------------------
     local k   = WC.wheelbase / 39
     local g   = physenv.GetGravity():Length()
     local sag = math.Clamp(C.Chassis.mass * g * 0.5 / WC.spring, 0, WC.restLength)
     local lift0 = Vector(0, 0, sag)
-    local function P(v) return self:LocalToWorld(v * k + lift0) end
+    local bodyC = self:LocalToWorld(Vector(0, 0, 10 * k))
+    local function P(v)
+        local p = self:LocalToWorld(v * k + lift0)
+        return bodyRoll ~= 0 and rotAbout(p, bodyC, fwd, bodyRoll) or p
+    end
+    if bodyRoll ~= 0 then
+        fPos = rotAbout(fPos, bodyC, fwd, bodyRoll)
+        rPos = rotAbout(rPos, bodyC, fwd, bodyRoll)
+    end
+
+    local headT, headB = P(FRAME.headT), P(FRAME.headB)
+    local steerAxis = (headT - headB):GetNormalized()
+    -- The frame group (rear wheel, stays, cranks, seat) turns by the whip,
+    -- the front end (fork, front wheel, bars) by the barspin.
+    local function Wh(p) return rotAbout(p, headB, steerAxis, whipAng) end
+    local function Wv(v) return rotVec(v, steerAxis, whipAng) end
+    local function Bs(p) return rotAbout(p, headB, steerAxis, barAng) end
+    local function Bv(v) return rotVec(v, steerAxis, barAng) end
+
+    local rPosD, rearAxleD = Wh(rPos), Wv(rearAxle)
+    local fPosD, frontAxleD = Bs(fPos), Bv(frontAxle)
+
+    if not bike.wheelModel then
+        drawWheel(self, "front", fPosD, frontAxleD, fSpin, WC.radius, fHit, debug, lod)
+        drawWheel(self, "rear",  rPosD, rearAxleD,  rSpin, WC.radius, rHit, debug, lod)
+    end
+
+    if bike.hasModel then return end
 
     -- The paint: this bike's palette colour (sh_color.lua), networked.
     local col = BMX.PaletteColor(self:GetColorIndex())
-    local bb, seatJ, seat = P(FRAME.bb), P(FRAME.seatJ), P(FRAME.seat)
-    local headT, headB = P(FRAME.headT), P(FRAME.headB)
+    local bb0 = P(FRAME.bb)         -- where the bottom bracket is, whip or not
+    local bb, seatJ, seat = Wh(bb0), Wh(P(FRAME.seatJ)), Wh(P(FRAME.seat))
+    local fwdW, upW, rightW = Wv(fwd), Wv(up), Wv(right)
+    local whipAngles = whipAng ~= 0 and fwdW:AngleEx(upW) or bodyAng
 
     tube(seatJ, headT, 1.5 * k, col)            -- top tube
     tube(headB, bb, 1.7 * k, col)               -- down tube
     tube(bb, seatJ, 1.5 * k, col)               -- seat tube
     tube(headT, headB, 1.9 * k, col)            -- head tube
     for _, side in ipairs({ 1, -1 }) do
-        local off = right * (1.6 * k * side)
-        tube(bb + off, rPos + off, 0.95 * k, col)       -- chain stays
-        tube(seatJ + off, rPos + off, 0.95 * k, col)    -- seat stays
-        if lod == 0 then joint(rPos + off, 1.3 * k, col) end  -- dropouts
+        local off = rightW * (1.6 * k * side)
+        tube(bb + off, rPosD + off, 0.95 * k, col)      -- chain stays
+        tube(seatJ + off, rPosD + off, 0.95 * k, col)   -- seat stays
+        if lod == 0 then joint(rPosD + off, 1.3 * k, col) end  -- dropouts
     end
     -- Where the tubes meet: round, not a notch.
     if lod == 0 then
@@ -519,7 +591,7 @@ function ENT:Draw()
 
     -- Seat post and seat: a padded saddle, not a brick.
     tube(seatJ, seat, 1.0 * k, COL_CHROME)
-    solid("sph", seat + up * (0.8 * k) - fwd * (0.5 * k), self:GetAngles(),
+    solid("sph", seat + upW * (0.8 * k) - fwdW * (0.5 * k), whipAngles,
         Vector(9.5, 4.0, 2.0) * k, COL_PART, MAT.matte)
 
     ----------------------------------------------------------------------
@@ -527,23 +599,34 @@ function ENT:Draw()
     -- axle where it really is, so it steers and compresses with the wheel.
     ----------------------------------------------------------------------
     for _, side in ipairs({ 1, -1 }) do
-        local off = frontAxle * (1.7 * k * side)
-        tube(headB + off, fPos + off, 1.0 * k, COL_PART)
+        local off = frontAxleD * (1.7 * k * side)
+        tube(headB + off, fPosD + off, 1.0 * k, COL_PART)
     end
-    tube(headB - frontAxle * (1.9 * k), headB + frontAxle * (1.9 * k), 1.2 * k, COL_PART)
+    tube(headB - frontAxleD * (1.9 * k), headB + frontAxleD * (1.9 * k), 1.2 * k, COL_PART)
 
     -- The bars turn about the head tube with the steer angle: the bar centre's
     -- offset from the head tube is re-expressed along the STEERED forward.
+    -- Then the tricks: a barspin turns them about the steer axis, an X-up
+    -- half a turn more, and a turndown folds them forward about the stem.
     local d = P(FRAME.bars) - headT
-    local barsC = headT + steeredFwd * d:Dot(fwd) + up * d:Dot(up)
-    local stemTop = headT + up * (3 * k)
+    local barsC0 = headT + steeredFwd * d:Dot(fwd) + up * d:Dot(up)
+    local stemTop0 = headT + up * (3 * k)
+    local function barsAt(spin, turn)
+        local stem = rotAbout(stemTop0, headB, steerAxis, spin)
+        local function R(p)
+            p = rotAbout(p, headB, steerAxis, spin)
+            return rotAbout(p, stem, frontAxle, turn)
+        end
+        return R(stemTop0), R(barsC0), R(barsC0 - frontAxle * (11 * k)),
+            R(barsC0 + frontAxle * (11 * k)), R(barsC0 - frontAxle * (14.5 * k)),
+            R(barsC0 + frontAxle * (14.5 * k))
+    end
+    local stemTop, barsC, barL, barR, gripL, gripR = barsAt(barAng + barsSpin, barsTurn)
     tube(headT, stemTop, 1.4 * k, COL_PART)
-    local barL = barsC - frontAxle * (11 * k)
-    local barR = barsC + frontAxle * (11 * k)
     tube(stemTop, barsC, 1.0 * k, COL_PART)         -- the rise of the bar
     tube(barL, barR, 0.95 * k, COL_PART)
-    tube(barL, barL - frontAxle * (3.5 * k), 1.5 * k, COL_TYRE)    -- grips
-    tube(barR, barR + frontAxle * (3.5 * k), 1.5 * k, COL_TYRE)
+    tube(barL, gripL, 1.5 * k, COL_TYRE)            -- grips
+    tube(barR, gripR, 1.5 * k, COL_TYRE)
 
     -- Where the rider's hands and feet belong, for the IK in cl_rider.lua.
     -- Recorded every frame the bike is drawn: the rider is drawn in the same
@@ -552,9 +635,15 @@ function ENT:Draw()
     -- length, and the IK takes the point nearest the shoulder (a stretched
     -- rider slides in toward the stem). rHand is the middle, for everything
     -- that just wants "the grip".
-    local ik = { rHand = barR + frontAxle * (1.75 * k), lHand = barL - frontAxle * (1.75 * k),
-                 rHandA = barR, rHandB = barR + frontAxle * (3.5 * k),
-                 lHandA = barL, lHandB = barL - frontAxle * (3.5 * k) }
+    -- THE HANDS HOLD THE BARS AS THE POSE TURNS THEM (an X-up crosses the
+    -- arms, a turndown pushes them forward) but NOT as a barspin does: the
+    -- targets come from the bars without the spin, so the hands let go while
+    -- the bars go round, and catch them when they are back.
+    local _, _, hbL, hbR, hgL, hgR = barsAt(barsSpin, barsTurn)
+    local gripDirR, gripDirL = (hgR - hbR):GetNormalized(), (hgL - hbL):GetNormalized()
+    local ik = { rHand = hbR + gripDirR * (1.75 * k), lHand = hbL + gripDirL * (1.75 * k),
+                 rHandA = hbR, rHandB = hgR,
+                 lHandA = hbL, lHandB = hgL }
     self.ikTargets = ik
 
     ----------------------------------------------------------------------
@@ -567,31 +656,43 @@ function ENT:Draw()
     -- same thing and read as pedals with a mind of their own.
     self.crankAngle = rSpin / C.Drive.gearRatio
 
-    local cr = right * (-CHAINY * k)             -- -Y local is +right world
+    local cr = rightW * (-CHAINY * k)            -- -Y local is +right world
     local ringC = bb + cr
-    if lod < 2 then ring(ringC, fwd, up, RING * k, 0.6 * k, COL_CHROME, lod == 0 and 16 or 6) end
-    local cogC = rPos + cr
+    if lod < 2 then ring(ringC, fwdW, upW, RING * k, 0.6 * k, COL_CHROME, lod == 0 and 16 or 6) end
+    local cogC = rPosD + cr
     if lod == 0 then
-        tube(ringC + up * (RING * k), cogC + up * (COG * k), 0.45 * k, COL_PART)   -- chain, top
-        tube(ringC - up * (RING * k), cogC - up * (COG * k), 0.45 * k, COL_PART)   -- chain, bottom
+        tube(ringC + upW * (RING * k), cogC + upW * (COG * k), 0.45 * k, COL_PART)   -- chain, top
+        tube(ringC - upW * (RING * k), cogC - upW * (COG * k), 0.45 * k, COL_PART)   -- chain, bottom
     end
 
     for _, side in ipairs({ 1, -1 }) do
         local t = self.crankAngle + (side == 1 and 0 or math.pi)
-        local arm = (fwd * math.cos(t) - up * math.sin(t)) * (CRANK * k)
-        local root = bb + right * (Q * k * side)
+        local arm = (fwdW * math.cos(t) - upW * math.sin(t)) * (CRANK * k)
+        local root = bb + rightW * (Q * k * side)
         local pedal = root + arm
-        ik[side == 1 and "rFoot" or "lFoot"] = pedal + right * (1.8 * k * side) + up * (0.9 * k)
+        -- THE FEET STAY WHERE THE PEDALS WERE. In a tailwhip the cranks go
+        -- round with the frame and the rider's feet do not: they leave the
+        -- pedals and meet them again at the top of the turn.
+        local arm0 = (fwd * math.cos(t) - up * math.sin(t)) * (CRANK * k)
+        local pedal0 = bb0 + right * (Q * k * side) + arm0
+        ik[side == 1 and "rFoot" or "lFoot"] = pedal0 + right * (1.8 * k * side) + up * (0.9 * k)
         if lod < 2 then tube(root, pedal, 0.9 * k, COL_PART) end
         -- Matte: pedals are grippy plastic and pins, not polished metal.
         if lod == 0 then
-            solid("box", pedal + right * (1.8 * k * side), self:GetAngles(),
+            solid("box", pedal + rightW * (1.8 * k * side), whipAngles,
                 Vector(3.6, 3.6, 1.0) * k, COL_PART, MAT.matte)
         end
     end
     if lod == 0 then
-        tube(bb - right * (Q * k), bb + right * (Q * k), 1.3 * k, COL_PART)     -- spindle
+        tube(bb - rightW * (Q * k), bb + rightW * (Q * k), 1.3 * k, COL_PART)     -- spindle
     end
+
+    -- Style poses move the hands and feet off the bike's own points (an
+    -- IK target each, blended in and out: cl_rider.lua).
+    BMX.ApplyPoseTargets(ik, W, function(v)
+        local p = self:LocalToWorld(v * k + lift0)
+        return bodyRoll ~= 0 and rotAbout(p, bodyC, fwd, bodyRoll) or p
+    end)
 
     ----------------------------------------------------------------------
     -- Kickstand, when it is DOWN (networked: put down by a rider stopping, or
@@ -599,8 +700,8 @@ function ENT:Draw()
     -- the LEFT, the side a parked bike leans on (Stand.standLean).
     ----------------------------------------------------------------------
     if self:GetStandDown() then
-        local from = bb - right * (2 * k)
-        local want = from - up * (16 * k) - right * (7 * k)
+        local from = bb - rightW * (2 * k)
+        local want = from - upW * (16 * k) - rightW * (7 * k)
         local to = want
         if lod < 2 then
             local tr = util.TraceLine({ start = from, endpos = want,

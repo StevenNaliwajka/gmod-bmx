@@ -445,9 +445,16 @@ function BMX.PhysicsStep(ent, phys, dt)
     if hasDriver then
         local done = BMX.TrackManual(st, C, front, rear, speed, dt)
         if done and ent.AwardTricks then ent:AwardTricks(done) end
+        -- Frame and bar spins, poses, anything registered (sv_tricks.lua):
+        -- after the manual, so a bar spin knows whether one is under way.
+        if BMX.TricksTick then
+            local paid = BMX.TricksTick(ent, phys, C, dt, inp, st)
+            if paid and ent.AwardTricks then ent:AwardTricks(paid) end
+        end
         if BMX.ComboThink then BMX.ComboThink(ent, st) end
     else
         st.manual = nil
+        if BMX.TricksIdle then BMX.TricksIdle(ent, st) end
         -- Got off with a combo open: it was landed, and it banks.
         if st.combo and BMX.ComboEnd then BMX.ComboEnd(ent, true) end
     end

@@ -350,8 +350,8 @@ T.test("settings: a change from the console is saved, once, a moment later", fun
     sv.world.time = sv.world.time + 1
     sv:runTimers()
     local json = sv.files["bmx/server.json"]
-    T.ok(json and json:find('"bmx_scoring": false', 1, true), "saved: " .. tostring(json))
-    T.ok(json:find('"bmx_combos": false', 1, true), "both changes in the one write")
+    T.ok(json and json:find("\"bmx_scoring\":%s*false"), "saved: " .. tostring(json))
+    T.ok(json:find("\"bmx_combos\":%s*false"), "both changes in the one write")
 end)
 
 --------------------------------------------------------------------------

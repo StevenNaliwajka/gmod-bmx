@@ -2201,3 +2201,65 @@ function(ctx)
     if got then ctx:between(got.held or 0, 1.8, 4, "held for", "s") end
     ctx:ok(IsValid(ctx.bike:GetDriver()), "rider aboard after the rear came down")
 end)
+
+--------------------------------------------------------------------------
+-- THE OTHER BIKES (G13), on the real engine: the unicycle, the penny-farthing's header,
+-- the tandem's two pairs of legs and the downhill bike's drop. Each rides its own
+-- vehicle (`vehicle = "<id>"`, like test_cart_drives), and each was first written against
+-- the offline plant (tests/test_unicycle.lua, tests/test_oddbikes.lua) and NOT yet run on
+-- VPhysics: bands are wide, and what can differ there is said in each case.
+--------------------------------------------------------------------------
+
+--------------------------------------------------------------------------
+-- unicycle_balances: a scripted INPUT CONTROLLER, in the case and not the bot, keeps it up
+-- for 10 s. The controller is what a rider is: lean (A / D) against the roll, pedal (W / S)
+-- against the pitch, a little of each one's rate for phase lead. It is given a shove
+-- first, so "stands still" is not the whole claim, and then rides, so it is not either.
+--
+-- The assist is held at its default 0.6 for the case (T.ConVar), whatever the server has
+-- it at. What can differ on VPhysics is the inertia the engine measures, which the
+-- vehicle's spring is a FRACTION OF (Unicycle.holdRoll, see sv_unicycle.lua): the break-even
+-- assist is 1 - hold at any inertia, and 0.6 is above it with room.
+--------------------------------------------------------------------------
+T.Case("unicycle_balances", { vehicle = "unicycle", timeout = 45,
+    desc = "a scripted rider (lean against roll, pedal against pitch) keeps the unicycle up for 10 s, standing and riding, after a shove" },
+function(ctx)
+    T.ConVar(ctx, "bmx_unicycle_assist", 0.6)
+    local b = ctx.bike
+    local function controller(base)
+        local st = ctx:st()
+        local lean = math.Clamp(-4 * (st.roll + 0.15 * st.rollRate), -1, 1)
+        local thr = math.Clamp((base or 0) - 4 * (st.pitch + 0.15 * st.pitchRate), -1, 1)
+        ctx:input({ lean = lean, throttle = math.max(thr, 0), brakeRear = math.max(-thr, 0) })
+    end
+
+    ctx:ok(b:Bike().balance == "unicycle", "it runs the unicycle balance mode")
+    ctx:ok(#b.wheels == 1, "on one wheel")
+    ctx:wait(0.6)
+    ctx:ok(ctx:st().grounded, "standing on its wheel")
+
+    -- A shove, then 6 s of it held in place.
+    b:GetPhysicsObject():SetAngleVelocity(Vector(30, 30, 0))
+    local worstR, worstP = 0, 0
+    local function watch()
+        worstR = math.max(worstR, math.abs(ctx:st().roll))
+        worstP = math.max(worstP, math.abs(ctx:st().pitch))
+        return false
+    end
+    ctx:runUntil(6, function() controller(0) return watch() end)
+    ctx:ok(IsValid(b:GetDriver()), "still aboard after the shove")
+    ctx:log(string.format("worst lean %.1f, worst pitch %.1f deg", math.deg(worstR), math.deg(worstP)))
+    ctx:between(math.deg(worstR), 0, 14, "worst roll", "deg")
+    ctx:between(math.deg(worstP), 0, 14, "worst pitch", "deg")
+
+    -- Then riding, 4 s: pedalling forward, the same controller.
+    local start = b:GetPos()
+    ctx:runUntil(4, function() controller(0.5) return watch() end)
+    ctx:ok(IsValid(b:GetDriver()), "still aboard after riding")
+    local moved = (b:GetPos() - start):Length()
+    ctx:log(string.format("rode %.0f units, speed %.0f u/s", moved, ctx:st().speed))
+    ctx:ok(moved > 60 or ctx.stoppedAtEdge, "it went somewhere: " .. math.floor(moved))
+    ctx:between(math.deg(worstR), 0, 14, "worst roll over the whole 10 s", "deg")
+    ctx:input({})
+end)
+

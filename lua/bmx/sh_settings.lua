@@ -321,6 +321,10 @@ server{ name = "bmx_fixie_frontbrake", kind = "bool", default = false, category 
     label = "Front brake on the fixie",
     help = "A fixed gear's only brake is its legs, and LMB does nothing on one. On, LMB brakes the front wheel of a fixie as it does on a BMX." }
 
+server{ name = "bmx_unicycle_assist", kind = "float", default = 0.6, min = 0, max = 1, decimals = 2, category = "feel",
+    label = "Unicycle balance assist",
+    help = "How much of the unicycle's balance is done for the rider. 0 is as hard as the real thing (it falls over the moment the rider stops correcting it), 1 is a unicycle that cannot fall. 0.6 is a wobble you can ride out." }
+
 server{ name = "bmx_crash_ragdoll", kind = "bool", default = true, category = "rules",
     label = "Crashes throw the rider",
     help = "A rider who crashes is thrown off as a ragdoll for a moment. Off just shoves them off the bike." }

@@ -155,6 +155,16 @@ C.Wheel = {
     radius    = 10,
     wheelbase = 39,
 
+    -- THE ODD VEHICLES (G13). Two numbers a two-wheeled bike never needed.
+    --   loadShare   the fraction of the vehicle's weight ONE wheel carries at rest, for
+    --               the rest height (BMX.RestHeight): a bike's two wheels carry half each,
+    --               a unicycle's one carries all of it
+    --   rearRadius  false, or the radius of the REAR wheel when it is not the front's
+    --               (a penny-farthing's small one): the collision boxes (BMX.CollisionBoxes)
+    --               are sized from it, and the rear axle sits radius - rearRadius lower
+    loadShare  = 0.5,
+    rearRadius = false,
+
     -- Suspension travel. A BMX has no FORK, but it is not rigid: the tyre
     -- carcass deflects and, far more importantly, THE RIDER IS THE SUSPENSION.
     -- Legs and arms absorb impacts on a BMX, which is why riders stand up for
@@ -979,6 +989,51 @@ C.Combo = {
     -- Seconds on the ground, not in a trick, before a combo banks: the time a
     -- rider has to link the next trick. A manual or a grind holds it open.
     grace = 0.8,
+}
+
+--------------------------------------------------------------------------
+-- THE UNICYCLE (G13; sv_unicycle.lua, the `unicycle` balance mode).
+--
+-- One wheel, no fork: nothing turns the wheel, so the vehicle is balanced as an
+-- inverted pendulum on TWO axes at once. Fore and aft the rider keeps the wheel
+-- under them by pedalling (W / S: the fixed drive's torque at the patch pitches
+-- the body, which is what really happens); from side to side by leaning (A / D),
+-- and it turns by twisting (mouse yaw) and by the lean it is in.
+--
+-- THE ASSIST (bmx_unicycle_assist, 0..1) is how much of gravity's toppling is cancelled
+-- for the rider: alpha = -assist * topple + Kp (target - angle) - Kd (rate), on each
+-- axis. The spring is the rider's own and always on, and is a FRACTION of the toppling's
+-- gradient G = m*g*h/I (roll ~110-170 rad/s^2 per rad, pitch ~140-220; the bike's is
+-- 166): Kp = hold * G, so the vehicle holds itself above assist (1 - hold) whatever the
+-- engine measures for the inertia. 0.6 is the default: it stands, with a wobble.
+--
+--   holdRoll, holdPitch   the spring, as a fraction of G (0.7: self-standing above assist 0.3)
+--   zeta               the damper, as a fraction of critical for that spring
+--   maxLean            how far A / D lean the target, radians: a unicycle is not leaned
+--                      into a corner like a bike
+--   maxAccel           the ceiling on the assist's angular acceleration, rad/s^2
+--   turnGain           the share of a coordinated turn (g * tan(roll) / v) the lean gives
+--   twistRate          rad/s of yaw per unit of mouse movement in a tick (clamped)
+--   accelLean          how far forward the assist leans the target for full pedalling, radians
+--   fallFrom, fallTo   the assist is whole up to the first angle (the worse of roll and
+--                      pitch) and gone at the second: past it the vehicle falls
+--   twistMax           the fastest the rider may twist the unicycle round, rad/s
+--   yawKp              how hard the yaw is brought to the rate wanted, 1/s
+--   idleReversals, idleWindow, idleSpeed   the idle trick: this many changes of the
+--                      pedalling's direction inside this long at under this speed (u/s)
+--   hopPoints, idlePoints   what they pay (idle per second)
+--------------------------------------------------------------------------
+C.Unicycle = {
+    holdRoll = 0.7, holdPitch = 0.7, zeta = 0.9,
+    maxLean = math.rad(8),
+    maxAccel = 260,
+    turnGain = 1.0,
+    twistRate = 0.25, twistMax = 3.0,
+    accelLean = math.rad(6),
+    fallFrom = math.rad(20), fallTo = math.rad(32),
+    yawKp = 6,
+    idleReversals = 3, idleWindow = 2.0, idleSpeed = 30,
+    hopPoints = 30, idlePoints = 20,
 }
 
 --------------------------------------------------------------------------

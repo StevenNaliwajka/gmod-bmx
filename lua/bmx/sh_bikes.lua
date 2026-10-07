@@ -555,6 +555,57 @@ BMX.RegisterBike("city", {
 })
 
 --------------------------------------------------------------------------
+-- THE UNICYCLE (G13): one 20-inch wheel, a fixed gear (the cranks ARE the wheel's
+-- axle: no freewheel, no brake, S pedals backwards) and nothing to hold it up but the
+-- rider. The `unicycle` balance mode (sv_unicycle.lua) balances it on two axes at
+-- once, with bmx_unicycle_assist (default 0.6) doing a share of the work.
+--
+--   wheelbase 0, one wheel at the origin   a one-wheeled vehicle: the hull is one wheel
+--                               box and the body (sh_util.lua, BMX.CollisionBoxes)
+--   mass 66, mass centre 20 up  a rider and a light frame, the weight a hand above the
+--                               hub; with the 10-unit wheel, the contact is 30 below it
+--   spring 15000, damper 650, loadShare 1   ONE wheel carries all of the weight, where a
+--                               bike's two carry half each: the spring is stiffer to match
+--                               (3 units of sag at 66 kg), and the rest height is derived
+--                               from the share (BMX.RestHeight)
+--   Drive gearRatio 1, maxCadence 15       direct drive: the top speed is the legs'
+--                               ceiling, 15 * 10 = 150 u/s (3.8 m/s, 13.7 km/h), which is
+--                               what a rider gets out of a 20-inch wheel
+--   crankTorque 120000          a tenth of a g of acceleration is what a unicycle does and
+--                               a good deal of what the pedals are FOR: the tyre force at
+--                               the patch is also the fore-and-aft balance's actuator
+--   Hop popSpeed 130, no kick   a pop straight up: no nose-up kick to roll into a manual
+--   Crash tipRoll 36, tipPitch 40 deg   falls over and throws the rider long before a
+--                               bike's 65 and 75: past ~32 the assist has let go anyway
+--   tricks uni_idle, uni_hop    no flips, no grinds: a rider who spins a unicycle in the
+--                               air is not what this vehicle is for
+BMX.RegisterVehicle({
+    id          = "unicycle",
+    family      = "bike",
+    printName   = "Unicycle",
+    description = "One wheel, a fixed gear and no brake. W / S pedal forward and back to stay under yourself, A / D lean, the mouse twists you round. bmx_unicycle_assist sets how much is done for you. Tricks: idle (rock in place) and hop. Falls are ragdolls.",
+    colorIndex  = 6,
+    wheels = { { pos = Vector(0, 0, 0), drive = true, steer = false, name = "wheel" } },
+    balance = "unicycle",
+    drive   = { kind = "fixed", reverse = true },
+    input   = "unicycle",
+    pose    = "unicycle",
+    tricks  = { "uni_idle", "uni_hop" },
+    grindPoints = false,
+    drawer  = "unicycle",
+    physics = {
+        Chassis = { mass = 66, hullMin = Vector(-4, -4, 2), hullMax = Vector(4, 4, 38),
+                    massCenterExpected = Vector(0, 0, 20), seatOffset = Vector(0, 0, 19),
+                    barHullCentre = false, pegHullHalfWidth = false },
+        Wheel   = { radius = 10, wheelbase = 0, restLength = 8, spring = 15000, damper = 650, loadShare = 1,
+                    grip = 1.4 },
+        Drive   = { gearRatio = 1, maxCadence = 15, crankTorque = 120000, dragArea = 0.0045 },
+        Hop     = { popSpeed = 130, forwardBias = 0, pitchImpulse = 0 },
+        Crash   = { tipRoll = math.rad(36), tipPitch = math.rad(40) },
+    },
+})
+
+--------------------------------------------------------------------------
 -- THE TEST CART: the platform's proof that it is not a bicycle.
 --
 -- Four wheels in a rectangle, no balance mode at all (`none`: it stands on its

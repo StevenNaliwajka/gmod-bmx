@@ -37,7 +37,8 @@ local BOUNDS_MIN, BOUNDS_MAX = Vector(-36, -18, -14), Vector(36, 18, 72)
 function ENT:Initialize()
     self.spinAngle  = 0
     self.crankAngle = 0
-    local k = self:Cfg().Wheel.wheelbase / 39
+    -- (A one-wheeled vehicle's wheelbase is nothing, G13: never smaller than a third.)
+    local k = math.max(self:Cfg().Wheel.wheelbase / 39, 0.34)
     self:SetRenderBounds(BOUNDS_MIN * k, BOUNDS_MAX * k)
 end
 
@@ -78,7 +79,7 @@ local TRICK_FOLLOW = 40     -- 1/s
 -- one debugging aid this file exists for never drew once. The headless suite
 -- cannot see it (a dedicated server never calls Draw); tests/test_client.lua
 -- can, because it runs this file.
-local function axlePos(ent, mountLocal)
+local function axlePos(ent, mountLocal, radius)
     local WC     = ent:Cfg().Wheel
     local maxLen = BMX.WheelReach(WC)
     local down   = -ent:GetUp()
@@ -97,7 +98,7 @@ local function axlePos(ent, mountLocal)
     local s
     if tr.Hit then
         s = BMX.DiscContact(mount, down, ent:GetRight(), maxLen * tr.Fraction,
-            tr.HitNormal, WC.radius)
+            tr.HitNormal, radius or WC.radius)
     end
     if not s or s > WC.restLength then
         return mount + down * WC.restLength, false
@@ -521,6 +522,16 @@ function ENT:Draw()
     local lod = debug and 0 or BMX.BikeLOD(self)
     local debug2 = GetConVar("bmx_debug") and GetConVar("bmx_debug"):GetInt() >= 2
 
+    -- A VEHICLE THAT IS NOT THE STOCK BIKE'S SHAPE draws itself (G13, `drawer` in its
+    -- registration; cl_oddbikes.lua): a unicycle has no front wheel, a penny-farthing's
+    -- two are different sizes, a tandem has two of everything. It is handed this file's
+    -- own drawing primitives (BMX.Draw, below) so it looks like the rest.
+    local drawer = bike.drawer and BMX.Drawers and BMX.Drawers[bike.drawer]
+    if drawer then
+        drawer(self, BMX.Draw, lod, debug)
+        return
+    end
+
     ----------------------------------------------------------------------
     -- A bike that ships a real model draws it, through a pushed matrix so
     -- the physics origin stays on the axle line while the model sits
@@ -908,6 +919,15 @@ function ENT:Draw()
         tube(from, to, 0.8 * k, COL_PART)
     end
 end
+
+-- THE PRIMITIVES, for the procedural drawers of the other vehicles (cl_oddbikes.lua).
+BMX.Draw = {
+    tube = tube, joint = joint, solid = solid, ring = ring, wheel = drawWheel, axle = axlePos,
+    MAT = MAT, rotVec = rotVec, rotAbout = rotAbout,
+    COL = { tyre = COL_TYRE, tread = COL_TREAD, rim = COL_RIM, spoke = COL_SPOKE, part = COL_PART,
+            chrome = COL_CHROME, air = COL_AIR },
+}
+BMX.Drawers = BMX.Drawers or {}
 
 -- The tyre models are clientside and belong to nobody else: remove them with
 -- the bike, or every bike ever spawned leaves two behind until the map changes.

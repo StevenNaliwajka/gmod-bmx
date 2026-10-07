@@ -322,7 +322,7 @@ end
 function BMX.RestHeight(cfg)
     local C = cfg or BMX.Config
     local g = physenv and physenv.GetGravity and physenv.GetGravity():Length() or 600
-    local sag = C.Chassis.mass * g * 0.5 / C.Wheel.spring
+    local sag = C.Chassis.mass * g * (C.Wheel.loadShare or 0.5) / C.Wheel.spring
     return C.Wheel.radius - math.min(sag, C.Wheel.restLength)
 end
 
@@ -339,23 +339,33 @@ function BMX.CollisionBoxes(cfg)
     local CH, W = C.Chassis, C.Wheel
     local half, r = W.wheelbase * 0.5, W.radius
     local hw = CH.wheelHullHalfWidth or 1.6
-    -- The floor is where the suspension runs out of travel (see the config).
-    local bot = CH.wheelHullBottom or -(W.radius - W.restLength)
 
     local wheels = {}
-    for _, x in ipairs({ half, -half }) do
-        wheels[#wheels + 1] = { Vector(x - r, -hw, bot), Vector(x + r, hw, r) }
+    -- ONE AXLE FOR A ONE-WHEELED VEHICLE (G13): a wheelbase of nothing is a unicycle,
+    -- and two identical boxes on top of each other would count its wheel twice in the
+    -- volume that places the mass centre. And a REAR WHEEL OF ITS OWN SIZE (a
+    -- penny-farthing's), whose axle sits lower on the chassis by the difference. {x of
+    -- the axle, its wheel's radius, its height on the chassis}; a bike's two are
+    -- exactly what they always were.
+    local axles = (half < 0.5) and { { 0, r, 0 } }
+        or { { half, r, 0 }, { -half, W.rearRadius or r, W.rearRadius and (W.rearRadius - r) or 0 } }
+    for _, a in ipairs(axles) do
+        local x, rr, dz = a[1], a[2], a[3]
+        -- The floor is where the suspension runs out of travel (see the config).
+        local floor = CH.wheelHullBottom or -(rr - W.restLength)
+        wheels[#wheels + 1] = { Vector(x - rr, -hw, dz + floor), Vector(x + rr, hw, dz + rr) }
     end
     -- The pegs (Chassis.pegHullHalfWidth): a box across each axle.
     if CH.pegHullHalfWidth then
         local pw = CH.pegHullHalfWidth
-        for _, x in ipairs({ half, -half }) do
-            wheels[#wheels + 1] = { Vector(x - 1.2, -pw, 0), Vector(x + 1.2, pw, 6) }
+        for _, a in ipairs(axles) do
+            local x, dz = a[1], a[3]
+            wheels[#wheels + 1] = { Vector(x - 1.2, -pw, dz), Vector(x + 1.2, pw, dz + 6) }
         end
     end
     -- The bars (Chassis.barHullCentre): counted with the wheels, since the
     -- body is shifted to balance whatever is added to it.
-    if CH.barHullCentre then
+    if CH.barHullCentre and half >= 0.5 then
         local k = W.wheelbase / 39
         local c, h = CH.barHullCentre * k, CH.barHullHalf * k
         wheels[#wheels + 1] = { c - h, c + h }

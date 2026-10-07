@@ -61,6 +61,7 @@ local SERVER_FILES = {
     "bmx/sv_tricks.lua",    -- frame/bar spins and style poses: before sv_physics too
     "bmx/sv_physics.lua",
     "bmx/sv_fixie.lua",     -- the fixed-gear drive, its two tricks, its front-brake switch (G10)
+    "bmx/sv_unicycle.lua",  -- one wheel on two axes: the unicycle balance mode, its pedals, its tricks (G13)
     "bmx/sv_seat.lua",
     "bmx/sv_passenger.lua", -- a second rider: boarding, mass, the crash (G11)
     "bmx/sv_basket.lua",    -- a city bike's basket: props ride in it until the ride is not gentle (G12)
@@ -89,6 +90,7 @@ local CLIENT_FILES = {
     "bmx/cl_sound.lua",
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
     "bmx/cl_gears.lua",     -- the shift keys, sent to the server (G09)
+    "bmx/cl_oddbikes.lua",  -- the unicycle, the penny-farthing and the tandem, drawn in code (G13)
     "bmx/cl_passenger.lua", -- who is a passenger, how they sit, where their hands go (G11)
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
     "bmx/cl_filmer.lua",    -- views through a bmx_filmer_cam (bmx_filmer_view)

@@ -89,6 +89,14 @@ high. If the rear steps out under gentle pedalling, too low. Default 1.35.
 Grip interacts with everything downstream, which is why it comes before the
 balance controller: retuning grip afterward invalidates the lean tuning.
 
+Two switches sit beside grip, both on the wheel (docs/DESIGN.md, "Two things a
+ray and a slip velocity cannot do"). `bmx_wheel_stiction` (default 1) pins a
+locked or parked wheel's patch below `Wheel.stickSpeed`, so a held bike does
+not creep on a slope; it only acts on a wheel that is not rolling. The anchor
+lets go at `grip*N`, so raising `bmx_grip` raises the slope a bike holds on.
+`bmx_wheel_sweep` (default **0**) probes the front of the tyre for ramps, curbs
+and walls; turn it on to ride it, and watch the cost with 20 bikes out.
+
 ### 4. Balance: `bmx_lean_kp`, `bmx_lean_kd`, `bmx_max_lean`
 
 This is the stage that decides whether it feels like a bike. Budget real time

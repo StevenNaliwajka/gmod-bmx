@@ -58,3 +58,50 @@ ray reports a slope over 25° or the previous tick touched a steep face.
 This changes the wheel model under everything, so it's the riskiest item in
 this list. Land it behind `bmx_wheel_sweep 1` (default off), ride it, then
 flip the default.
+
+## Status (2026-10-07)
+
+**Implemented behind `bmx_wheel_sweep` (default 0), partly measured.** The
+swept wheel is shared with G16 and is described in `docs/DESIGN.md` ("Two
+things a ray and a slip velocity cannot do"): a one-ray bumper, a nine-ray fan
+only when needed (a face ahead, a floor over 25 degrees, or a face touched in
+the last 0.15 s), resolved as a plane or an edge, applied as a second
+normal-only contact beside the floor's. `BMX.SweepProbe / SweepContact /
+SweepResolve` are pure functions in `sh_util.lua`, run offline against
+hand-built geometry. The headless cases are written but **unverified until CI
+runs them.**
+
+Done-when, item by item:
+
+- **20 mph into a 45 degree wedge, penetration < 1 u every tick: not met as
+  worded, partly met.** The solver finds a 45, 60 and 75 degree face exactly
+  (depth within 0.1 u, offline), and `rides_up_wedge_45` is written. 20 mph is
+  352 u/s, above the bike's ~310 u/s top speed, and a 30 u wedge is what 240
+  u/s can climb (`v^2 = 2*g*h`), so the case rides a 30 u wedge at 240. The
+  "< 1 u" does not hold by construction: a face contact is a spring like the
+  ground's, so the chassis is compliant against it by up to the strut's travel
+  (the same as the 3 u of sag into the ground). The case asserts the face never
+  bottoms the strut instead.
+- **Roll in to a 75 degree quarter pipe: written (`rolls_in_to_quarter`,
+  a 6-chord approximation of an R=100 arc), unverified.** Contact is found on
+  faces to 80 degrees; steeper is a wall.
+- **10 mph into a vertical wall, never through it: written
+  (`into_a_wall_stops`), unverified.** On the plant, at 3 mph, the tyre stops
+  within the strut's travel and does not climb (a wall is suspension-only: no
+  tyre force, so pushing on it does not climb it). At 10 mph the hull, not the
+  wheel, is what stops a bike in the engine (the spring has 8,600 a unit against
+  1.3 million of kinetic energy), which the plant has no hull for.
+- **All of it on `hb_skatepark_v7`, `gm_skatepark`, `pf_skatepark`: not done.**
+  The cases build their own terrain with `bmx_city_solid`, so they do not depend
+  on a map; nothing has been ridden on those three.
+
+Not done: the thin hull trace (an AABB cannot be rotated into the wheel plane;
+the fan plus the second contact gives the same push), tyre friction on faces,
+and the client's wheel drawing (it still draws from the strut ray, so against a
+steep face the drawn tyre can pass through it by the strut's compression). The
+`crowd` case has not been run with the sweep on; flat ground costs one extra
+trace a wheel. The default stays off until it has been ridden.
+
+Tests: `tests/test_wheel_contact.lua` ("sweep: ..." solver tests on a wedge,
+steps and a wall; "sweep (plant): ..." closed-loop on the plant), headless
+`rides_up_wedge_45`, `rolls_in_to_quarter`, `into_a_wall_stops` (+ variants).

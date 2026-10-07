@@ -1520,6 +1520,328 @@ function(ctx)
 end)
 
 --------------------------------------------------------------------------
+-- SLOPES, CURBS, WEDGES AND WALLS (G04, G05, G16)
+--
+-- Terrain is built out of bmx_city_solid entities carrying hulls (T.Solid), so
+-- none of these depends on a map having a ramp where the bike happens to be.
+-- It is laid out from the test ground along +x, which findTestGround
+-- guarantees is open for ~2,000 units, and it goes when the case does.
+--
+-- NOT RUN YET. Written against the shim and the other cases by reading them;
+-- the offline suite cannot say what VPhysics's hull does when a wheel box
+-- meets a corner, which is half of what these measure. The bands are wide and
+-- the first CI run is expected to move some of them.
+--------------------------------------------------------------------------
+local function hull(pts2d, y0, y1)
+    local h = {}
+    for _, p in ipairs(pts2d) do
+        h[#h + 1] = Vector(p[1], y0, p[2])
+        h[#h + 1] = Vector(p[1], y1, p[2])
+    end
+    return h
+end
+
+local function boxHull(x0, x1, z0, z1)
+    return hull({ { x0, z0 }, { x1, z0 }, { x1, z1 }, { x0, z1 } }, -300, 300)
+end
+
+-- A slope rising toward +x from the ground at x0, `deg` degrees, `len` long.
+local function slopeHull(g, x0, len, deg)
+    local rise = len * math.tan(math.rad(deg))
+    return hull({ { x0, g.z - 8 }, { x0 + len, g.z - 8 }, { x0 + len, g.z + rise },
+                  { x0, g.z } }, -300, 300)
+end
+
+local function ignoring(ctx)
+    return { ctx.bike, ctx.bike:GetPod(), ctx.bike:GetDriver() }
+end
+
+-- Put the bike somewhere, at rest or moving, with nothing carried over.
+local function putBike(ctx, pos, ang, vel)
+    local phys = ctx.bike:GetPhysicsObject()
+    phys:SetAngles(ang)
+    phys:SetPos(pos)
+    phys:SetVelocity(vel or Vector(0, 0, 0))
+    phys:SetAngleVelocity(Vector(0, 0, 0))
+end
+
+local function surfaceAt(ctx, x, y)
+    return util.TraceLine({
+        start = Vector(x, y, ctx.ground.z + 500), endpos = Vector(x, y, ctx.ground.z - 50),
+        filter = ignoring(ctx), mask = MASK_SOLID })
+end
+
+-- Hold the bike on a slope and measure what it does. `deg` is the slope;
+-- `downhill` faces it down the fall line. Returns drift (units) and RMS speed
+-- (u/s) over `seconds`, after a settling second and a half.
+--
+-- THE FRONT BRAKE (inp.brakeFront), not the rear: below walking pace the rear
+-- key is the paddle-backwards key and lets go of the brake (sv_physics.lua,
+-- drivetrain). And a front-only hold has a limit that depends on which way
+-- the bike faces -- uphill the weight is on the rear -- so the steep hold is
+-- done facing downhill, where the front carries it.
+local function heldOnSlope(ctx, deg, downhill, seconds)
+    local g = ctx.ground
+    local x0 = g.x + 300
+    local len = 400
+    local slope = T.Solid(ctx, { slopeHull(g, x0, len, deg) })
+    ctx:wait(0.3)
+    local tr = surfaceAt(ctx, x0 + len * 0.5, g.y)
+    if not ctx:ok(tr.Hit and math.abs(tr.HitNormal.z - math.cos(math.rad(deg))) < 0.05,
+                  string.format("found the %d degree slope under the start (normal z %.3f)",
+                      deg, tr.HitNormal.z)) then
+        SafeRemoveEntity(slope)
+        return nil
+    end
+    ctx:input({ brakeFront = 1 })
+    local rest = BMX.RestHeight(ctx.cfg)
+    putBike(ctx, tr.HitPos + tr.HitNormal * rest,
+        Angle(downhill and deg or -deg, downhill and 180 or 0, 0))
+    ctx:wait(1.5)
+
+    local p0 = ctx.bike:GetPos()
+    local sum, n, t0 = 0, 0, CurTime()
+    ctx:waitUntil(function()
+        local v = ctx.bike:GetPhysicsObject():GetVelocity():Length()
+        sum, n = sum + v * v, n + 1
+        return CurTime() - t0 >= seconds
+    end, seconds + 5, "the hold")
+    local drift = (ctx.bike:GetPos() - p0):Length()
+    local rms = n > 0 and math.sqrt(sum / n) or 0
+    SafeRemoveEntity(slope)
+    return drift, rms
+end
+
+T.Case("holds_on_slope", { timeout = 60,
+    desc = "front brake held on 5, 10 degrees (facing up) and 20 (facing down), the bike does not creep" },
+function(ctx)
+    for _, c in ipairs({ { 5, false }, { 10, false }, { 20, true } }) do
+        local drift, rms = heldOnSlope(ctx, c[1], c[2], 10)
+        if drift then
+            local label = c[1] .. " degrees " .. (c[2] and "facing down" or "facing up")
+            ctx:between(drift, 0, 1.5, label .. ": drift in 10 s", "u")
+            ctx:between(rms, 0, 0.5, label .. ": RMS speed while held", "u/s")
+        end
+    end
+end)
+
+T.Case("parked_on_slope", { rider = false, timeout = 110,
+    desc = "a riderless bike on its kickstand on a 10 degree slope does not move in 60 s" },
+function(ctx)
+    local g = ctx.ground
+    local x0, len, deg = g.x + 300, 400, 10
+    local slope = T.Solid(ctx, { slopeHull(g, x0, len, deg) })
+    ctx:wait(0.3)
+    local tr = surfaceAt(ctx, x0 + len * 0.5, g.y)
+    if not ctx:ok(tr.Hit, "found the slope under the start") then return end
+    putBike(ctx, tr.HitPos + tr.HitNormal * BMX.RestHeight(ctx.cfg), Angle(-deg, 0, 0))
+    ctx:wait(3)
+    local p0 = ctx.bike:GetPos()
+    ctx:wait(60)
+    ctx:between((ctx.bike:GetPos() - p0):Length(), 0, 1, "drift in 60 s", "u")
+    ctx:ok(ctx.bike.st.onStand, "still on its stand")
+    SafeRemoveEntity(slope)
+end)
+
+T.Case("rolls_on_gentle_slope", { timeout = 25,
+    desc = "no brake on 2 degrees: the bike rolls and picks up speed (no stiction on a free wheel)" },
+function(ctx)
+    local g = ctx.ground
+    local x0, len, deg = g.x + 300, 600, 2
+    T.Solid(ctx, { slopeHull(g, x0, len, deg) })
+    ctx:wait(0.3)
+    local tr = surfaceAt(ctx, x0 + len - 150, g.y)
+    if not ctx:ok(tr.Hit, "found the slope under the start") then return end
+    ctx:input({})
+    putBike(ctx, tr.HitPos + tr.HitNormal * BMX.RestHeight(ctx.cfg), Angle(deg, 180, 0))
+    local top = 0
+    ctx:waitUntil(function()
+        top = math.max(top, ctx.bike.st.speed)
+        return top > 25
+    end, 6, "the bike to roll off down 2 degrees")
+    ctx:between(top, 15, 200, "speed reached rolling down 2 degrees", "u/s")
+end)
+
+-- The sweep cases run with bmx_wheel_sweep on for their own length, and
+-- teardown gives it back whatever happens (T.ConVar).
+local function sweepOn(ctx) T.ConVar(ctx, "bmx_wheel_sweep", 1) end
+
+-- How far into a face the strut is pushed by it, at most, over a run: the
+-- obstacle contact's depth. It is the chassis's compliance against the face,
+-- bounded by the strut's travel; hitting the bump stop is the failure.
+local function faceDepth(ctx)
+    local worst = 0
+    for _, w in ipairs(ctx.bike.wheels) do
+        if w.obstacle then worst = math.max(worst, w.obstacle.depth) end
+    end
+    return worst
+end
+
+-- Ride at `speed` u/s from `from` along +x with a light throttle, watching.
+local function rideAt(ctx, from, speed, throttle, seconds, each)
+    ctx:input({ throttle = throttle or 0.3 })
+    putBike(ctx, Vector(from, ctx.ground.y, ctx.ground.z + BMX.RestHeight(ctx.cfg)),
+        Angle(0, 0, 0), Vector(speed, 0, 0))
+    local t0 = CurTime()
+    ctx:waitUntil(function()
+        if each then each() end
+        return CurTime() - t0 >= seconds
+    end, seconds + 5, "the ride")
+end
+
+T.Case("rides_up_wedge_45", { timeout = 30,
+    desc = "sweep on: into a 45 degree wedge at speed, the bike goes up it and over, and the face never bottoms the strut" },
+function(ctx)
+    sweepOn(ctx)
+    local g = ctx.ground
+    local xa, rise = g.x + 500, 30
+    -- ramp, then a plateau to land on
+    T.Solid(ctx, { hull({ { xa, g.z - 8 }, { xa + 330, g.z - 8 }, { xa + 330, g.z + rise },
+                          { xa + rise, g.z + rise }, { xa, g.z } }, -300, 300) })
+    ctx:wait(0.3)
+    local worst = 0
+    rideAt(ctx, xa - 320, 240, 1, 3.5, function() worst = math.max(worst, faceDepth(ctx)) end)
+    local travel = ctx.cfg.Wheel.restLength
+    ctx:log(string.format("deepest face contact %.2f u of %.1f travel", worst, travel))
+    ctx:between(worst, 0, travel, "deepest the ramp face pushed a strut (bump stop = the travel)", "u")
+    ctx:ok(ctx.bike:GetPos().x > xa + rise + 10, "it went up and over: x = " .. math.floor(ctx.bike:GetPos().x))
+    ctx:between(ctx.bike:GetPos().z - g.z, rise, rise + 40, "on the plateau", "u")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+end)
+
+T.Case("rolls_in_to_quarter", { timeout = 30,
+    desc = "sweep on: dropping in down a 75 degree quarter pipe and riding out of it" },
+function(ctx)
+    sweepOn(ctx)
+    local g = ctx.ground
+    local R, top = 100, math.rad(75)
+    local xb = g.x + 800                   -- where the curve meets the floor
+    local pts, hulls = {}, {}
+    for i = 0, 6 do
+        local a = top * i / 6
+        pts[#pts + 1] = { xb - R * math.sin(a), g.z + R * (1 - math.cos(a)) }
+    end
+    for i = 1, #pts - 1 do
+        local a, b = pts[i + 1], pts[i]           -- a: higher, further back
+        hulls[#hulls + 1] = hull({ a, b, { b[1], g.z - 8 }, { a[1], g.z - 8 } }, -300, 300)
+    end
+    local xt, zt = pts[#pts][1], pts[#pts][2]
+    hulls[#hulls + 1] = hull({ { xt - 240, g.z - 8 }, { xt, g.z - 8 }, { xt, zt }, { xt - 240, zt } }, -300, 300)
+    T.Solid(ctx, hulls)
+    ctx:wait(0.3)
+
+    ctx:input({})
+    putBike(ctx, Vector(xt - 100, g.y, zt + BMX.RestHeight(ctx.cfg) + 1), Angle(0, 0, 0), Vector(120, 0, 0))
+    local out = ctx:waitUntil(function()
+        return ctx.bike.st.grounded and ctx.bike:GetPos().x > xb + 60
+            and ctx.bike:GetPos().z < g.z + BMX.RestHeight(ctx.cfg) + 6
+    end, 8, "the bike to ride out onto the floor")
+    ctx:ok(out, "rode out of the transition onto the floor")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+    ctx:between(math.deg(math.abs(ctx.bike.st.roll or 0)), 0, 30, "roll on the way out", "deg")
+end)
+
+T.Case("into_a_wall_stops", { timeout = 25,
+    desc = "sweep on: 10 mph into a wall, the tyre stops at it and is neither driven up it nor thrown by it" },
+function(ctx)
+    sweepOn(ctx)
+    local g = ctx.ground
+    local xa = g.x + 500
+    T.Solid(ctx, { boxHull(xa, xa + 60, g.z - 8, g.z + 120) })
+    ctx:wait(0.3)
+    local WC = ctx.cfg.Wheel
+    local reach = WC.wheelbase * 0.5 + WC.radius        -- origin to front of the front tyre
+    local deepest, vz = 0, -math.huge
+    rideAt(ctx, xa - 260, 176, 0, 3, function()
+        deepest = math.max(deepest, ctx.bike:GetPos().x + reach - xa)
+        vz = math.max(vz, ctx.bike:GetPhysicsObject():GetVelocity().z)
+    end)
+    ctx:log(string.format("front of the tyre %.1f u past the face at most; fastest up %.0f u/s", deepest, vz))
+    ctx:between(deepest, -1e9, 4, "how far the front of the tyre went past the face", "u")
+    ctx:between(vz, -1e9, 120, "fastest the bike went UP off the wall", "u/s")
+    ctx:between(ctx.bike.st.speed, 0, 40, "speed after hitting it", "u/s")
+end)
+
+T.Case("climbs_curb_slow", { timeout = 25,
+    desc = "sweep on: at 3 mph both wheels climb a curb of 0.4 of the wheel's radius" },
+function(ctx)
+    sweepOn(ctx)
+    local g = ctx.ground
+    local WC = ctx.cfg.Wheel
+    -- 0.4 of the radius is what a tyre rolls onto (docs/goals/G16: the goal
+    -- document's "8 u" is 0.8 of a 20 inch tyre's 10 u radius). It scales
+    -- with the bike: the mini's curb is lower.
+    local h = 0.4 * WC.radius
+    local xa = g.x + 500
+    T.Solid(ctx, { boxHull(xa, xa + 300, g.z - 8, g.z + h) })
+    ctx:wait(0.3)
+    rideAt(ctx, xa - 200, 53, 0.2, 4.5)
+    local pos = ctx.bike:GetPos()
+    local f, r = ctx:wheels()
+    ctx:ok(pos.x - WC.wheelbase * 0.5 > xa + 4, "the REAR wheel is over the edge too: x = " .. math.floor(pos.x))
+    ctx:between(pos.z - g.z, BMX.RestHeight(ctx.cfg) + h - 1.5, BMX.RestHeight(ctx.cfg) + h + 2,
+        "ride height on top of the curb", "u")
+    ctx:ok(f.onGround and r.onGround, "both wheels down")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+end)
+
+T.Case("stops_at_step_then_manuals_up", { timeout = 40,
+    desc = "sweep on: a step of 1.6 radii stops the front wheel at 3 mph; a manual lifts the front" },
+function(ctx)
+    sweepOn(ctx)
+    local g = ctx.ground
+    local WC = ctx.cfg.Wheel
+    local xa = g.x + 500
+    T.Solid(ctx, { boxHull(xa, xa + 300, g.z - 8, g.z + 1.6 * WC.radius) })
+    ctx:wait(0.3)
+    local reach = WC.wheelbase * 0.5 + WC.radius
+    local deepest = 0
+    rideAt(ctx, xa - 150, 53, 0.2, 3, function()
+        deepest = math.max(deepest, ctx.bike:GetPos().x + reach - xa)
+    end)
+    ctx:log(string.format("front of the tyre %.1f u past the face at most", deepest))
+    ctx:between(deepest, -1e9, 4, "the front tyre stopped at the step", "u")
+    ctx:between(ctx.bike.st.speed, 0, 15, "and the bike with it", "u/s")
+
+    -- The manual (weight back under power, as the wheelie case does it).
+    ctx:input({ throttle = 1, pitch = 1 })
+    local lifted = ctx:waitUntil(function()
+        local f = ctx:wheels()
+        return not f.onGround
+    end, 4, "the front wheel to lift")
+    ctx:ok(lifted, "a manual gets the front wheel off the ground at the step")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+end)
+
+T.Case("curb_no_pop", { timeout = 25,
+    desc = "sweep on: a curb at 10 mph does not pop the chassis (vertical acceleration under 3 g over 50 ms)" },
+function(ctx)
+    sweepOn(ctx)
+    local g = ctx.ground
+    local WC = ctx.cfg.Wheel
+    local xa = g.x + 500
+    T.Solid(ctx, { boxHull(xa, xa + 300, g.z - 8, g.z + 0.4 * WC.radius) })
+    ctx:wait(0.3)
+    -- Vertical acceleration over a 50 ms window rather than tick to tick: a
+    -- tick-to-tick difference of a velocity that VPhysics resolves in steps
+    -- reads every contact as a spike. The window is the figure a rider feels.
+    local WINDOW = 0.05
+    local hist, peak = {}, 0
+    rideAt(ctx, xa - 220, 176, 0.3, 2.5, function()
+        local now = CurTime()
+        local vz = ctx.bike:GetPhysicsObject():GetVelocity().z
+        hist[#hist + 1] = { now, vz }
+        while #hist > 1 and now - hist[2][1] >= WINDOW do table.remove(hist, 1) end
+        if #hist > 1 and now - hist[1][1] >= WINDOW * 0.8 then
+            peak = math.max(peak, math.abs(vz - hist[1][2]) / (now - hist[1][1]))
+        end
+    end)
+    ctx:log(string.format("peak vertical acceleration %.0f u/s^2 (%.2f g)", peak, peak / 600))
+    ctx:between(peak, 0, 3 * 600, "peak vertical acceleration over 50 ms", "u/s^2")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+end)
+
+--------------------------------------------------------------------------
 -- THE OTHER SHIPPED BIKES, held to the same bands.
 --
 -- The cruiser and the mini are the stock bike with other geometry (see
@@ -1533,7 +1855,12 @@ for _, bike in ipairs({ "cruiser", "mini" }) do
                             "accelerate", "brake_locks", "lean_steers",
                             "lean_tracks_target", "bunny_hop", "wheelie",
                             "stoppie", "air_mode", "crash_ejects",
-                            "grind_pipe", "grind_ledge" }) do
+                            "grind_pipe", "grind_ledge",
+                            "holds_on_slope", "parked_on_slope",
+                            "rolls_on_gentle_slope", "rides_up_wedge_45",
+                            "rolls_in_to_quarter", "into_a_wall_stops",
+                            "climbs_curb_slow", "stops_at_step_then_manuals_up",
+                            "curb_no_pop" }) do
         T.Variant(name, bike)
     end
 end

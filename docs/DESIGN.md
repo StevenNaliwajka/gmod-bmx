@@ -72,6 +72,88 @@ would otherwise need explicit code fall out:
 Saturation per wheel is on the tuning overlay for exactly this reason. When the
 bike does something surprising, that number usually explains it.
 
+### Two things a ray and a slip velocity cannot do
+
+Two behaviours the wheel model above does not have, both found by reading
+luttje/gmod-bicycle's issue list (docs/goals/G04, G05, G16) and both added
+without changing what a bike does when nothing needs them.
+
+**Static friction: the stick-slip anchor (`bmx_wheel_stiction`, default 1).**
+Slip velocity answers a slip that already exists, so at zero slip it gives zero
+force. A braked wheel on a slope therefore creeps at `m*g*sin(slope) / stiffness`
+for as long as the brake is held, which a real tyre does not: below a few u/s
+the contact patch sticks, and what holds it is a *displacement*. So a wheel that
+is locked (brake held, or parked on its stand on a slope) and slower than
+`Wheel.stickSpeed` pins its contact patch to where it is, and from then on the
+tyre force is a spring-damper on how far the patch has been dragged from that
+point, along and across the wheel:
+
+- **Critically damped against the mass the patch really feels**: `k = m_eff*w^2`,
+  `c = 2*m_eff*w`, with `m_eff` from the same `effectiveMass` the damper and the
+  tyre caps use, and `w = Wheel.stickFreq` (25 rad/s).
+- **Integrated implicitly** (`F = -(k x + (k dt + c) v) / (1 + c dt/m + k dt^2/m)`),
+  so it needs no stability cap and cannot buzz at 33 or 66 ticks. The sag of a
+  held patch is `F/k`: ~0.35 u on 10 degrees, ~0.7 u on 20.
+- **Limited by the friction circle.** If holding takes more than `grip*N` the
+  anchor breaks and sliding resumes, and it may not stick again for
+  `stickCooldown`. A wheel that is rolling never reaches it, so free rolling is
+  untouched.
+
+Two facts about the bike that shape what it can hold. The rear brake key is
+also the paddle-backwards key (below walking pace it lets go of the brake and
+pedals back), so at a standstill it is the *front* brake or the stand that
+holds a bike. And which wheel holds matters: facing uphill the weight is on the
+rear, so a front-only hold gives up near 12 degrees on the shim's plant; facing
+downhill the front carries it and 20 degrees holds. A riderless bike on its
+stand is held by both: 7c in sv_physics.lua still bleeds its horizontal motion
+at the mass centre, and the anchor adds the slope.
+
+**The swept wheel (`bmx_wheel_sweep`, default 0).** A ray down the strut finds
+the floor under the axle. It cannot find a face in front of the tyre: at the
+foot of a 45 degree wedge it still hits flat ground while the front of the tyre
+is already inside the ramp, and a curb is invisible until the axle is over its
+edge. With the sweep on:
+
+1. **A bumper**: one extra ray from under the axle, a unit above the floor,
+   along the travel direction and a little past the tyre. Flat ground costs two
+   rays a wheel instead of one. A face rising from the floor cannot hide from
+   it, which a fan can (a fan has gaps and a corner lives in them: the first
+   version of this probed at 35, 60 and 85 degrees and missed a 4 u curb's
+   corner at 59 degrees until the tyre was 4 u into it).
+2. **The fan** (`BMX.SweepContact`), only when the bumper hit something that is
+   not the floor, the floor under the strut is steeper than 25 degrees, or a
+   face was touched in the last `sweepHold` seconds: nine rays from the axle in
+   the wheel's own plane over -40..92 degrees, each a radius long. A hit inside
+   the radius is the tyre inside something. Hits that are the floor the strut
+   already has are skipped, or the floor's 3 u of sag out-ranks the first unit
+   of a curb beside it. The **deepest** wins (the goal document said
+   "shallowest", which would leave the deeper overlap inside the geometry).
+3. **Resolved** (`BMX.SweepResolve`) as a *plane* (floor, wedge, wall: the
+   contact is the foot of the perpendicular from the axle, the depth is exact
+   however oblique the ray, the force acts along the plane's normal) or an
+   *edge* (a curb's corner: the force acts along the line from the corner to the
+   axle, which tilts up as the wheel comes over, and that tilt is what lifts it).
+   An oblique hit is told apart by firing one more ray along the plane's normal:
+   if it does not find the same plane at the implied distance, it was the side
+   of something whose top is below the axle.
+4. **A second contact, normal-only.** The floor keeps its tyre; the face gets a
+   spring, a damper and a bump stop along its normal at its contact point, with
+   the damper cap, and no tyre: a face is not something a wheel is driven
+   along. A face steeper than `wallCos` (80 degrees) pushed against does not
+   climb. With no floor under the strut, a face that is not a wall stands in as
+   the wheel's whole contact, tyre and all.
+
+What it does not do: a thin hull trace (an AABB cannot be rotated into the wheel
+plane, and the fan plus the second contact gives the same push), tyre friction
+on a face (a wedge is climbed on momentum and the floor's traction, not
+on the ramp's), or move the *drawn* wheel off a face (the client still draws
+from the strut ray, so against a steep face the tyre can be drawn through it by
+the strut's compression). The penetration a face has is the strut's travel, by
+design, as the 3 u of sag into the ground is: the chassis is what is compliant.
+
+Cost: `crowd` is the budget (25 bikes at 66 tps). Off, nothing changed. On,
+flat ground is one extra trace a wheel.
+
 ## 3. Steering is an output
 
 This is the part that makes it feel like GTA rather than like a prop with

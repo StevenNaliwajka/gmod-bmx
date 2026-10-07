@@ -160,6 +160,81 @@ T.test("holding W into a hop is not a front flip; pressing it again in the air i
     T.eq(bike.input.pitchTarget, -1, "a fresh press flips")
 end)
 
+T.test("holding A or D off a ramp is not a barrel roll; pressing it again in the air is", function()
+    local _, bike, _, send = rig()
+    send(IN.MOVELEFT + IN.FORWARD)                   -- carving up the ramp
+    T.eq(bike.input.leanTarget, -1, "leaning left on the ground")
+    bike.st.airMode = true                           -- off the lip, A still held
+    send(IN.MOVELEFT)
+    T.eq(bike.input.leanTarget, 0, "held-over A is ignored in the air")
+    send(IN.MOVELEFT)
+    T.eq(bike.input.leanTarget, 0, "for as long as it stays held")
+    send(0)
+    send(IN.MOVELEFT)
+    T.eq(bike.input.leanTarget, -1, "a fresh press rolls")
+end)
+
+T.test("the other side key in the air is a fresh press, not the latched one", function()
+    local _, bike, _, send = rig()
+    send(IN.MOVERIGHT)
+    bike.st.airMode = true
+    send(IN.MOVERIGHT)
+    T.eq(bike.input.leanTarget, 0, "held D latched")
+    send(IN.MOVELEFT)
+    T.eq(bike.input.leanTarget, -1, "switching to A rolls left at once")
+    send(IN.MOVERIGHT)
+    T.eq(bike.input.leanTarget, 1, "and back to D rolls right: the latch is gone")
+end)
+
+T.test("a side key first pressed in the air rolls at once", function()
+    local _, bike, _, send = rig()
+    send(0)
+    bike.st.airMode = true
+    send(IN.MOVERIGHT)
+    T.eq(bike.input.leanTarget, 1, "D in the air is a roll straight away")
+end)
+
+T.test("the side latch is per jump: landing clears it", function()
+    local _, bike, _, send = rig()
+    send(IN.MOVELEFT)
+    bike.st.airMode = true
+    send(IN.MOVELEFT)
+    T.eq(bike.input.leanTarget, 0, "latched in the first jump")
+    bike.st.airMode = false
+    send(IN.MOVELEFT)
+    T.eq(bike.input.leanTarget, -1, "on the ground A leans again at once")
+    send(0)
+    bike.st.airMode = true
+    send(IN.MOVELEFT)
+    T.eq(bike.input.leanTarget, -1, "and a jump taken with nothing held rolls on a press")
+end)
+
+T.test("a held stick off a lip is latched too, by direction", function()
+    local sv, bike, _, send = rig()
+    sv.env.CreateConVar("sv_sidespeed", "10000")
+    send(0, 0, -6000)                                -- 60% left stick, carving
+    T.ok(bike.input.leanTarget < 0, "leaning left")
+    bike.st.airMode = true
+    send(0, 0, -9000)                                -- pushed further, same way
+    T.eq(bike.input.leanTarget, 0, "still the held direction: ignored")
+    send(0, 0, 0)
+    send(0, 0, -9000)
+    T.ok(bike.input.leanTarget < -0.8, "re-centred and pushed again: rolls")
+end)
+
+T.test("holding W and A off a lip latches both", function()
+    local _, bike, _, send = rig()
+    send(IN.FORWARD + IN.MOVERIGHT)
+    bike.st.airMode = true
+    send(IN.FORWARD + IN.MOVERIGHT)
+    T.eq(bike.input.pitchTarget, 0, "no front flip")
+    T.eq(bike.input.leanTarget, 0, "no barrel roll")
+    send(IN.FORWARD)                                 -- let go of D only
+    send(IN.FORWARD + IN.MOVERIGHT)
+    T.eq(bike.input.leanTarget, 1, "D pressed again rolls")
+    T.eq(bike.input.pitchTarget, 0, "W, never released, still does not flip")
+end)
+
 T.test("a key pressed only after takeoff works at once", function()
     local _, bike, _, send = rig()
     send(0)
@@ -265,4 +340,44 @@ T.test("deadzone: the client offers the setting, and sends it to the server", fu
     T.ok(cv, "bmx_stick_deadzone exists")
     T.ok(cv.userinfo, "as userinfo, so the server can read each rider's")
     T.eq(cv:GetFloat(), 0.1, "default 0.1")
+end)
+
+--------------------------------------------------------------------------
+-- Ridden through the real decode: a carve held into the air.
+--------------------------------------------------------------------------
+
+-- Every tick, the hook gets a usercmd, as the engine sends one per tick.
+local function rideWith(sv, ply, buttonsAt, secs, each)
+    sv:run(secs, function()
+        local c = cmd(buttonsAt(sv.world.time))
+        sv.env.hook.Run("StartCommand", ply, c)
+        if each then return each() end
+        return false
+    end)
+end
+
+T.test("ride: carving with A held through a hop lands on the wheels, not the side", function()
+    local sv, bike, ply = rig()
+    sv:run(0.5)
+    rideWith(sv, ply, function() return IN.FORWARD end, 3)            -- get up to speed
+    rideWith(sv, ply, function() return IN.FORWARD + IN.MOVELEFT end, 1.0)  -- carve left
+    local leanAtLip = bike.st.roll
+    T.ok(leanAtLip < -math.rad(10), "carving: leaned " .. math.deg(leanAtLip))
+    local t0 = sv.world.time
+    local worst, flew = 0, false
+    -- SPACE held 0.4 s then released: a full preload hop. W and A never let go.
+    rideWith(sv, ply, function(t)
+        local b = IN.FORWARD + IN.MOVELEFT
+        if t - t0 < 0.4 then b = b + IN.JUMP end
+        return b
+    end, 2.2, function()
+        if bike.st.airMode then
+            flew = true
+            worst = math.max(worst, math.abs(bike.st.roll))
+        end
+        return false
+    end)
+    T.ok(flew, "it left the ground")
+    T.between(math.deg(worst), 0, 45, "worst roll in the air, degrees")
+    T.ok(sv.env.IsValid(bike:GetDriver()), "and the rider is still on")
 end)

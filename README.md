@@ -69,6 +69,12 @@ disagrees with either.
 | `K` | next paint colour, in a puff of smoke | same |
 | `L` | cinematic camera on/off | same |
 
+**Chase camera.** It eases after the bike's turns and ramps rather than being
+bolted to it; `bmx_cam_smooth 0` bolts it back on. In the air, a lean key
+you were already holding when the wheels left the ground does nothing until
+you let go of it -- press it again to roll -- so steering up a ramp does not
+throw you into a barrel roll off the lip.
+
 **Gamepad.** A controller's left stick is read as an analog axis, so a half
 stick is half throttle, half lean or half a flip, and buttons bound to the keys
 above do what the keys do. `bmx_stick_deadzone` (client, default `0.1`) is how

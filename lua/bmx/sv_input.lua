@@ -133,14 +133,30 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     local fsign = fwd > 0.1 and 1 or (fwd < -0.1 and -1 or 0)
     -- The key held on the LAST GROUND COMMAND is the one carried over; a key
     -- first pressed in the air, even on the first airborne tick, is fresh.
+    --
+    -- A/D THE SAME WAY. On the ground they lean, which is how you steer, so a
+    -- rider carving up a ramp is holding one at the lip -- and in the air A/D
+    -- are ROLL. Unlatched, the steer became a barrel-roll command on the
+    -- takeoff tick and the bike rolled onto its side before it came down
+    -- (live, 2026-10-07: 27 -> 77 degrees in half a second, A held off a
+    -- ramp). Held at takeoff it is ignored until let go; a fresh press rolls.
+    local ssign = side > 0.1 and 1 or (side < -0.1 and -1 or 0)
     if airborne and not inp.wasAirborne then
         local held = inp.groundFwd or 0
         inp.airLatch = (held ~= 0 and held == fsign) and held or nil
+        local heldS = inp.groundSide or 0
+        inp.airLatchSide = (heldS ~= 0 and heldS == ssign) and heldS or nil
     end
     if inp.airLatch and fsign ~= inp.airLatch then inp.airLatch = nil end
-    if not airborne then inp.groundFwd = fsign end
+    if inp.airLatchSide and ssign ~= inp.airLatchSide then inp.airLatchSide = nil end
+    if not airborne then
+        inp.groundFwd, inp.groundSide = fsign, ssign
+        inp.airLatchSide = nil
+    end
     inp.wasAirborne = airborne
     if airborne and inp.airLatch then fwd = 0 end
+    if airborne and inp.airLatchSide then side = 0 end
+    inp.leanTarget = side
 
     if airborne then
         ------------------------------------------------------------------

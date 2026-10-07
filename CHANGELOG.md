@@ -29,6 +29,18 @@ a Workshop update goes out only when the owner says so.
 **Changed**
 
 - The chase camera no longer sways with the bike's lean.
+- **The chase camera eases after the bike's turns and ramps** instead of being
+  bolted to it. A hard carve or the foot of a ramp used to swing or tip the
+  whole view the same frame ("sharp and jolting"); now the heading follows in
+  about 0.4 s and a ramp tilts the view by about a third of its slope. The
+  mouse is as immediate as ever. `bmx_cam_smooth 0` brings the old camera back.
+
+**Fixed (from a recorded ride on the test server, 2026-10-07)**
+
+- **Holding A or D off a ramp no longer barrel-rolls the bike.** Leaning to
+  steer up a ramp held the key at the lip, and in the air A/D are roll: the
+  bike rolled onto its side before it landed. A side key held at takeoff is now
+  ignored until let go, as W/S already were; a fresh press still rolls.
 
 **Fixed**
 

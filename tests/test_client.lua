@@ -911,3 +911,150 @@ T.test("calm camera: a bump is eased into, not copied", function()
     T.between(first, 0, 1.2, "the view's rise on the first frame of a 5-unit bump, units")
     T.between(after, 4.5, 5.5, "and it has followed the bike up within 0.6 s, units")
 end)
+
+--------------------------------------------------------------------------
+-- THE CAMERA EASES AFTER THE BIKE'S TURNS AND RAMPS.
+--
+-- What the engine really hands CalcView: the rider's look COMPOSED with the
+-- seat, and the seat is bolted to the bike (yaw -90, see Chassis.seatAngles).
+-- The calm-camera tests above passed angles straight in, so they could not
+-- see that every turn and ramp went into the view the same frame -- which a
+-- rider on the live test server called sharp and jolting (2026-10-07).
+--------------------------------------------------------------------------
+local SEAT = { p = 0, y = -90, r = 0 }
+local LOOK_AHEAD = { p = 10, y = 90, r = 0 }     -- along the bike, a little down
+
+local function pose(s, E, ang)
+    s.cb:SetAngles(ang)
+    s.cb:GetPod():SetAngles(s.cb:LocalToWorldAngles(E.Angle(SEAT.p, SEAT.y, SEAT.r)))
+end
+
+local function frame(s, E, look, dt)
+    s.world.time = s.world.time + (dt or s.world.dt)
+    local l = look or LOOK_AHEAD
+    local world = s.cb:GetPod():LocalToWorldAngles(E.Angle(l.p, l.y, l.r))
+    return E.hook.Run("CalcView", s.me, E.Vector(), world, 90)
+end
+
+local function camYaw(v) return v.angles.y end
+
+local function settled(s, E, ang)
+    pose(s, E, ang)
+    local v
+    for _ = 1, 120 do v = frame(s, E) end
+    return v
+end
+
+T.test("eased camera: a bike riding straight is looked along, as before", function()
+    local s = scene()
+    local E = s.cl.env
+    local v = settled(s, E, E.Angle(0, 30, 0))
+    T.near(math.AngleDifference(camYaw(v), 30), 0, 0.5, "camera faces the way the bike goes")
+    T.near(v.angles.p, 10, 0.5, "with the rider's own downward look")
+end)
+
+T.test("eased camera: a sudden 45-degree turn of the bike is eased into, not copied", function()
+    local s = scene()
+    local E = s.cl.env
+    settled(s, E, E.Angle(0, 0, 0))
+    pose(s, E, E.Angle(0, 45, 0))
+    local first = camYaw(frame(s, E))
+    T.between(math.abs(math.AngleDifference(first, 0)), 0, 8, "the first frame moves only a little, degrees")
+    local v
+    for _ = 1, 66 do v = frame(s, E) end           -- one second
+    T.near(math.AngleDifference(camYaw(v), 45), 0, 1.5, "and within a second it has followed")
+end)
+
+T.test("eased camera: following a turn does not overshoot it", function()
+    local s = scene()
+    local E = s.cl.env
+    settled(s, E, E.Angle(0, 0, 0))
+    pose(s, E, E.Angle(0, 60, 0))
+    local most = 0
+    for _ = 1, 200 do most = math.max(most, math.AngleDifference(camYaw(frame(s, E)), 0)) end
+    T.between(most, 0, 60.5, "never swings past the bike, degrees")
+end)
+
+T.test("eased camera: in a hard 120 deg/s carve it trails smoothly, by a bounded amount", function()
+    local s = scene()
+    local E = s.cl.env
+    settled(s, E, E.Angle(0, 0, 0))
+    local yaw, last, worstStep, lag = 0, nil, 0, 0
+    for _ = 1, 200 do
+        yaw = yaw + 120 * s.world.dt
+        pose(s, E, E.Angle(0, yaw, 0))
+        local c = camYaw(frame(s, E))
+        if last then worstStep = math.max(worstStep, math.abs(math.AngleDifference(c, last))) end
+        last = c
+        lag = math.abs(math.AngleDifference(yaw, c))
+    end
+    T.between(lag, 5, 30, "steady lag behind the carve, degrees")
+    T.between(worstStep, 0, 120 * s.world.dt * 1.2, "no frame jumps more than the bike turns")
+end)
+
+T.test("eased camera: it never trails the bike by more than its cap", function()
+    local s = scene()
+    local E = s.cl.env
+    settled(s, E, E.Angle(0, 0, 0))
+    pose(s, E, E.Angle(0, 170, 0))                 -- spun round in one tick
+    local v = frame(s, E)
+    T.between(math.abs(math.AngleDifference(camYaw(v), 170)), 0, 60.01, "lag capped at 60 degrees")
+end)
+
+T.test("eased camera: the foot of a ramp tilts the view a little, gently", function()
+    local s = scene()
+    local E = s.cl.env
+    settled(s, E, E.Angle(0, 0, 0))
+    pose(s, E, E.Angle(-40, 0, 0))                 -- nose up 40 degrees, at once
+    local first = frame(s, E).angles.p
+    T.between(math.abs(first - 10), 0, 2, "the first frame barely tilts, degrees")
+    local v
+    for _ = 1, 120 do v = frame(s, E) end
+    -- Settled: the rider's 10 down, less 35% of the bike's 40 up = -4.
+    T.near(v.angles.p, 10 - 40 * 0.35, 1, "settles on a share of the slope, not all of it")
+end)
+
+T.test("eased camera: the bike leaning does not tip or swing the view", function()
+    local s = scene()
+    local E = s.cl.env
+    local base = settled(s, E, E.Angle(0, 0, 0))
+    local v = settled(s, E, E.Angle(0, 0, 30))
+    T.near(math.AngleDifference(camYaw(v), camYaw(base)), 0, 0.5, "lean does not turn the view")
+    T.near(v.angles.p, base.angles.p, 0.5, "or pitch it")
+end)
+
+T.test("eased camera: the mouse still moves the view on the frame it moves", function()
+    local s = scene()
+    local E = s.cl.env
+    settled(s, E, E.Angle(0, 0, 0))
+    local v = frame(s, E, { p = 10, y = 120, r = 0 })      -- looked 30 degrees left
+    T.near(math.AngleDifference(camYaw(v), 30), 0, 0.5, "the full 30 degrees, at once")
+    v = frame(s, E, { p = -20, y = 90, r = 0 })            -- and up
+    T.near(v.angles.p, -20, 0.5, "pitch from the mouse, at once")
+end)
+
+T.test("eased camera: bmx_cam_smooth 0 is the old camera, bolted to the bike", function()
+    local s = scene()
+    local E = s.cl.env
+    E.GetConVar("bmx_cam_smooth"):SetString("0")
+    settled(s, E, E.Angle(0, 0, 0))
+    pose(s, E, E.Angle(0, 45, 0))
+    T.near(math.AngleDifference(camYaw(frame(s, E)), 45), 0, 0.5, "follows the turn the same frame")
+end)
+
+T.test("eased camera: getting on a bike facing anywhere starts behind it, without a swing", function()
+    local s = scene()
+    local E = s.cl.env
+    pose(s, E, E.Angle(0, 135, 0))
+    local v = frame(s, E)
+    T.near(math.AngleDifference(camYaw(v), 135), 0, 0.5, "seeded on mount")
+end)
+
+T.test("eased camera: the chase position follows the eased view, and stays out of the bike", function()
+    local s = scene()
+    local E = s.cl.env
+    local v = settled(s, E, E.Angle(0, 0, 0))
+    local back = s.cb:GetPos() - v.origin
+    T.ok(back.x > 50, "the camera is behind the bike: " .. tostring(back))
+    T.between(math.abs(back.y), 0, 1, "and on its line")
+end)

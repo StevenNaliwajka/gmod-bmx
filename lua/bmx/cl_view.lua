@@ -30,6 +30,8 @@ local cv_roll  = CreateClientConVar("bmx_cam_roll",  "0.34", true, false,
     "Fraction of the bike's lean applied to the view. 0 disables.")
 local cv_fp    = CreateClientConVar("bmx_cam_first", "0", true, false,
     "1 for a first-person view from the bars.")
+local cv_smooth = CreateClientConVar("bmx_cam_smooth", "1", true, false,
+    "1: the chase camera eases after the bike's turns and ramps. 0: it is bolted to the bike.")
 
 -- Smoothed state, so the camera does not snap when speed or geometry changes.
 --
@@ -61,6 +63,62 @@ local function followHeight(target, dt)
     return sZ
 end
 BMX.CameraFollowHeight = followHeight
+
+-- THE CAMERA'S HEADING AND TILT RIDE ON SPRINGS TOO. The view angles the
+-- engine hands CalcView are the rider's mouse look COMPOSED WITH THE SEAT, and
+-- the seat is bolted to the bike: every degree the bike yaws or pitches went
+-- straight into the view, the same frame. A hard turn swung the whole screen
+-- at the bike's 120 deg/s, the foot of a ramp tipped it 30 degrees in a few
+-- frames, and a rider (2026-10-07, on the cruiser) called it sharp and
+-- jolting. So the look is taken out of the seat's frame and put back into a
+-- LEVEL frame whose heading follows the seat through a critically damped
+-- spring (~0.4 s, never more than CAM_MAXYAWLAG behind), and only CAM_TILT of
+-- the bike's pitch, smoothed, is added back so a ramp still reads as a ramp.
+-- The mouse is untouched: it moves the view on the frame it moves.
+local CAM_TURN = 9            -- rad/s, the heading spring: ~0.4 s to settle
+local CAM_MAXYAWLAG = 60      -- degrees the heading may trail the bike
+local CAM_TILT = 0.35         -- of the bike's pitch shown
+local CAM_TILTRATE = 5        -- 1/s
+local sYaw, sYawV, sTilt = nil, 0, 0
+
+local function followYaw(target, dt)
+    if not sYaw then sYaw, sYawV = target, 0 return target end
+    local d = math.AngleDifference(target, sYaw)
+    local a = CAM_TURN * CAM_TURN * d - 2 * CAM_TURN * sYawV
+    sYawV = sYawV + a * dt
+    sYaw = math.NormalizeAngle(sYaw + sYawV * dt)
+    local lag = math.AngleDifference(target, sYaw)
+    if lag > CAM_MAXYAWLAG then sYaw = math.NormalizeAngle(target - CAM_MAXYAWLAG) end
+    if lag < -CAM_MAXYAWLAG then sYaw = math.NormalizeAngle(target + CAM_MAXYAWLAG) end
+    return sYaw
+end
+
+-- `angles`, re-expressed: the same look relative to the seat, but in a level
+-- frame at the smoothed heading, tilted by the smoothed share of bike pitch.
+local function easedAngles(bike, angles, dt)
+    local pod = bike.GetPod and bike:GetPod()
+    if not IsValid(pod) then return angles end
+    local pa = pod:GetAngles()
+    local pf, pl, pu = pa:Forward(), -pa:Right(), pa:Up()
+    local look = angles:Forward()
+    local lx, ly, lz = look:Dot(pf), look:Dot(pl), look:Dot(pu)
+
+    -- The seat's heading in the world, from its forward projected flat; a
+    -- seat pointing straight up or down has none, so keep the last one.
+    local hf = Vector(pf.x, pf.y, 0)
+    local heading = hf:LengthSqr() > 1e-6 and hf:Angle().y or (sYaw or pa.y)
+    local yaw = followYaw(heading, dt)
+
+    local _, pitch = BMX.Attitude(bike, vector_up)
+    sTilt = sTilt + (math.deg(pitch) - sTilt) * math.min(1, CAM_TILTRATE * dt)
+
+    local fa = Angle(0, yaw, 0)
+    local ff, fl, fu = fa:Forward(), -fa:Right(), fa:Up()
+    local out = (ff * lx + fl * ly + fu * lz):Angle()
+    out.p = math.Clamp(math.NormalizeAngle(out.p) - sTilt * CAM_TILT, -89, 89)
+    return out
+end
+BMX.CameraEasedAngles = easedAngles
 
 local function approach(cur, target, rate)
     return cur + (target - cur) * math.min(1, rate * FrameTime())
@@ -109,7 +167,10 @@ hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
         sDist = cv_dist:GetFloat() * (1 + frac * 0.35)
         sFov  = fov + frac * 16
         sRoll = math.deg(roll) * cv_roll:GetFloat()
+        sYaw, sYawV, sTilt = nil, 0, 0
     end
+
+    if cv_smooth:GetBool() then angles = easedAngles(bike, angles, FrameTime()) end
 
     ----------------------------------------------------------------------
     -- Lean

@@ -45,8 +45,6 @@ local SHARED = {
     "bmx/sh_sound.lua",
     "bmx/sh_color.lua",     -- the palette and the ways to choose from it
     "bmx/sh_stance.lua",    -- seated / standing / attack: IK offsets (G21)
-    "bmx/sh_city.lua",      -- the city around the park: layout builder
-    "bmx/sh_city_maps.lua", -- ...and which maps have one
     "bmx/sh_park.lua",      -- the park pieces: one generator for collision and drawing
     "bmx/sh_menu.lua",      -- /bike: what the spawn window lists (after bikes and park)
 }
@@ -67,12 +65,8 @@ local SERVER_FILES = {
     "bmx/sv_stance.lua",    -- copies each rider's bmx_rider_pose onto the player
     "bmx/sv_rules.lua",     -- server-owner settings: bike limit, scoring on/off
     "bmx/sv_settings.lua",  -- changing and saving them: net message, server.json
-    "bmx/sv_scores.lua",    -- personal bests + leaderboard; listens to the public hooks
     "bmx/sv_launch.lua",    -- finding a ramp to get air off, or putting one down
-    "bmx/sv_bot.lua",       -- a bot rider that does tricks (bmx_bot_spawn)
-    "bmx/sv_games.lua",     -- SKATE, Trick Attack, Combo Mambo (loads bmx/games/*)
     "bmx/sv_debug.lua",
-    "bmx/sv_city.lua",      -- the city's colliders and admin commands
     "bmx/sv_park.lua",      -- park pieces: placing, the cap, save/load, presets
     "bmx/sv_menu.lua",      -- /bike in chat, and park pieces placed from the window
 
@@ -86,8 +80,6 @@ local SERVER_FILES = {
 local CLIENT_FILES = {
     "bmx/cl_view.lua",
     "bmx/cl_hud.lua",
-    "bmx/cl_scores.lua",    -- after cl_hud: it borrows that file's fonts
-    "bmx/cl_games.lua",
     "bmx/cl_sound.lua",
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
@@ -96,8 +88,6 @@ local CLIENT_FILES = {
     "bmx/cl_grind.lua",     -- sparks and the scrape while a bike grinds
     "bmx/cl_tricks.lua",    -- the trick list overlay (bmx_tricks)
     "bmx/cl_report.lua",    -- bmx_report: a paste-able block for a bug report
-    "bmx/cl_city.lua",      -- draws the city, runs the subway trains
-    "bmx/cl_city_mood.lua", -- ...its late-autumn sky, haze, lamp light, falling leaves
     "bmx/cl_park.lua",      -- draws the park pieces
     "bmx/cl_options.lua",   -- spawn menu > Options > BMX, built from BMX.Settings
     "bmx/cl_menu.lua",      -- the /bike window (bmx_menu)

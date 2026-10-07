@@ -130,7 +130,7 @@ T.test("settings: Coerce clamps numbers, rejects junk, and keeps strings tame", 
     T.eq((S.Coerce(S.Get("bmx_scoring"), "maybe")), nil, "bool from nonsense")
     T.eq(S.Coerce(S.Get("bmx_units"), "MPH"), "mph", "a choice, any case")
     T.eq((S.Coerce(S.Get("bmx_units"), "furlongs")), nil, "not a choice")
-    local name = S.Get("bmx_bot_name")
+    local name = S.Get("bmx_color_default")
     T.eq(S.Coerce(name, 'a"b\\c\nd'), "abcd", "no quotes, slashes or control characters")
     T.eq(#S.Coerce(name, string.rep("x", 500)), name.maxLen, "cut to maxLen")
 end)
@@ -204,8 +204,6 @@ T.test("settings: a superadmin's change lands, clamped to the range", function()
     T.eq(sv.env.GetConVar("bmx_max_per_player"):GetInt(), 50, "clamped to the row's max")
     send(sv, cl, boss, S.OP_SET, "bmx_grip", "2.25")
     T.near(sv.env.GetConVar("bmx_grip"):GetFloat(), 2.25, 1e-9, "a float")
-    send(sv, cl, boss, S.OP_SET, "bmx_bot_name", "Stewie")
-    T.eq(sv.env.GetConVar("bmx_bot_name"):GetString(), "Stewie", "a string")
 end)
 
 T.test("settings: the net message cannot set a client setting or any other convar", function()
@@ -300,7 +298,6 @@ T.test("settings: server settings round-trip through JSON", function()
     local S = sv.env.BMX.Settings
     sv.env.GetConVar("bmx_scoring"):SetString("0")
     sv.env.GetConVar("bmx_grip"):SetString("2.5")
-    sv.env.GetConVar("bmx_bot_name"):SetString("Quagmire")
     sv.env.GetConVar("bmx_max_per_player"):SetString("7")
     S.SaveServer()
     local json = sv.files["bmx/server.json"]
@@ -308,12 +305,10 @@ T.test("settings: server settings round-trip through JSON", function()
 
     sv.env.GetConVar("bmx_scoring"):SetString("1")
     sv.env.GetConVar("bmx_grip"):SetString("1")
-    sv.env.GetConVar("bmx_bot_name"):SetString("x")
     sv.env.GetConVar("bmx_max_per_player"):SetString("0")
-    T.ok(S.LoadServer() >= 4, "loads")
+    T.ok(S.LoadServer() >= 3, "loads")
     T.eq(sv.env.GetConVar("bmx_scoring"):GetInt(), 0, "bool back")
     T.near(sv.env.GetConVar("bmx_grip"):GetFloat(), 2.5, 1e-9, "float back")
-    T.eq(sv.env.GetConVar("bmx_bot_name"):GetString(), "Quagmire", "string back")
     T.eq(sv.env.GetConVar("bmx_max_per_player"):GetInt(), 7, "int back")
 end)
 
@@ -372,7 +367,7 @@ local function fakeCami(answers, late)
     return C
 end
 
-T.test("cami: the six privileges are registered, with the right defaults", function()
+T.test("cami: the addon's privileges are registered, with the right defaults", function()
     local sv = F.server()
     local C = fakeCami({})
     sv.env.CAMI = C
@@ -382,7 +377,7 @@ T.test("cami: the six privileges are registered, with the right defaults", funct
         ["BMX - Physgun Ridden"] = "admin",
         ["BMX - Spawn Motor Vehicles"] = "admin",
         ["BMX - Remove Any Bike"] = "admin",
-        ["BMX - Bot"] = "admin",
+        ["BMX - Build Parks"] = "admin",
         ["BMX - Unlock Any Lock"] = "admin",
     }
     for name, min in pairs(want) do
@@ -397,7 +392,7 @@ T.test("cami: a CAMI that arrives after us is picked up at InitPostEntity", func
     local C = fakeCami({})
     sv.env.CAMI = C
     sv.env.hook.Run("InitPostEntity")
-    T.ok(C.registered["BMX - Bot"], "registered late")
+    T.ok(C.registered["BMX - Build Parks"], "registered late")
 end)
 
 T.test("cami: the answer is CAMI's, in both directions", function()
@@ -406,13 +401,13 @@ T.test("cami: the answer is CAMI's, in both directions", function()
     local deny = player(sv, "Denied", { superadmin = true })
     sv.env.CAMI = fakeCami({
         [PRIV] = { Granted = true, Denied = false },
-        ["BMX - Bot"] = { Granted = true },
+        ["BMX - Build Parks"] = { Granted = true },
     })
     local B = sv.env.BMX
     T.eq(B.Can(grant, PRIV), true, "granted by CAMI though not an admin")
     T.eq(B.Can(deny, PRIV), false, "denied by CAMI though a superadmin")
-    T.eq(B.Can(grant, "BMX - Bot"), true, "another privilege")
-    T.eq(B.Can(deny, "BMX - Bot"), false, "unlisted means denied, as CAMI says")
+    T.eq(B.Can(grant, "BMX - Build Parks"), true, "another privilege")
+    T.eq(B.Can(deny, "BMX - Build Parks"), false, "unlisted means denied, as CAMI says")
 end)
 
 T.test("cami: with no CAMI, the defaults are the admin checks", function()
@@ -423,8 +418,8 @@ T.test("cami: with no CAMI, the defaults are the admin checks", function()
     T.eq(B.Can(nobody, PRIV), false, "nobody: settings")
     T.eq(B.Can(adm, PRIV), false, "admin: settings need superadmin")
     T.eq(B.Can(boss, PRIV), true, "superadmin: settings")
-    T.eq(B.Can(nobody, "BMX - Bot"), false, "nobody: bot")
-    T.eq(B.Can(adm, "BMX - Bot"), true, "admin: bot")
+    T.eq(B.Can(nobody, "BMX - Build Parks"), false, "nobody: parks")
+    T.eq(B.Can(adm, "BMX - Build Parks"), true, "admin: parks")
     T.eq(B.Can(nil, PRIV), true, "the server console may do anything")
 end)
 
@@ -433,8 +428,8 @@ T.test("cami: a late answer falls back to the default instead of waiting", funct
     sv.env.CAMI = fakeCami({}, true)
     local adm = player(sv, "A")
     adm._admin = true
-    T.eq(sv.env.BMX.Can(adm, "BMX - Bot"), true, "admin still gets the default")
-    T.eq(sv.env.BMX.Can(player(sv, "N"), "BMX - Bot"), false, "a player does not")
+    T.eq(sv.env.BMX.Can(adm, "BMX - Build Parks"), true, "admin still gets the default")
+    T.eq(sv.env.BMX.Can(player(sv, "N"), "BMX - Build Parks"), false, "a player does not")
 end)
 
 T.test("cami: an unknown privilege name is refused loudly", function()
@@ -455,29 +450,6 @@ end)
 -- What the privileges gate
 --------------------------------------------------------------------------
 
-T.test("cami: bmx_bot_* commands need BMX - Bot", function()
-    local sv = F.server()
-    local spawned = 0
-    sv.env.BMX.Bot.Spawn = function() spawned = spawned + 1 return nil, "test" end
-    local nobody = player(sv, "N")
-    local adm = player(sv, "A")
-    adm._admin = true
-    nobody._eyeTrace = { Hit = true, HitPos = sv.env.Vector(0, 0, 0), HitNormal = sv.env.Vector(0, 0, 1) }
-    adm._eyeTrace = nobody._eyeTrace
-
-    sv:command("bmx_bot_spawn", nobody)
-    T.eq(spawned, 0, "a player without the privilege")
-    sv:command("bmx_bot_spawn", adm)
-    T.eq(spawned, 1, "an admin, by default")
-    sv.env.CAMI = fakeCami({ ["BMX - Bot"] = { N = true } })
-    sv:command("bmx_bot_spawn", nobody)
-    T.eq(spawned, 2, "a non-admin CAMI grants it to")
-    sv:command("bmx_bot_spawn", adm)
-    T.eq(spawned, 2, "an admin CAMI does not list is refused")
-    sv:command("bmx_bot_spawn", nil)
-    T.eq(spawned, 3, "the console")
-end)
-
 T.test("cami: the physgun on a ridden bike needs BMX - Physgun Ridden", function()
     local sv = F.server()
     local E = sv.env
@@ -492,4 +464,18 @@ T.test("cami: the physgun on a ridden bike needs BMX - Physgun Ridden", function
     E.CAMI = fakeCami({ ["BMX - Physgun Ridden"] = { Stranger = true } })
     T.ok(E.hook.Run("PhysgunPickup", stranger, bike) ~= false, "CAMI grants a stranger")
     T.eq(E.hook.Run("PhysgunPickup", adm, bike), false, "CAMI does not list the admin: no")
+end)
+
+T.test("cami: BMX.AddPrivilege adds one from outside the addon, checked like the rest", function()
+    local sv = F.server()
+    local C = fakeCami({ ["BMX - Extra"] = { N = true } })
+    sv.env.CAMI = C
+    sv.env.BMX.RegisterPrivileges()
+    sv.env.BMX.AddPrivilege{ name = "BMX - Extra", min = "admin", desc = "Something a gamemode gates." }
+    T.ok(C.registered["BMX - Extra"], "registered with a CAMI that is already up")
+    T.eq(sv.env.BMX.Can(player(sv, "N"), "BMX - Extra"), true, "and CAMI answers for it")
+    sv.env.BMX.AddPrivilege{ name = "BMX - Extra", min = "superadmin", desc = "Again, on a reload." }
+    local n = 0
+    for _, p in ipairs(sv.env.BMX.Privileges) do if p.name == "BMX - Extra" then n = n + 1 end end
+    T.eq(n, 1, "adding it again replaces it")
 end)

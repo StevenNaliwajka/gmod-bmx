@@ -45,6 +45,14 @@ local M = {}
 
 M.ROOT = M.ROOT or "."
 
+-- Where `include` looks, in order: the addon's lua/ first, then any extra roots
+-- another repo adds to boot itself on top of the addon (the BMX (Mode)
+-- gamemode's gamemode/ and entities/ folders, the petopia_bmx_fall map's lua/).
+-- EXTRA_BOOT runs after the addon has booted and before InitPostEntity, the
+-- same place the engine loads a gamemode and a map's autorun.
+M.EXTRA_ROOTS = M.EXTRA_ROOTS or {}
+M.EXTRA_BOOT = M.EXTRA_BOOT or {}
+
 --------------------------------------------------------------------------
 -- GMod's extensions to the standard library. Global, because they are the same
 -- in both realms and GLua code reaches for them as math.Clamp, table.Copy...
@@ -1534,6 +1542,10 @@ function M.Realm(world, which)
 
     local function readFile(rel)
         local fh = io.open(M.ROOT .. "/lua/" .. rel, "r")
+        for _, root in ipairs(M.EXTRA_ROOTS) do
+            if fh then break end
+            fh = io.open(root .. "/" .. rel, "r")
+        end
         if not fh then return nil end
         local src = fh:read("*a")
         fh:close()
@@ -1598,16 +1610,27 @@ function M.Realm(world, which)
         env.TOOL = nil
     end
 
+    -- A gamemode the way the engine loads one: a fresh GM table, its realm's
+    -- entry file (init.lua / cl_init.lua) found on an EXTRA_ROOTS folder, and
+    -- DeriveGamemode recorded rather than followed (there is no sandbox here).
+    function R:loadGamemode(name)
+        env.GM = { Folder = "gamemodes/" .. name }
+        env.DeriveGamemode = function(base) env.GM.DerivedFrom = base end
+        self:runFile(SERVER and "init.lua" or "cl_init.lua")
+        self.gamemode = env.GM
+        env.GM = nil
+    end
+
     -- The whole addon, in the engine's order: autorun, then entities, then one
     -- tick so the deferred work in sh_bikes (derive) runs.
     function R:boot()
         self:runFile("autorun/bmx_init.lua")
         self:loadEntity("bmx_base")
-        self:loadEntity("bmx_city_solid")
-        self:loadEntity("bmx_leaderboard")
+        self:loadEntity("bmx_test_solid")
         self:loadEntity("bmx_filmer_cam")
         self:loadEntity("bmx_park_piece")
         self:loadStool("bmx_park")
+        for _, fn in ipairs(M.EXTRA_BOOT) do fn(self, env) end
         env.hook.Run("InitPostEntity")
         self:runTimers()
         return self

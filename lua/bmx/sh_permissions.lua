@@ -15,7 +15,6 @@
         BMX - Physgun Ridden           admin        pick up a bike with a rider on it
         BMX - Spawn Motor Vehicles     admin        engines (nothing uses it yet)
         BMX - Remove Any Bike          admin        remove other people's bikes (nothing uses it yet)
-        BMX - Bot                      admin        bmx_bot_spawn and friends
         BMX - Unlock Any Lock          admin        bike locks (nothing uses it yet)
         BMX - Build Parks              admin        bmx_park_save / _load / _preset / _clear
 
@@ -48,8 +47,6 @@ BMX.Privileges = {
       desc = "Spawn motorised vehicles." },
     { name = "BMX - Remove Any Bike", min = "admin",
       desc = "Remove bikes that belong to other players." },
-    { name = "BMX - Bot", min = "admin",
-      desc = "Spawn and command bot riders (bmx_bot_*)." },
     { name = "BMX - Unlock Any Lock", min = "admin",
       desc = "Unlock bikes that other players have locked." },
     { name = "BMX - Build Parks", min = "admin",
@@ -58,6 +55,24 @@ BMX.Privileges = {
 
 local BY_NAME = {}
 for _, p in ipairs(BMX.Privileges) do BY_NAME[p.name] = p end
+
+-- A privilege from outside the addon (the BMX (Mode) gamemode's "BMX - Bot",
+-- say), checked with BMX.Can like the addon's own. Registered with CAMI now if
+-- CAMI is up, and at InitPostEntity with the rest otherwise. Adding a name
+-- again replaces it, so a Lua reload is harmless.
+function BMX.AddPrivilege(p)
+    assert(isstring(p.name) and isstring(p.min) and isstring(p.desc), "BMX.AddPrivilege{ name, min, desc }")
+    if BY_NAME[p.name] then
+        for i, q in ipairs(BMX.Privileges) do if q.name == p.name then BMX.Privileges[i] = p end end
+    else
+        BMX.Privileges[#BMX.Privileges + 1] = p
+    end
+    BY_NAME[p.name] = p
+    if CAMI and CAMI.RegisterPrivilege and BMX._camiRegistered == CAMI then
+        CAMI.RegisterPrivilege({ Name = p.name, MinAccess = p.min, Description = p.desc })
+    end
+    return p
+end
 
 -- Register with whichever CAMI is loaded. Safe to call again; it registers
 -- once per CAMI table, so a late CAMI is picked up and a repeat is free.

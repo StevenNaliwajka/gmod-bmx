@@ -80,7 +80,6 @@ S.AddCategory("server", "rules",    "Rules and scoring")
 S.AddCategory("server", "vehicles", "Vehicles")
 S.AddCategory("server", "world",    "The park")
 S.AddCategory("server", "feel",     "How the bike rides")
-S.AddCategory("server", "bots",     "Bot riders")
 S.AddCategory("server", "sound",    "Sound")
 
 --------------------------------------------------------------------------
@@ -255,24 +254,6 @@ client{ name = "bmx_color_default", kind = "string", default = "red", maxLen = 2
     label = "Colour of new bikes",
     help = "The paint on bikes you spawn: a colour name (red, blue, pink ...) or a number from the palette." }
 
-client{ name = "bmx_city_draw", kind = "bool", default = true, category = "world",
-    label = "Draw the city",
-    help = "Show the buildings and skyline around the park. Turn it off if the map runs slowly for you." }
-client{ name = "bmx_city_trains", kind = "bool", default = true, category = "world",
-    label = "Run the subway trains",
-    help = "The trains that pass through the city's viaducts." }
-client{ name = "bmx_city_signs", kind = "bool", default = true, category = "world",
-    label = "Draw the city's signs",
-    help = "Neon and shop signs on the buildings." }
-client{ name = "bmx_city_plants", kind = "bool", default = true, category = "world",
-    label = "Draw the trees and street lamps",
-    help = "The trees in the park and on the roof gardens, and the lamps along the beds." }
-client{ name = "bmx_city_mood", kind = "bool", default = true, category = "world",
-    label = "Late-autumn sky and lamplight",
-    help = "The golden afternoon sky, the haze over the city, the warm colour grade and the lamps' light." }
-client{ name = "bmx_city_leaves", kind = "bool", default = true, category = "world",
-    label = "Falling leaves",
-    help = "Leaves letting go of the trees and drifting down on the wind." }
 
 client{ name = "bmx_lod_scale", kind = "float", default = 1, min = 0, max = 4, decimals = 1,
     category = "advanced", label = "Bike detail distance",
@@ -335,27 +316,15 @@ server{ name = "bmx_crash_ragdoll", kind = "bool", default = true, category = "r
     label = "Crashes throw the rider",
     help = "A rider who crashes is thrown off as a ragdoll for a moment. Off just shoves them off the bike." }
 
-server{ name = "bmx_city", kind = "bool", default = true, category = "world",
-    label = "Build the city",
-    help = "Build the city around the park on maps that have one. Takes effect on the next map change." }
 
 server{ name = "bmx_park_max", kind = "int", default = 120, min = 1, max = 500, category = "world",
     label = "Park piece limit",
     help = "The most park pieces (ramps, rails, quarter pipes) that can stand at once, however they were placed or loaded. Each is a physics object, so a very large park costs the server." }
 
-server{ name = "bmx_bot_name", kind = "string", default = "Peter Griffin", maxLen = 32, category = "bots",
-    label = "Bot name",
-    help = "What a bot rider spawned with bmx_bot_spawn is called." }
-server{ name = "bmx_bot_model", kind = "string", default = "", maxLen = 128, category = "bots",
-    label = "Bot player model",
-    help = "The player model bot riders wear. Empty uses the default. The server must have the model installed." }
 
 server{ name = "bmx_ragmod", kind = "bool", default = true, category = "rules",
     label = "Hand crashes to RagMod",
     help = "If RagMod is installed, a rider who crashes becomes its ragdoll instead of ours. Off always uses the built-in tumble." }
-server{ name = "bmx_games_admin_only", kind = "bool", default = false, category = "rules",
-    label = "Only admins start games",
-    help = "Only admins may start a game of SKATE or another BMX game. Off lets any player start one." }
 
 server{ name = "bmx_bell", kind = "bool", default = true, category = "sound",
     label = "Bells",

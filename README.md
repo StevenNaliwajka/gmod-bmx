@@ -17,6 +17,23 @@ steers from lean, hops and lands, wheelies, stoppies, grinds, flips and scores
 combos. Its feel numbers were derived and measured before anybody rode it, and
 are now being tuned from what riders say. See [Tuning](docs/TUNING.md).
 
+## Three pieces
+
+This repository is **BMX**, the vehicle addon: the bikes, their physics,
+tricks, combos and their scoring, park pieces, cameras and replays. It rides on
+any gamemode and any map. Two more pieces sit on top of it and live in their
+own repositories:
+
+| Piece | Repository | What it is |
+|---|---|---|
+| **BMX** | root/gmod-bmx (this) | The vehicle mod. Workshop item 3814420080. |
+| **BMX (Mode)** | root/gmod-bmx-mode | The gamemode (`gamemodes/bmx`, derives sandbox): SKATE, Trick Attack, Combo Mambo, personal bests and the leaderboard, the trick bot. |
+| **petopia_bmx_fall** | root/petopia_bmx_fall | The map: an original compiled BSP of the park, plus its city (buildings, trains, ads, the autumn mood). |
+
+The mode and the map use only this addon's public API: the `BMX_*` hooks,
+`BMX.Settings`, `BMX.AddPrivilege`, `BMX.Launch` and `BMX.Test`
+([docs/MODDING.md](docs/MODDING.md)). Nothing here knows they exist.
+
 ---
 
 ## Install
@@ -33,6 +50,7 @@ which is all base-game paths rather than shipped files.
 Then, in game:
 
 ```
+/bike (in chat)      a window to spawn any bike or park piece (also bmx_menu)
 bmx_spawn            spawn a bike where you are looking
 bmx_spawn cruiser    the 24-inch cruiser (or: mini, stock)
 ```
@@ -137,34 +155,6 @@ Server console or `server.cfg`; all three are saved.
 | `bmx_crash_ragdoll 0` | `1` | A crash shoves the rider off instead of ragdolling them. |
 | `bmx_nose_manual 1` | `0` | Lets a rider holding weight forward (`Ctrl` + `LMB`) keep rolling on the front wheel after the brake comes off. Off until it has been ridden live: with it off, a stoppie ends when the brake does. |
 | `bmx_air_assist 0` | `1` | No air turn, landing aim or spine transfer off vertical ramps: `A` / `D` stay the barrel roll everywhere. |
-
-## The trick bot
-
-An admin (or the server console) can put a bot rider on a bike that rides
-around and does tricks on its own:
-
-```
-bmx_bot_spawn [stock|cruiser|mini]   a bot on a bike where you are looking
-bmx_bot_trick Backflip                every bot does that trick next
-bmx_bot_status                        what each bot has tried and landed
-bmx_bot_remove                        every bot rider gone, with its bikes and ramps
-```
-
-It works through Bunny Hop, Wheelie, Stoppie, Combo, Backflip, Frontflip,
-Barrel Roll, 360, Crank Grind and Double Peg Grind (plus the style tricks in
-the trick registry), announces each landing in chat, and gets back on after a
-crash. It drives the bike exactly the way a player's keys do, and each trick
-counts only if the addon's own scoring pays it. For air it looks for a ramp in
-the map (any 12-40 degree slope that ends in a lip, with room before and
-after); with none it puts its own kicker down and takes it away afterwards.
-Every trick is a case in the headless suite (`bmx_test bot_*`), ridden on a
-real server.
-
-`bmx_bot_name` (default `Peter Griffin`) and `bmx_bot_model` name and dress
-it. **The model is not part of this addon**, which ships no content that is
-not its own: mount a player model on your server (from the Workshop, say) and
-point `bmx_bot_model` at it. Players need it too, so add the Workshop item
-with `resource.AddWorkshop`.
 
 ## First run
 

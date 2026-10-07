@@ -513,6 +513,14 @@ local CHAINY  = -2.3    -- the drive side is the RIGHT, which is -Y in Source
 function ENT:Draw()
     drawing = self
     local bike = self:Bike()
+
+    -- A FAMILY THAT DRAWS ITSELF (cl_board.lua: BMX.DrawVehicle.board). The bike is
+    -- the procedural drawing below; a skateboard has no frame, fork or bars, and
+    -- is drawn from the same shapes by its own function, handed this file's
+    -- primitives (BMX.DrawKit, at the bottom).
+    local custom = BMX.DrawVehicle and BMX.DrawVehicle[bike.family]
+    if custom then return custom(self, BMX.DrawKit) end
+
     local C    = self:Cfg()
     local WC   = C.Wheel
     local half = WC.wheelbase * 0.5
@@ -919,3 +927,16 @@ function ENT:OnRemove()
     end
     self.tyres, self.prims = nil, nil
 end
+
+--------------------------------------------------------------------------
+-- THE DRAWING KIT: the primitives this file draws a bike from, for a family that
+-- draws itself (a board's deck, trucks and wheels, cl_board.lua). `begin` is the
+-- one thing a custom drawer must call first: the primitives' shape cache is the
+-- entity being drawn.
+--------------------------------------------------------------------------
+BMX.DrawVehicle = BMX.DrawVehicle or {}
+BMX.DrawKit = {
+    tube = tube, joint = joint, solid = solid, ring = ring, axlePos = axlePos,
+    begin = function(ent) drawing = ent end,
+    lod = function(ent, debug) return debug and 0 or BMX.BikeLOD(ent) end,
+}

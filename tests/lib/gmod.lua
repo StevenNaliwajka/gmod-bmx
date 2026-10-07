@@ -727,7 +727,7 @@ function M.Realm(world, which)
     for _, k in ipairs({ "SetMoveType", "SetSolid", "SetCollisionBounds",
             "SetCustomCollisionCheck", "SetNoDraw", "DrawShadow", "SetKeyValue",
             "Activate", "SetRenderMode", "StopSound",
-            "SetRenderBounds", "SetUseType" }) do
+            "SetRenderBounds", "SetUseType", "SetLocalAngles" }) do
         Ent[k] = function() end
     end
     function Ent:SetNotSolid(b) self._notSolid = b end
@@ -1200,6 +1200,15 @@ function M.Realm(world, which)
         self._weapons[#self._weapons + 1] = c
     end
     function Ply:StripWeapons() self._weapons, self._activeWep = {}, nil end
+    function Ply:HasWeapon(c)
+        for _, w in ipairs(self._weapons or {}) do if w == c then return true end end
+        return false
+    end
+    function Ply:StripWeapon(c)
+        local keep = {}
+        for _, w in ipairs(self._weapons or {}) do if w ~= c then keep[#keep + 1] = w end end
+        self._weapons = keep
+    end
     function Ply:SelectWeapon(c) self._activeWep = c end
     function Ply:GetActiveWeapon() return self._activeWep and wep(self._activeWep) or NULL end
     function Ply:GetAmmo() return table.Copy(self._ammo or {}) end
@@ -1627,6 +1636,16 @@ function M.Realm(world, which)
         env.GM = nil
     end
 
+    -- A weapon the way the engine loads one from lua/weapons/<class>.lua: a fresh
+    -- SWEP table, the file run, the table kept as R.sweps[class].
+    function R:loadWeapon(class)
+        env.SWEP = { Primary = {}, Secondary = {} }
+        self:runFile("weapons/" .. class .. ".lua")
+        self.sweps = self.sweps or {}
+        self.sweps[class] = env.SWEP
+        env.SWEP = nil
+    end
+
     -- The whole addon, in the engine's order: autorun, then entities, then one
     -- tick so the deferred work in sh_bikes (derive) runs.
     function R:boot()
@@ -1637,6 +1656,7 @@ function M.Realm(world, which)
         self:loadEntity("bmx_park_piece")
         self:loadStool("bmx_park")
         for _, fn in ipairs(M.EXTRA_BOOT) do fn(self, env) end
+        self:loadWeapon("weapon_bmx_board")
         env.hook.Run("InitPostEntity")
         self:runTimers()
         return self

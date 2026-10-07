@@ -58,3 +58,24 @@ meaning tuck, so nothing existing changes.
 Key overload. Ship a **trick list overlay** (hold Tab or `bmx_tricks`)
 showing every input. They put theirs in a README table, and a player won't
 read that in-game.
+
+## Status (2026-10-07)
+
+Built on branch `worktree-agent-a4c9798db73feff8f` together with G03; offline
+suite green (`tests/test_tricks.lua`). Headless cases written, **not run** on a
+real server; poses and drawing **not seen** in the game.
+
+| Done when | |
+|---|---|
+| Modifier key (Alt) turns W/S/A/D into poses in the air | **Done** (`IN_WALK`; rotation keys are zeroed under a pose). Alt + W no-hander, + S no-footer, + A/D can-can L/R, + W + S superman, + SPACE nothing. Rebinding is G19: **not done**. |
+| RMB + W X-up (air or manual) | **Done, with a change**: in the air RMB + W. In a manual it takes Alt too (Alt + RMB + W), because RMB + W is a wheelie under power and a pose on it would pay every wheelie. |
+| RMB + A/D turndown | **Done, with a change**: Alt + RMB + A/D. RMB + A/D stays the 360, as the task required. |
+| Tabletop (Alt + RMB) | **Done**: the bike drawn laid over 70 deg. |
+| Held poses pay per 0.1 s; landing in a pose bails | **Done** (`Tricks.poseTick`, `poseMinHold` 0.3 s; reason `pose`). |
+| Pose + rotation = compound name, both plus a bonus | **Done**: "Backflip Superman", +25% (`compoundBonus`). A held pose lets a flip coast (`poseSpinDamp`). |
+| IK targets in `cl_rider.lua`, 0.15 s blend, one byte on the wire | **Done**, visually unverified: `BMX.RiderPoses`, `UpdatePoseWeights`, `ApplyPoseTargets`; pose id is byte 3 of `TrickBits`. |
+| Trick registry `BMX.RegisterTrick{...}` in `sh_tricks.lua`; flips and grinds migrate | **Done.** Flips, barrel roll, 360 score from the registry; wheelie, stoppie and both grinds take their names from it. Ground and grind *points* still come from the config (so bikes can override them); the registry holds the defaults. |
+| Optional double-tap flip | **Done** (`bmx_flip_doubletap 1`, userinfo). Tested on the plant: a double-tapped front flip lands. |
+| Trick list overlay (`bmx_tricks` / hold key) | **Done**: `bmx_tricks` toggles, `+bmx_tricks` shows while held (bind it); there is no default Tab binding, Tab being the scoreboard. |
+| Bot: superman backflip | **Done** (`Superman`, `Superman Backflip`); headless `superman_backflip_lands` written, **not run**. |
+| Tests: pose decode, compound names, landing-in-pose bails, registry rejects bad input | **Done offline.** |

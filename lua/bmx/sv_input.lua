@@ -23,6 +23,18 @@
         SHIFT            sprint (drains stamina)
         CTRL             tuck (less drag, faster rotation in the air)
 
+    TRICK KEYS (sv_tricks.lua, sh_tricks.lua; the full list is in the game,
+    `bmx_tricks`). The ground and air controls above are untouched.
+
+        LMB + A/D        air: TAILWHIP, the frame round the steer axis
+        R                air or manual: BARSPIN (A/D picks the way)
+        LMB + R          both at once
+        ALT (hold)       in the air, W/S/A/D/RMB/SPACE become POSES, not
+                         rotations: no-hander, no-footer, can-can, superman,
+                         tabletop, turndown, nothing
+        RMB + W          air: X-up
+        double-tap W/S   a flip, if bmx_flip_doubletap 1 (off by default)
+
     Nothing here is predicted. GMod has no vehicle prediction API, so the
     simulation is server-authoritative exactly like simfphys and LVS. High-ping
     riders will feel it; that is a property of the engine, not of this addon,
@@ -65,6 +77,9 @@ function BMX.BlankInput()
         leanTarget  = 0,   -- -1..1, raw; smoothed in the physics step
         pitchTarget = 0,   -- -1..1, raw
         hop         = false,
+        whip        = 0,   -- -1..1: tailwhip, the way it turns (0 = not whipping)
+        bar         = 0,   -- -1..1: barspin
+        pose        = nil, -- a pose name (sh_tricks.lua), or nil
         tuck        = false,
         sprint      = false,
         wheelieMod  = false,
@@ -156,6 +171,80 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     inp.wasAirborne = airborne
     if airborne and inp.airLatch then fwd = 0 end
     if airborne and inp.airLatchSide then side = 0 end
+
+    ----------------------------------------------------------------------
+    -- TRICK KEYS: frame and bar spins, and style poses (sv_tricks.lua).
+    --
+    -- They TAKE their keys from the rotation controls, so a key that spins
+    -- the bike is never also a trick: A/D under a whip or a barspin are the
+    -- way to turn it, not a roll; with Alt down W/S/A/D are a pose, not a
+    -- flip. RMB + A/D (the 360) and Ctrl (tuck) are left alone.
+    ----------------------------------------------------------------------
+    local manual = (not airborne) and bike.st and bike.st.manual ~= nil
+    local sdir = side > 0.1 and 1 or (side < -0.1 and -1 or 0)
+    inp.whip, inp.bar, inp.pose = 0, 0, nil
+    if airborne or manual then
+        local alt = down(IN_WALK)
+        inp.poseMod = alt
+        local wKey = fwd > 0.1  or (down(IN_FORWARD) and inp.airLatch ~= 1)
+        local sKey = fwd < -0.1 or (down(IN_BACK)    and inp.airLatch ~= -1)
+        inp.pose = BMX.DecodePose({ alt = alt, rmb = inp.wheelieMod, fwd = wKey, back = sKey,
+            side = sdir, jump = down(IN_JUMP), air = airborne, manual = manual })
+        if inp.pose and airborne then
+            -- Hands are busy: no flip, no roll, no 360 under a pose.
+            fwd, side = 0, 0
+            inp.wheelieMod = false
+        elseif airborne then
+            local lmb, rKey = down(IN_ATTACK), down(IN_RELOAD)
+            if lmb and rKey then
+                local w = sdir ~= 0 and sdir or 1
+                inp.whip, inp.bar = w, w
+            elseif lmb and sdir ~= 0 then
+                inp.whip = sdir
+            elseif rKey then
+                inp.bar = sdir ~= 0 and sdir or 1
+            end
+            if inp.whip ~= 0 or inp.bar ~= 0 then side = 0 end
+        elseif manual and down(IN_RELOAD) then
+            inp.bar = sdir ~= 0 and sdir or 1       -- a barspin in a manual
+        end
+    else
+        inp.poseMod = false
+    end
+
+    ----------------------------------------------------------------------
+    -- DOUBLE-TAP FLIP, an option (bmx_flip_doubletap 1; a userinfo convar,
+    -- cl_tricks.lua). Two presses of W, or of S, inside a window command a
+    -- flip that stops by itself near a full turn; holding the key still
+    -- rotates as it always did, which is the better way to learn the bike.
+    ----------------------------------------------------------------------
+    if not airborne then
+        inp.autoFlip, inp.tapSign, inp.lastF = nil, nil, 0
+    elseif ply:GetInfoNum("bmx_flip_doubletap", 0) > 0 then
+        local f = fwd > 0.1 and 1 or (fwd < -0.1 and -1 or 0)
+        local K = bike:Cfg().Tricks
+        if f ~= 0 and f ~= (inp.lastF or 0) then
+            local now = CurTime()
+            if inp.tapSign == f and now - (inp.tapTime or -1e9) <= K.doubleTapWindow then
+                inp.autoFlip, inp.autoBase, inp.tapSign = f, bike.st and bike.st.spinPitch or 0, nil
+            else
+                inp.tapSign, inp.tapTime = f, now
+            end
+        end
+        inp.lastF = f
+        if inp.autoFlip then
+            -- Let go once the coast will do the rest: the spin so far, plus
+            -- the w / damping that the air will still carry it.
+            local st = bike.st or {}
+            local spun = math.abs((st.spinPitch or 0) - (inp.autoBase or 0))
+            local w = st.angVel and st.angVel:Dot(bike:GetRight()) or 0
+            local coast = math.abs(w) / bike:Cfg().Air.damping
+            if spun + coast >= K.doubleTapTurn or inp.pose then inp.autoFlip = nil end
+        end
+    else
+        inp.autoFlip = nil
+    end
+
     inp.leanTarget = side
 
     if airborne then
@@ -171,7 +260,7 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
         ------------------------------------------------------------------
         inp.throttle    = 0
         inp.brakeRear   = 0
-        inp.pitchTarget = -fwd
+        inp.pitchTarget = inp.autoFlip and -inp.autoFlip or -fwd
     else
         inp.throttle  = math.max(fwd, 0)
         inp.brakeRear = math.max(-fwd, 0)

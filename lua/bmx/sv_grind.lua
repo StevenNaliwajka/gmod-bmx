@@ -32,7 +32,8 @@ BMX = BMX or {}
 local abs, min, max, sqrt, floor = math.abs, math.min, math.max, math.sqrt, math.floor
 local UP = Vector(0, 0, 1)
 
-local NAMES = { crank = "Crank Grind", peg = "Double Peg Grind" }
+-- The names come from the trick registry (sh_tricks.lua).
+local NAMES = { crank = BMX.Tricks.crank_grind.name, peg = BMX.Tricks.peg_grind.name }
 
 -- A player or an NPC is not a rail.
 local function solidOK(tr)

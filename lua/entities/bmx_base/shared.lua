@@ -97,6 +97,13 @@ function ENT:SetupDataTables()
     -- The grind under way, for the sparks and the scrape (cl_sound.lua):
     -- 0 none, 1 crank grind, 2 pegs on the left, 3 pegs on the right.
     self:NetworkVar("Int",   2, "Grind")
+    -- Frame spin, bar spin and the rider's pose, one byte each (sv_tricks.lua,
+    -- BMX.PackTrickBits): where a tailwhip and a barspin are in their turn, as
+    -- 0..255 of a revolution, and which style pose is held (a pose id from
+    -- sh_tricks.lua, 0 = none). Drawn by cl_init.lua, posed by cl_rider.lua.
+    -- Slot 7, not the next free one, to leave the low slots to whoever adds
+    -- the next state the client needs.
+    self:NetworkVar("Int",   7, "TrickBits")
 
     if SERVER then
         self:SetColorIndex(self:Bike().colorIndex or 1)

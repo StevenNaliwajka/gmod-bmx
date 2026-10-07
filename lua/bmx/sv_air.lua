@@ -16,7 +16,7 @@
 
 BMX = BMX or {}
 
-local abs, min, max = math.abs, math.min, math.max
+local abs, min, max, floor = math.abs, math.min, math.max, math.floor
 local TAU = math.pi * 2
 
 --------------------------------------------------------------------------
@@ -86,9 +86,21 @@ function BMX.AirControl(ent, phys, cfg, dt, inp, st)
     -- `rollIn` is what A/D mean for the roll axis right now.
     local rollIn = inp.wheelieMod and 0 or inp.lean
 
-    local aPitch = inp.pitch * A.pitchAccel * tuck - damp * wPitch
-    local aRoll  = rollIn    * A.rollAccel  * tuck - damp * wRoll
-    local aYaw   =                                 - damp * wYaw
+    -- A HELD POSE LETS THE SPIN COAST. In the air with Alt down the rotation
+    -- keys are the pose keys (sv_input.lua), so a rider carrying a flip into
+    -- a superman has let go of the flip: without help the damping stops it
+    -- dead and there is no such thing as a Backflip Superman. With a pose up
+    -- and the axis not being driven, the damping is only Tricks.poseSpinDamp
+    -- of itself. An axis that IS being driven (a scripted rider writes its
+    -- own input) keeps all of it, so nothing that steers a spin changes.
+    local coast = inp.pose and C.Tricks.poseSpinDamp or 1
+    local dPitch = (inp.pitch == 0) and damp * coast or damp
+    local dRoll  = (rollIn == 0)    and damp * coast or damp
+    local dYaw   = (not inp.wheelieMod or inp.lean == 0) and damp * coast or damp
+
+    local aPitch = inp.pitch * A.pitchAccel * tuck - dPitch * wPitch
+    local aRoll  = rollIn    * A.rollAccel  * tuck - dRoll  * wRoll
+    local aYaw   =                                 - dYaw   * wYaw
 
     -- Yaw is unbound unless RMB is held: bikes barely yaw in the air on their
     -- own, and free yaw on A/D would make every landing survivable.
@@ -189,6 +201,7 @@ function BMX.AirReset(st)
     st.spinRoll  = 0
     st.spinYaw   = 0
     st.airTime   = 0
+    if BMX.TricksReset then BMX.TricksReset(st) end     -- sv_tricks.lua
 end
 
 --------------------------------------------------------------------------
@@ -197,26 +210,20 @@ end
 --
 -- Returns a list of { name = string, count = number, points = number }.
 --------------------------------------------------------------------------
-local TRICKS = {
-    -- axis key      full rotations counted    name for +ve / -ve      points per rotation
-    { "spinPitch", "Backflip",  "Frontflip", 500 },
-    { "spinRoll",  "Barrel Roll", "Barrel Roll", 400 },
-    { "spinYaw",   "360",       "360",       250 },
-}
-
+-- The rotations are REGISTERED (sh_tricks.lua: Backflip, Frontflip, Barrel
+-- Roll, 360), and this reads them back: for each, the full turns of its axis
+-- in its direction, at its points a turn.
 function BMX.ScoreAir(st)
     local out = {}
 
-    for _, t in ipairs(TRICKS) do
-        local key, posName, negName, per = t[1], t[2], t[3], t[4]
-        local total = st[key] or 0
-        local n = math.floor(abs(total) / TAU)
-        if n > 0 then
-            out[#out + 1] = {
-                name   = total > 0 and posName or negName,
-                count  = n,
-                points = n * per,
-            }
+    for _, id in ipairs(BMX.TrickOrder) do
+        local t = BMX.Tricks[id]
+        if t.kind == "spin" then
+            local total = st[t.axis] or 0
+            local n = floor(abs(total) / TAU)
+            if n > 0 and (t.sign == 0 or (total > 0) == (t.sign > 0)) then
+                out[#out + 1] = { name = t.name, count = n, points = n * t.points }
+            end
         end
     end
 
@@ -227,6 +234,8 @@ function BMX.ScoreAir(st)
         out[#out + 1] = { name = "Air Time", count = 1, points = math.floor(t * 120) }
     end
 
+    -- Frame and bar spins, poses, and the compounds they make (sv_tricks.lua).
+    if BMX.ScoreExtras then return BMX.ScoreExtras(st, out) end
     return out
 end
 
@@ -241,7 +250,7 @@ end
 -- wheel reporting no contact for a substep while the bike is plainly still on
 -- its back wheel, which is what `grace` is for.
 --------------------------------------------------------------------------
-local MANUAL_NAME = { wheelie = "Wheelie", stoppie = "Stoppie" }
+local MANUAL_NAME = { wheelie = BMX.Tricks.wheelie.name, stoppie = BMX.Tricks.stoppie.name }
 
 function BMX.TrackManual(st, cfg, front, rear, speed, dt)
     local K = cfg.Tricks

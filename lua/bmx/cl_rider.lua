@@ -465,6 +465,113 @@ function BMX.SolveRiderIK(ply, targets, bike)
 end
 
 --------------------------------------------------------------------------
+-- STYLE POSES (G17): IK targets, blended.
+--
+-- Each pose in sh_tricks.lua names a row here. A row says where a hand or a
+-- foot goes INSTEAD of its grip or pedal, in the bike's own space (X forward,
+-- Y left, Z up, inches at the stock wheelbase; the bike scales them), and
+-- how the rest of the body and the bike go with it:
+--
+--   rHand lHand rFoot lFoot   a target; leave out to keep the grip or pedal
+--   spineLean   degrees the torso folds forward
+--   spineTwist  degrees it turns about its length
+--   bikeRoll    degrees the bike lies over about its long axis (tabletop)
+--   barsTurn    degrees the bars fold forward about the stem (turndown)
+--   barsSpin    degrees the bars are turned about the steer axis (X-up)
+--
+-- Nobody has watched these on a real model, so they are numbers in a table
+-- and the solver is the same guarded one that holds the grips.
+--
+-- The server sends one pose id; every client blends its own weights toward it
+-- over BMX.PoseBlendTime (0.15 s), in and out.
+--------------------------------------------------------------------------
+local HANDS_UP = { rHand = Vector(8, -15, 36), lHand = Vector(8, 15, 36) }
+local FEET_OUT = { rFoot = Vector(-1, -14, 5), lFoot = Vector(-1, 14, 5) }
+
+BMX.RiderPoses = {
+    nohander = { rHand = HANDS_UP.rHand, lHand = HANDS_UP.lHand, spineLean = -4 },
+    nofooter = { rFoot = FEET_OUT.rFoot, lFoot = FEET_OUT.lFoot },
+    -- A can-can swings one leg over the top tube to the other side.
+    cancan_r = { rFoot = Vector(-1, 9, 14) },
+    cancan_l = { lFoot = Vector(-1, -9, 14) },
+    -- Superman: legs out behind, body laid forward, hands on the bars.
+    superman = { rFoot = Vector(-26, -5, 17), lFoot = Vector(-26, 5, 17), spineLean = 28 },
+    nothing  = { rHand = HANDS_UP.rHand, lHand = HANDS_UP.lHand,
+                 rFoot = FEET_OUT.rFoot, lFoot = FEET_OUT.lFoot, spineLean = 6 },
+    xup      = { barsSpin = 180, spineTwist = 10 },
+    turndown = { barsTurn = 75, spineTwist = -20, spineLean = 10 },
+    tabletop = { bikeRoll = 70 },
+}
+
+local POSE_HANDS = { "rHand", "lHand" }
+local POSE_LIMBS = { "rHand", "lHand", "rFoot", "lFoot" }
+
+-- This bike's pose weights (name -> 0..1), moved toward the pose the server
+-- says is held. Called once a frame from the bike's Draw.
+function BMX.UpdatePoseWeights(bike, current, dt)
+    local W = bike.poseW or {}
+    bike.poseW = W
+    local step = (dt or 0) / BMX.PoseBlendTime
+    for _, name in ipairs(BMX.PoseNames) do
+        local w = W[name] or 0
+        local target = (name == current) and 1 or 0
+        if w < target then w = math.min(target, w + step)
+        elseif w > target then w = math.max(target, w - step) end
+        W[name] = w > 0 and w or nil
+    end
+    return W
+end
+
+-- What the weights add up to for the bike's drawing, in radians: the roll of
+-- the whole bike, the bars folded forward, the bars turned.
+function BMX.PoseDrawAngles(W)
+    local roll, turn, spin = 0, 0, 0
+    for name, w in pairs(W or {}) do
+        local d = BMX.RiderPoses[name]
+        if d then
+            roll = roll + math.rad(d.bikeRoll or 0) * w
+            turn = turn + math.rad(d.barsTurn or 0) * w
+            spin = spin + math.rad(d.barsSpin or 0) * w
+        end
+    end
+    return roll, turn, spin
+end
+
+-- The torso: degrees forward and degrees of twist.
+function BMX.PoseBody(W)
+    local lean, twist = 0, 0
+    for name, w in pairs(W or {}) do
+        local d = BMX.RiderPoses[name]
+        if d then
+            lean  = lean  + (d.spineLean  or 0) * w
+            twist = twist + (d.spineTwist or 0) * w
+        end
+    end
+    return lean, twist
+end
+
+-- Move the IK targets (the table cl_init builds each frame) toward the poses'.
+-- `toWorld` turns a bike-space point into a world one. A hand that is being
+-- posed gives up its grip RANGE: the solver would otherwise take the nearest
+-- point on the bar and ignore the pose.
+function BMX.ApplyPoseTargets(ik, W, toWorld)
+    for name, w in pairs(W or {}) do
+        local d = BMX.RiderPoses[name]
+        if d and w > 0 then
+            for _, key in ipairs(POSE_LIMBS) do
+                if d[key] and ik[key] then
+                    ik[key] = ik[key] + (toWorld(d[key]) - ik[key]) * w
+                end
+            end
+            for _, key in ipairs(POSE_HANDS) do
+                if d[key] then ik[key .. "A"], ik[key .. "B"] = nil, nil end
+            end
+        end
+    end
+    return ik
+end
+
+--------------------------------------------------------------------------
 -- Layer 1: the base pose.
 --------------------------------------------------------------------------
 hook.Add("CalcMainActivity", "BMX.RiderPose", function(ply)
@@ -533,6 +640,11 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     if useIK and (ply.bmxSpineTwist or ply.bmxSpineLean) then
         pose.spine = Angle(pose.spine.p, pose.spine.y + (ply.bmxSpineLean or 0),
             ply.bmxSpineTwist or 0)
+    end
+    -- A style pose folds and twists the torso too (BMX.RiderPoses).
+    local poseLean, poseTwist = BMX.PoseBody(bike.poseW)
+    if poseLean ~= 0 or poseTwist ~= 0 then
+        pose.spine = Angle(pose.spine.p, pose.spine.y + poseLean, pose.spine.r + poseTwist)
     end
     for key, ang in pairs(pose) do
         -- With IK on, the limbs are the solver's; the pose keeps the body.

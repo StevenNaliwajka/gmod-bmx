@@ -47,7 +47,8 @@ function BMX.ComboAdd(ent, tricks)
     if BMX.CombosEnabled and not BMX.CombosEnabled() then return end   -- bmx_combos 0
     local c = st.combo or { n = 0, base = 0, names = {} }
     for _, t in ipairs(tricks) do
-        c.n = c.n + 1
+        -- A compound ("Backflip Superman") stands for the tricks it is made of.
+        c.n = c.n + (t.tricks or 1)
         c.base = c.base + (t.points or 0)
         c.names[#c.names + 1] = ((t.count or 1) > 1 and (t.count .. "x ") or "") .. t.name
     end

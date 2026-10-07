@@ -426,6 +426,14 @@ function ENT:JudgeLanding(front, rear)
     -- Landing sideways. Cheap to check and it catches the case the angle test
     -- misses entirely: a perfectly upright bike arriving with all its velocity
     -- across the tyres.
+    -- A PART OUT OF LINE, OR A POSE STILL HELD (sv_tricks.lua): the frame or
+    -- the bars more than Tricks.partMaxOut from a whole turn means the bike
+    -- is not rideable, and a rider still in a pose has no hands or feet where
+    -- they need them. Both go the way every bad landing goes, so the combo is
+    -- lost and the tricks do not pay.
+    local why, sev = BMX.LandingFault and BMX.LandingFault(st)
+    if why then return true, sev, why end
+
     local lat = math.max(math.abs(front.slipLat or 0), math.abs(rear.slipLat or 0))
     if CR.maxLandLateral and lat > CR.maxLandLateral then
         return true, BMX.Clamp((lat - CR.maxLandLateral) / CR.maxLandLateral, 0, 1), "sideways"

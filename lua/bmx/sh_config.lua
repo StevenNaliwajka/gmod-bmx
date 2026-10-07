@@ -730,6 +730,46 @@ C.Tricks = {
 
     wheeliePerSec = 150,
     stoppiePerSec = 200,    -- harder, and much shorter
+
+    ------------------------------------------------------------------
+    -- FRAME AND BAR SPINS, AND STYLE POSES (sv_tricks.lua, G03 and G17)
+    --
+    -- A tailwhip swings the frame round the steer axis, a barspin spins the
+    -- bars. Both are kinematic: the part turns at a fixed rate while the
+    -- input is held, and the rest is a rule about letting go.
+    ------------------------------------------------------------------
+    whipRate = 11.5,        -- rad/s: a full whip in 0.55 s
+    barRate  = 15.0,        -- rad/s: bars are light, 0.42 s a turn
+    -- Let go with more than this much of a turn done and it finishes by
+    -- itself; with less than snapBack it springs back to where it was.
+    -- In between the part stays out of line, and so does the landing.
+    autoComplete = math.rad(270),
+    snapBack     = math.rad(90),
+    -- Landing with the frame or the bars further out of line than this
+    -- bails: the bike is not rideable.
+    partMaxOut   = math.rad(30),
+    -- The rider "throws" the frame, and the chassis answers with a small
+    -- yaw the other way (rad/s^2, while a whip is under way).
+    whipKick     = 2.0,
+
+    -- Held poses pay per poseTick seconds held, and only count once held
+    -- poseMinHold seconds, so brushing the key is not a trick.
+    poseTick     = 0.1,
+    poseMinHold  = 0.3,
+    -- While a pose is held with no rotation key down, the spin you had
+    -- coasts on with this share of the usual air damping, so a flip can
+    -- carry a pose.
+    poseSpinDamp = 0.25,
+    -- A pose with a rotation in the same air is ONE named trick
+    -- ("Backflip Superman"), paid as both plus this share of the sum.
+    compoundBonus = 0.25,
+
+    -- bmx_flip_doubletap 1: a double-tap of W or S inside this window is a
+    -- flip. The rotation key is let go once the spin so far plus what the
+    -- air damping will still carry it (w / damping) reaches doubleTapTurn,
+    -- a full turn and a little over; it then coasts to a stop level.
+    doubleTapWindow = 0.3,
+    doubleTapTurn   = math.pi * 2 + 0.15,
 }
 
 --------------------------------------------------------------------------

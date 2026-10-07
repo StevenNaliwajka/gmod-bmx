@@ -1383,6 +1383,35 @@ for _, name in ipairs(BMX.Bot.TrickList) do
     end)
 end
 
+--------------------------------------------------------------------------
+-- FRAME AND BAR SPINS, AND POSES (G03, G17): the bot commands them off the
+-- ramp the way the flips are, and the addon's own scoring is the judge. A
+-- whip that came down out of line, or a pose held into the landing, bails
+-- (the bike would not be rideable / the rider has no hands), so a landed
+-- trick with the rider still aboard is the whole claim.
+--------------------------------------------------------------------------
+T.Case("tailwhip_lands", { timeout = 90,
+    desc = "off the ramp case, a tailwhip is commanded: it completes, scores, and the bike lands rideable" },
+function(ctx)
+    local r, brain = botTrick(ctx, "Tailwhip")
+    ctx:ok(r and r.ok, "tailwhip landed: " .. tostring(r and r.why or "no result"))
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "and the rider is still on the bike")
+    local whip = brain.scored and brain:scoredSince(0, "Tailwhip")
+    ctx:ok(whip and whip.points >= 600, "paid at least one turn's 600: " .. tostring(whip and whip.points))
+    local a, b = BMX.PartsOffLine(ctx.bike.st)
+    ctx:ok(a < 0.01 and b < 0.01, "and the frame is back in line (" .. tostring(a) .. ")")
+end)
+
+T.Case("superman_backflip_lands", { timeout = 90,
+    desc = "off the ramp case, a backflip with a superman held through it: one compound trick, landed" },
+function(ctx)
+    local r, brain = botTrick(ctx, "Superman Backflip")
+    ctx:ok(r and r.ok, "Backflip Superman landed: " .. tostring(r and r.why or "no result"))
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "and the rider is still on the bike")
+    local c = brain:scoredSince(0, "Backflip Superman")
+    ctx:ok(c and c.points > 500, "paid as both, with a compound bonus: " .. tostring(c and c.points))
+end)
+
 T.Case("bot_finds_a_ramp_in_the_world", { timeout = 90, wip = true,
     desc = "with no kicker of its own allowed, the bot finds a ramp it was not told about and flips off it" },
 function(ctx)

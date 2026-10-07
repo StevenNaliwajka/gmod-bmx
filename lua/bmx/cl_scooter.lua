@@ -101,7 +101,9 @@ end
 SET.rider = function(s)
     local ply = s.ply
     local crouch = math.Clamp(s.hop or 0, 0, 1)
-    if ply and B and B.LowerPelvis then B.LowerPelvis(ply, crouch * (B.CrouchDepth or 9)) end
+    -- Soft knees at rest (the board's riding bend), deeper with the crouch.
+    local depth, bend = B and B.CrouchDepth or 9, (B and B.RideBend or 3.2) * 0.85
+    if ply and B and B.LowerPelvis then B.LowerPelvis(ply, bend + crouch * (depth - bend)) end
     local speedLean = math.Clamp((s.speed or 0) / 330, 0, 1) * 6
     local spine = crouch * 16 + speedLean + math.deg(s.pitch or 0) * 0.5
     local twist = math.deg(s.steer or 0) * 0.3

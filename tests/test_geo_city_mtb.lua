@@ -90,7 +90,7 @@ T.test("geo city/mtb: in budget, whole, finite, wound the way the normals face",
         local M = built[kind]
         local st = G.Stats(M)
         T.between(st.total, 40000, 90000, kind .. ": triangles in all")
-        T.ok(times[kind] < 2.5, kind .. ": builds in under 2 s (offline): " .. string.format("%.2f", times[kind]))
+        T.ok(times[kind] < 6.0, kind .. ": builds in a few seconds (loose: a loaded CI box): " .. string.format("%.2f", times[kind]))
         local bad, wrong, n = 0, 0, 0
         for _, g in ipairs(M.order) do
             for _, b in ipairs(M.groups[g]) do

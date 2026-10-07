@@ -221,6 +221,8 @@ local function calibratePelvis(ply, b)
 end
 
 local CROUCH_DEPTH = 9          -- units the pelvis drops at a full crouch
+local RIDE_BEND = 3.2           -- ...and at rest: riding knees are always soft
+B.RideBend = RIDE_BEND
 
 local function lowerPelvis(ply, depth)
     local b = ply:LookupBone(PELVIS)
@@ -244,7 +246,11 @@ SET.rider = function(s)
     local bike, ply = s.bike, s.ply
     local crouch = bike and bike.GetCrouch and bike:GetCrouch() or 0
     crouch = max(crouch, s.hop or 0)
-    if ply then lowerPelvis(ply, crouch * CROUCH_DEPTH) end
+    -- NEVER LOCKED STRAIGHT: a skater rides on soft knees, a little deeper with
+    -- speed; the crouch and a hop's preload go down from there.
+    local speedBend = math.Clamp((s.speed or 0) / 300, 0, 1) * 1.2
+    local bend = RIDE_BEND + speedBend
+    if ply then lowerPelvis(ply, bend + crouch * (CROUCH_DEPTH - bend)) end
     local lean = bike and bike.GetBoardLean and bike:GetBoardLean() or 0
     local spine = crouch * 18 + math.deg(s.pitch or 0) * 0.5
     local twist = math.deg(lean) * 0.5

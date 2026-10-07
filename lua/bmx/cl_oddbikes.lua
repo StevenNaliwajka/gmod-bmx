@@ -202,9 +202,21 @@ BMX.Drawers.unicycle = function(ent, H, lod, debug)
         cranks(ent, H, hub, fwd, up, right, spin, 6.5, 3.2, ik, lod, col)
     end
 
-    -- Arms out to the sides, a little forward and up: a unicyclist's wings.
-    ik.rHand = seat + right * 15 + fwd * 3 + up * 9
-    ik.lHand = seat - right * 15 + fwd * 3 + up * 9
+    -- ARMS OUT FOR BALANCE, the way a unicyclist holds them: loose, elbows bent,
+    -- hands a little forward of the hips and out past them, not locked straight out
+    -- like wings. They work against the lean: the low side's hand comes up and out,
+    -- the high side's drops in, and both drift with a slow sway so they are never
+    -- still.
+    local roll = BMX.Attitude(ent, vector_up) or 0
+    local bal = math.Clamp(roll / 0.35, -1, 1)
+    local sway = math.sin(CurTime() * 1.7 + ent:EntIndex()) * 0.6
+    local function hand(side)
+        local lift = -bal * side * 4 + sway * side
+        local out = 11.5 + math.max(0, -bal * side) * 3
+        return seat + right * (out * side) + fwd * 6.5 + up * (13 + lift)
+    end
+    ik.rHand = hand(1)
+    ik.lHand = hand(-1)
     ik.rHandA, ik.rHandB = ik.rHand, ik.rHand
     ik.lHandA, ik.lHandB = ik.lHand, ik.lHand
     ent.ikTargets = ik

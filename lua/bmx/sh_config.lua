@@ -910,8 +910,16 @@ end
 --------------------------------------------------------------------------
 BMX.ConfigRevision = 0
 
-local GROUPS = { "Chassis", "Wheel", "Drive", "Balance", "Stand", "Pitch", "Air", "Hop",
-                 "Crash", "Tricks" }
+-- READ OFF THE CONFIG, NOT WRITTEN OUT. This used to be a hand-kept list, and
+-- Grind and Combo were added to the config after it: a bike with a `physics`
+-- table then had no Cfg().Grind or Cfg().Combo at all, and its first grind or
+-- its first trick was a nil index. Every table in C except the ConVars rows is
+-- a group, so a new group is merged the moment it exists.
+local GROUPS = {}
+for name, v in pairs(C) do
+    if type(v) == "table" and name ~= "ConVars" then GROUPS[#GROUPS + 1] = name end
+end
+table.sort(GROUPS)
 
 -- Public, so bmx_dump_config walks the same list the merge does: two copies of
 -- it is how a new group gets merged per bike and silently left out of the dump.

@@ -105,3 +105,18 @@ T.test("combo: the rider's screen builds the chain, then shows it landed", funct
     all = table.concat(cl.texts, " | ")
     T.ok(all:find("COMBO LANDED  +640", 1, true), "landed, with the bonus: " .. all)
 end)
+
+-- The bike that found the missing merge groups: one with physics overrides.
+T.test("combo: a bike with physics overrides scores and banks combos too", function()
+    local sv = F.server()
+    sv.env.BMX.RegisterBike("heavy", { physics = { Chassis = { mass = 100 } } })
+    local bike = F.bike(sv, "bmx_heavy")
+    F.rider(sv, bike, { name = "Rider" })
+    sv:run(0.5)
+    local s0 = bike:GetScore()
+    bike:AwardTricks({ { name = "Backflip", count = 1, points = 500 } })
+    bike:AwardTricks({ { name = "Manual", count = 1, points = 150 } })
+    T.eq(bike.st.combo and bike.st.combo.n, 2, "the combo opened on the override bike")
+    sv:run(1.2)
+    T.eq(bike:GetScore(), s0 + 650 * 2, "and banked")
+end)

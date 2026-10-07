@@ -215,3 +215,45 @@ T.test("every config group the merge knows is dumped by bmx_dump_config", functi
     end
     T.ok(joined:find("manualMin", 1, true), "including the fields")
 end)
+
+-- THE MERGE LIST USED TO BE WRITTEN OUT BY HAND, and Grind and Combo were added
+-- to the config after it was. A bike with a `physics` table then had no
+-- Cfg().Grind or Cfg().Combo at all: its first grind search, or its first trick
+-- (ComboAdd reads Cfg().Combo.enabled), was a nil index. No shipped bike had
+-- overrides, so nothing on the Workshop ever ran into it.
+T.test("every config group is in the merge, so a bike with overrides has all of them", function()
+    local C, B = cfg()
+    local known = {}
+    for _, g in ipairs(B.ConfigGroups) do known[g] = true end
+    for name, v in pairs(C) do
+        if type(v) == "table" and name ~= "ConVars" then
+            T.ok(known[name], "C." .. name .. " is merged per bike")
+        end
+    end
+    local m = B.ConfigFor({ physics = { Wheel = { radius = 12 } } })
+    for name, v in pairs(C) do
+        if type(v) == "table" and name ~= "ConVars" then
+            T.ok(type(m[name]) == "table", "the merged copy has " .. name)
+        end
+    end
+end)
+
+T.test("Grind and Combo can be overridden per bike like any other group", function()
+    local C, B = cfg()
+    T.ok(B.ValidatePhysics("g", { Grind = { [next(C.Grind)] = C.Grind[next(C.Grind)] } }),
+        "a Grind field validates")
+    local m = B.ConfigFor({ physics = { Combo = { grace = 2.5 } } })
+    T.eq(m.Combo.grace, 2.5, "the override")
+    T.eq(m.Combo.enabled, C.Combo.enabled, "the rest of Combo from the base")
+    T.eq(C.Combo.grace, 0.8, "the base is untouched")
+end)
+
+T.test("the merge list is not ConVars, and has no duplicates", function()
+    local _, B = cfg()
+    local seen = {}
+    for _, g in ipairs(B.ConfigGroups) do
+        T.ok(g ~= "ConVars", "ConVars is plumbing, not a group")
+        T.ok(not seen[g], g .. " listed once")
+        seen[g] = true
+    end
+end)

@@ -91,6 +91,10 @@ ok '[ "${#TITLE}" -le 128 ]' "the title fits Steam's 128 characters"
 # drift would put the wrong page on Steam.
 ok 'python3 -c "import json,sys; d=json.load(open(sys.argv[1]))[\"description\"]; sys.exit(0 if d.strip() == open(sys.argv[2]).read().strip() else 1)" "$ROOT/addon.json" "$ROOT/workshop/description.bbcode"' \
    "addon.json's description is workshop/description.bbcode, word for word"
+# Players report bugs and ideas on the public GitHub copy (Issues on), so the
+# page links it.
+ok 'grep -qF "[url=https://github.com/StevenNaliwajka/gmod-bmx/issues]" "$ROOT/workshop/description.bbcode"' \
+   "the Workshop page links the GitHub issues"
 ok 'grep -q "workshop/description.bbcode" "$ROOT/tools/package-workshop.sh"' "the kit ships the page text, ready to paste"
 # STEAM'S TABLES. Steam turns every line break inside a [table] into an empty
 # row, so a table goes on one line; a key written as a bare [ or ] reads as a

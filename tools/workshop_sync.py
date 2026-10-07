@@ -18,7 +18,8 @@ What it does, per item, the way gmpublish does and then some:
      text as workshop/description.bbcode), tags (Addon, the type, the addon's
      tags, as gmpublish sets them), the icon (workshop/icon.jpg), the GALLERY
      (every image and GIF in workshop/gallery/, in file-name order, replacing
-     what was there), visibility (public), and Required Items
+     what was there; the icon and gallery are left alone when Steam already has
+     these exact files and every one loads), visibility (public), and Required Items
      (the icon is workshop/icon.gif when there is one -- Steam animates it --
      else workshop/icon.jpg)
   4. waits for Steam to finish the upload and checks the result
@@ -33,6 +34,7 @@ override them).
 
 import argparse
 import ctypes as C
+import hashlib
 import json
 import os
 import shutil
@@ -40,6 +42,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 
 APPID = 4000
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -140,6 +143,31 @@ def pack(item, work):
     return gma
 
 
+def sha1(path):
+    with open(path, "rb") as f:
+        return hashlib.sha1(f.read()).hexdigest().upper()
+
+
+def loads(url):
+    """True when Steam's image server actually has the picture at url."""
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=20) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def same_files(urls, paths):
+    """True when the pictures at urls are these files, in this order, and every one
+    loads. A Steam UGC URL ends in the file's SHA-1: .../ugc/<handle>/<SHA1>/"""
+    if len(urls) != len(paths):
+        return False
+    for u, p in zip(urls, paths):
+        if u.rstrip("/").rsplit("/", 1)[-1].upper() != sha1(p) or not loads(u):
+            return False
+    return True
+
+
 # --------------------------------------------------------------------------
 # Steamworks, through its flat C API
 # --------------------------------------------------------------------------
@@ -226,6 +254,9 @@ class Steam:
         u("SetReturnAdditionalPreviews", C.c_bool, C.c_uint64, C.c_bool)
         u("SendQueryUGCRequest", C.c_uint64, C.c_uint64)
         u("GetQueryUGCNumAdditionalPreviews", C.c_uint32, C.c_uint64, C.c_uint32)
+        u("GetQueryUGCPreviewURL", C.c_bool, C.c_uint64, C.c_uint32, C.c_char_p, C.c_uint32)
+        u("GetQueryUGCAdditionalPreview", C.c_bool, C.c_uint64, C.c_uint32, C.c_uint32, C.c_char_p, C.c_uint32,
+          C.c_char_p, C.c_uint32, C.POINTER(C.c_int))
         u("ReleaseQueryUGCRequest", C.c_bool, C.c_uint64)
         u("AddDependency", C.c_uint64, C.c_uint64, C.c_uint64)
         self._sig("SteamAPI_ISteamUtils_IsAPICallCompleted", C.c_bool, (C.c_void_p, C.c_uint64, C.POINTER(C.c_bool)))
@@ -264,19 +295,36 @@ class Steam:
         return r.id
 
     def previews(self, wsid):
+        """The item's icon URL and its gallery URLs, in order, as Steam has them now."""
         ids = (C.c_uint64 * 1)(int(wsid))
         q = self.ugc_call("CreateQueryUGCDetailsRequest", ids, 1)
         self.ugc_call("SetReturnAdditionalPreviews", q, True)
         r = self.wait(self.ugc_call("SendQueryUGCRequest", q), QueryCompleted, 3401)
-        n = self.ugc_call("GetQueryUGCNumAdditionalPreviews", q, 0) if r.result == 1 and r.num >= 1 else 0
+        icon, gallery = "", []
+        if r.result == 1 and r.num >= 1:
+            buf, name, kind = C.create_string_buffer(1024), C.create_string_buffer(1024), C.c_int(0)
+            if self.ugc_call("GetQueryUGCPreviewURL", q, 0, buf, 1024):
+                icon = buf.value.decode()
+            for i in range(self.ugc_call("GetQueryUGCNumAdditionalPreviews", q, 0)):
+                self.ugc_call("GetQueryUGCAdditionalPreview", q, 0, i, buf, 1024, name, 1024, C.byref(kind))
+                gallery.append(buf.value.decode())
         self.ugc_call("ReleaseQueryUGCRequest", q)
-        return n
+        return icon, gallery
 
     def update(self, item, note):
+        """Update the item. Returns how many gallery images were replaced (0 when the
+        gallery on Steam already matched and was left alone)."""
         wsid = int(item["id"])
-        old = self.previews(wsid)
-        h = self.ugc_call("StartItemUpdate", APPID, wsid)
+        icon_url, old = self.previews(wsid)
+        # The icon and the gallery are sent only when they changed, or a picture on
+        # the page is broken. Removing a preview and adding the same bytes back in one
+        # update leaves the new preview pointing at the file the removal deleted:
+        # every gallery image 404'd that way on 2026-10-07 (1.1.1). So a changed
+        # gallery goes in two updates: the old previews out, then the new ones in.
+        same_icon = icon_url and same_files([icon_url], [item["icon"]])
+        same_gallery = same_files(old, item["gallery"])
         m = item["meta"]
+        h = self.ugc_call("StartItemUpdate", APPID, wsid)
         ok = [self.ugc_call("SetItemTitle", h, m["title"].encode()),
               self.ugc_call("SetItemDescription", h, m["description"].encode()),
               self.ugc_call("SetItemVisibility", h, 0)]
@@ -285,13 +333,26 @@ class Steam:
         ok.append(self.ugc_call("SetItemTags", h, C.byref(arr), False))
         if not item.get("page_only"):
             ok.append(self.ugc_call("SetItemContent", h, item["content"].encode()))
-        ok.append(self.ugc_call("SetItemPreview", h, item["icon"].encode()))
-        for i in range(old - 1, -1, -1):
-            ok.append(self.ugc_call("RemoveItemPreview", h, i))
-        for g in item["gallery"]:
-            ok.append(self.ugc_call("AddItemPreviewFile", h, g.encode(), 0))
+        if not same_icon:
+            ok.append(self.ugc_call("SetItemPreview", h, item["icon"].encode()))
+        if not same_gallery:
+            for i in range(len(old) - 1, -1, -1):
+                ok.append(self.ugc_call("RemoveItemPreview", h, i))
         if not all(ok):
             die("%s: Steam refused one of the item's fields" % item["key"])
+        self.submit(item, h, note)
+        print("  icon %s, gallery %s" % ("unchanged" if same_icon else "sent",
+                                         "unchanged" if same_gallery else "replaced"))
+        if same_gallery or not item["gallery"]:
+            return 0 if same_gallery else len(old)
+        h = self.ugc_call("StartItemUpdate", APPID, wsid)
+        ok = [self.ugc_call("AddItemPreviewFile", h, g.encode(), 0) for g in item["gallery"]]
+        if not all(ok):
+            die("%s: Steam refused a gallery image" % item["key"])
+        self.submit(item, h, "")
+        return len(old)
+
+    def submit(self, item, h, note):
         call = self.ugc_call("SubmitItemUpdate", h, note.encode())
         last = [None]
 
@@ -308,7 +369,6 @@ class Steam:
             die("%s: SubmitItemUpdate: %s" % (item["key"], EResult.get(r.result, r.result)))
         if r.needs_legal:
             print("  NOTE: accept the Steam Workshop agreement on the item's page")
-        return old
 
     def depend(self, parent, child):
         r = self.wait(self.ugc_call("AddDependency", int(parent), int(child)), AddDependencyResult, 3412)
@@ -372,7 +432,7 @@ def main():
                                             capture_output=True, text=True).stdout.strip()
             old = steam.update(it, note[:8000])
             ids[it["key"]] = it["id"]
-            print("  done: %s%s, %d gallery images (replaced %d)" % (
+            print("  done: %s%s, %d gallery images (replaced %d old)" % (
                 it["sha"][:7], " (page only; files unchanged)" if it.get("page_only") else "", len(it["gallery"]), old))
             print("  https://steamcommunity.com/sharedfiles/filedetails/?id=%s" % it["id"])
         # Required Items

@@ -172,8 +172,23 @@ EResult = {1: "OK", 2: "Fail", 8: "InvalidParam", 9: "FileNotFound", 15: "Access
            25: "LimitExceeded", 29: "DuplicateRequest", 33: "InsufficientPrivilege"}
 
 
+def go_invisible():
+    """Set the Steam friends status to Invisible before the upload starts a Garry's Mod
+    session, so friends do not see the account "playing Garry's Mod" (the owner's
+    standing rule: Steam on this machine is always invisible). Best effort."""
+    import shutil, subprocess, time
+    exe = shutil.which("steam") or "/usr/games/steam"
+    try:
+        subprocess.Popen([exe, "steam://friends/status/invisible"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(2)
+    except OSError:
+        print("note: could not reach the Steam client to set Invisible", file=sys.stderr)
+
+
 class Steam:
     def __init__(self):
+        go_invisible()
         self.lib = C.CDLL(STEAM_API_LIB)
         L = self.lib
         os.environ["SteamAppId"] = str(APPID)

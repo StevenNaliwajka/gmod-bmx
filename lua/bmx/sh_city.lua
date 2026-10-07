@@ -672,15 +672,21 @@ function B:billboard(bb)
         local lo, hi = bx[side.axis == "x" and 2 or 1], bx[side.axis == "x" and 5 or 4]
         return ((out > 0) and lo or hi) * out - side.at * out
     end
-    local roof, setback
+    local roof, setback, lot
     for _, bd in ipairs(row) do
         if bd[ax] <= bb.at and bd[ax + 3] >= bb.at then
             -- on a setback tower, the sign goes up on the tower's roof
             local top = bd.tower or bd
-            roof, setback = top[6], nearOf(top)
+            roof, setback, lot = top[6], nearOf(top), { top[ax], top[ax + 3] }
         end
     end
     if not roof then return end
+    -- the board stays on its own roof: a taller neighbour beside it would
+    -- otherwise stand in front of the part that hangs over
+    bb = setmetatable({}, { __index = bb })
+    local room = lot[2] - lot[1] - 64
+    if bb.w > room then bb.h = bb.h * room / bb.w bb.w = room end
+    bb.at = math.min(math.max(bb.at, lot[1] + 32 + bb.w / 2), lot[2] - 32 - bb.w / 2)
     local front = side.at + out * (setback + (bb.back or 96))   -- the sign's face line
     local legH = bb.legs or 96
     local z0 = roof + legH
@@ -706,7 +712,8 @@ function B:billboard(bb)
     local nrm = side.axis == "x" and { 0, -out, 0 } or { -out, 0, 0 }
     local pos = side.axis == "x" and { bb.at, front, cz } or { front, bb.at, cz }
     local sg = {}
-    for k, v in pairs(bb) do sg[k] = v end
+    for k, v in pairs(getmetatable(bb).__index) do sg[k] = v end
+    sg.w, sg.h, sg.at = bb.w, bb.h, bb.at
     sg.pos, sg.normal, sg.roof = pos, nrm, roof
     self.signs[#self.signs + 1] = sg
 end

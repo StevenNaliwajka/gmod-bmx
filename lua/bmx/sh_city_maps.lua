@@ -102,39 +102,53 @@ BMX.City.Maps.gm_skatepark = {
           postFrom = 1000 + 224 + 16, postTo = 1400 - 40 - 64 },
     },
 
-    -- The signs, in Petopia's look (the server's site, naliwajka.com/petopia:
-    -- a 1998 desktop, navy and silver, Peter's sayings). Family friendly.
+    -- The signs: Quahog, Rhode Island, the Family Guy town Petopia is named
+    -- after (Peter founded the nation of Petoria in his own back yard), in
+    -- Petopia's own look (naliwajka.com/petopia: a 1998 desktop, navy and
+    -- silver) plus neon and street signs. Family friendly: places and
+    -- Peter's catchphrases, nothing edgier.
     -- pos is the panel's centre on the face; normal points at the park.
     signs = {
-        { look = "window", title = "BMX.EXE", text = "BMX PARK", sub = "Hold on to your butts.",
-          pos = { 1000, 760, 660 }, normal = { 0, -1, 0 }, w = 560, h = 280, color = { 0, 255, 255 } },
-        { look = "window", title = "Petopia Metro", text = "LINE 1", sub = "SPOONER ST",
+        -- north wall
+        { look = "neon", text = "THE DRUNKEN CLAM", sub = "QUAHOG'S FAVOURITE HANGOUT",
+          pos = { 1000, 760, 640 }, normal = { 0, -1, 0 }, w = 720, h = 170, color = { 255, 120, 40 } },
+        { look = "street", text = "SPOONER ST", sub = "31",
+          pos = { 2200, 762, 300 }, normal = { 0, -1, 0 }, w = 320, h = 72, color = { 255, 255, 255 } },
+        -- the metro portals
+        { look = "window", title = "Quahog Metro", text = "LINE 1", sub = "SPOONER ST",
           pos = { 1685, 758, 1350 }, normal = { 0, -1, 0 }, w = 256, h = 112, color = { 255, 80, 80 } },
-        { look = "window", title = "Petopia Metro", text = "LINE 1", sub = "SPOONER ST",
+        { look = "window", title = "Quahog Metro", text = "LINE 1", sub = "SPOONER ST",
           pos = { 1685, -1782, 1350 }, normal = { 0, 1, 0 }, w = 256, h = 112, color = { 255, 80, 80 } },
-        { look = "window", title = "Petopia Metro", text = "LINE 2", sub = "TOY FACTORY",
+        { look = "window", title = "Quahog Metro", text = "LINE 2", sub = "HAPPY-GO-LUCKY",
           pos = { 2665, 758, 1350 }, normal = { 0, -1, 0 }, w = 256, h = 112, color = { 0, 255, 255 } },
-        { look = "window", title = "Petopia Metro", text = "LINE 2", sub = "TOY FACTORY",
+        { look = "window", title = "Quahog Metro", text = "LINE 2", sub = "HAPPY-GO-LUCKY",
           pos = { 2665, -1782, 1350 }, normal = { 0, 1, 0 }, w = 256, h = 112, color = { 0, 255, 255 } },
-        { look = "window", title = "Petopia Metro", text = "LINE 3", sub = "CROSSTOWN",
+        { look = "window", title = "Quahog Metro", text = "LINE 3", sub = "DOWNTOWN",
           pos = { -246, 20, 1480 }, normal = { 1, 0, 0 }, w = 256, h = 112, color = { 0, 255, 0 } },
-        { look = "window", title = "Petopia Metro", text = "LINE 3", sub = "CROSSTOWN",
+        { look = "window", title = "Quahog Metro", text = "LINE 3", sub = "DOWNTOWN",
           pos = { 3574, -620, 1480 }, normal = { -1, 0, 0 }, w = 256, h = 112, color = { 0, 255, 0 } },
-        { look = "neon", text = "ROADHOUSE", sub = "OPEN LATE",
-          pos = { -248, 200, 420 }, normal = { 1, 0, 0 }, w = 448, h = 140, color = { 255, 0, 255 } },
+        -- west wall
+        { look = "neon", text = "GOLDMAN'S", sub = "PHARMACY",
+          pos = { -248, 200, 420 }, normal = { 1, 0, 0 }, w = 448, h = 150, color = { 80, 255, 120 } },
+        { look = "street", text = "SPOONER ST", sub = "",
+          pos = { -250, -1000, 300 }, normal = { 1, 0, 0 }, w = 320, h = 72, color = { 255, 255, 255 } },
+        -- east wall
         { look = "window", title = "Notepad - RULEZ.TXT", text = "RIDE", sub = "No walking on the ramps.",
           pos = { 3576, -1300, 640 }, normal = { -1, 0, 0 }, w = 480, h = 240, color = { 255, 255, 0 } },
-        { look = "neon", text = "FREAKIN' SWEET", sub = "PETOPIA BMX CITY",
-          pos = { 2200, -1784, 620 }, normal = { 0, 1, 0 }, w = 640, h = 160, color = { 255, 255, 0 } },
-        { look = "neon", text = "HEHEHEHE", sub = "PETER'S TIP: PEDAL",
-          pos = { 400, -1784, 640 }, normal = { 0, 1, 0 }, w = 512, h = 140, color = { 0, 255, 255 } },
+        -- south wall
+        { look = "neon", text = "FREAKIN' SWEET", sub = "HAPPY-GO-LUCKY TOY FACTORY",
+          pos = { 2200, -1784, 620 }, normal = { 0, 1, 0 }, w = 720, h = 170, color = { 255, 255, 0 } },
+        { look = "window", title = "Quahog 5 News", text = "QUAHOG 5", sub = "Tonight: a man on a bike.",
+          pos = { 400, -1784, 660 }, normal = { 0, 1, 0 }, w = 520, h = 260, color = { 255, 255, 255 } },
     },
 
     -- Rooftop billboards, standing on whatever frontage building is there.
     billboards = {
         { look = "billboard", side = "north", at = 1150, w = 1280, h = 380, back = 64,
           text = "PETOPIA", sub = "PETER GRIFFIN'S BMX CITY", color = { 255, 255, 0 } },
-        { look = "billboard", side = "east", at = 200, w = 960, h = 300, back = 64,
-          text = "HEHEHEHE", sub = "TRICKS  *  GRINDS  *  COMBOS", color = { 255, 0, 255 } },
+        { look = "billboard", side = "east", at = 200, w = 1024, h = 320, back = 64,
+          text = "WELCOME TO QUAHOG", sub = "RHODE ISLAND  *  HEHEHEHE", color = { 255, 255, 255 } },
+        { look = "billboard", side = "south", at = 2900, w = 960, h = 300, back = 64,
+          text = "JAMES WOODS HIGH", sub = "GO FIGHTING CLAMS!", color = { 0, 255, 255 } },
     },
 }

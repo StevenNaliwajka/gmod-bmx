@@ -363,7 +363,18 @@ local function billboardSign(s, pw, ph, c)
     end
 end
 
-local LOOKS = { window = windowSign, neon = neonSign, billboard = billboardSign }
+-- A US street sign: green, a white border, white capitals, a block number.
+local function streetSign(s, pw, ph, c)
+    surface.SetDrawColor(0, 110, 60, 255) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    surface.SetDrawColor(255, 255, 255, 255)
+    surface.DrawOutlinedRect(-pw / 2 + 8, -ph / 2 + 8, pw - 16, ph - 16, 6)
+    draw.SimpleText(s.text, "BMXCitySign", (s.sub and s.sub ~= "") and -pw * 0.06 or 0, 0, Color(c[1], c[2], c[3]), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    if s.sub and s.sub ~= "" then
+        draw.SimpleText(s.sub, "BMXCitySignSub", pw / 2 - 40, ph * 0.18, WHITE, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+    end
+end
+
+local LOOKS = { window = windowSign, neon = neonSign, billboard = billboardSign, street = streetSign }
 
 local function drawSigns(layout)
     makeFonts()
@@ -378,7 +389,7 @@ local function drawSigns(layout)
             ang:RotateAroundAxis(ang:Forward(), 90)
             -- neon/billboard: the headline font is 55% of the panel's height;
             -- a window is laid out 360 px tall, title bar and all
-            local scale = (s.look == "window") and (s.h / 360) or ((s.h * 0.55) / 120)
+            local scale = (s.look == "window") and (s.h / 360) or (s.look == "street" and (s.h * 0.7) / 120) or ((s.h * 0.55) / 120)
             local pw, ph = s.w / scale, s.h / scale
             local look = LOOKS[s.look or "neon"] or neonSign
             cam.Start3D2D(p + n * 0.5, ang, scale)

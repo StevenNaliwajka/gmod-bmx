@@ -516,6 +516,45 @@ BMX.RegisterBike("fixie", {
 })
 
 --------------------------------------------------------------------------
+-- THE CITY BIKE (G12): a Dutch bike. Upright, heavy and unhurried, with swept-back
+-- bars, a coaster brake, a front basket, a kickstand (every bike has one), the bell
+-- (sv_bell.lua, R) and a child seat that is on a context-menu switch.
+--
+--   wheel 14 / wheelbase 52     a 28-inch wheel and a long frame; the seat scales
+--                               with it, x 52/39
+--   mass 112                    heavy: the rider, a steel frame, a rack and a basket
+--   Drive maxCadence 9.5        a rider in no hurry: the legs' ceiling is 91 rpm.
+--                               With gearRatio 2.0 on the 28-inch wheel the top speed
+--                               is ~235 u/s (21 km/h on the plant), three quarters of
+--                               the BMX's, and a standing start takes a second longer
+--   dragArea 0.0065             sat up straight, a sail
+--   Hop.popSpeed 150            it is not a bike for hopping
+--   Balance maxLean 34 deg      a Dutch bike does not lean into a corner like a BMX
+--   coaster, bike_rearonly      S is the brake (a coaster brake); LMB does nothing
+--   basket                      a box in front of the bars: 20 deep, 20 wide, 16 tall,
+--                               its floor a hand over the wheel. Props up to 12 kg ride
+--                               in it (sv_basket.lua)
+--   seats = { child = {} }      no pegs: a Dutch bike carries a child on the back
+BMX.RegisterBike("city", {
+    printName   = "City Bike",
+    description = "Dutch-style city bike: upright, heavy and slow, with a coaster brake (S), swept-back bars, a front basket (props stay in while you ride gently), a kickstand and a bell. A child seat is on the context menu. LMB does nothing.",
+    colorIndex  = 14,           -- black
+    drive       = { kind = "coaster" },
+    input       = "bike_rearonly",
+    pose        = "upright",
+    barStyle    = "swept",
+    seats       = { child = {} },
+    basket      = { mins = Vector(23, -10, 21), maxs = Vector(43, 10, 37), maxMass = 12 },
+    physics = {
+        Chassis = { mass = 112, seatOffset = Vector(-14, 0, 24) },     -- x 52/39
+        Wheel   = { radius = 14, wheelbase = 52, restLength = 12, grip = 1.35 },
+        Drive   = { maxCadence = 9.5, gearRatio = 2.0, crankTorque = 360000, dragArea = 0.0065 },
+        Hop     = { popSpeed = 150 },
+        Balance = { maxLean = math.rad(34) },
+    },
+})
+
+--------------------------------------------------------------------------
 -- THE TEST CART: the platform's proof that it is not a bicycle.
 --
 -- Four wheels in a rectangle, no balance mode at all (`none`: it stands on its

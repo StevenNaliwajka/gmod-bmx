@@ -189,6 +189,11 @@ BMX.Drives.throttle = function(ent, cfg, dt, inp, st, wheel, vdef)
     return d.torque * inp.throttle * fall
 end
 
+-- A COASTER BRAKE (G12): the bike's legs, freewheeling. What makes it a coaster is
+-- not in the drive but around it: its input map (bike_rearonly) gives it no front
+-- brake, and S is the rear brake, which is how a coaster is braked.
+BMX.Drives.coaster = BMX.Drives.pedal
+
 BMX.Drives.none = function() return 0 end
 
 -- The drive a vehicle entity runs, or the one that does nothing, with a single

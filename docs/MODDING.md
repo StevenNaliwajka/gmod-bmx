@@ -48,6 +48,7 @@ The id is lower-case and becomes the entity class `bmx_<id>`
 | `gears` | `{ ratios = { 1.2, 1.5, ... }, start = 4 }`: **2 to 11 gears** (G09). Each ratio is wheel revolutions per crank revolution, what `physics.Drive.gearRatio` is for a single-speed bike (the BMX's is 2.78), lowest gear first and strictly rising; `start` is the gear a new bike is in (default: the middle one). Validated at registration like `physics`: a list of the wrong length, ratios out of order, a ratio of 0 or over 20, a `start` outside the box, or any other key is reported and the vehicle is **not registered**. A bike without `gears` is single-speed and runs on `Drive.gearRatio`. See "Gears" below. |
 | `scoreMult` | A number above 0 and at most 10 that multiplies every trick the vehicle scores (the road bike's is 1.5). Applied once, in `ENT:AwardTricks`, so the score, the callout, `BMX_TrickLanded` and the combo's chain all see the same number. |
 | `barStyle` | `"flat"` (the default), `"drop"` or `"swept"`: the shape of the procedurally drawn bars. |
+| `basket` | `{ mins = Vector, maxs = Vector, maxMass = kg, hold = u/s^2 }` (G12): a box in chassis space that small props ride in. `mins` and `maxs` are required (`maxs` above and beyond `mins` on every axis); `maxMass` (default 12) is the heaviest prop it takes, `hold` (default 1500) the acceleration the load stays in through. Checked at registration like the rest. See "The basket" below. |
 
 ### Gears
 
@@ -72,6 +73,30 @@ between `BMX.Gears.CAD_LOW` and `CAD_HIGH` (60 and 110 rpm) at every speed**, so
 neighbouring gears' bands must overlap. `BMX.Gears.Covers(def, cfg, lowSpeed)`
 checks that for a box, `BMX.Gears.InBand`, `Best` and `CadenceRpm` are the pieces,
 and the road bike's own box is tested against it.
+
+### The basket
+
+`basket = { mins = Vector(23, -10, 21), maxs = Vector(43, 10, 37) }` on a vehicle (the
+city bike's) is a box in its own space, which is what "welded to the frame" means: a
+volume, not an entity, so there is nothing to constrain, break or duplicate. The
+client draws it from the same corners (`cl_init.lua`). `lua/bmx/sv_basket.lua` does
+the rest, from the Think hook:
+
+- **Catching:** a loose `prop_physics` of at most `maxMass` kg that comes to rest
+  inside the box (not thrown in at more than 140 u/s relative to the bike, not held by a
+  physgun or a gravity gun) is captured. It is placed where it sits in the box every tick,
+  moving with the bike and with no gravity of its own, and does not collide with the bike
+  it is in.
+- **Keeping:** the bike's acceleration is measured over a 50 ms window of its velocity
+  (not tick to tick, which reads every contact as a spike). Pedalling, braking and turning
+  are an order of magnitude under `hold`.
+- **Losing:** past `hold` (a bunny hop, a hard landing, running into something), a crash
+  (`BMX_Crashed`), the bike falling over or being removed, the whole load is released at
+  once, each prop leaving with the bike's velocity and a flick up and to one side, so
+  it flies. A released prop is not caught again for 1.5 s. A prop that somebody picks up
+  is let go.
+- `BMX.Basket.Of(bike)`, `Held(bike)`, `Contains(bike, basket, point)`, `Capture` and
+  `Release` are there for a gamemode (a delivery job can count what is in the box).
 
 ### Passengers
 
@@ -164,7 +189,7 @@ A vehicle that says nothing gets: `balance = "none"`, `drive = { kind = "none" }
 | `family` | `"bike"`, `"board"`, `"skates"`, `"scooter"` or `"moto"`. Decides the spawn menu heading (Bikes, Boards, Scooters, Motor; skates are under Boards) and which `bmx_allow_*` setting can switch it off. |
 | `wheels` | A list of wheels, or a function of the config returning one. At least one, at most eight. See below. |
 | `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (reserved for the skateboard; runs as `none`, with a message, until its module exists), or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
-| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "fixed" }` (a fixed gear, below), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", ... }` (reserved for the board) or `{ kind = "none" }`. `pedal`, `fixed` and `throttle` need at least one wheel with `drive = true`. |
+| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "coaster" }` (the same, a coaster brake: freewheeling, S is the brake and, with the `bike_rearonly` map, that is all there is), `{ kind = "fixed" }` (a fixed gear, below), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", ... }` (reserved for the board) or `{ kind = "none" }`. `pedal`, `fixed`, `coaster` and `throttle` need at least one wheel with `drive = true`. |
 | `seats` | `{ rider = {...}, pegs = {...}, child = {...} }` (G11): the vehicle's seats, each `{ model, offset, angles, massFactor }` with every key optional (an empty table is all defaults). `rider` is always there; omitted, it is the config's `Chassis.seatOffset` and `seatAngles`. `pegs` seats a second player on the rear pegs, `child` in a child seat. `offset` may be a `Vector` or a function of the config (so a seat can follow a frame's size); `massFactor` is the passenger's mass as a fraction of the bike's own `Chassis.mass` (default 0.6 on the pegs, 0.25 in the child seat). The old list form, `{ { model, offset, angles } }`, is still the rider's seat. Checked at registration: an unknown seat or key, a bad type, a `massFactor` outside 0-2. See "Passengers" below. |
 | `input` | An id in `BMX.InputMaps`: `"bike"`, `"drive"`, `"road"`, `"bike_rearonly"`, or one you register. |
 | `pose` | An id in `BMX.PoseSets` (the rider's pose on the client): `"bike"`, `"seated"`, `"road"` (tucked over the drops) or `"upright"`. |

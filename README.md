@@ -34,14 +34,22 @@ Then, in game:
 
 ```
 bmx_spawn            spawn a bike where you are looking
-bmx_spawn cruiser    the 24-inch cruiser (or: mini, stock)
+bmx_spawn cruiser    the 24-inch cruiser (or: mini, road, fixie, city, stock)
 ```
 
-or find **BMX** in the spawn menu's Entities tab. There are three bikes: the
+or find **BMX** in the spawn menu's Entities tab. There are six bikes: the
 20-inch **BMX**, the 24-inch **BMX Cruiser** (longer, heavier, faster at the
-top end, slower off the line) and the 16-inch **Mini BMX** (short, light and
-quick, with a low top speed). Press `E` on the bike to get on
-(and `E` again to get off, beside it). Get off at a slow stop and the kickstand
+top end, slower off the line), the 16-inch **Mini BMX** (short, light and
+quick, with a low top speed), a 700c **Road Bike** (eight gears, shifted with
+`]` / `[` or the mouse wheel; about 1.6x the BMX's top speed; tricks score x1.5),
+a **Fixie** (the cranks are locked to the rear wheel: S skids, S at a standstill
+rolls it backwards, A/D at a standstill is a trackstand; no front brake unless
+`bmx_fixie_frontbrake 1`) and a **City Bike** (upright, heavy, coaster brake, a
+basket that keeps small props in while you ride gently and throws them out on a
+hop or a crash, and a child seat on the context menu). Press `E` on the bike to
+get on, or `E` on the back of a ridden BMX or cruiser to stand on its pegs behind
+the rider (`bmx_passengers 0` turns that off); `E` again to get off, beside it.
+Get off at a slow stop and the kickstand
 goes down; get off at speed and it stays up, so the bike rolls on for a moment
 and falls over. A bike that has fallen is picked up when you get on it.
 

@@ -64,6 +64,7 @@ local SERVER_FILES = {
     "bmx/sv_fixie.lua",     -- the fixed-gear drive, its two tricks, its front-brake switch (G10)
     "bmx/sv_seat.lua",
     "bmx/sv_passenger.lua", -- a second rider: boarding, mass, the crash (G11)
+    "bmx/sv_basket.lua",    -- a city bike's basket: props ride in it until the ride is not gentle (G12)
     "bmx/sv_compat_ragmod.lua", -- RagMod, if installed: before the crash path asks
     "bmx/sv_bell.lua",      -- R on the ground rings the bell
     "bmx/sv_gears.lua",     -- [ ] and the wheel change gear (G09)

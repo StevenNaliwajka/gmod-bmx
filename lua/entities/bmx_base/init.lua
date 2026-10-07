@@ -687,4 +687,6 @@ end
 function ENT:OnRemove()
     local pod = self:GetPod()
     if IsValid(pod) then SafeRemoveEntity(pod) end
+    -- Whatever it was carrying is the world's again (sv_basket.lua).
+    if self.basketHeld and BMX.Basket then BMX.Basket.Release(self, "removed") end
 end

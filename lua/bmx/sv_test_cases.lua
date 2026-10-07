@@ -1857,7 +1857,7 @@ end)
 -- written against was measuring the stock bike's numbers rather than the
 -- behaviour, and these are what find out.
 --------------------------------------------------------------------------
-for _, bike in ipairs({ "cruiser", "mini", "road", "fixie" }) do
+for _, bike in ipairs({ "cruiser", "mini", "road", "fixie", "city" }) do
     for _, name in ipairs({ "rest", "parked_on_stand", "fallen_is_picked_up",
                             "accelerate", "brake_locks", "lean_steers",
                             "lean_tracks_target", "bunny_hop", "wheelie",
@@ -2135,4 +2135,67 @@ function(ctx)
     ctx:ok(not IsValid(b:GetPaxPegs()), "the pegs are empty")
     ctx:between(b:GetPhysicsObject():GetMass() / m0, 0.99, 1.01, "mass is back", "x")
     if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+end)
+
+--------------------------------------------------------------------------
+-- THE BASKET (G12), on the real engine: a small prop in a city bike's basket is
+-- still in it after riding gently, and is thrown out by a full-speed hop.
+--
+-- The prop is a pop can (a base-game model; one kilogram or so) put in the middle
+-- of the box. The gentle ride is 20 m at 10 mph where the test ground allows it, or
+-- as far as it does: the ground is finite, and the claim is "gentle riding does not
+-- shake it out", not a length. The hop is the bike's own (ctx:hop()).
+--
+-- Written against the offline plant (tests/test_citybike.lua); not yet run on
+-- VPhysics. What can differ there is the noise in the bike's acceleration, which the
+-- basket reads over a 50 ms window against a four-g threshold (sv_basket.lua): a hold
+-- that is too tight shows up here as the prop coming out on the ride.
+--------------------------------------------------------------------------
+T.Case("basket_keeps_prop", { vehicle = "city", timeout = 45,
+    desc = "a prop in a city bike's basket stays in for 20 m at 10 mph and is thrown out by a hop at speed" },
+function(ctx)
+    local b = ctx.bike
+    local bk = BMX.Basket.Of(b)
+    ctx:ok(bk ~= nil, "the city bike has a basket")
+    if not bk then return end
+
+    local prop = ents.Create("prop_physics")
+    if not IsValid(prop) then ctx:ok(false, "could not make a prop") return end
+    prop:SetModel("models/props_junk/PopCan01a.mdl")
+    prop:SetPos(b:LocalToWorld((bk.mins + bk.maxs) * 0.5))
+    prop:Spawn()
+    prop:Activate()
+    ctx.solids = ctx.solids or {}
+    ctx.solids[#ctx.solids + 1] = prop            -- removed with the case
+
+    ctx:wait(0.4)
+    ctx:ok(prop.BMXBasket == b, "the prop in the box was caught")
+    local at = b:WorldToLocal(prop:GetPos())
+
+    -- Gently: up to 10 mph, then hold it for as far as the ground allows, 20 m at most.
+    ctx:ok(ctx:accelerateTo(150, 14), "got up to a gentle speed")
+    local start = b:GetPos()
+    local want = math.min(20 * 39.37, math.max(ctx.runway - 200, 200))
+    local peak = 0
+    ctx:runUntil(12, function()
+        peak = math.max(peak, b.basketAccel or 0)
+        return (b:GetPos() - start):Length() >= want
+    end, { throttle = 0.45 })
+    ctx:log(string.format("rode %.1f m, the bike's peak acceleration %.0f u/s^2 (hold %d)",
+        (b:GetPos() - start):Length() / 39.37, peak, select(3, BMX.Basket.Of(b))))
+    ctx:ok(prop.BMXBasket == b, "the prop is still in the basket after the ride")
+    ctx:ok((b:WorldToLocal(prop:GetPos()) - at):Length() < 4, "and where it was put")
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+
+    -- A hop at speed: out, and flying.
+    local v = ctx:st().speed
+    ctx:input({ throttle = 0.45 })
+    ctx:hop()
+    local out = ctx:waitUntil(function() return prop.BMXBasket == nil end, 1.2, "the hop to throw the prop out")
+    ctx:log(string.format("hopped at %.0f u/s", v))
+    ctx:ok(out, "the hop threw it out")
+    ctx:wait(1.5)
+    ctx:ok(not BMX.Basket.Contains(b, bk, prop:GetPos()), "and it is not in the basket any more")
+    ctx:ok(prop.BMXBasket == nil, "nor taken back")
+    ctx:input({})
 end)

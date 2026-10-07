@@ -89,6 +89,8 @@ BMX.BalanceModeNames = { singletrack = true, board = true, none = true }
 --   fixed      a fixed gear (G10): the pedal drive with the cranks LOCKED to the
 --              rear wheel through a stiff spring. No freewheel: coasting turns the
 --              legs, S is a skid stop, S at a standstill pedals backwards
+--   coaster    a coaster brake (G12): the pedal drive, freewheeling; its brake is S
+--              (the rear brake) and the vehicle has no front brake to speak of
 --   throttle   a motor: torque, falling to nothing at maxSpeed
 --   push       reserved for the skateboard (G23): a kick every kickInterval
 --   none       coasts
@@ -96,6 +98,7 @@ BMX.BalanceModeNames = { singletrack = true, board = true, none = true }
 BMX.DriveKinds = {
     pedal    = {},
     fixed    = {},
+    coaster  = {},
     throttle = { torque = "number", maxSpeed = "number" },
     push     = { torque = "number", maxSpeed = "number", kickInterval = "number" },
     none     = {},
@@ -267,6 +270,8 @@ local TOP_LEVEL = {
     physics = true,
     -- the bikes' extras: gears (G09), a score multiplier (G09), the bar shape (G09)
     gears = true, scoreMult = true, barStyle = true,
+    -- a box small props ride in (G12, sv_basket.lua)
+    basket = true,
     -- appearance and mount points (as RegisterBike always took them)
     printName = true, description = true, author = true, model = true,
     colorIndex = true, seatModel = true, wheelModel = true, forkModel = true,
@@ -357,6 +362,31 @@ function BMX.CheckGears(g, bad)
     end
 end
 
+-- THE BASKET (G12; the model is sv_basket.lua): a box in chassis space the vehicle
+-- carries small props in. `basket = { mins = Vector, maxs = Vector, maxMass = kg,
+-- hold = u/s^2 }`: mins and maxs are the box's corners, maxMass the heaviest prop it
+-- takes (default 12), hold the acceleration the load stays in through (default 1500,
+-- two and a half g).
+local BASKET_KEYS = { mins = "vector", maxs = "vector", maxMass = "number", hold = "number" }
+function BMX.CheckBasket(b, bad)
+    if b == nil then return end
+    if not istable(b) then bad[#bad + 1] = "basket must be a table { mins, maxs }" return end
+    for k, v in pairs(b) do
+        if not BASKET_KEYS[k] then
+            bad[#bad + 1] = string.format("basket has unknown key %q", tostring(k))
+        elseif BASKET_KEYS[k] == "vector" and not isvector(v) then
+            bad[#bad + 1] = "basket." .. k .. " must be a Vector"
+        elseif BASKET_KEYS[k] == "number" and not (isnumber(v) and v > 0) then
+            bad[#bad + 1] = "basket." .. k .. " must be a positive number"
+        end
+    end
+    if not (isvector(b.mins) and isvector(b.maxs)) then
+        if b.mins == nil or b.maxs == nil then bad[#bad + 1] = "a basket needs mins and maxs" end
+    elseif not (b.maxs.x > b.mins.x and b.maxs.y > b.mins.y and b.maxs.z > b.mins.z) then
+        bad[#bad + 1] = "basket.maxs must be above and beyond basket.mins on every axis"
+    end
+end
+
 function BMX.ValidateVehicle(def)
     local bad = {}
     local id = tostring(def.id)
@@ -417,7 +447,7 @@ function BMX.ValidateVehicle(def)
     -- Drive.
     local drive = def.drive
     if not istable(drive) or not BMX.DriveKinds[drive.kind] then
-        bad[#bad + 1] = "drive.kind must be one of pedal, fixed, throttle, push, none"
+        bad[#bad + 1] = "drive.kind must be one of pedal, fixed, coaster, throttle, push, none"
     else
         local allowed = BMX.DriveKinds[drive.kind]
         for k, v in pairs(drive) do
@@ -429,7 +459,7 @@ function BMX.ValidateVehicle(def)
                 end
             end
         end
-        if (drive.kind == "pedal" or drive.kind == "fixed" or drive.kind == "throttle")
+        if (drive.kind == "pedal" or drive.kind == "fixed" or drive.kind == "coaster" or drive.kind == "throttle")
             and nWheels > 0 and nDrive == 0 then
             bad[#bad + 1] = "a " .. drive.kind .. " drive needs at least one wheel with drive = true"
         end
@@ -481,6 +511,8 @@ function BMX.ValidateVehicle(def)
     if def.barStyle ~= nil and not BMX.BarStyles[def.barStyle] then
         bad[#bad + 1] = string.format("barStyle %q is not one of flat, drop, swept", tostring(def.barStyle))
     end
+
+    BMX.CheckBasket(def.basket, bad)
 
     -- Input map and pose set: by id.
     if not BMX.InputMaps[def.input] then

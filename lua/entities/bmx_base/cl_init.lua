@@ -843,6 +843,41 @@ function ENT:Draw()
     -- the LEFT, the side a parked bike leans on (Stand.standLean).
     ----------------------------------------------------------------------
     ----------------------------------------------------------------------
+    -- THE BASKET (G12), if the vehicle has one: a wire box over the front wheel,
+    -- drawn from the same corners the server catches props in (sv_basket.lua), with
+    -- struts down to the head tube so it is a carrier and not a floating cage.
+    ----------------------------------------------------------------------
+    if bike.basket then
+        local bk = bike.basket
+        local function pt(x, y, z)
+            return self:LocalToWorld(Vector(x and bk.maxs.x or bk.mins.x, y and bk.maxs.y or bk.mins.y,
+                z and bk.maxs.z or bk.mins.z))
+        end
+        local w = 0.7
+        -- The twelve edges.
+        for _, a in ipairs({ false, true }) do
+            for _, b in ipairs({ false, true }) do
+                tube(pt(false, a, b), pt(true, a, b), w, COL_PART)      -- along x
+                tube(pt(a, false, b), pt(a, true, b), w, COL_PART)      -- along y
+                tube(pt(a, b, false), pt(a, b, true), w, COL_PART)      -- up z
+            end
+        end
+        -- The slats of the floor and the struts to the head tube.
+        if lod < 2 then
+            for i = 1, 3 do
+                local f = i / 4
+                local x = bk.mins.x + (bk.maxs.x - bk.mins.x) * f
+                tube(self:LocalToWorld(Vector(x, bk.mins.y, bk.mins.z)),
+                     self:LocalToWorld(Vector(x, bk.maxs.y, bk.mins.z)), w * 0.8, COL_PART)
+            end
+            for _, side in ipairs({ -1, 1 }) do
+                tube(self:LocalToWorld(Vector(bk.mins.x, bk.maxs.y * side, bk.mins.z)),
+                     headB + rightW * (2.5 * side), w, COL_CHROME)
+            end
+        end
+    end
+
+    ----------------------------------------------------------------------
     -- THE CHILD SEAT (G11), when it is switched on and the bike has one: a pan, a
     -- back and two rails to the rear dropouts, over the rear wheel, where the pod
     -- (sv_passenger.lua) puts the child. Drawn from the seat registration's own

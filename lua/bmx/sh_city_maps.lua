@@ -102,53 +102,62 @@ BMX.City.Maps.gm_skatepark = {
           postFrom = 1000 + 224 + 16, postTo = 1400 - 40 - 64 },
     },
 
-    -- The signs: Quahog, Rhode Island, the Family Guy town Petopia is named
-    -- after (Peter founded the nation of Petoria in his own back yard), in
-    -- Petopia's own look (naliwajka.com/petopia: a 1998 desktop, navy and
-    -- silver) plus neon and street signs. Family friendly: places and
-    -- Peter's catchphrases, nothing edgier.
+    -- The signs: billboard advertisements for Quahog, Rhode Island, the
+    -- Family Guy town (Petopia is Peter's nation, founded in his back yard),
+    -- station signs for the metro and green street signs. Family friendly:
+    -- the town's businesses and Peter's catchphrases, nothing edgier.
     -- pos is the panel's centre on the face; normal points at the park.
     signs = {
         -- north wall
-        { look = "neon", text = "THE DRUNKEN CLAM", sub = "QUAHOG'S FAVOURITE HANGOUT",
-          pos = { 1000, 760, 640 }, normal = { 0, -1, 0 }, w = 720, h = 170, color = { 255, 120, 40 } },
+        { look = "ad", text = "THE DRUNKEN CLAM", sub = "Best clam chowder in Quahog",
+          brand = "OPEN DAILY  *  SPOONER ST", bg = { 250, 244, 228 }, fg = { 200, 60, 20 }, band = { 20, 70, 120 },
+          pos = { 1000, 758, 640 }, normal = { 0, -1, 0 }, w = 640, h = 240 },
         { look = "street", text = "SPOONER ST", sub = "31",
-          pos = { 2200, 762, 300 }, normal = { 0, -1, 0 }, w = 320, h = 72, color = { 255, 255, 255 } },
-        -- the metro portals
-        { look = "window", title = "Quahog Metro", text = "LINE 1", sub = "SPOONER ST",
-          pos = { 1685, 758, 1350 }, normal = { 0, -1, 0 }, w = 256, h = 112, color = { 255, 80, 80 } },
-        { look = "window", title = "Quahog Metro", text = "LINE 1", sub = "SPOONER ST",
-          pos = { 1685, -1782, 1350 }, normal = { 0, 1, 0 }, w = 256, h = 112, color = { 255, 80, 80 } },
-        { look = "window", title = "Quahog Metro", text = "LINE 2", sub = "HAPPY-GO-LUCKY",
-          pos = { 2665, 758, 1350 }, normal = { 0, -1, 0 }, w = 256, h = 112, color = { 0, 255, 255 } },
-        { look = "window", title = "Quahog Metro", text = "LINE 2", sub = "HAPPY-GO-LUCKY",
-          pos = { 2665, -1782, 1350 }, normal = { 0, 1, 0 }, w = 256, h = 112, color = { 0, 255, 255 } },
-        { look = "window", title = "Quahog Metro", text = "LINE 3", sub = "DOWNTOWN",
-          pos = { -246, 20, 1480 }, normal = { 1, 0, 0 }, w = 256, h = 112, color = { 0, 255, 0 } },
-        { look = "window", title = "Quahog Metro", text = "LINE 3", sub = "DOWNTOWN",
-          pos = { 3574, -620, 1480 }, normal = { -1, 0, 0 }, w = 256, h = 112, color = { 0, 255, 0 } },
+          pos = { 2200, 762, 300 }, normal = { 0, -1, 0 }, w = 320, h = 72 },
+        -- the metro: a station sign over each portal
+        { look = "transit", line = "1", text = "SPOONER ST", sub = "Quahog Metro", color = { 220, 40, 40 },
+          pos = { 1685, 758, 1350 }, normal = { 0, -1, 0 }, w = 480, h = 120 },
+        { look = "transit", line = "1", text = "SPOONER ST", sub = "Quahog Metro", color = { 220, 40, 40 },
+          pos = { 1685, -1782, 1350 }, normal = { 0, 1, 0 }, w = 480, h = 120 },
+        { look = "transit", line = "2", text = "TOY FACTORY", sub = "Quahog Metro", color = { 30, 120, 220 },
+          pos = { 2665, 758, 1350 }, normal = { 0, -1, 0 }, w = 480, h = 120 },
+        { look = "transit", line = "2", text = "TOY FACTORY", sub = "Quahog Metro", color = { 30, 120, 220 },
+          pos = { 2665, -1782, 1350 }, normal = { 0, 1, 0 }, w = 480, h = 120 },
+        { look = "transit", line = "3", text = "DOWNTOWN", sub = "Quahog Metro", color = { 30, 160, 70 },
+          pos = { -246, 20, 1480 }, normal = { 1, 0, 0 }, w = 480, h = 120 },
+        { look = "transit", line = "3", text = "DOWNTOWN", sub = "Quahog Metro", color = { 30, 160, 70 },
+          pos = { 3574, -620, 1480 }, normal = { -1, 0, 0 }, w = 480, h = 120 },
         -- west wall
-        { look = "neon", text = "GOLDMAN'S", sub = "PHARMACY",
-          pos = { -248, 200, 420 }, normal = { 1, 0, 0 }, w = 448, h = 150, color = { 80, 255, 120 } },
+        { look = "ad", text = "GOLDMAN'S", sub = "Your neighbourhood pharmacy",
+          brand = "QUAHOG  *  SINCE 1972", bg = { 235, 248, 240 }, fg = { 20, 120, 60 }, band = { 20, 120, 60 },
+          pos = { -248, 200, 440 }, normal = { 1, 0, 0 }, w = 560, h = 210 },
         { look = "street", text = "SPOONER ST", sub = "",
-          pos = { -250, -1000, 300 }, normal = { 1, 0, 0 }, w = 320, h = 72, color = { 255, 255, 255 } },
+          pos = { -250, -1000, 300 }, normal = { 1, 0, 0 }, w = 320, h = 72 },
         -- east wall
-        { look = "window", title = "Notepad - RULEZ.TXT", text = "RIDE", sub = "No walking on the ramps.",
-          pos = { 3576, -1300, 640 }, normal = { -1, 0, 0 }, w = 480, h = 240, color = { 255, 255, 0 } },
+        { look = "ad", text = "QUAHOG 5 NEWS", sub = "Weeknights at 6 with Tom Tucker",
+          brand = "CHANNEL 5  *  QUAHOG'S NEWS LEADER", bg = { 20, 30, 70 }, fg = { 255, 210, 40 }, band = { 200, 30, 30 },
+          subColor = { 230, 230, 230 },
+          pos = { 3576, -1300, 640 }, normal = { -1, 0, 0 }, w = 600, h = 225 },
         -- south wall
-        { look = "neon", text = "FREAKIN' SWEET", sub = "HAPPY-GO-LUCKY TOY FACTORY",
-          pos = { 2200, -1784, 620 }, normal = { 0, 1, 0 }, w = 720, h = 170, color = { 255, 255, 0 } },
-        { look = "window", title = "Quahog 5 News", text = "QUAHOG 5", sub = "Tonight: a man on a bike.",
-          pos = { 400, -1784, 660 }, normal = { 0, 1, 0 }, w = 520, h = 260, color = { 255, 255, 255 } },
+        { look = "ad", text = "HAPPY-GO-LUCKY", sub = "Toys that make you go \"Freakin' sweet!\"",
+          brand = "HAPPY-GO-LUCKY TOY FACTORY", bg = { 255, 236, 120 }, fg = { 220, 40, 120 }, band = { 40, 90, 200 },
+          pos = { 2200, -1784, 620 }, normal = { 0, 1, 0 }, w = 680, h = 255 },
+        { look = "ad", text = "SPOONER ST BMX", sub = "Ride like Peter. Hehehehehe.",
+          brand = "BIKES  *  PARTS  *  REPAIRS", bg = { 240, 240, 240 }, fg = { 30, 30, 30 }, band = { 230, 120, 20 },
+          pos = { 400, -1784, 640 }, normal = { 0, 1, 0 }, w = 600, h = 225 },
     },
 
     -- Rooftop billboards, standing on whatever frontage building is there.
     billboards = {
-        { look = "billboard", side = "north", at = 1150, w = 1280, h = 380, back = 64,
-          text = "PETOPIA", sub = "PETER GRIFFIN'S BMX CITY", color = { 255, 255, 0 } },
-        { look = "billboard", side = "east", at = 200, w = 1024, h = 320, back = 64,
-          text = "WELCOME TO QUAHOG", sub = "RHODE ISLAND  *  HEHEHEHE", color = { 255, 255, 255 } },
-        { look = "billboard", side = "south", at = 2900, w = 960, h = 300, back = 64,
-          text = "JAMES WOODS HIGH", sub = "GO FIGHTING CLAMS!", color = { 0, 255, 255 } },
+        { look = "ad", side = "north", at = 1150, w = 1280, h = 480, back = 64,
+          text = "VISIT PETORIA", sub = "The nation in Peter's back yard",
+          brand = "PETOPIA TOURISM BOARD  *  NO PASSPORT NEEDED", bg = { 120, 200, 255 }, fg = { 255, 255, 255 }, band = { 0, 60, 140 },
+          subColor = { 20, 40, 90 } },
+        { look = "ad", side = "east", at = 200, w = 1024, h = 384, back = 64,
+          text = "WELCOME TO QUAHOG", sub = "Rhode Island's finest town",
+          brand = "QUAHOG CHAMBER OF COMMERCE", bg = { 250, 246, 236 }, fg = { 30, 70, 150 }, band = { 200, 40, 40 } },
+        { look = "ad", side = "south", at = 2900, w = 960, h = 360, back = 64,
+          text = "JAMES WOODS HIGH", sub = "Go Fighting Clams!",
+          brand = "HOME GAME FRIDAY", bg = { 255, 250, 235 }, fg = { 120, 20, 40 }, band = { 120, 20, 40 } },
     },
 }

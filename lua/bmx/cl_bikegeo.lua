@@ -1597,7 +1597,15 @@ function G.Build(opt)
     if opt.kind and opt.kind ~= "bmx" then
         local fn = G.Kinds[opt.kind]
         if not fn then error("no bike model kind " .. tostring(opt.kind)) end
-        return fn(opt, G)
+        local M = fn(opt, G)
+        -- Empty buckets (a slick tyre's tread) are dropped: nothing to draw, and an
+        -- empty mesh is an error to build.
+        for _, name in ipairs(M.order) do
+            local keep = {}
+            for _, b in ipairs(M.groups[name]) do if b.tris > 0 then keep[#keep + 1] = b end end
+            M.groups[name] = keep
+        end
+        return M
     end
     local k = opt.k or 1
     -- wheels are built at their own radius in design inches (radius / k)

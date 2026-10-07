@@ -326,6 +326,11 @@ concommand.Add("bmx_game_start", function(ply, _, args)
         reply(ply, "usage: bmx_game_start " .. table.concat(names, "|"))
         return
     end
+    -- A bot opponent is a bot spawn, so it needs the same privilege.
+    if args[2] == "bot" and not BMX.Can(ply, "BMX - Bot") then
+        reply(ply, "you may not seat a bot (needs the \"BMX - Bot\" privilege)")
+        return
+    end
     local game, err = G.Start(id, ply)
     if not game then reply(ply, err) return end
     if args[2] == "bot" then

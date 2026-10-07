@@ -571,6 +571,7 @@ C.Pitch = {
 
     -- Pitch damping on the ground, so the bike settles instead of porpoising.
     groundDamping = 2.6,
+
 }
 
 --------------------------------------------------------------------------
@@ -627,6 +628,51 @@ C.Air = {
     -- Both wheels must be off the ground for this long before air mode engages,
     -- so a bump in the road is not a "trick".
     engageDelay = 0.08,
+
+    ------------------------------------------------------------------
+    -- AIR CONTROL OFF A VERT RAMP (G06, bmx_air_assist).
+    --
+    -- The takeoff is classified once, when air mode engages (BMX.Launch.Classify
+    -- in sv_launch.lua): "vert" when the surface it left was steeper than
+    -- vertAngle from level and the bike is moving mostly up (vz / speed over
+    -- vertUp); "ramp" from rampAngle up to that; otherwise "flat".
+    ------------------------------------------------------------------
+    vertAngle = math.rad(60),
+    vertUp    = 0.5,
+    rampAngle = math.rad(10),
+
+    -- On vert A/D turn the bike about WORLD up at up to vertYawRate rad/s (a
+    -- half turn in ~0.5 s), and a PD settles the heading on a half turn when the
+    -- key is let go: vertKp / vertKd as angular acceleration per radian and per
+    -- rad/s (zeta ~0.9). A turn under vertMin is a tap and settles back to
+    -- where it started. The accumulated heading is st.vertSpin.
+    vertYawRate = 6.0,
+    vertKp = 70,
+    vertKd = 15,
+    vertMin = math.rad(35),
+    -- Air 180 pays vertBase + vertPerUnit per unit of height above the lip, per
+    -- half turn.
+    vertBase    = 100,
+    vertPerUnit = 1.2,
+    -- Aim a vert landing back down the ramp it left: up to this far off the
+    -- fall line, with this much of the yaw authority. Landing only, not the turn.
+    vertAimMax  = math.rad(100),
+    vertAimKp   = 18,
+    vertAimKd   = 5,
+
+    -- SPINE TRANSFER. Looked for near the apex (|vz| under spineApexVz): a
+    -- surface leaning the other way within spineReach units over the coping and
+    -- no further than spineDrop below it. A fresh W press then blends the
+    -- velocity down its face over spineBlend seconds, at least spineSpeed u/s,
+    -- and pays spinePoints. The press counts for spineWindow seconds once found.
+    spineApexVz = 130,
+    spineReach  = 64,
+    spineDrop   = 260,
+    spineMirror = math.rad(35),
+    spineBlend  = 0.3,
+    spineSpeed  = 140,
+    spinePoints = 350,
+    spineWindow = 1.2,
 }
 
 --------------------------------------------------------------------------

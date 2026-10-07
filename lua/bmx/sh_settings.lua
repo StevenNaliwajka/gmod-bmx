@@ -311,6 +311,10 @@ server{ name = "bmx_allow_motor", kind = "bool", default = true, category = "veh
     label = "Allow motor vehicles",
     help = "Players may spawn motorbikes and e-bikes, when there are any. Off stops new ones being spawned." }
 
+server{ name = "bmx_air_assist", kind = "bool", default = true, category = "feel",
+    label = "Air assist on vert ramps",
+    help = "Off a vertical ramp A/D turn the bike round to ride back down (an Air 180), the landing aims back into the ramp, and a W press at the top carries a spine transfer. Off leaves the air entirely to the rider." }
+
 server{ name = "bmx_crash_ragdoll", kind = "bool", default = true, category = "rules",
     label = "Crashes throw the rider",
     help = "A rider who crashes is thrown off as a ragdoll for a moment. Off just shoves them off the bike." }

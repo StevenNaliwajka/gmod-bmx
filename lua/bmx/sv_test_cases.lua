@@ -2030,3 +2030,112 @@ function(ctx)
     end
     ctx:input({})
 end)
+
+--------------------------------------------------------------------------
+-- AIR CONTROL OFF VERT (G06), on the park pieces (G27).
+--
+-- A tall park quarter pipe leaves the bike on a 70-degree wall going up: the
+-- takeoff the air assist is for (sv_launch.lua Classify, sv_air.lua VertAir).
+-- Both cases put the bike on the floor a little before the transition with its
+-- speed already up -- a quarter pipe is ridden on momentum, not pedalled up --
+-- and ride at it the way a rider does: throttle held, keys pressed in the air.
+-- The bands are wide, as everywhere here. They catch "it never leaves the
+-- coping", "it is not classified vert" and "it comes down backwards", not a
+-- tuning change.
+--------------------------------------------------------------------------
+-- Ride at a park piece from `back` units before its transition, at `speed`,
+-- calling `each(st)` every tick until the bike has been in the air and come
+-- down again (or `seconds` run out). Returns whether it flew, and whether it
+-- came down.
+local function rideOffPiece(ctx, xa, back, speed, seconds, each)
+    ctx:input({ throttle = 1, sprint = true })
+    putBike(ctx, Vector(xa - back, ctx.ground.y, ctx.ground.z + BMX.RestHeight(ctx.cfg)),
+        Angle(0, 0, 0), Vector(speed, 0, 0))
+    local flew = false
+    local landed = ctx:waitUntil(function()
+        local st = ctx:st()
+        if st.airMode then flew = true end
+        if each then each(st) end
+        return flew and st.grounded and not st.airMode
+    end, seconds, "the bike to leave the coping and come down")
+    return flew, landed
+end
+
+T.Case("vert_turnaround", { timeout = 40,
+    desc = "up a tall park quarter pipe with D tapped in the air: classified vert, turned round about world up, lands facing down the ramp and is still ridden" },
+function(ctx)
+    local g = ctx.ground
+    local b = BMX.Park.Build("quarterpipe", { 2, 3 })       -- the tall one: an 84 u deck
+    local xa = g.x + 760                                     -- where the transition leaves the floor
+    if not parkPiece(ctx, "quarterpipe", { 2, 3 }, Vector(xa + b.hl, g.y, g.z), 0) then return end
+    ctx:wait(0.3)
+
+    local kind, peak = nil, 0
+    local flew, landed = rideOffPiece(ctx, xa, 380, 430, 12, function(st)
+        if st.airMode then
+            kind = kind or st.launchKind
+            peak = math.max(peak, ctx.bike:GetPos().z - g.z)
+            -- A tap: D until the heading has turned a little over a radian,
+            -- then let go. The assist settles it on the half turn from there.
+            ctx:input({ lean = math.abs(st.vertSpin or 0) < 1.0 and 1 or 0 })
+        end
+    end)
+    ctx:input({})
+    ctx:log(string.format("flew %s, kind %s, peak %.0f u over the floor, turned %.0f deg",
+        tostring(flew), tostring(kind), peak, math.deg(ctx:st().vertSpin or 0)))
+    if not ctx:ok(flew, "the bike left the top of the quarter pipe") then return end
+    ctx:ok(kind == "vert", "the takeoff was classified vert: " .. tostring(kind))
+    ctx:ok(landed, "and it came down")
+    ctx:between(math.abs(math.deg(ctx:st().vertSpin or 0)), 130, 230, "turned about a half turn", "deg")
+
+    -- Facing back down the ramp, on the wheels.
+    ctx:wait(0.8)
+    local f = ctx.bike:GetForward()
+    ctx:log(string.format("after landing: forward (%.2f, %.2f), x %.0f (the ramp starts at %.0f)",
+        f.x, f.y, ctx.bike:GetPos().x, xa))
+    ctx:ok(f.x < -0.3, "facing back down the ramp, not at the wall")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+    ctx:ok(ctx:st().grounded, "on the wheels")
+    ctx:between(math.deg(math.abs(ctx:st().roll or 0)), 0, 35, "roll after the landing", "deg")
+end)
+
+T.Case("spine_transfer", { timeout = 40,
+    desc = "over a park spine with a fresh W at the top: the far face is seen, the velocity carried onto it, Spine Transfer scored, and it lands on the far side" },
+function(ctx)
+    local g = ctx.ground
+    local b = BMX.Park.Build("spine", { 2, 3 })
+    local xa = g.x + 760
+    if not parkPiece(ctx, "spine", { 2, 3 }, Vector(xa + b.hl, g.y, g.z), 0) then return end
+    ctx:wait(0.3)
+
+    local paid = {}
+    hook.Add("BMX_TricksLanded", "BMX.TestSpine", function(e, d, tricks)
+        if e ~= ctx.bike then return end
+        for _, t in ipairs(tricks) do paid[#paid + 1] = t.name end
+    end)
+    local kind, seen, pressedAt
+    local flew, landed = rideOffPiece(ctx, xa, 380, 430, 12, function(st)
+        if not st.airMode then return end
+        kind = kind or st.launchKind
+        seen = seen or st.spineTarget ~= nil
+        -- A fresh W once the far face has been found, held a moment as a rider's is.
+        if st.spineTarget and not pressedAt then pressedAt = CurTime() end
+        ctx:input({ pitch = (pressedAt and CurTime() - pressedAt < 0.2) and -1 or 0 })
+    end)
+    ctx:input({})
+    hook.Remove("BMX_TricksLanded", "BMX.TestSpine")
+    ctx:log(string.format("flew %s, kind %s, far face seen %s, paid %s, landed at x %.0f (spine from %.0f to %.0f)",
+        tostring(flew), tostring(kind), tostring(seen), table.concat(paid, ", "),
+        ctx.bike:GetPos().x, xa, xa + 2 * b.hl))
+    if not ctx:ok(flew, "the bike left the top of the spine") then return end
+    ctx:ok(kind == "vert", "the takeoff was classified vert: " .. tostring(kind))
+    ctx:ok(seen, "the far face was found near the apex")
+    ctx:ok(ctx:st().spineDone, "the W press carried the transfer")
+    ctx:ok(landed, "and it came down")
+    local got = false
+    for _, n in ipairs(paid) do if n == "Spine Transfer" then got = true end end
+    ctx:ok(got, "Spine Transfer was scored")
+    -- Past the coping, on the far side of the spine.
+    ctx:ok(ctx.bike:GetPos().x > xa + b.hl, "landed on the far face, past the coping")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+end)

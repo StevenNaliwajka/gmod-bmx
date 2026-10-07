@@ -134,6 +134,11 @@ Terminal rotation rate is `accel / Air.damping`. Default is 15/1.5 = 10 rad/s,
 about 1.6 revolutions per second, so a backflip takes roughly 0.6 seconds. Tune
 against a jump you can actually reach on your test map.
 
+Off a vert wall (`Air.vertAngle`, 60 degrees, left going mostly up) A/D turn
+the bike about world up instead: `Air.vertYawRate` is how fast, `vertKp` and
+`vertKd` the PD that settles it on a half turn, `vertAimKp`/`vertAimMax` the
+landing aim, `spine*` the spine transfer. `bmx_air_assist 0` removes all of it.
+
 `bmx_autolevel 0` removes the descending-only roll assist. Do this once to feel
 how much of the forgiveness is coming from it, then set it where you want the
 difficulty.

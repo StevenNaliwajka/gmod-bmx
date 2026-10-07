@@ -17,6 +17,13 @@
     is what a rider cares about too. A quarter pipe is steeper than 40 and is
     not a launch: it sends you straight up, not over.
 
+    WHAT A TAKEOFF WAS (G06). The same file also answers the rider's side of the
+    question: L.Classify says whether the surface a bike just left was a RAMP, a
+    VERT wall or FLAT ground, and L.FindSpine looks over the coping for a surface
+    leaning the other way to drop into. sv_physics.lua calls the first when air
+    mode engages and sv_air.lua the second near the apex; both are pure, so
+    tests/test_launch.lua runs them on synthetic normals and profiles.
+
     BMX.SpawnKicker puts one down where the world has none: a frozen PHX plate
     from base Garry's Mod, tilted. No content, nothing to mount.
 
@@ -303,4 +310,68 @@ function L.PlanKicker(origin, opts)
     local z = select(1, (opts.trace or defaultTrace)(origin, opts.filter)) or origin.z
     local foot = Vector(origin.x, origin.y, z) + dirOf(bestYaw) * C.runup
     return foot, bestYaw, bestLen
+end
+
+--------------------------------------------------------------------------
+-- WHAT KIND OF TAKEOFF WAS THAT? (G06)
+--
+-- `normal` is the last surface the wheels were on, `vel` the bike's velocity as
+-- air mode engaged. VERT is a wall (steeper than Air.vertAngle from level) that
+-- the bike is leaving mostly UPWARD: the quarter pipe's coping, where the only
+-- sensible thing left to do is come round and go back down. A bike that leaves
+-- the same wall sideways is not on vert, it is falling off something. RAMP is any
+-- slope the bike left that is not that steep; FLAT is anything else, a hop off
+-- the ground or a kerb.
+--
+-- Plain numbers in, a string out, so it is tested on synthetic normals.
+--------------------------------------------------------------------------
+function L.Classify(normal, vel, cfg)
+    local A = (cfg or BMX.Config).Air
+    if not normal then return "flat" end
+    local ang = math.acos(math.max(-1, math.min(1, normal.z)))
+    local speed = vel and vel:Length() or 0
+    if ang >= A.vertAngle and speed > 1 and vel.z / speed >= A.vertUp then return "vert" end
+    if ang >= A.rampAngle then return "ramp" end
+    return "flat"
+end
+
+--------------------------------------------------------------------------
+-- IS THERE A SURFACE TO DROP INTO BEHIND THE COPING? (G06 spine transfer)
+--
+-- `p` is the bike near the top of its flight, `n1` the normal of the face it
+-- left. The bike came up that face moving up-slope, which is horizontally
+-- -n1; "behind the coping" is further along that way. Looking out from p in
+-- 16 u steps up to Air.spineReach, the first ground below p (no further than
+-- Air.spineDrop) whose normal MIRRORS n1 -- leans away from the way the bike
+-- came, within Air.spineMirror -- is a spine's far face: the other quarter pipe
+-- of a back-to-back pair, or the second slope of a spine.
+--
+-- Returns { pos, normal, dir, dist } or nil. `dir` is the way down that face (the
+-- direction a ball would roll), which the transfer blends the velocity toward.
+-- It does not care what the surface is, as everywhere in this file: only its
+-- shape. opts.trace(p, filter) -> z, normal, entity as for L.Find.
+--------------------------------------------------------------------------
+function L.FindSpine(p, n1, cfg, opts)
+    opts = opts or {}
+    local A = (cfg or BMX.Config).Air
+    local trace = opts.trace or defaultTrace
+    if not n1 then return nil end
+    local h = Vector(-n1.x, -n1.y, 0)
+    local len = h:Length()
+    if len < 1e-3 then return nil end
+    h = h / len
+    local mirror = Vector(-n1.x, -n1.y, n1.z)
+    for d = 0, A.spineReach, 16 do
+        local q = p + h * d
+        local z, n, e = trace(q, opts.filter)
+        if z and n and z <= p.z and p.z - z <= A.spineDrop
+           and math.acos(math.max(-1, math.min(1, n:Dot(mirror)))) <= A.spineMirror then
+            local down = (n * n.z - UP)
+            local dl = down:Length()
+            if dl > 1e-3 then
+                return { pos = Vector(q.x, q.y, z), normal = n, dir = down / dl, dist = d, entity = e }
+            end
+        end
+    end
+    return nil
 end

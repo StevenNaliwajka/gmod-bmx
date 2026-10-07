@@ -280,8 +280,9 @@ hook.Add("Think", "BMXCityLeaves", function()
     end
 end)
 
-hook.Add("PostDrawTranslucentRenderables", "BMXCityLeaves", function(depth, sky)
-    if depth or sky then return end
+-- not on `sky` either: it is true on every frame here (see the lamps above)
+hook.Add("PostDrawTranslucentRenderables", "BMXCityLeaves", function(depth, sky, sky3d)
+    if depth or sky3d then return end
     local leaves = City._leaves
     if #leaves == 0 then return end
     local t = CurTime()

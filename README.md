@@ -34,9 +34,13 @@ Then, in game:
 
 ```
 bmx_spawn            spawn a bike where you are looking
+bmx_spawn cruiser    the 24-inch cruiser (or: mini, stock)
 ```
 
-or find **BMX** in the spawn menu's Entities tab. Press `E` on the bike to get on
+or find **BMX** in the spawn menu's Entities tab. There are three bikes: the
+20-inch **BMX**, the 24-inch **BMX Cruiser** (longer, heavier, faster at the
+top end, slower off the line) and the 16-inch **Mini BMX** (short, light and
+quick, with a low top speed). Press `E` on the bike to get on
 (and `E` again to get off, beside it). Get off at a slow stop and the kickstand
 goes down; get off at speed and it stays up, so the bike rolls on for a moment
 and falls over. A bike that has fallen is picked up when you get on it.
@@ -90,6 +94,17 @@ tricks working and tricks being an accident:
 - **The front brake shifts your weight forward on its own.** A rider grabbing
   the front brake comes over the bars whether they meant to or not. Modelling
   that is what makes a stoppie something you can hold.
+
+## Server settings
+
+Server console or `server.cfg`; all three are saved.
+
+| Convar | Default | What it does |
+|---|---|---|
+| `bmx_max_per_player N` | `0` | Bikes one player may have out at once, every kind counted together. `0` is no limit of ours; `sbox_maxsents` still applies. Holds for the spawn menu and `bmx_spawn` alike. |
+| `bmx_scoring 0` | `1` | No scoring at all: no points, callouts or combos, and the `BMX_TricksLanded` hook does not fire. |
+| `bmx_combos 0` | `1` | Tricks still score, but chaining them pays no combo bonus. |
+| `bmx_crash_ragdoll 0` | `1` | A crash shoves the rider off instead of ragdolling them. |
 
 ## First run
 
@@ -204,6 +219,7 @@ lua/bmx/sv_air.lua            air control and trick accounting
 lua/bmx/sv_physics.lua        the substep, and the order it runs in
 lua/bmx/sv_input.lua          usercmd decoding
 lua/bmx/sv_seat.lua           mount/dismount in every way it can happen
+lua/bmx/sv_rules.lua          server settings: bike limit, scoring and combos on/off
 lua/bmx/sv_debug.lua          tuning stream and the units self-test
 lua/bmx/cl_view.lua           chase camera
 lua/bmx/cl_hud.lua            rider HUD and tuning overlay
@@ -218,21 +234,28 @@ tests/lib/gmod.lua            the Garry's Mod shim it runs against
 One table in `lua/bmx/sh_bikes.lua`:
 
 ```lua
-BMX.RegisterBike("cruiser", {
-    printName   = "Cruiser",
-    model       = "models/yourpack/cruiser.mdl",
+BMX.RegisterBike("tourer", {
+    printName   = "Tourer",
+    model       = "models/yourpack/tourer.mdl",
     frameOffset = Vector(0, 0, 4),
 })
 ```
 
-That registers entity class `bmx_cruiser`, derived from `bmx_base`, and adds it
+That registers entity class `bmx_tourer`, derived from `bmx_base`, and adds it
 to the spawn menu.
+
+The shipped **cruiser** and **mini** in `sh_bikes.lua` are worked examples of
+the second form: no model and no new code, only geometry. The hull, the measured
+inertia and the drawn frame follow wheelbase and radius on their own; the seat
+is the one thing to scale yourself (by wheelbase / 39), and a bigger wheel
+wants more suspension travel or it crank-grinds on its hull instead of its
+chainring. Every headless riding case runs again on each of them.
 
 A bike can also carry its own **physics**, as overrides on the shared config:
 
 ```lua
-BMX.RegisterBike("cruiser", {
-    printName = "Cruiser",
+BMX.RegisterBike("tourer", {
+    printName = "Tourer",
     physics = {
         Chassis = { mass = 94 },
         Wheel   = { radius = 12, wheelbase = 43 },

@@ -96,6 +96,17 @@ typed. `publish.bat` and `publish.sh create` refuse while that file exists
 and people are subscribed: `main` and the test server move as fast as the work
 does, Steam moves on a decision.
 
+## Releasing an update (when the owner says go)
+
+1. `CHANGELOG.md`: the top entry is the version going out; change its
+   "not yet on the Workshop" line to the date it went out.
+2. `tools/package-workshop.sh`, then `update.bat` (or `./publish.sh update
+   "what changed"`) on the publisher's PC, signed in as ConvexBurrito5.
+3. Open the item page and check the description. It came from `addon.json` at
+   the first upload; if the page still shows the old one, paste the new
+   `description` from `addon.json` in (the page takes BBCode).
+4. Tag it: `git tag -a v<version> -m "..." && git push origin v<version>`.
+
 ## What CI does and does not do
 
 The GitLab pipeline (`.gitlab-ci.yml`) parses every Lua file, runs the offline

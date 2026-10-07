@@ -248,3 +248,22 @@ The values most likely to be wrong on first contact:
   real-world reference to derive from at all, unlike grip and load.
 - `Crash.maxLandAngle`: 52 degrees is a guess about where a landing stops being
   a landing.
+
+## The cruiser and the mini (1.1.0)
+
+Both are the stock bike with geometry overrides in `sh_bikes.lua`, and pass
+every headless riding case against the stock bike's bands. Like the stock
+bike in 1.0.0, nobody has ridden them yet, so these are the numbers to move
+first:
+
+- **Cruiser** (`radius 12`, `wheelbase 43`, `mass 94`, `restLength 10`,
+  `crankTorque 340000`). The torque was raised from the stock 300000 only far
+  enough that it still climbs; if it feels sluggish, that is the number.
+  `restLength` is 10 for the crank grind's sake (see the comment there), so a
+  softer or harder landing is `spring` / `damper`, not travel.
+- **Mini** (`radius 8`, `wheelbase 34`, `mass 82`). Everything else is stock,
+  including `leanKp`, which on a shorter bike may feel twitchy: try a per-bike
+  `Balance = { leanKd = ... }` before touching the base.
+
+A per-bike override of a field that has a convar is opted out of live tuning
+for that field (see sh_config.lua), so tune these by editing `sh_bikes.lua`.

@@ -46,7 +46,7 @@ G.active  = nil
 G.LobbyTime  = 20            -- seconds a lobby waits before it begins (or gives up)
 G.DoneTime   = 8             -- seconds a result stays on screen
 
-local adminOnly = CreateConVar("bmx_games_admin_only", "0", bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY),
+local adminOnly = CreateConVar("bmx_games_admin_only", "0", bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED),
     "BMX: 1 = only admins may start a game (bmx_game_start); anyone may still join.")
 
 --------------------------------------------------------------------------

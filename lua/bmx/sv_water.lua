@@ -34,7 +34,7 @@ BMX.Water = BMX.Water or {}
 
 local W = BMX.Water
 
-local FLAGS = bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY)
+local FLAGS = bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED)
 CreateConVar("bmx_water", "1", FLAGS,
     "BMX: 1 = water slows bikes and splashes; 0 = water changes nothing.")
 CreateConVar("bmx_water_eject", "1", FLAGS,

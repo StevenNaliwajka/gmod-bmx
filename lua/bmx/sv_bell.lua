@@ -25,7 +25,7 @@
 BMX = BMX or {}
 BMX.Bell = BMX.Bell or {}
 
-local FLAGS = bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY)
+local FLAGS = bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED)
 
 CreateConVar("bmx_bell", "1", FLAGS,
     "BMX: 1 = R rings the bike's bell; 0 = no bell.")

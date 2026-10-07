@@ -38,7 +38,7 @@
 BMX = BMX or {}
 BMX.Compat = BMX.Compat or {}
 
-CreateConVar("bmx_ragmod", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY),
+CreateConVar("bmx_ragmod", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED),
     "Hand crashed riders to RagMod / RagMod Reworked when it is installed (0 = always use the built-in tumble).")
 
 local GLOBALS = { "ragmod", "RagMod", "Ragmod", "RAGMOD" }

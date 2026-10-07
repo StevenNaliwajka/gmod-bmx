@@ -116,11 +116,13 @@ door, with the registry id (`"stock"`, `"cruiser"`, ...). Return `false` for no
 bikes this round. The spawn menu goes through `PlayerSpawnSENT`, which this
 addon's own limit (`bmx_max_per_player`) also uses.
 
-### `BMX_RiderCrashed` (ply, vel)
+### `BMX_RiderCrashed` (ply, vel, bike)
 
-*Server.* **Pending**: another change adds it; documented here so the name is
-reserved. It is the observation ("this rider came off at this velocity").
-Until it ships, `BMX_Crash` below is the nearest.
+*Server, vetoable.* A rider has just come off and is about to be put in a
+ragdoll. `vel` is the throw velocity (a vector) and `bike` the bike they came
+off. Return `true` to take the rider yourself (spawn your own ragdoll, or none):
+the built-in ragdoll is then skipped. RagMod is handled this way by
+`bmx_ragmod`. `BMX_Crash` is the earlier veto, before the throw is decided.
 
 ### `BMX_Crash` (bike, ply, reason, severity)
 

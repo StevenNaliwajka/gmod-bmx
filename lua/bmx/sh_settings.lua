@@ -73,12 +73,14 @@ S.AddCategory("client", "camera",   "Camera")
 S.AddCategory("client", "hud",      "Display")
 S.AddCategory("client", "rider",    "Rider")
 S.AddCategory("client", "world",    "Scenery")
+S.AddCategory("client", "sound",    "Sound")
 S.AddCategory("client", "advanced", "Advanced")
 
 S.AddCategory("server", "rules",    "Rules and scoring")
 S.AddCategory("server", "world",    "The park")
 S.AddCategory("server", "feel",     "How the bike rides")
 S.AddCategory("server", "bots",     "Bot riders")
+S.AddCategory("server", "sound",    "Sound")
 
 --------------------------------------------------------------------------
 -- Rows
@@ -250,6 +252,17 @@ client{ name = "bmx_debug", kind = "bool", default = false, category = "advanced
     label = "Tuning overlay",
     help = "Draw the bike's inner workings (wheel forces, lean, grip) over your view. Only useful if you are tuning the bike." }
 
+-- ---- Sound (client) ------------------------------------------------------
+client{ name = "bmx_vol_ride", kind = "float", default = 1, min = 0, max = 1, decimals = 2,
+    category = "sound", label = "Ride sounds volume",
+    help = "How loud the tyres, skids and the freewheel tick are for you. 0 mutes them." }
+client{ name = "bmx_vol_wind", kind = "float", default = 1, min = 0, max = 1, decimals = 2,
+    category = "sound", label = "Wind volume",
+    help = "How loud the wind whoosh is as you speed up. 0 mutes it." }
+client{ name = "bmx_vol_bell", kind = "float", default = 1, min = 0, max = 1, decimals = 2,
+    category = "sound", label = "Bell volume",
+    help = "How loud bike bells are for you, yours and everyone else's. 0 mutes them." }
+
 -- ---- Server (admin) ------------------------------------------------------
 server{ name = "bmx_scoring", kind = "bool", default = true, category = "rules",
     label = "Score tricks",
@@ -274,6 +287,37 @@ server{ name = "bmx_bot_name", kind = "string", default = "Peter Griffin", maxLe
 server{ name = "bmx_bot_model", kind = "string", default = "", maxLen = 128, category = "bots",
     label = "Bot player model",
     help = "The player model bot riders wear. Empty uses the default. The server must have the model installed." }
+
+server{ name = "bmx_ragmod", kind = "bool", default = true, category = "rules",
+    label = "Hand crashes to RagMod",
+    help = "If RagMod is installed, a rider who crashes becomes its ragdoll instead of ours. Off always uses the built-in tumble." }
+server{ name = "bmx_games_admin_only", kind = "bool", default = false, category = "rules",
+    label = "Only admins start games",
+    help = "Only admins may start a game of SKATE or another BMX game. Off lets any player start one." }
+
+server{ name = "bmx_bell", kind = "bool", default = true, category = "sound",
+    label = "Bells",
+    help = "Riders can ring their bell with R on the ground. Off removes the bell for everyone." }
+server{ name = "bmx_bell_cooldown", kind = "float", default = 0.6, min = 0, max = 10, decimals = 1,
+    category = "sound", label = "Bell cooldown (seconds)",
+    help = "The least time between one rider's rings, so nobody can spam the bell." }
+server{ name = "bmx_sounds", kind = "bool", default = true, category = "sound",
+    label = "Bike sounds",
+    help = "Tyres, wind, the freewheel tick and bells. Off mutes every bike sound for everyone." }
+
+server{ name = "bmx_water", kind = "bool", default = true, category = "world",
+    label = "Water slows bikes",
+    help = "Wheels drag and splash in water. Off makes water change nothing for bikes." }
+server{ name = "bmx_water_eject", kind = "bool", default = true, category = "world",
+    label = "Deep water throws riders",
+    help = "A rider is thrown off when the water reaches their chest. Off keeps them aboard." }
+
+server{ name = "bmx_wheel_stiction", kind = "bool", default = true, category = "feel",
+    label = "Parked wheels stick",
+    help = "A wheel that is not rolling grips the ground instead of creeping, so a stopped bike on a slope stays put." }
+server{ name = "bmx_wheel_sweep", kind = "bool", default = false, category = "feel",
+    label = "Wheels feel ramps and walls",
+    help = "Wheels sense a curb, ramp foot or wall in front of the tyre instead of sinking into it. Experimental." }
 
 -- The feel sliders. Their defaults are READ from the config's own table
 -- (C.ConVars), so this list can never disagree with the number the bike was

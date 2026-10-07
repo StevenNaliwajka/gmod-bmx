@@ -7,15 +7,14 @@
     documented is an API nobody was told about, and so one that is broken the
     first time somebody tidies it. Either fails here.
 
-    BMX_RiderCrashed is the one allowed to be documented and not fired: another
-    change adds it, and the name is reserved in the guide ahead of it. Delete
-    it from PENDING when that lands, so from then on it is checked like the rest.
+    A hook may be listed in PENDING while it is documented ahead of its code;
+    delete it from PENDING once it fires. It is empty now.
 ----------------------------------------------------------------------------]]
 
 local F = require("lib.fixture")
 local gmod = require("lib.gmod")
 
-local PENDING = { BMX_RiderCrashed = true }
+local PENDING = {}
 
 local function slurp(path)
     local fh = assert(io.open(path, "r"), "cannot read " .. path)

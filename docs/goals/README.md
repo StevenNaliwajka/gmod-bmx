@@ -40,6 +40,51 @@ The comment on their page that matters most is from their author:
 They have stopped on skateboarding, and players are asking for it ("now whens
 the skatebroad mod?", "HAPPY WHEELS", "trials HD", "motorbike").
 
+## Build status (end of 2026-10-07)
+
+Every goal has been built and merged to `main`, and each doc ends with a
+`## Status (2026-10-07)` section saying what is done, partial and left. The
+offline suite went from 352 to 1128 tests, all passing. **None of it is on the
+Workshop**: the release rule still applies, and `CHANGELOG.md` / `BMX.Version`
+were left for the release.
+
+The repo was split during this work (another session, commit 3474ba1). The bot,
+games (SKATE, Trick Attack, Combo Mambo), scores and leaderboard now live in
+`root/gmod-bmx-mode`. The city lives in `root/petopia_bmx_fall`. The G26 work
+and every bot routine went with them.
+
+**Default off until someone has ridden it on a real server:**
+
+| Switch | Goal | What it guards |
+|---|---|---|
+| `bmx_wheel_sweep 0` | G05, G16 | swept wheel contact on steep faces and curbs |
+| `bmx_nose_manual 0` | G02 | the nose manual hold |
+| `bmx_predict 0` (client) | G30 | own-bike lean prediction |
+| `bmx_lagcomp 0` | G30 | tick-dated trick inputs |
+| `bmx_flip_doubletap 0` (client) | G17 | the competitor-style double-tap flip |
+
+On by default but new: `bmx_wheel_stiction` (G04), `bmx_air_assist` (G06),
+`bmx_ragmod` (G07), the bell and water (G18).
+
+**What no agent could verify.** The headless cases for everything above were
+written without a server. The first runs found failures (slopes, wedges, curbs,
+park quarter pipe, tailwhip landings), and the CI fixer is working through them
+on `main`. Nothing has been looked at in a game client: the IK poses, the board
+rider, the replay stand-ins, the menus and the 3D2D signs all need eyes. Feel
+tuning (`docs/TUNING.md`) needs a person on the test server.
+
+**Waiting on the owner:**
+
+1. **Model licence (G20):** allow CC-BY 4.0 with credits, alongside original
+   and CC0? This unblocks real models for the thumbnail.
+2. **Public tracker (G08):** GitHub mirror, issues-only repo, or none. The
+   templates are in `.github/ISSUE_TEMPLATE/`.
+3. **Workshop (G29):** the description in `addon.json` is rewritten. The
+   title is back to "BMX" on `main`, changed by someone after G29 proposed
+   "BMX: Bikes, Grinds & Tony Hawk Combos". Pick one, then thumbnail,
+   video and screenshots. Whether boards ship in the same item or a second one.
+4. **Release:** a version number for all of this, and the go.
+
 ## What I think we should do
 
 **1. Don't fight them for "best bicycle". Be the action-sports addon.**

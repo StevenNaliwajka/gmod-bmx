@@ -464,6 +464,12 @@ local run = nil
 
 local function teardown(ctx)
     if ctx then
+        -- A case on a WORN vehicle (skates, G25): there is no entity, so take the player out of it
+        -- and stop them where they are.
+        if ctx.worn and IsValid(ctx.bot) then
+            if BMX.Worn then BMX.Worn.Unequip(ctx.bot) end
+            ctx.bot:SetVelocity(-ctx.bot:GetVelocity())
+        end
         if IsValid(ctx.bot) and IsValid(ctx.bot:GetVehicle()) then
             ctx.bot:ExitVehicle()
         end
@@ -478,10 +484,37 @@ local function teardown(ctx)
     end
 end
 
+-- A case on a WORN vehicle (G25): there is no entity to spawn and no seat, so the bot is put on
+-- the test ground, stopped, and equipped. `ctx.worn` is its wearer state (BMX.Worn.Of), and
+-- ctx.bike stays nil: a case on a worn vehicle reads ctx.worn, ctx.bot and ctx.cfg.
+local function setupWorn(case, def, ground, groundNote, runway)
+    local bot, err = ensureBot()
+    if not bot then return nil, "bot: " .. tostring(err) end
+    bot.BMXScripted = true
+    if IsValid(bot:GetVehicle()) then bot:ExitVehicle() end
+    bot:SetPos(ground + Vector(64, 0, 8))
+    bot:SetEyeAngles(Angle(0, 0, 0))
+    bot:SetVelocity(-bot:GetVelocity())
+    local w, why = BMX.Worn.Equip(bot, def.id)
+    if not w then return nil, "could not equip " .. def.id .. ": " .. tostring(why) end
+    local ctx = setmetatable({
+        bike = nil, worn = w, bot = bot, checks = {}, lines = {}, failed = false,
+        cfg = BMX.ConfigFor(def), ground = ground,
+        runway = math.max((runway or 0) - 250, 0),
+    }, Ctx)
+    if groundNote then ctx:log("WARNING: " .. groundNote) end
+    return ctx
+end
+
 local function setupCase(case)
     local ground, groundNote, runway = findTestGround()
     if not ground then
         return nil, (groundNote or "no ground") .. " on " .. game.GetMap()
+    end
+
+    local wornDef = BMX.Vehicles[case.vehicle or case.bike]
+    if wornDef and wornDef.worn then
+        return setupWorn(case, wornDef, ground, groundNote, runway)
     end
 
     -- `vehicle` is a case that rides something that is not a bike (the test
@@ -572,6 +605,13 @@ end
 -- nothing like their cause, so it is checked after every single case rather
 -- than being its own test that might not run.
 local function finiteCheck(ctx, case)
+    -- A worn vehicle has no entity to inspect: the wearer is the thing that must be finite.
+    if ctx.worn then
+        local p = ctx.bot
+        ctx:ok(IsValid(p) and BMX.FiniteVec(p:GetPos()) and BMX.FiniteVec(p:GetVelocity()),
+            "no NaN in the wearer's position or velocity")
+        return
+    end
     local b = ctx.bike
     if not IsValid(b) then
         -- A vanished bike is normally the SYMPTOM this check exists for: a NaN

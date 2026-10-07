@@ -39,7 +39,10 @@ end
 --     { title, kind = "park",    items = { { id, name, variants } } } }
 function M.Catalog()
     local sections, byFamily = {}, {}
-    for _, id in ipairs(BMX.BikeIDs and BMX.BikeIDs() or {}) do
+    -- Worn vehicles (the skates, G25) are listed with the rest: a click runs bmx_spawn, which
+    -- gives the player the weapon that carries them.
+    local ids = BMX.GettableIDs and BMX.GettableIDs() or (BMX.BikeIDs and BMX.BikeIDs() or {})
+    for _, id in ipairs(ids) do
         local def = BMX.Bikes[id]
         local fam = def.family or "bike"
         local title = (BMX.Families and BMX.Families[fam] and BMX.Families[fam].category) or "Bikes"

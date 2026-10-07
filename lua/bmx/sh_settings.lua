@@ -260,8 +260,11 @@ client{ name = "bmx_board_flick", kind = "bool", default = false, category = "ri
     label = "Flick flips (skateboard)",
     help = "Pick a flip trick by flicking the mouse in the air, as in Skate, instead of pressing W, A, S or D after the pop." }
 client{ name = "bmx_board_autogrind", kind = "bool", default = false, category = "rider",
-    label = "Grind on contact (skateboard)",
-    help = "A skateboard locks onto a rail or ledge the moment it meets one. Off: hold SPACE in the air to grind." }
+    label = "Grind on contact (skateboard, skates)",
+    help = "A skateboard or a pair of inline skates locks onto a rail or ledge the moment it meets one. Off: hold SPACE in the air to grind." }
+client{ name = "bmx_skates_brake", kind = "choice", default = "tstop", choices = { "tstop", "heel" },
+    category = "rider", label = "Skate brake",
+    help = "How S stops you on inline skates. tstop: drag the back foot, a hard stop that scuffs your turning. heel: the rear pad, gentler and it costs you no steering." }
 client{ name = "bmx_color_default", kind = "string", default = "red", maxLen = 24, category = "rider",
     label = "Colour of new bikes",
     help = "The paint on bikes you spawn: a colour name (red, blue, pink ...) or a number from the palette." }
@@ -317,10 +320,10 @@ server{ name = "bmx_allow_bikes", kind = "bool", default = true, category = "veh
     help = "Players may spawn bikes (BMX, cruiser, mini and any other bike). Off stops new ones being spawned; the ones already out stay." }
 server{ name = "bmx_allow_boards", kind = "bool", default = true, category = "vehicles",
     label = "Allow boards",
-    help = "Players may spawn boards and skates, when there are any. Off stops new ones being spawned." }
+    help = "Players may spawn boards and equip skates. Off stops new ones being spawned or put on." }
 server{ name = "bmx_allow_scooters", kind = "bool", default = true, category = "vehicles",
     label = "Allow scooters",
-    help = "Players may spawn scooters, when there are any. Off stops new ones being spawned." }
+    help = "Players may spawn scooters. Off stops new ones being spawned." }
 server{ name = "bmx_allow_motor", kind = "bool", default = true, category = "vehicles",
     label = "Allow motor vehicles",
     help = "Players may spawn the e-bike, e-moto, dirt bike and moped. Off stops new ones being spawned. (They also need the CAMI privilege \"BMX - Spawn Motor Vehicles\", an admin by default.)" }

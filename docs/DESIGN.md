@@ -588,6 +588,93 @@ and tricks decode know about a clutch and a motorcyclist's poses. The rest is ne
   locked drivetrain is a 16 degree wheelie for a third of a second by itself; a nose-up kick
   on top (`popGain`) makes it a wheelie a rider can catch with RMB.
 
+## 6h. The kick scooter (G24)
+
+The third client of the platform, and the one that needed no new physics. A scooter is
+a single-track vehicle (so the bike's balance holds it up and steers it from the lean)
+that is pushed by a foot (so the board's `push` drive kicks it) and braked by a
+fender on the rear wheel (so S is the platform's rear brake, and the drive's
+`footBrake = false` switches off the board's foot drag, which would have fought it).
+Four decisions:
+
+**The small trail is a rate.** The balance derives the steer from the lean and lags
+the bars behind it, "standing in for trail" (`Balance.steerRate`). A scooter's steep
+head tube has almost none, which is the twitchiness, so it is a higher rate and a
+wider `maxSteer`, and nothing else about the controller changed.
+
+**The tailwhip is the deck.** G03's whip turns the rear group about the head tube
+while the bars and rider stay. On a bike that group is the frame; on a scooter it is
+the deck, rear wheel and fender, which is exactly what a scooter tailwhip turns. So the
+trick is the same state machine (auto-complete past 270 degrees, snap-back under
+90, a landing more than 30 degrees out of line bails), and only the drawing
+(`cl_scooter.lua`) is new. The bri flip is a merge of the whip and a flip in one air
+(`BMX.Scooter.MergeBri`), counted as two tricks by the combo.
+
+**The peg grinds have to fit the hull.** The pegs are on the axles, so a smith or a
+feeble hangs the wheels over a ledge's drop and rides a peg on the top, and a pose
+that puts any hull box inside the ledge is refused (`sv_grind.lua`). The wheel at the
+peg is a box 10 long and 2.4 wide, so the pose may be turned only about 18 degrees off
+the line, and the nose goes to the side that keeps the other wheel clear: onto the
+top for the smith (the tail swings out over the drop), out over the drop for the feeble.
+Found by running a smith on the plant, where a 20 degree yaw put the front wheel's
+corner 0.2 units over the ledge and the grind never locked.
+
+**Everything is the bike's where it can be.** The decoder, the air control, the
+trick scoring, the combo, the crash and the landing judge are the bike's, with three
+small wrappers (`sv_scooter.lua`: the grind sparks, the bri flip, and a manual being
+called a manual).
+
+## 6i. Worn vehicles: the skates (G25)
+
+The first vehicle that is not an entity. A skater has no chassis and no seat: the player
+is the thing that moves, and the platform's idea of a vehicle (a registry entry, a state,
+an input map, a trick list, scoring and combos) has to work with nothing to spawn. Six
+decisions.
+
+**`worn = true` is a registration flag and nothing else.** A worn vehicle has no entity
+class (`BMX.ClassFor` is nil, `BMX.VehicleIDs`, which is the classes, leaves it out) and
+no spawn row, may not have a seat or a single-track or board balance, and is equipped
+(a SWEP) and holstered. It stays in `BMX.Vehicles` (the config, the trick list and the
+grind points are read from there) and in `BMX.GettableIDs` (the entities and the worn ones: what
+the /bike window lists and `bmx_spawn` accepts, so `bmx_spawn skates` gives the weapon); it is not in
+`BMX.BikeIDs`, which is the entities.
+
+**The scoring runs through a stand-in.** `ENT:AwardTricks`, the combo chain and the trick
+tracking take an entity and ask it for `st`, `Cfg`, `Bike`, `GetDriver` and the score.
+`w.proxy` is a plain table that answers those from the wearer, so there is one scoring
+path and a trick on skates builds a combo, fires `BMX_TrickLanded` and shows a callout
+like any other. (The hooks that took an entity are handed the player.)
+
+**The player's own movement does the colliding; the skates only own the velocity.**
+Writing a player mover means rewriting collision, stairs and slopes, so each tick
+(`SetupMove`) the player's velocity is taken, run through a pure step and written
+back, their walk keys are zeroed so the engine adds none, and `Entity:SetFriction(0)`
+so it takes none away. What the engine then does to that velocity is collide with the
+world, which is right. The one thing it can do wrong is leave a velocity that is slower
+than ours for a reason that is not a wall, so the velocity last written is kept and the
+engine's is taken in its place only when it came back more than 12 percent slower. That
+is an assumption about the engine nobody has run: it is stated in `sv_skates.lua`, and
+the headless case `skates_stride_to_speed` is what checks it.
+
+**A skater steers by where they look.** The heading chases the view, rate-limited by a
+turn rate that falls with speed (a carve at 400 u/s is wide), and the velocity is carried
+round with it while the part across the boots is gripped away: that is a carve, and it is
+the whole of steering. A and D turn the VIEW, on the client, at the rate the server will
+follow (`CreateMove`), so a keyboard carve and a mouse carve are the same thing and no
+usercmd ever has to carry a heading. (Scripted skaters, which have no view, are turned by
+A and D on the server.) The crossing legs pump a little speed back in.
+
+**The wheels are cast from the feet.** Eight rays, four in a line under each boot, give
+the slope under the skater (the part of gravity along it is added to the velocity: a
+downhill gains), and are what the client draws. There is no spring: the legs are the
+suspension and the player's own hull stands.
+
+**A grind places the skater, as a bike's does.** `sv_grind.lua`'s rail finder is entity-free
+and is reused as it is; what a skater adds is the placing (the player's origin is set each
+tick and the engine's movement is taken over, `Move` returns true), the balance meter (the
+board's) and the end. The contact is the sole, at the player's origin, so a standing hull
+rests on the rail's top and is not inside it when it lets go.
+
 ## 7. Roadmap
 
 | Phase | Deliverable | Status |

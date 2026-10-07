@@ -202,6 +202,19 @@ BMX.Drives.push = function(ent, cfg, dt, inp, st, wheel, vdef)
         if S then ent:EmitSound(BMX.SoundFile("board_push"), S.level, math.random(94, 106), S.vol) end
     end
 
+    -- A DRIVE WITHOUT A FOOT BRAKE (`footBrake = false`: the kick scooter, G24). It kicks
+    -- the same way, but it brakes with the wheel (S is the rear fender brake, which
+    -- the physics step applies to the wheels from inp.brakeRear), and it has no
+    -- kick-turn: it is held up by the single-track balance and not by four wheels, so
+    -- there is nothing here for a foot to drag or turn on. The board's sync (the push
+    -- phase for the rider's foot) does not run on a scooter, so it is sent from here.
+    if d.footBrake == false then
+        local push = -1
+        if b.ps.kicking then push = (b.ps.phase or 0) / (d.kickInterval or T.kickInterval) end
+        if ent.SetPushPhase and abs(ent:GetPushPhase() - push) > 0.01 then ent:SetPushPhase(push) end
+        return 0
+    end
+
     -- The foot drag: S with the board rolling takes speed off along its travel,
     -- on the ground, the way a shoe on tarmac does. At a walk it is a kick-turn
     -- instead, started by a fresh press so holding S does not spin it for ever.

@@ -13,6 +13,13 @@ BMX = BMX or {}
 
 -- Where sparks come from, entity-local, for a grind code.
 function BMX.GrindContacts(ent, code)
+    -- A scooter's (10 and up: sh_scooter.lua): the deck, the front peg, the back peg. The
+    -- peg is on the side of the scooter the ledge is on, which the server does not
+    -- network, so it is the left (the pegs on a ledge are mirrored by the fall of the
+    -- sparks, which are thrown back from wherever they start).
+    if code >= 10 and BMX.Scooter and BMX.Scooter.SparkPoints then
+        return BMX.Scooter.SparkPoints(code, ent:Cfg().Wheel.wheelbase * 0.5, 1)
+    end
     -- A skateboard's grinds have codes of their own (4 and up: sh_board.lua).
     if code >= 4 and BMX.Board and BMX.Board.SparkPoints then return BMX.Board.SparkPoints(code) end
     -- From the vehicle's own grind points (`grindPoints`, sh_vehicles.lua): the

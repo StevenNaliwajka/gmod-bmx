@@ -45,7 +45,25 @@ T.test("server unchanged: a recorded ride matches the pre-refactor trajectory bi
     end
     local want = require("data.golden_lean")
     T.eq(#got, #want, "samples")
-    for i = 1, #want do T.eq(got[i], want[i], "sample " .. i) end
+    -- EQUAL TO 1e-9, NOT TO THE LAST BIT. The golden file was recorded on one
+    -- machine, and the CI runner's libm (sin/cos/exp in the tyre model) differs
+    -- from it in the 16th digit -- CI 1007 and 1011 both failed on sample 76
+    -- with a 1e-15 difference while the ride itself was identical. A refactor
+    -- that really changed the trajectory moves these by orders of magnitude
+    -- more than a part in a billion, which is what this still catches.
+    local function nums(line)
+        local t = {}
+        for x in line:gmatch("%S+") do t[#t + 1] = tonumber(x) end
+        return t
+    end
+    for i = 1, #want do
+        local a, b = nums(got[i]), nums(want[i])
+        T.eq(#a, #b, "sample " .. i .. " fields")
+        for j = 1, #b do
+            local ok = math.abs(a[j] - b[j]) <= 1e-9 * math.max(1, math.abs(b[j]))
+            T.ok(ok, string.format("sample %d field %d: got %.17g want %.17g", i, j, a[j], b[j]))
+        end
+    end
 end)
 
 --------------------------------------------------------------------------

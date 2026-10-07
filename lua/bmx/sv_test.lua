@@ -571,6 +571,13 @@ local function advance()
             return
         end
 
+        -- NOT WHILE THE RIDER IS STILL TUMBLING from the last case's crash:
+        -- the tumble ends by respawning the player (sv_seat.lua), which
+        -- throws them off whatever the next case has just sat them on.
+        for _, p in ipairs(player.GetAll()) do
+            if p:IsBot() and p:Nick() == BOT_NAME and p.BMXTumbling then return end
+        end
+
         local case = T.cases[name]
         MsgN("[BMX] running " .. name)
 

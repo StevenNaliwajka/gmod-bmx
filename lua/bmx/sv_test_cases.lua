@@ -1369,8 +1369,7 @@ end
 
 -- The tricks the bot does not land on a real server yet: run by name while
 -- they are worked on, out of the full run until they pass. EMPTY THIS.
-local BOT_WIP = { ["Backflip"] = true, ["Frontflip"] = true, ["Barrel Roll"] = true,
-                  ["360"] = true, ["Crank Grind"] = true }
+local BOT_WIP = {}
 BMX.Bot.WIP = BOT_WIP
 
 for _, name in ipairs(BMX.Bot.TrickList) do
@@ -1412,7 +1411,7 @@ function(ctx)
     ctx:ok(c and c.points > 500, "paid as both, with a compound bonus: " .. tostring(c and c.points))
 end)
 
-T.Case("bot_finds_a_ramp_in_the_world", { timeout = 90, wip = true,
+T.Case("bot_finds_a_ramp_in_the_world", { timeout = 90,
     desc = "with no kicker of its own allowed, the bot finds a ramp it was not told about and flips off it" },
 function(ctx)
     -- A plain tilted plate, put down the way a map's ramp or a player's prop
@@ -1424,16 +1423,24 @@ function(ctx)
         if len > best then yaw, best = k * 45, len end
     end
     local dir = BMX.Launch.DirOf(yaw)
-    local plate = ents.Create("prop_physics")
-    plate:SetModel("models/hunter/plates/plate4x4.mdl")
-    plate:Spawn()
-    local mn, mx = plate:OBBMins(), plate:OBBMaxs()
-    local centre, ang = BMX.Launch.KickerGeometry(ctx.ground + dir * 650, yaw,
-        math.max(mx.x - mn.x, mx.y - mn.y), mx.z - mn.z, math.rad(26))
-    plate:SetPos(centre)
-    plate:SetAngles(ang)
-    local pp = plate:GetPhysicsObject()
-    if IsValid(pp) then pp:EnableMotion(false) end
+    -- A long, gentle ramp, the kind a park has: two big plates end to end at
+    -- 14 degrees. (A short steep plate was tried first, and correctly turned
+    -- down: it cannot give the air a flip needs.)
+    local plates = {}
+    local L = 379.6
+    for i = 0, 1 do
+        local plate = ents.Create("prop_physics")
+        plate:SetModel("models/hunter/plates/plate8x8.mdl")
+        local f = ctx.ground + dir * (650 + i * L * math.cos(math.rad(14))) + Vector(0, 0, i * L * math.sin(math.rad(14)))
+        local centre, ang = BMX.Launch.KickerGeometry(f, yaw, L, 3.4, math.rad(14))
+        plate:SetPos(centre)
+        plate:SetAngles(ang)
+        plate:Spawn()
+        local pp = plate:GetPhysicsObject()
+        if IsValid(pp) then pp:SetPos(centre) pp:SetAngles(ang) pp:EnableMotion(false) end
+        plates[#plates + 1] = plate
+    end
+    local plate = plates[1]
     ctx:wait(0.2)
     ctx:log(string.format("plate put %.0f deg off, %.0f u of runway that way", yaw, best))
 
@@ -1442,7 +1449,7 @@ function(ctx)
     for _, line in ipairs(brain.log) do if line:find("found a launch", 1, true) then found = true end end
     ctx:ok(found, "it found the plate with its own traces")
     ctx:ok(r and r.ok, "and backflipped off it: " .. tostring(r and r.why))
-    SafeRemoveEntity(plate)
+    for _, p in ipairs(plates) do SafeRemoveEntity(p) end
 end)
 
 T.Case("bot_spawns_named_and_dressed", { rider = false, timeout = 40,

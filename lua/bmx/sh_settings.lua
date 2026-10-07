@@ -220,6 +220,9 @@ client{ name = "bmx_units", kind = "choice", default = "kmh", choices = { "kmh",
 client{ name = "bmx_stick_deadzone", kind = "float", default = 0.1, min = 0, max = 0.9, decimals = 2,
     category = "rider", label = "Gamepad stick deadzone",
     help = "How far a gamepad stick can drift from the middle before it counts as steering. Raise it if your bike turns by itself." }
+client{ name = "bmx_flip_doubletap", kind = "bool", default = false, category = "rider",
+    label = "Double-tap flips",
+    help = "Double-tap W or S in the air for a whole flip that stops itself near a full turn. Off: hold the key to rotate." }
 client{ name = "bmx_rider_anim", kind = "bool", default = true, category = "rider",
     label = "Animate riders",
     help = "Riders pedal, lean and crouch with the bike. Off leaves everyone sitting in the plain seated pose." }

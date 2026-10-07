@@ -31,17 +31,23 @@ local L = BMX.Launch
 L.Config = {
     headings   = 24,        -- directions searched
     step       = 20,        -- u between ground samples along one
-    reach      = 1100,      -- u searched out from the origin
+    reach      = 1800,      -- u searched out from the origin: a long park
+                            -- ramp's lip can be well over a thousand units away
     minSlope   = math.rad(12),
     maxSlope   = math.rad(40),
     minRampLen = 50,        -- u of slope at least: a kerb is not a ramp
     minHeight  = 25,        -- u the lip must stand above the ramp's foot
     lipDrop    = 12,        -- u the ground must fall just past the lip
     runup      = 420,       -- u of flat, clear ground needed before the foot
-    landing    = 700,       -- u past the lip that must be open to fly through
+    landing    = 450,       -- u past the lip that must be open to fly through
     flatTol    = 4,         -- u of rise per sample still counted as flat
-    kickerModel = "models/hunter/plates/plate4x4.mdl",
-    kickerAngle = math.rad(30),
+    kickerModel = "models/hunter/plates/plate8x8.mdl",  -- square: no long axis to line up
+    kickerPlates = 2,
+    -- 14, not 30: a backflip ends as nose-up as it took off (plus whatever
+    -- it overshoots), and off 30 degrees a real server's bike came down on its
+    -- back wheel at 66 and toppled. The hop gives most of the lift anyway, so
+    -- the air time barely changes, and the climb costs less speed.
+    kickerAngle = math.rad(14),
 }
 
 local UP = Vector(0, 0, 1)
@@ -230,18 +236,12 @@ function L.KickerGeometry(foot, yaw, length, thickness, angle)
     }
 end
 
-function L.SpawnKicker(foot, yaw, opts)
-    opts = opts or {}
-    local C = opts.config or L.Config
+-- One plate, posed. Before Spawn AND through the body after it: once a prop
+-- has a physics object the entity's own SetPos/SetAngles no longer move it.
+local function plate(model, centre, ang)
     local e = ents.Create("prop_physics")
     if not IsValid(e) then return nil end
-    e:SetModel(C.kickerModel)
-    local mn, mx = e:OBBMins(), e:OBBMaxs()
-    local length = math.max(mx.x - mn.x, mx.y - mn.y)
-    local thick = mx.z - mn.z
-    local centre, ang, launch = L.KickerGeometry(foot, yaw, length, thick, opts.angle or C.kickerAngle)
-    -- Posed before Spawn AND through the body after it: once a prop has a
-    -- physics object the entity's own SetPos/SetAngles no longer move it.
+    e:SetModel(model)
     e:SetPos(centre)
     e:SetAngles(ang)
     e:Spawn()
@@ -252,8 +252,38 @@ function L.SpawnKicker(foot, yaw, opts)
         p:EnableMotion(false)
     end
     e.BMXKicker = true
-    launch.entity = e
-    return e, launch
+    return e
+end
+
+-- `C.kickerPlates` plates end to end, one slope: the same angle with a higher
+-- lip, which is more air from the same run at it (roll and yaw spin slower
+-- than pitch, and a barrel roll or a 360 needed more than one plate gives).
+-- Returns the first plate, the launch table, and every plate in a list.
+function L.SpawnKicker(foot, yaw, opts)
+    opts = opts or {}
+    local C = opts.config or L.Config
+    local probe = ents.Create("prop_physics")
+    if not IsValid(probe) then return nil end
+    probe:SetModel(C.kickerModel)
+    local mn, mx = probe:OBBMins(), probe:OBBMaxs()
+    probe:Remove()
+    local each = math.max(mx.x - mn.x, mx.y - mn.y)
+    local thick = mx.z - mn.z
+    local n = opts.plates or C.kickerPlates or 1
+    local angle = opts.angle or C.kickerAngle
+    local _, ang, launch = L.KickerGeometry(foot, yaw, each * n, thick, angle)
+    local dir = dirOf(yaw)
+    local list = {}
+    for i = 1, n do
+        local f = foot + dir * (each * (i - 1) * math.cos(angle)) + UP * (each * (i - 1) * math.sin(angle))
+        local centre = L.KickerGeometry(f, yaw, each, thick, angle)
+        local e = plate(C.kickerModel, centre, ang)
+        if e then list[#list + 1] = e end
+    end
+    if #list == 0 then return nil end
+    launch.entity = list[#list]
+    launch.plates = list
+    return list[1], launch, list
 end
 BMX.SpawnKicker = L.SpawnKicker
 

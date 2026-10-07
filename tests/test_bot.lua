@@ -58,10 +58,10 @@ end
 -- The list
 --------------------------------------------------------------------------
 
-T.test("bot: the trick list is ten tricks, each with a routine", function()
+T.test("bot: the trick list is at least the ten core tricks, each with a routine", function()
     local sv = F.server()
     local Bot = sv.env.BMX.Bot
-    T.eq(#Bot.TrickList, 10, "ten")
+    T.ok(#Bot.TrickList >= 10, "at least ten: " .. #Bot.TrickList)
     for _, name in ipairs(Bot.TrickList) do
         T.ok(type(Bot.Tricks[name]) == "function", name .. " has a routine")
     end
@@ -292,9 +292,9 @@ T.test("grind approach: the hop is pressed so the crank point comes down over th
     local cfg = B.Config
     local centre, dir = E.Vector(1000, 0, 0), E.Vector(1, 0, 0)
     local press, ride, t = B.Bot.GrindApproach(cfg, centre, dir, 380, 0, 18, 600)
-    T.ok(ride.x > 0.99 and ride.y > 0, "ridden along the rail, angled a little onto it")
+    T.near(ride.x, 1, 1e-9, "ridden straight along the rail")
     -- Carried on along the ride direction for t seconds at the grind speed:
-    local at = press + ride * (260 * t)
+    local at = press + ride * (220 * t)
     T.near(at.y, 0, 0.5, "over the rail's line")
     T.near(at.x, 1000 - 190 + 60, 0.5, "60 u along it")
 end)
@@ -303,7 +303,7 @@ T.test("grind approach: a peg grind aims for the near edge, not the middle", fun
     local sv = F.server()
     local E, B = sv.env, sv.env.BMX
     local press, ride, t = B.Bot.GrindApproach(B.Config, E.Vector(0, 0, 0), E.Vector(0, 1, 0), 380, -4, 18, 600)
-    local at = press + ride * (260 * t)
+    local at = press + ride * (220 * t)
     T.near(at.x, 4, 0.5, "4 u right of the axis (the near edge), for a rail along +y")
 end)
 

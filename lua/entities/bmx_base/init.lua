@@ -453,6 +453,9 @@ function ENT:Crash(reason, severity)
     if not IsValid(ply) then return end
 
     severity = BMX.Clamp(severity or 0.5, 0, 1)
+    -- For anything that wants to know why a rider came off (the bot's log,
+    -- a server's stats): before the rider is thrown, while they are aboard.
+    hook.Run("BMX_Crashed", self, ply, reason, severity)
 
     local CR   = self:Cfg().Crash
     local phys = self:GetPhysicsObject()

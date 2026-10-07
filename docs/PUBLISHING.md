@@ -94,6 +94,7 @@ it once the upload is done):
 
 | Version | Kit built | From commit | Uploaded |
 |---|---|---|---|
+| 1.1.1 | 2026-10-07 | (this release's commit, tools/workshop_sync.py, from Linux) | 2026-10-07 |
 | 1.1.0 | 2026-10-07 | 817644e (tools/workshop_sync.py, from Linux) | 2026-10-07 16:25, with the gallery; icon now workshop/icon.gif |
 
 The same number lives in `workshop/workshop-id.txt`, which the kit ships and

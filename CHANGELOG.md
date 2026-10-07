@@ -5,6 +5,20 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.1.1 -- on the Workshop 2026-10-07
+
+A small update on top of 1.1.0, from riding every vehicle in game.
+
+- **Riders look better on the odd vehicles.** The unicyclist holds their arms
+  out at chest height with open hands, balancing against the lean, instead of
+  stiff fists at the hips. The skateboarder and the scooter rider ride on bent
+  knees, deeper with speed, instead of locked-straight legs.
+- **Every spawn-menu picture shows the new model**, shot in game: the road
+  bike's drop bars, the city bike's basket, the dirt bike's bodywork, the
+  skateboard's trucks and so on.
+- `bmx_report` and the model cache can say which vehicle models are built,
+  still building, or failed and why (`BMX.BikeMesh.Status`).
+
 ## 1.1.0 -- on the Workshop 2026-10-07
 
 The first update since the Workshop item went up. One BMX became a garage:

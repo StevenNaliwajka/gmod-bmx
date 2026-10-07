@@ -39,7 +39,21 @@ function City.SpawnSolids()
     return n
 end
 
-hook.Add("InitPostEntity", "BMXCity", function() City.SpawnSolids() end)
+-- Precache every model an ad photographs, so clients load them up front.
+function City.PrecacheAdModels()
+    local L = City.Layout()
+    if not L then return end
+    for _, s in ipairs(L.signs) do
+        for _, slot in ipairs(s.pic or {}) do
+            local list = type(slot.model) == "table" and slot.model or { slot.model }
+            for _, m in ipairs(list) do
+                if file.Exists(m, "GAME") then util.PrecacheModel(m) end
+            end
+        end
+    end
+end
+
+hook.Add("InitPostEntity", "BMXCity", function() City.SpawnSolids() City.PrecacheAdModels() end)
 hook.Add("PostCleanupMap", "BMXCity", function() City.SpawnSolids() end)
 
 -- Nobody picks up a viaduct, a planting bed or a tree trunk: physgun,

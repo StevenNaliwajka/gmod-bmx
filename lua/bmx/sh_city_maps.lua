@@ -106,15 +106,31 @@ BMX.City.Maps.gm_skatepark = {
           postFrom = 1000 + 224 + 16, postTo = 1400 - 40 - 64 },
     },
 
-    -- The signs: billboard advertisements for Quahog, Rhode Island, the
-    -- Family Guy town (Petopia is Peter's nation, founded in his back yard),
-    -- station signs for the metro and green street signs. Family friendly:
-    -- the town's businesses and Peter's catchphrases, nothing edgier.
+    -- The signs: billboard ads for Quahog, Rhode Island, the Family Guy town
+    -- (Petopia is Peter's nation, founded in his back yard), selling the
+    -- show's places and things; station signs for the metro; green street
+    -- signs. Family friendly: the town's businesses and gags, nothing edgier.
+    --
+    -- Every ad has a `style` (cl_city.lua: comic, classic, minimal, tv, sale,
+    -- split, neon) so no two neighbours look alike, and a `pic`: the product,
+    -- photographed from base-game models (the Peter Griffin player model is
+    -- the server's, so a slot with him always lists a fallback).
     -- pos is the panel's centre on the face; normal points at the park.
     signs = {
         -- north wall
-        { look = "ad", text = "THE DRUNKEN CLAM", sub = "Our chowder is now 40% clam!", burst = "NOW WITH\nSPOONS!", fine = "*The other 60% is a mystery. Ask Horace.", bg = { 255, 214, 60 }, bg2 = { 255, 120, 30 }, fg = { 220, 30, 40 }, band = { 20, 60, 120 }, burstColor = { 230, 30, 30 },
-          pos = { 1000, 758, 640 }, normal = { 0, -1, 0 }, w = 640, h = 240 },
+        { look = "ad", style = "classic", text = "THE DRUNKEN CLAM", sub = "Quahog's finest clam chowder",
+          burst = "SERVING SINCE 1983", fine = "Now 40% clam. The other 60% is a family secret.",
+          bg = { 243, 232, 206 }, fg = { 120, 28, 28 }, band = { 28, 46, 86 },
+          pic = { { model = "models/props_junk/garbage_takeoutcarton001a.mdl", ang = { 0, -25, 0 } },
+                  { model = "models/props_junk/garbage_coffeemug001a.mdl", at = { -3, 10, -2 }, ang = { 0, 200, 0 } } },
+          picPitch = 14, picBg = { 120, 80, 50 },
+          pos = { 1000, 758, 640 }, normal = { 0, -1, 0 }, w = 640, h = 260 },
+        { look = "ad", style = "sale", text = "QUAHOG MALL", sub = "Now with a SECOND escalator!", price = "50% OFF",
+          fine = "*Escalator may be stairs.", bg = { 255, 236, 60 }, bg2 = { 255, 214, 0 }, fg = { 220, 20, 30 },
+          pic = { { model = "models/props_junk/shoe001a.mdl", ang = { 0, -30, 0 } },
+                  { model = "models/props_c17/briefcase001a.mdl", at = { -14, 18, 0 }, ang = { 0, 20, 0 } } },
+          picPitch = 18, picBg = { 90, 70, 40 },
+          pos = { 2950, 758, 620 }, normal = { 0, -1, 0 }, w = 620, h = 250 },
         { look = "street", text = "SPOONER ST", sub = "31",
           pos = { 2200, 762, 300 }, normal = { 0, -1, 0 }, w = 320, h = 72 },
         -- the metro: a station sign over each portal
@@ -131,28 +147,69 @@ BMX.City.Maps.gm_skatepark = {
         { look = "transit", line = "3", text = "DOWNTOWN", sub = "Quahog Metro", color = { 30, 160, 70 },
           pos = { 3574, -620, 1480 }, normal = { -1, 0, 0 }, w = 480, h = 120 },
         -- west wall
-        { look = "ad", text = "GOLDMAN'S PHARMACY", sub = "Feeling sick? Have you tried feeling better?", burst = "ASK\nMORT!", fine = "*Mort is not a doctor. Mort is barely a pharmacist.", bg = { 120, 255, 170 }, bg2 = { 20, 170, 110 }, fg = { 255, 255, 255 }, band = { 10, 80, 50 }, burstColor = { 240, 40, 160 },
-          pos = { -248, 200, 440 }, normal = { 1, 0, 0 }, w = 560, h = 210 },
+        { look = "ad", style = "minimal", text = "Goldman's", sub = "Feeling sick? Try feeling better.",
+          fine = "Mort Goldman, pharmacist. Not a doctor.", burst = "PHARMACY", bg = { 22, 40, 34 }, band = { 0, 210, 140 },
+          pic = { { model = "models/items/healthkit.mdl", ang = { 0, 20, 0 } },
+                  { model = "models/healthvial.mdl", at = { 8, 16, 0 }, ang = { 0, -10, 0 } },
+                  { model = "models/healthvial.mdl", at = { 8, -16, 0 }, ang = { 0, 15, 0 } } },
+          picPitch = 18, picBg = { 40, 70, 60 },
+          pos = { -248, 200, 440 }, normal = { 1, 0, 0 }, w = 600, h = 220 },
+        { look = "ad", style = "neon", text = "CLEVELAND'S DELI", sub = "Sandwiches so good you'll say \"Oh, that's nice\"",
+          fine = "OPEN LATE  *  NO BATHTUBS ON THE 2ND FLOOR", fg = { 255, 170, 40 }, band = { 60, 230, 255 },
+          pic = { { model = "models/food/burger.mdl", ang = { 0, -20, 0 } }, { model = "models/food/hotdog.mdl", at = { 0, 12, -2 }, ang = { 0, 30, 0 } } },
+          picPitch = 22, picBg = { 60, 40, 30 },
+          pos = { -248, -1350, 620 }, normal = { 1, 0, 0 }, w = 620, h = 240 },
         { look = "street", text = "SPOONER ST", sub = "",
           pos = { -250, -1000, 300 }, normal = { 1, 0, 0 }, w = 320, h = 72 },
         -- east wall
-        { look = "ad", text = "QUAHOG 5 NEWS", sub = "Local man rides bike. Film at 11.", burst = "LIVE\nAT 6!", fine = "Tom Tucker: usually right, always confident.", bg = { 60, 110, 255 }, bg2 = { 10, 20, 90 }, fg = { 255, 220, 40 }, band = { 200, 20, 30 }, burstColor = { 230, 20, 30 },
-          pos = { 3576, -1300, 640 }, normal = { -1, 0, 0 }, w = 600, h = 225 },
+        { look = "ad", style = "tv", text = "QUAHOG 5 NEWS", sub = "Local man rides bike. Film at 11.", burst = "LIVE",
+          fine = "TOM TUCKER: USUALLY RIGHT, ALWAYS CONFIDENT", bg = { 30, 50, 110 }, bg2 = { 8, 12, 40 }, band = { 14, 40, 120 },
+          pic = { { model = "models/props_c17/tv_monitor01.mdl", ang = { 0, -28, 0 } } }, picPitch = 10, picBg = { 30, 40, 80 },
+          pos = { 3570, -1300, 640 }, normal = { -1, 0, 0 }, w = 640, h = 280 },
+        { look = "ad", style = "classic", text = "FASTER THAN THE SPEED OF LOVE", sub = "The novel by Brian Griffin",
+          burst = "NOW IN THE BARGAIN BIN", fine = "\"I have read it.\" -- Brian Griffin",
+          bg = { 236, 228, 214 }, fg = { 40, 40, 60 }, band = { 150, 30, 40 },
+          pic = { { model = "models/props_lab/binderredlabel.mdl", ang = { 0, -30, 0 } },
+                  { model = "models/props_lab/bindergreen.mdl", at = { -4, 14, 0 }, ang = { 0, -10, 0 } } },
+          picPitch = 16, picBg = { 90, 70, 60 },
+          pos = { 3570, 300, 600 }, normal = { -1, 0, 0 }, w = 640, h = 260 },
         -- south wall
-        { look = "ad", text = "HAPPY-GO-LUCKY TOYS", sub = "So safe, we tested them on Peter!", burst = "SAFE-\nISH!", fine = "*Batteries, instructions and happiness sold separately.", bg = { 255, 150, 220 }, bg2 = { 170, 60, 255 }, fg = { 255, 255, 80 }, band = { 60, 20, 120 }, burstColor = { 255, 120, 0 },
-          pos = { 2200, -1784, 620 }, normal = { 0, 1, 0 }, w = 680, h = 255 },
-        { look = "ad", text = "SPOONER ST BMX", sub = "Brakes sold separately. Hehehehehe.", burst = "SALE!\nSALE!", fine = "Helmets strongly recommended. Ask Peter why.", bg = { 120, 230, 255 }, bg2 = { 0, 140, 220 }, fg = { 255, 90, 0 }, band = { 20, 30, 60 }, burstColor = { 255, 200, 0 },
-          pos = { 400, -1784, 640 }, normal = { 0, 1, 0 }, w = 600, h = 225 },
+        { look = "ad", style = "comic", text = "HAPPY-GO-LUCKY TOYS", sub = "So safe, we tested them on Peter!", burst = "NEW\nTOYS!",
+          fine = "*Batteries, instructions and happiness sold separately.",
+          bg = { 255, 150, 220 }, bg2 = { 170, 60, 255 }, fg = { 255, 255, 80 }, band = { 60, 20, 120 }, burstColor = { 255, 120, 0 },
+          pic = { { model = "models/maxofs2d/companion_doll.mdl", ang = { 0, -20, 0 } },
+                  { model = "models/props_c17/doll01.mdl", at = { 2, 15, 0 }, ang = { 0, -35, 0 } },
+                  { model = "models/maxofs2d/balloon_classic.mdl", at = { -6, -13, 12 } } },
+          picPitch = 8, picBg = { 110, 60, 120 },
+          pos = { 2200, -1784, 620 }, normal = { 0, 1, 0 }, w = 680, h = 260 },
+        { look = "ad", style = "split", text = "SPOONER ST BMX", sub = "Brakes sold separately. Hehehehehe.", burst = "Peter rides one!",
+          fine = "Helmets strongly recommended. Ask Peter why.", bg = { 255, 110, 30 }, bg2 = { 20, 110, 200 },
+          pic = { { model = "models/props_junk/bicycle01a.mdl", ang = { 0, 75, 0 } },
+                  { model = { "models/petaly/peter_griffin/petergriffin.mdl", "models/props_lab/huladoll.mdl" }, at = { -10, -38, -22 }, ang = { 0, -15, 0 }, scale = 0.8, seq = "idle_all_01" } },
+          picPitch = 6, picBg = { 40, 90, 120 },
+          pos = { 400, -1784, 640 }, normal = { 0, 1, 0 }, w = 640, h = 250 },
+        { look = "ad", style = "neon", text = "THE DRUNKEN CLAM", sub = "Live music Fridays  *  Clam chowder all night",
+          fine = "21+ AFTER 9  *  ASK HORACE ABOUT THE SPECIALS", fg = { 255, 70, 90 }, band = { 255, 200, 60 },
+          pic = { { model = "models/props_junk/garbage_takeoutcarton001a.mdl", ang = { 0, 25, 0 } } }, picPitch = 12, picBg = { 50, 30, 40 },
+          pos = { 1250, -1784, 640 }, normal = { 0, 1, 0 }, w = 560, h = 220 },
     },
 
     -- Rooftop billboards, standing on whatever frontage building is there.
     billboards = {
-        { look = "ad", side = "north", at = 1150, w = 1280, h = 480, back = 64,
-          text = "VISIT PETORIA", sub = "The world's smallest nation! (It's a back yard.)", burst = "NO\nPASSPORT!", fine = "Customs: please wipe your feet and do not pet the dog.", bg = { 130, 220, 255 }, bg2 = { 30, 120, 230 }, fg = { 255, 255, 255 }, band = { 0, 50, 120 }, burstColor = { 255, 60, 60 } },
-        { look = "ad", side = "east", at = 200, w = 1024, h = 384, back = 64,
-          text = "WELCOME TO QUAHOG", sub = "Rhode Island's #1 town for giant chicken fights", burst = "EST.\n1635", fine = "Pop. 75,000 and one very large chicken.", bg = { 255, 240, 200 }, bg2 = { 255, 170, 90 }, fg = { 30, 80, 170 }, band = { 160, 30, 30 }, burstColor = { 30, 140, 60 } },
-        { look = "ad", side = "south", at = 2900, w = 960, h = 360, back = 64,
-          text = "JAMES WOODS HIGH", sub = "Home of the Fighting Clams. Go... Clams?", burst = "GO\nTEAM!", fine = "Mascot still missing. Last seen near the Drunken Clam.", bg = { 255, 90, 90 }, bg2 = { 150, 10, 40 }, fg = { 255, 255, 255 }, band = { 60, 0, 20 }, burstColor = { 255, 210, 0 } },
+        { look = "ad", style = "split", side = "north", at = 1150, w = 1280, h = 480, back = 64,
+          text = "VISIT PETORIA", sub = "The world's smallest nation! (It's a back yard.)", burst = "No passport needed!",
+          fine = "Customs: please wipe your feet and do not pet the dog.", bg = { 30, 150, 230 }, bg2 = { 250, 200, 30 },
+          pic = { { model = { "models/petaly/peter_griffin/petergriffin.mdl", "models/props_lab/huladoll.mdl" }, ang = { 0, -20, 0 }, seq = "idle_all_01" } },
+          picPitch = 6, picBg = { 60, 110, 160 } },
+        { look = "ad", style = "classic", side = "east", at = 200, w = 1024, h = 400, back = 64,
+          text = "WELCOME TO QUAHOG", sub = "Come for the clams. Stay for the chicken fights.", burst = "EST. 1635",
+          fine = "Pop. 75,000 and one very large chicken.", bg = { 240, 230, 205 }, fg = { 30, 70, 140 }, band = { 160, 30, 30 },
+          pic = { { model = "models/props_canal/boat001a.mdl", ang = { 0, 60, 0 } } }, picPitch = 28, picBg = { 60, 90, 120 } },
+        { look = "ad", style = "comic", side = "south", at = 2900, w = 960, h = 370, back = 64,
+          text = "JAMES WOODS HIGH", sub = "Home of the Fighting Clams. Go... Clams?", burst = "GO\nTEAM!",
+          fine = "*Bust of our founder. Resemblance to James Woods not guaranteed.",
+          bg = { 255, 90, 90 }, bg2 = { 150, 10, 40 }, fg = { 255, 255, 255 }, band = { 60, 0, 20 }, burstColor = { 255, 210, 0 },
+          pic = { { model = "models/props_combine/breenbust.mdl", ang = { 0, -22, 0 } } }, picPitch = 6, picBg = { 90, 40, 45 } },
     },
 
     -- Greenery (sh_city.lua, B:greenery). The beds stand on the park floor

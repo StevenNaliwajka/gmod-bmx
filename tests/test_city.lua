@@ -605,4 +605,47 @@ T.test("plants are drawn every frame they are in view, whatever the distance", f
     for kind, m in pairs(City._plantEnts) do
         if m then T.eq(m.lod, 0, kind .. " pinned to LOD 0") end
     end
+T.test("every ad sells something you can see: a product picture, never only an optional model", function()
+    local City, L = city()
+    local ads = 0
+    for _, s in ipairs(L.signs) do
+        if s.look == "ad" then
+            ads = ads + 1
+            T.ok(s.pic and #s.pic >= 1, s.text .. " has a picture")
+            -- the Peter player model is the server's, not the game's: an ad
+            -- must still have a picture on a client without it
+            local always = false
+            for _, slot in ipairs(s.pic or {}) do
+                local list = type(slot.model) == "table" and slot.model or { slot.model }
+                for _, m in ipairs(list) do
+                    T.ok(type(m) == "string" and m:match("^models/.+%.mdl$"), s.text .. " model path " .. tostring(m))
+                    if not m:find("^models/petaly/") then always = true end
+                end
+            end
+            T.ok(always, s.text .. " has a base-game model to fall back on")
+        end
+    end
+    T.ok(ads >= 8, "ads: " .. ads)
+end)
+
+T.test("ads come in many styles: each one exists, and no two on a wall share one", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local styles = cl.env.BMX.City.AdStyles
+    local L = cl.env.BMX.City.Build(cl.env.BMX.City.Maps.gm_skatepark)
+    local used, perWall = {}, {}
+    for _, s in ipairs(L.signs) do
+        if s.look == "ad" then
+            local st = s.style or "comic"
+            T.ok(styles[st], s.text .. ": style " .. st .. " exists")
+            used[st] = true
+            local wall = s.roof and ("roof:" .. tostring(s.side)) or (s.normal[1] .. "," .. s.normal[2])
+            perWall[wall] = perWall[wall] or {}
+            T.ok(not perWall[wall][st], s.text .. ": another ad on its wall is already " .. st)
+            perWall[wall][st] = true
+        end
+    end
+    local n = 0
+    for _ in pairs(used) do n = n + 1 end
+    T.ok(n >= 6, "styles in use: " .. n)
 end)

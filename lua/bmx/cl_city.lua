@@ -399,6 +399,118 @@ end
 --------------------------------------------------------------------------
 -- Signs
 --------------------------------------------------------------------------
+--------------------------------------------------------------------------
+-- Ad pictures. The thing an ad sells is a real 3D model -- the chowder's
+-- takeout carton, the toy, the TV -- PHOTOGRAPHED into a render target and
+-- laid on the board like a product shot. Only models every Garry's Mod
+-- player has (HL2 / GMod content), so nothing ships that is not ours, plus
+-- the server's Peter Griffin player model where a client has it: a slot can
+-- list several models and takes the first one this client can load.
+--
+--   pic = { { model = "models/...mdl" | { "first choice", "fallback" },
+--             at = {x,y,z}, ang = {p,y,r}, scale = 1, seq = "idle_all_01" }, ... },
+--   picYaw = 180 (the camera looks along this; 180 sees a model's front),
+--   picPitch = 8, picBg = {r,g,b}
+--
+-- A render target can lose its contents (a resolution change, alt-tab on
+-- some drivers), so each picture is shot again every PIC_EVERY seconds, one
+-- picture a frame.
+--------------------------------------------------------------------------
+City.PIC_SIZE = 512
+City.PIC_EVERY = 30
+City._pics = City._pics or {}
+
+-- On a client, util.IsValidModel says no to anything the server has not
+-- precached, which is most props (measured: the bike and the carton were
+-- "invalid", the precached player model was not). Ask the filesystem.
+local function hasModel(m) return type(m) == "string" and file.Exists(m, "GAME") end
+function City.PickModel(slot)
+    local list = type(slot.model) == "table" and slot.model or { slot.model }
+    for _, m in ipairs(list) do if hasModel(m) then return m end end
+end
+
+local function shoot(s, P)
+    local scene, mins, maxs = {}, nil, nil
+    for _, slot in ipairs(s.pic) do
+        local mdl = City.PickModel(slot)
+        local e = mdl and ClientsideModel(mdl, RENDERGROUP_OPAQUE)
+        if IsValid(e) then
+            e:SetNoDraw(true)
+            local at, ang = slot.at or { 0, 0, 0 }, slot.ang or { 0, 0, 0 }
+            e:SetPos(Vector(at[1], at[2], at[3]))
+            e:SetAngles(Angle(ang[1], ang[2], ang[3]))
+            local sc = slot.scale or 1
+            if sc ~= 1 then e:SetModelScale(sc, 0) end
+            if slot.seq then
+                local q = e:LookupSequence(slot.seq)
+                if q and q >= 0 then e:ResetSequence(q) e:SetCycle(slot.cycle or 0) end
+            end
+            e:SetupBones()
+            -- render bounds, not the physics hull: the hull can be smaller
+            -- than what is drawn, and the shot then crops the product
+            local a, b = e:GetRenderBounds()
+            for _, cx in ipairs({ a.x, b.x }) do for _, cy in ipairs({ a.y, b.y }) do for _, cz in ipairs({ a.z, b.z }) do
+                local w = e:LocalToWorld(Vector(cx, cy, cz) * sc)
+                mins = mins and Vector(math.min(mins.x, w.x), math.min(mins.y, w.y), math.min(mins.z, w.z)) or w
+                maxs = maxs and Vector(math.max(maxs.x, w.x), math.max(maxs.y, w.y), math.max(maxs.z, w.z)) or w
+            end end end
+            scene[#scene + 1] = e
+        end
+    end
+    if #scene == 0 then return false end
+    local c, r = (mins + maxs) / 2, (maxs - mins):Length() / 2
+    local camAng = Angle(s.picPitch or 8, s.picYaw or 180, 0)
+    local fov = 36
+    -- r is the bounding sphere's radius: just inside it fills the shot
+    local dist = r / math.tan(math.rad(fov / 2)) * 0.95
+    local camPos = c - camAng:Forward() * dist
+    local bg = s.picBg or { 70, 70, 80 }
+    render.PushRenderTarget(P.rt)
+        render.Clear(bg[1], bg[2], bg[3], 255, true, true)
+        cam.Start3D(camPos, camAng, fov, 0, 0, City.PIC_SIZE, City.PIC_SIZE, 1, dist * 4)
+            render.SuppressEngineLighting(true)
+            -- a soft studio light, kept DIM (a full-strength cube washed the
+            -- products out): warm key from above and the camera's side,
+            -- cool fill, deep shadow -- the board is lit by the sun as well
+            local key = s.picLight or 1
+            render.ResetModelLighting(0.16 * key, 0.16 * key, 0.18 * key)
+            render.SetModelLighting(BOX_TOP, 0.62 * key, 0.6 * key, 0.56 * key)
+            render.SetModelLighting(BOX_BACK, 0.5 * key, 0.48 * key, 0.45 * key)
+            render.SetModelLighting(BOX_FRONT, 0.5 * key, 0.48 * key, 0.45 * key)
+            render.SetModelLighting(BOX_LEFT, 0.3 * key, 0.3 * key, 0.33 * key)
+            render.SetModelLighting(BOX_RIGHT, 0.22 * key, 0.22 * key, 0.25 * key)
+            for _, e in ipairs(scene) do e:DrawModel() end
+            render.SuppressEngineLighting(false)
+        cam.End3D()
+    render.PopRenderTarget()
+    for _, e in ipairs(scene) do e:Remove() end
+    return true
+end
+
+-- The picture for sign `s`: a material, or nil while it has none (no
+-- models on this client, or not shot yet). At most one shot per frame.
+local shotThisFrame = -1
+function City.AdPicture(s)
+    if not s.pic then return nil end
+    local P = City._pics[s]
+    if not P then
+        -- named by the ad, so a rebuild reuses its render target
+        local name = "bmxcity_pic_" .. (s.text or "ad"):lower():gsub("[^%w]", "")
+        local rt = GetRenderTargetEx(name, City.PIC_SIZE, City.PIC_SIZE, RT_SIZE_NO_CHANGE, MATERIAL_RT_DEPTH_SEPARATE,
+            0, 0, IMAGE_FORMAT_RGB888)
+        P = { rt = rt, at = -math.huge,
+              mat = CreateMaterial(name .. "_mat", "UnlitGeneric", { ["$basetexture"] = rt:GetName() }) }
+        City._pics[s] = P
+    end
+    local now = RealTime()
+    if now - P.at > City.PIC_EVERY and shotThisFrame ~= FrameNumber() then
+        shotThisFrame = FrameNumber()
+        P.ok = shoot(s, P)
+        P.at = now
+    end
+    return P.ok and P.mat or nil
+end
+
 -- The looks:
 --   ad        a comic billboard ad: sunburst rays, a starburst badge that
 --             shouts (`burst`, "\\n" for a second line), an outlined headline,
@@ -414,7 +526,7 @@ local function makeFonts()
     fontsMade = true
     surface.CreateFont("BMXCitySign", { font = "Coolvetica", size = 120, weight = 800, antialias = true })
     surface.CreateFont("BMXCitySignSub", { font = "Roboto", size = 40, weight = 700, antialias = true })
-    for _, sz in ipairs({ 120, 100, 84, 70, 58 }) do
+    for _, sz in ipairs({ 120, 100, 84, 70, 58, 48 }) do
         surface.CreateFont("BMXCityAd" .. sz, { font = "Impact", size = sz, weight = 500, antialias = true })
     end
     for _, sz in ipairs({ 44, 36, 30 }) do
@@ -422,6 +534,24 @@ local function makeFonts()
     end
     surface.CreateFont("BMXCityAdBrand", { font = "Roboto", size = 26, weight = 700, antialias = true })
     surface.CreateFont("BMXCityTransit", { font = "Roboto", size = 70, weight = 800, antialias = true })
+    for _, sz in ipairs({ 110, 90, 72, 60, 48 }) do
+        surface.CreateFont("BMXCityNeon" .. sz, { font = "Coolvetica", size = sz, weight = 500, antialias = true })
+    end
+    for _, sz in ipairs({ 110, 90, 72, 60, 48 }) do
+        surface.CreateFont("BMXCitySerif" .. sz, { font = "Georgia", size = sz, weight = 700, antialias = true })
+    end
+    for _, sz in ipairs({ 40, 32, 26, 22, 18 }) do
+        surface.CreateFont("BMXCitySerifSub" .. sz, { font = "Georgia", size = sz, weight = 400, italic = true, antialias = true })
+    end
+    for _, sz in ipairs({ 96, 80, 66, 54, 44 }) do
+        surface.CreateFont("BMXCityThin" .. sz, { font = "Roboto Light", size = sz, weight = 300, antialias = true })
+    end
+    for _, sz in ipairs({ 38, 32, 26, 24, 20, 18 }) do
+        surface.CreateFont("BMXCityThinSub" .. sz, { font = "Roboto", size = sz, weight = 400, antialias = true })
+    end
+    for _, sz in ipairs({ 40, 34, 28, 24, 20, 18 }) do
+        surface.CreateFont("BMXCityAdSub" .. sz, { font = "Roboto", size = sz, weight = 800, antialias = true })
+    end
 end
 
 local WHITE = Color(255, 255, 255)
@@ -467,73 +597,300 @@ local function clipRect(poly, x0, y0, x1, y1)
 end
 City.ClipRect = clipRect
 
--- A comic ad: a two-tone ground with sunburst rays behind a starburst badge,
--- a fat outlined headline, the gag line, and the fine print that undoes it.
-local function adSign(s, pw, ph)
-    local bg, bg2 = col(s.bg, { 255, 220, 40 }), col(s.bg2 or s.bg, { 255, 140, 0 })
-    local fg, band = col(s.fg, { 230, 30, 60 }), col(s.band, { 20, 30, 80 })
-    local burst = col(s.burstColor, { 255, 40, 40 })
-    draw.NoTexture()
-    -- frame
-    surface.SetDrawColor(245, 245, 245, 255) surface.DrawRect(-pw / 2 - 14, -ph / 2 - 14, pw + 28, ph + 28)
-    surface.SetDrawColor(40, 40, 44, 255) surface.DrawRect(-pw / 2 - 4, -ph / 2 - 4, pw + 8, ph + 8)
-    -- ground: top to bottom, bg into bg2
-    for i = 0, 11 do
-        local f = i / 11
-        surface.SetDrawColor(bg.r + (bg2.r - bg.r) * f, bg.g + (bg2.g - bg.g) * f, bg.b + (bg2.b - bg.b) * f, 255)
-        surface.DrawRect(-pw / 2, -ph / 2 + ph * i / 12, pw, ph / 12 + 1)
+-- ADS COME IN STYLES, so a street of them does not look like one poster
+-- printed eight times. `style` picks one (default "comic"):
+--   comic    sunburst, starburst sticker, outlined Impact, the gag line
+--   classic  a vintage poster: cream paper, ink borders, serif type, a ribbon
+--   minimal  modern: flat colour, full-height product shot, light type
+--   tv       a news broadcast: the shot as the picture, LIVE bug, lower third
+--   sale     retail: candy stripes, a tilted price tag, SALE in red
+--   split    two colours split on a diagonal, a tilted polaroid of the product
+--   neon     night: a dark wall, glowing tubes that flicker now and then
+-- Every style takes the same fields (text, sub, fine, burst, price, colours).
+
+local INK = Color(20, 20, 30)
+
+-- a frame and the lamps over it; kinds differ by style
+local function frame(pw, ph, kind)
+    if kind == "wood" then
+        surface.SetDrawColor(92, 60, 32, 255) surface.DrawRect(-pw / 2 - 22, -ph / 2 - 22, pw + 44, ph + 44)
+        surface.SetDrawColor(130, 90, 50, 255) surface.DrawRect(-pw / 2 - 12, -ph / 2 - 12, pw + 24, ph + 24)
+    elseif kind == "alu" then
+        surface.SetDrawColor(170, 174, 180, 255) surface.DrawRect(-pw / 2 - 8, -ph / 2 - 8, pw + 16, ph + 16)
+    elseif kind == "bezel" then
+        surface.SetDrawColor(18, 18, 20, 255) surface.DrawRect(-pw / 2 - 26, -ph / 2 - 26, pw + 52, ph + 52)
+        surface.SetDrawColor(60, 60, 66, 255) surface.DrawOutlinedRect(-pw / 2 - 26, -ph / 2 - 26, pw + 52, ph + 52, 3)
+        return
+    elseif kind == "brackets" then
+        surface.SetDrawColor(60, 60, 66, 255)
+        for _, x in ipairs({ -pw * 0.35, pw * 0.35 }) do surface.DrawRect(x - 6, -ph / 2 - 30, 12, 30) end
+        return
+    else
+        surface.SetDrawColor(245, 245, 245, 255) surface.DrawRect(-pw / 2 - 14, -ph / 2 - 14, pw + 28, ph + 28)
+        surface.SetDrawColor(40, 40, 44, 255) surface.DrawRect(-pw / 2 - 4, -ph / 2 - 4, pw + 8, ph + 8)
     end
-    -- sunburst rays from the badge, alternate wedges a shade lighter
-    local bx, by, br = pw / 2 - ph * 0.42, -ph * 0.08, ph * 0.3
-    surface.SetDrawColor(255, 255, 255, 46)
-    local reach = pw * 1.4
-    for i = 0, 15, 2 do
-        local a0, a1 = i / 16 * math.pi * 2, (i + 1) / 16 * math.pi * 2
-        local ray = clipRect({ { x = bx, y = by },
-            { x = bx + math.cos(a0) * reach, y = by + math.sin(a0) * reach },
-            { x = bx + math.cos(a1) * reach, y = by + math.sin(a1) * reach } }, -pw / 2, -ph / 2, pw / 2, ph / 2)
-        if #ray >= 3 then surface.DrawPoly(ray) end
-    end
-    -- the fine-print band along the bottom
-    surface.SetDrawColor(band) surface.DrawRect(-pw / 2, ph / 2 - ph * 0.17, pw, ph * 0.17)
-    -- headline: shadow, then outlined
-    local x0 = -pw / 2 + pw * 0.04
-    local room = (bx - br * 1.15) - x0
-    local hf = fit("BMXCityAd", { 120, 100, 84, 70, 58 }, s.text, room)
-    draw.SimpleText(s.text, hf, x0 + 6, -ph * 0.2 + 6, Color(0, 0, 0, 110), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-    draw.SimpleTextOutlined(s.text, hf, x0, -ph * 0.2, fg, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 5, Color(20, 20, 30))
-    if s.sub then
-        draw.SimpleTextOutlined(s.sub, fit("BMXCityAdSub", { 44, 36, 30 }, s.sub, room), x0, ph * 0.08,
-            col(s.subColor, { 255, 255, 255 }), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 3, Color(20, 20, 30))
-    end
-    if s.fine then
-        draw.SimpleText(s.fine, "BMXCityAdBrand", x0, ph / 2 - ph * 0.085, Color(255, 255, 255, 230), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-    end
-    -- the starburst badge: a 16-point star, a white rim, the shout inside
-    local star = {}
-    for i = 0, 31 do
-        local a = i / 32 * math.pi * 2 - math.pi / 2
-        local rr = (i % 2 == 0) and br * 1.12 or br * 0.86
-        star[#star + 1] = { x = bx + math.cos(a) * rr, y = by + math.sin(a) * rr }
-    end
-    surface.SetDrawColor(255, 255, 255, 255)
-    local rim = {}
-    for i, p in ipairs(star) do rim[i] = { x = bx + (p.x - bx) * 1.08, y = by + (p.y - by) * 1.08 } end
-    surface.DrawPoly(rim)
-    surface.SetDrawColor(burst) surface.DrawPoly(star)
-    if s.burst then
-        local lines = string.Explode("\n", s.burst)
-        for i, l in ipairs(lines) do
-            draw.SimpleTextOutlined(l, fit("BMXCityAdSub", { 44, 36, 30 }, l, br * 1.5), bx, by + (i - (#lines + 1) / 2) * br * 0.42,
-                Color(255, 255, 90), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER, 2, Color(60, 0, 0))
-        end
-    end
-    -- lamps on arms along the top edge
     for i = 1, 4 do
         local lx = -pw / 2 + pw * (i - 0.5) / 4
-        surface.SetDrawColor(50, 50, 55, 255) surface.DrawRect(lx - 3, -ph / 2 - 40, 6, 30)
-        surface.SetDrawColor(255, 245, 200, 255) surface.DrawRect(lx - 16, -ph / 2 - 46, 32, 10)
+        surface.SetDrawColor(50, 50, 55, 255) surface.DrawRect(lx - 3, -ph / 2 - 46, 6, 30)
+        surface.SetDrawColor(255, 245, 200, 255) surface.DrawRect(lx - 16, -ph / 2 - 52, 32, 10)
     end
+end
+
+local function gradient(x, y, w, h, a, b, steps)
+    steps = steps or 12
+    for i = 0, steps - 1 do
+        local f = i / (steps - 1)
+        surface.SetDrawColor(a.r + (b.r - a.r) * f, a.g + (b.g - a.g) * f, a.b + (b.b - a.b) * f, 255)
+        surface.DrawRect(x, y + h * i / steps, w, h / steps + 1)
+    end
+end
+
+local function photo(pic, x, y, sz, mount)
+    if not pic then return end
+    if mount then
+        surface.SetDrawColor(0, 0, 0, 80) surface.DrawRect(x + 10, y + 10, sz, sz)
+        surface.SetDrawColor(mount) surface.DrawRect(x - 8, y - 8, sz + 16, sz + 16)
+    end
+    surface.SetMaterial(pic)
+    surface.SetDrawColor(255, 255, 255, 255)
+    surface.DrawTexturedRect(x, y, sz, sz)
+    draw.NoTexture()
+end
+
+-- draw fn() rotated by `deg` about (cx, cy) on the panel
+local function tilted(cx, cy, deg, fn)
+    local m = Matrix()
+    m:Translate(Vector(cx, cy, 0))
+    m:Rotate(Angle(0, deg, 0))
+    cam.PushModelMatrix(m, true)
+        fn()
+    cam.PopModelMatrix()
+end
+
+local function star(cx, cy, r, points, inner)
+    local p = {}
+    for i = 0, points * 2 - 1 do
+        local a = i / (points * 2) * math.pi * 2 - math.pi / 2
+        local rr = (i % 2 == 0) and r or r * (inner or 0.77)
+        p[#p + 1] = { x = cx + math.cos(a) * rr, y = cy + math.sin(a) * rr }
+    end
+    return p
+end
+
+local function sticker(s, cx, cy, r, fill)
+    if not s.burst then return end
+    local rim = star(cx, cy, r * 1.08, 16)
+    surface.SetDrawColor(255, 255, 255, 255) surface.DrawPoly(rim)
+    surface.SetDrawColor(fill) surface.DrawPoly(star(cx, cy, r, 16))
+    local lines = string.Explode("\n", s.burst)
+    for i, l in ipairs(lines) do
+        draw.SimpleTextOutlined(l, fit("BMXCityAdSub", { 44, 36, 30, 24 }, l, r * 1.5), cx, cy + (i - (#lines + 1) / 2) * r * 0.42,
+            Color(255, 255, 90), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER, 2, Color(60, 0, 0))
+    end
+end
+
+local STYLES = {}
+
+function STYLES.comic(s, pw, ph, pic)
+    local bg, bg2 = col(s.bg, { 255, 220, 40 }), col(s.bg2 or s.bg, { 255, 140, 0 })
+    local fg, band = col(s.fg, { 230, 30, 60 }), col(s.band, { 20, 30, 80 })
+    frame(pw, ph)
+    gradient(-pw / 2, -ph / 2, pw, ph, bg, bg2)
+    local psz = ph * 0.76
+    local px, py = pw / 2 - psz - ph * 0.05, -ph / 2 + ph * 0.035
+    local rcx, rcy = pic and px + psz / 2 or pw / 2 - ph * 0.42, pic and py + psz / 2 or -ph * 0.08
+    surface.SetDrawColor(255, 255, 255, 46)
+    for i = 0, 15, 2 do
+        local a0, a1 = i / 16 * math.pi * 2, (i + 1) / 16 * math.pi * 2
+        local ray = clipRect({ { x = rcx, y = rcy }, { x = rcx + math.cos(a0) * pw * 1.4, y = rcy + math.sin(a0) * pw * 1.4 },
+            { x = rcx + math.cos(a1) * pw * 1.4, y = rcy + math.sin(a1) * pw * 1.4 } }, -pw / 2, -ph / 2, pw / 2, ph / 2)
+        if #ray >= 3 then surface.DrawPoly(ray) end
+    end
+    surface.SetDrawColor(band) surface.DrawRect(-pw / 2, ph / 2 - ph * 0.17, pw, ph * 0.17)
+    photo(pic, px, py, psz, WHITE)
+    local x0 = -pw / 2 + pw * 0.04
+    local room = (pic and px - 24 or rcx - ph * 0.35) - x0
+    local hf = fit("BMXCityAd", { 120, 100, 84, 70, 58 }, s.text, room)
+    draw.SimpleText(s.text, hf, x0 + 6, -ph * 0.2 + 6, Color(0, 0, 0, 110), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    draw.SimpleTextOutlined(s.text, hf, x0, -ph * 0.2, fg, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 5, INK)
+    if s.sub then draw.SimpleTextOutlined(s.sub, fit("BMXCityAdSub", { 44, 36, 30 }, s.sub, room), x0, ph * 0.08, col(s.subColor, { 255, 255, 255 }), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 3, INK) end
+    if s.fine then draw.SimpleText(s.fine, "BMXCityAdBrand", x0, ph / 2 - ph * 0.085, Color(255, 255, 255, 230), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    if pic then sticker(s, px + psz - ph * 0.02, py + ph * 0.06, ph * 0.16, col(s.burstColor, { 255, 40, 40 }))
+    else sticker(s, rcx, rcy, ph * 0.3, col(s.burstColor, { 255, 40, 40 })) end
+end
+
+function STYLES.classic(s, pw, ph, pic)
+    local paper, ink, accent = col(s.bg, { 243, 232, 206 }), col(s.fg, { 120, 28, 28 }), col(s.band, { 28, 46, 86 })
+    frame(pw, ph, "wood")
+    surface.SetDrawColor(paper) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    -- foxing at the edges: an aged print
+    surface.SetDrawColor(120, 90, 40, 26)
+    for i = 1, 3 do surface.DrawOutlinedRect(-pw / 2 + i * 4, -ph / 2 + i * 4, pw - i * 8, ph - i * 8, 4) end
+    surface.SetDrawColor(ink) surface.DrawOutlinedRect(-pw / 2 + 18, -ph / 2 + 18, pw - 36, ph - 36, 4)
+    surface.DrawOutlinedRect(-pw / 2 + 30, -ph / 2 + 30, pw - 60, ph - 60, 2)
+    local psz = ph * 0.62
+    local px, py = pw / 2 - psz - ph * 0.12, -psz / 2 - ph * 0.02
+    if pic then
+        photo(pic, px, py, psz, ink)
+        surface.SetDrawColor(paper) surface.DrawOutlinedRect(px - 4, py - 4, psz + 8, psz + 8, 3)
+    end
+    local cx = pic and (-pw / 2 + (px - 30 + pw / 2) / 2) or 0
+    local room = pic and (px - 60 - (-pw / 2 + 50)) or pw - 120
+    if s.burst then
+        local rib = s.burst:gsub("\n", " ")
+        local rw = math.min(room, 360)
+        surface.SetDrawColor(accent) surface.DrawRect(cx - rw / 2, -ph * 0.36, rw, 40)
+        draw.SimpleText(rib, fit("BMXCitySerifSub", { 32, 26, 22 }, rib, rw - 20), cx, -ph * 0.36 + 20, paper, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    draw.SimpleText(s.text, fit("BMXCitySerif", { 110, 90, 72, 60, 48 }, s.text, room), cx, -ph * 0.1, ink, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    surface.SetDrawColor(ink) surface.DrawRect(cx - room * 0.3, ph * 0.04, room * 0.6, 3)
+    if s.sub then draw.SimpleText(s.sub, fit("BMXCitySerifSub", { 40, 32, 26 }, s.sub, room), cx, ph * 0.15, accent, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER) end
+    if s.fine then draw.SimpleText(s.fine, fit("BMXCitySerifSub", { 26, 22, 18 }, s.fine, room), cx, ph * 0.33, Color(ink.r, ink.g, ink.b, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER) end
+end
+
+function STYLES.minimal(s, pw, ph, pic)
+    local bg, fg, accent = col(s.bg, { 24, 26, 32 }), col(s.fg, { 250, 250, 250 }), col(s.band, { 0, 200, 140 })
+    frame(pw, ph, "alu")
+    surface.SetDrawColor(bg) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    local x0 = -pw / 2 + ph * 0.12
+    if pic then photo(pic, -pw / 2, -ph / 2, ph) x0 = -pw / 2 + ph + ph * 0.1 end
+    local room = pw / 2 - x0 - ph * 0.1
+    surface.SetDrawColor(accent) surface.DrawRect(x0, -ph * 0.3, 70, 6)
+    draw.SimpleText(s.text, fit("BMXCityThin", { 96, 80, 66, 54, 44 }, s.text, room), x0, -ph * 0.1, fg, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    if s.sub then draw.SimpleText(s.sub, fit("BMXCityThinSub", { 38, 32, 26 }, s.sub, room), x0, ph * 0.1, Color(fg.r, fg.g, fg.b, 190), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    if s.fine then draw.SimpleText(s.fine, fit("BMXCityThinSub", { 24, 20, 18 }, s.fine, room), x0, ph * 0.34, Color(fg.r, fg.g, fg.b, 120), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    if s.burst then
+        local b = s.burst:gsub("\n", " ")
+        draw.SimpleText(b, "BMXCityThinSub24", pw / 2 - ph * 0.08, -ph / 2 + ph * 0.1, accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+    end
+end
+
+function STYLES.tv(s, pw, ph, pic)
+    local bar, tag = col(s.band, { 14, 40, 120 }), col(s.burstColor, { 210, 20, 30 })
+    frame(pw, ph, "bezel")
+    gradient(-pw / 2, -ph / 2, pw, ph, col(s.bg, { 30, 50, 110 }), col(s.bg2, { 8, 12, 40 }))
+    -- the shot fills the picture; scanlines over it
+    local psz = ph
+    photo(pic, pw / 2 - psz, -ph / 2, psz)
+    surface.SetDrawColor(0, 0, 0, 40)
+    for y = -ph / 2, ph / 2, 6 do surface.DrawRect(-pw / 2, y, pw, 2) end
+    -- LIVE bug
+    surface.SetDrawColor(tag) surface.DrawRect(-pw / 2 + 24, -ph / 2 + 22, 120, 46)
+    draw.SimpleText(s.burst and s.burst:gsub("\n", " ") or "LIVE", fit("BMXCityAdSub", { 36, 30, 24 }, s.burst and s.burst:gsub("\n", " ") or "LIVE", 110),
+        -pw / 2 + 84, -ph / 2 + 45, WHITE, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    -- lower third: BREAKING tag, headline bar, ticker
+    local ly = ph * 0.08
+    surface.SetDrawColor(tag) surface.DrawRect(-pw / 2 + 24, ly - 40, 200, 40)
+    draw.SimpleText("BREAKING", "BMXCityAdSub30", -pw / 2 + 124, ly - 20, WHITE, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    surface.SetDrawColor(255, 255, 255, 240) surface.DrawRect(-pw / 2 + 24, ly, pw - 48, 96)
+    draw.SimpleText(s.text, fit("BMXCityAd", { 84, 70, 58 }, s.text, pw - 80), -pw / 2 + 40, ly + 48, bar, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    surface.SetDrawColor(bar) surface.DrawRect(-pw / 2 + 24, ly + 96, pw - 48, 56)
+    if s.sub then draw.SimpleText(s.sub, fit("BMXCityAdSub", { 36, 30, 24 }, s.sub, pw - 80), -pw / 2 + 40, ly + 124, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    surface.SetDrawColor(10, 10, 14, 255) surface.DrawRect(-pw / 2, ph / 2 - 40, pw, 40)
+    if s.fine then draw.SimpleText(s.fine .. "   *   " .. s.fine, "BMXCityAdBrand", -pw / 2 + 20, ph / 2 - 20, Color(255, 220, 60), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+end
+
+function STYLES.sale(s, pw, ph, pic)
+    local bg, stripe, red = col(s.bg, { 255, 236, 60 }), col(s.bg2, { 255, 210, 0 }), col(s.fg, { 220, 20, 30 })
+    frame(pw, ph)
+    surface.SetDrawColor(bg) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    surface.SetDrawColor(stripe)
+    for x = -pw, pw, 90 do
+        local band = clipRect({ { x = x, y = -ph / 2 }, { x = x + 45, y = -ph / 2 }, { x = x + 45 + ph, y = ph / 2 }, { x = x + ph, y = ph / 2 } },
+            -pw / 2, -ph / 2, pw / 2, ph / 2)
+        if #band >= 3 then surface.DrawPoly(band) end
+    end
+    local psz = ph * 0.74
+    local px, py = -pw / 2 + ph * 0.07, -psz / 2
+    photo(pic, px, py, psz, WHITE)
+    local x0 = pic and (px + psz + 40) or (-pw / 2 + 40)
+    local room = pw / 2 - x0 - ph * 0.5
+    draw.SimpleTextOutlined("SALE", fit("BMXCityAd", { 120, 100 }, "SALE", room), x0, -ph * 0.28, red, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 4, WHITE)
+    draw.SimpleTextOutlined(s.text, fit("BMXCityAd", { 84, 70, 58, 48 }, s.text, room), x0, -ph * 0.02, INK, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 3, WHITE)
+    if s.sub then draw.SimpleText(s.sub, fit("BMXCityAdSub", { 36, 30, 24 }, s.sub, room + ph * 0.4), x0, ph * 0.2, INK, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    if s.fine then draw.SimpleText(s.fine, "BMXCityAdBrand", x0, ph * 0.38, Color(80, 60, 0), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    -- the price tag, tilted, with its hole
+    local tx, ty = pw / 2 - ph * 0.3, -ph * 0.02
+    tilted(tx, ty, 12, function()
+        local w, h = ph * 0.46, ph * 0.3
+        surface.SetDrawColor(red)
+        surface.DrawPoly({ { x = -w / 2, y = 0 }, { x = -w / 2 + h / 2, y = -h / 2 }, { x = w / 2, y = -h / 2 }, { x = w / 2, y = h / 2 }, { x = -w / 2 + h / 2, y = h / 2 } })
+        surface.SetDrawColor(bg) surface.DrawPoly(disc(-w / 2 + h * 0.42, 0, h * 0.1, 12))
+        local price = s.price or "$9.99"
+        draw.SimpleText(price, fit("BMXCityAd", { 84, 70, 58, 48 }, price, w * 0.62), w * 0.1, 0, WHITE, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end)
+end
+
+function STYLES.split(s, pw, ph, pic)
+    local a, b = col(s.bg, { 255, 80, 60 }), col(s.bg2, { 40, 60, 200 })
+    frame(pw, ph)
+    surface.SetDrawColor(a) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    surface.SetDrawColor(b)
+    surface.DrawPoly(clipRect({ { x = pw * 0.05, y = -ph / 2 }, { x = pw / 2, y = -ph / 2 }, { x = pw / 2, y = ph / 2 }, { x = -pw * 0.12, y = ph / 2 } },
+        -pw / 2, -ph / 2, pw / 2, ph / 2))
+    surface.SetDrawColor(255, 255, 255, 255)
+    surface.DrawPoly({ { x = pw * 0.05, y = -ph / 2 }, { x = pw * 0.05 + 10, y = -ph / 2 }, { x = -pw * 0.12 + 10, y = ph / 2 }, { x = -pw * 0.12, y = ph / 2 } })
+    local x0 = -pw / 2 + pw * 0.04
+    local room = pw * 0.5
+    draw.SimpleTextOutlined(s.text, fit("BMXCityAd", { 120, 100, 84, 70, 58 }, s.text, room + pw * 0.08), x0, -ph * 0.2, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 5, INK)
+    if s.sub then draw.SimpleTextOutlined(s.sub, fit("BMXCityAdSub", { 40, 34, 28, 24 }, s.sub, room), x0, ph * 0.08, col(s.subColor, { 255, 255, 200 }), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER, 3, INK) end
+    if s.fine then draw.SimpleText(s.fine, fit("BMXCityAdSub", { 24, 20, 18 }, s.fine, room), x0, ph * 0.34, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    if pic then
+        local psz = ph * 0.7
+        tilted(pw / 2 - psz * 0.72, 0, -6, function()
+            surface.SetDrawColor(0, 0, 0, 90) surface.DrawRect(-psz / 2 + 12, -psz / 2 + 12, psz + 20, psz + 60)
+            surface.SetDrawColor(250, 250, 250, 255) surface.DrawRect(-psz / 2 - 10, -psz / 2 - 10, psz + 20, psz + 60)
+            photo(pic, -psz / 2, -psz / 2, psz)
+            if s.burst then
+                draw.SimpleText(s.burst:gsub("\n", " "), fit("BMXCitySerifSub", { 32, 26, 22 }, s.burst:gsub("\n", " "), psz), 0, psz / 2 + 24, INK, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            end
+        end)
+    end
+end
+
+function STYLES.neon(s, pw, ph, pic)
+    local c1, c2 = col(s.fg, { 255, 60, 200 }), col(s.band, { 60, 230, 255 })
+    frame(pw, ph, "brackets")
+    surface.SetDrawColor(16, 14, 22, 255) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    surface.SetDrawColor(255, 255, 255, 8)
+    for y = -ph / 2, ph / 2, 30 do surface.DrawRect(-pw / 2, y, pw, 2) end
+    -- now and then a tube stutters
+    local t = RealTime() + (#s.text * 1.7)
+    local on = not (math.sin(t * 0.9) > 0.97 and math.sin(t * 37) > 0)
+    local glow = on and 1 or 0.25
+    local function tube(x, y, w, h, c)
+        for i = 3, 1, -1 do
+            surface.SetDrawColor(c.r, c.g, c.b, 30 * glow)
+            surface.DrawOutlinedRect(x - i * 4, y - i * 4, w + i * 8, h + i * 8, 4)
+        end
+        surface.SetDrawColor(c.r, c.g, c.b, 255 * glow) surface.DrawOutlinedRect(x, y, w, h, 5)
+    end
+    tube(-pw / 2 + 18, -ph / 2 + 18, pw - 36, ph - 36, c2)
+    local x0 = -pw / 2 + pw * 0.06
+    local room = pw * 0.56
+    if pic then
+        local psz = ph * 0.62
+        local px = pw / 2 - psz - ph * 0.12
+        photo(pic, px, -psz / 2, psz)
+        surface.SetDrawColor(0, 0, 0, 90) surface.DrawRect(px, -psz / 2, psz, psz)   -- the night dims it
+        tube(px - 8, -psz / 2 - 8, psz + 16, psz + 16, c1)
+        room = px - 40 - x0
+    end
+    local hf = fit("BMXCityNeon", { 110, 90, 72, 60, 48 }, s.text, room)
+    for _, o in ipairs({ { -4, 0 }, { 4, 0 }, { 0, -4 }, { 0, 4 } }) do
+        draw.SimpleText(s.text, hf, x0 + o[1], -ph * 0.12 + o[2], Color(c1.r, c1.g, c1.b, 50 * glow), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    end
+    draw.SimpleText(s.text, hf, x0, -ph * 0.12, Color(255, 230, 250, 255 * glow), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    if s.sub then draw.SimpleText(s.sub, fit("BMXCityAdSub", { 40, 34, 28 }, s.sub, room), x0, ph * 0.12, c2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    if s.fine then draw.SimpleText(s.fine, fit("BMXCityAdSub", { 24, 20, 18 }, s.fine, room), x0, ph * 0.3, Color(c2.r, c2.g, c2.b, 160), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+end
+
+City.AdStyles = STYLES
+
+local function adSign(s, pw, ph)
+    draw.NoTexture()
+    local fn = STYLES[s.style or "comic"] or STYLES.comic
+    fn(s, pw, ph, City.AdPicture(s))
 end
 
 local function transitSign(s, pw, ph)
@@ -582,7 +939,10 @@ local function drawSigns(layout)
             local look = LOOKS[s.look or "ad"] or adSign
             -- 14 units proud: in front of any cornice (they stick out 8)
             cam.Start3D2D(p + n * (s.roof and 0.5 or 14), ang, scale)
-                look(s, pw, ph)
+                -- one bad sign must not leave the 3D2D camera open (that
+                -- breaks the rest of the frame): report it once, carry on
+                local ok, err = pcall(look, s, pw, ph)
+                if not ok and not s._err then s._err = true ErrorNoHalt("[BMX] city sign " .. tostring(s.text) .. ": " .. tostring(err) .. "\n") end
             cam.End3D2D()
         end
     end

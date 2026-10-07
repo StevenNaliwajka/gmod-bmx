@@ -91,6 +91,8 @@ local SERVER_FILES = {
 }
 
 local CLIENT_FILES = {
+    "bmx/cl_bikegeo.lua",   -- the bike model, built as triangles (pure Lua)
+    "bmx/cl_bikemesh.lua",  -- ...as IMeshes: materials, lighting, drawing
     "bmx/cl_view.lua",
     "bmx/cl_hud.lua",
     "bmx/cl_sound.lua",

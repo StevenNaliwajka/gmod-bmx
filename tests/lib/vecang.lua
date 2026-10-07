@@ -57,6 +57,7 @@ end
 function VMT:LengthSqr() return self.x * self.x + self.y * self.y + self.z * self.z end
 function VMT:Length() return sqrt(self:LengthSqr()) end
 function VMT:Distance(b) return (self - b):Length() end
+function VMT:DistToSqr(b) return (self - b):LengthSqr() end
 function VMT:GetNormalized()
     local l = self:Length()
     if l == 0 then return V(0, 0, 0) end

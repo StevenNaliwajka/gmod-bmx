@@ -267,6 +267,12 @@ client{ name = "bmx_color_default", kind = "string", default = "red", maxLen = 2
     help = "The paint on bikes you spawn: a colour name (red, blue, pink ...) or a number from the palette." }
 
 
+client{ name = "bmx_bike_model", kind = "bool", default = true, category = "advanced",
+    label = "Detailed bike model",
+    help = "Draw bikes as the detailed model. Off draws the simple bike made of shapes, which is lighter on an old PC." }
+client{ name = "bmx_bike_build_ms", kind = "float", default = 4, min = 0.5, max = 50, decimals = 1,
+    category = "advanced", label = "Bike model build time",
+    help = "Milliseconds a frame spent building the detailed bike the first time one is seen. Higher builds it sooner, with a bigger hitch." }
 client{ name = "bmx_lod_scale", kind = "float", default = 1, min = 0, max = 4, decimals = 1,
     category = "advanced", label = "Bike detail distance",
     help = "How far away bikes keep full detail. 1 is normal, 2 is twice as far, 0 always draws every part." }

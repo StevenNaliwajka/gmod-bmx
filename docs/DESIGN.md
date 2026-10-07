@@ -602,13 +602,35 @@ once on a timer and anything later joined a queue that had already been drained.
 
 ## 8. Content and licensing
 
-The stock bike ships no model at all. `cl_init.lua` draws a 20-inch BMX from
-camera-facing beams and boxes: frame, fork, tall swept bars that turn with the
-steer angle, seat, cranks that turn at the networked cadence, chain, pegs, and a
-kickstand when parked. It is sized from the bike's own wheelbase, and the stays
-and fork run to where the wheels actually are, so the drawing still shows exactly
-where the simulation has its wheels: the debugging property the old placeholder
-(a Hunter plate with wheel rings) was kept for. Zero content dependencies, clone
+The stock bike ships no model file. Its model is BUILT, in code:
+`bmx/cl_bikegeo.lua` makes a mid-school street BMX at real dimensions as
+triangles (swept and lathed tubes, extruded plates, lofted saddle and cranks:
+~75k triangles), `bmx/cl_bikemesh.lua` turns it into IMeshes once per bike size
+(in a coroutine, a few ms a frame; the simple bike stands in meanwhile), makes
+its VertexLitGeneric materials over render-target textures (white base, flat
+normal map for Phong, a fixed HL2 reflection cubemap, the down-tube graphic and
+tyre lettering drawn at runtime), and lights it. `cl_init.lua`'s `DrawDetailed`
+places each rigid part -- frame, fork, bars, both wheels, cranks, two pedals --
+by one matrix read off a point map, so the tricks (whip, barspin, turndown)
+compose exactly the rotations the simple bike uses, and the rider's hands and
+feet come from the same maps. The frame is rigid, so it is pitched about the
+rear axle until its front dropouts meet the front wheel: the rear wheel is
+exactly where the simulation has it, the front within a fraction of a unit.
+
+Three things about drawing IMeshes in GMod that cost an evening each:
+an IMesh is not lit by the engine (engine lighting is suppressed and an
+ambient cube sampled with `render.ComputeLighting` along the six axes is set,
+plus one directional light from the bright side); a local light given without
+its falloff terms divides by zero and turns everything flat full-bright; and
+Source's front faces are wound the other way from the builder's right-handed
+convention, so the converter swaps each triangle's last two vertices (with
+`$nocull` the model looked fine and drew every back face too).
+
+The simple bike -- camera-facing beams, XQM cylinders and spheres, the stays
+and fork running to where the wheels actually are -- remains as
+`bmx_bike_model 0` and as what `bmx_debug` draws: it shows exactly where the
+simulation has its wheels, the debugging property the old placeholder (a
+Hunter plate with wheel rings) was kept for. Zero content dependencies, clone
 and ride.
 
 A real model needs: a frame, a fork that steers with the front wheel, two

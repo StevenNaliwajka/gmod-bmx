@@ -509,6 +509,148 @@ local Q       = 3.4     -- half the distance between the pedals
 local RING    = 3.8     -- chainring radius
 local COG     = 1.3     -- rear cog radius
 local CHAINY  = -2.3    -- the drive side is the RIGHT, which is -Y in Source
+local GRIP_IN, GRIP_OUT = 11, 14.5   -- the grips, along the bar from its centre
+
+--------------------------------------------------------------------------
+-- THE DETAILED BIKE (bmx/cl_bikegeo.lua, bmx/cl_bikemesh.lua): a real model
+-- in rigid parts, each placed by one matrix.
+--
+-- The frame is RIGID, as a bike's is. The simple bike bends its stays and
+-- fork to wherever the two suspension traces put the axles; a model cannot,
+-- so the frame is pitched about the rear axle until its front axle points
+-- at the front wheel's: both wheels then sit on their dropouts, the rear one
+-- exactly where the simulation has it and the front one within a fraction of
+-- a unit. The fork turns about the real (raked) head tube axis.
+--
+-- Every group is placed by a POINT MAP -- a function taking model space to
+-- world -- and its matrix read off the map, so the tricks compose the same
+-- rotations the simple bike uses (whip about the head tube, barspin, the
+-- turndown about the stem) without a second copy of the maths. The rider's
+-- hand and foot targets are taken from the same maps.
+--------------------------------------------------------------------------
+local Y_AXIS = Vector(0, 1, 0)
+
+local function matFromMap(f)
+    local o = f(Vector(0, 0, 0))
+    return BMX.BikeMesh.Matrix(o, f(Vector(1, 0, 0)) - o, f(Vector(0, 1, 0)) - o, f(Vector(0, 0, 1)) - o), o
+end
+
+-- A wheel's matrix: the carrying part's axes, turned by the spin about its
+-- axle (+y, left). Positive spin rolls the top of the wheel forward.
+local function wheelMat(map, centre, spin)
+    local o = map(centre)
+    local ex = map(centre + Vector(1, 0, 0)) - o
+    local ey = map(centre + Vector(0, 1, 0)) - o
+    local ez = map(centre + Vector(0, 0, 1)) - o
+    return BMX.BikeMesh.Matrix(o, rotVec(ex, ey, spin), ey, rotVec(ez, ey, spin))
+end
+
+function ENT:DrawDetailed(model, S)
+    local BM = BMX.BikeMesh
+    local k, fwd, up, right = S.k, S.fwd, S.up, S.right
+    local half = S.C.Wheel.wheelbase * 0.5
+    local lay = model.layout
+
+    -- Chassis space, as the simple bike has it (rolled for a tabletop).
+    local function P0(m)
+        local p = self:LocalToWorld(m + S.lift0)
+        return S.bodyRoll ~= 0 and rotAbout(p, S.bodyC, self:GetForward(), S.bodyRoll) or p
+    end
+    -- Pitched to sit on both axles.
+    local rA0, fA0 = P0(Vector(-half, 0, 0)), P0(Vector(half, 0, 0))
+    local a, b = fA0 - rA0, S.fPos - S.rPos
+    a = a - right * a:Dot(right)
+    b = b - right * b:Dot(right)
+    local phi = math.atan2(right:Dot(a:Cross(b)), a:Dot(b))
+    local rPos = S.rPos
+    local function Pf(m) return rPos + rotVec(P0(m) - rA0, right, phi) end
+    local upF = rotVec(up, right, phi)
+
+    local headB = Pf(FRAME.headB * k)
+    local steerAxis = (Pf(FRAME.headT * k) - headB):GetNormalized()
+    local function frameMap(m) return rotAbout(Pf(m), headB, steerAxis, S.whipAng) end
+    local function forkMap(m) return rotAbout(Pf(m), headB, steerAxis, S.barAng - S.steer) end
+    local function barsMap(spin)
+        local stem = rotAbout(Pf(lay.stemTop), headB, steerAxis, spin - S.steer)
+        local axis = rotVec(right, steerAxis, spin - S.steer)
+        return function(m)
+            local p = rotAbout(Pf(m), headB, steerAxis, spin - S.steer)
+            return S.barsTurn ~= 0 and rotAbout(p, stem, axis, S.barsTurn) or p
+        end
+    end
+    local barsDraw = barsMap(S.barAng + S.barsSpin)
+
+    local crank = self.crankAngle
+    local bbM = FRAME.bb * k
+    local function crankMap(m) return frameMap(bbM + rotVec(m - bbM, Y_AXIS, crank)) end
+    local function tip(side)            -- side 1 = right (forward at angle 0)
+        local arm = rotVec(Vector(CRANK * k * side, 0, 0), Y_AXIS, crank)
+        return bbM + arm + Vector(0, -(Q + 1.8) * k * side, 0)
+    end
+
+    local paint = BMX.PaletteColor(self:GetColorIndex())
+    local lod = S.lod
+    BM.BeginLighting(self:LocalToWorld(Vector(0, 0, 14 * k)), self)
+        BM.DrawGroup(model, "frame", matFromMap(frameMap), paint, lod)
+        BM.DrawGroup(model, "fork", matFromMap(forkMap), paint, lod)
+        BM.DrawGroup(model, "bars", matFromMap(barsDraw), paint, lod)
+        BM.DrawGroup(model, "wheelR", wheelMat(frameMap, Vector(-half, 0, 0), S.rSpin), paint, lod)
+        BM.DrawGroup(model, "wheelF", wheelMat(forkMap, Vector(half, 0, 0), S.fSpin), paint, lod)
+        BM.DrawGroup(model, "cranks", matFromMap(crankMap), paint, lod)
+        for _, side in ipairs({ 1, -1 }) do
+            local t = tip(side)
+            BM.DrawGroup(model, "pedal", matFromMap(function(m) return frameMap(t + m) end), paint, lod)
+        end
+
+        -- The brake cable's loop from the lever to the gyro, hanging slack.
+        if lod < 2 then
+            local lever = barsDraw(lay.lever)
+            local gyro = frameMap(lay.gyro + Vector(-0.9, 0, -0.25) * k)
+            local sag = 0.3 * lever:Distance(gyro)
+            local c1 = (lever + gyro) * 0.5 - upF * sag + fwd * (0.4 * sag)
+            BM.DrawTube(bezier(lever, c1, gyro, lod == 0 and 10 or 4), 0.1 * k, "plastic", 6)
+        end
+
+        -- Kickstand, when it is down: to the ground on the left.
+        if self:GetStandDown() then
+            local o = frameMap(Vector(0, 0, 0))
+            local leftW = frameMap(Vector(0, 1, 0)) - o
+            local upW = frameMap(Vector(0, 0, 1)) - o
+            local from = frameMap(bbM + Vector(-1.2, 2.0, -0.2) * k)
+            local want = from - upW * (16 * k) + leftW * (7 * k)
+            local to = want
+            if lod < 2 then
+                local tr = util.TraceLine({ start = from, endpos = want,
+                    filter = { self, self:GetPod() }, mask = MASK_SOLID })
+                if tr.Hit then to = tr.HitPos end
+            end
+            BM.DrawTube({ from, to }, 0.33 * k, "black", 8)
+            BM.DrawTube({ to + (to - from):GetNormalized() * (-0.6 * k), to + leftW * (0.9 * k) }, 0.3 * k, "black", 8)
+        end
+    BM.EndLighting()
+
+    -- Where the rider's hands and feet go (cl_rider.lua): the same maps, with
+    -- the barspin left out (the hands let go of spinning bars).
+    local hands = barsMap(S.barsSpin)
+    local B = FRAME.bars
+    local ik = {}
+    local function grip(side)
+        local A = hands(Vector(B.x, -GRIP_IN * side, B.z) * k)
+        local Z = hands(Vector(B.x, -GRIP_OUT * side, B.z) * k)
+        return A, Z
+    end
+    ik.rHandA, ik.rHandB = grip(1)
+    ik.lHandA, ik.lHandB = grip(-1)
+    ik.rHand = ik.rHandA + (ik.rHandB - ik.rHandA):GetNormalized() * (1.75 * k)
+    ik.lHand = ik.lHandA + (ik.lHandB - ik.lHandA):GetNormalized() * (1.75 * k)
+    ik.rFoot = Pf(tip(1)) + upF * (0.9 * k)
+    ik.lFoot = Pf(tip(-1)) + upF * (0.9 * k)
+    self.ikTargets = ik
+    BMX.ApplyPoseTargets(ik, S.W, function(v)
+        local p = self:LocalToWorld(v * k + S.lift0)
+        return S.bodyRoll ~= 0 and rotAbout(p, S.bodyC, self:GetForward(), S.bodyRoll) or p
+    end, BMX.PoseSetFor(self).poses)
+end
 
 function ENT:Draw()
     drawing = self
@@ -645,6 +787,24 @@ function ENT:Draw()
 
     local rPosD, rearAxleD = Wh(rPos), Wv(rearAxle)
     local fPosD, frontAxleD = Bs(fPos), Bv(frontAxle)
+
+    -- The detailed model, once it is built (bmx_bike_model). bmx_debug draws
+    -- the simple bike instead: its red no-ground tyres and part axes are the
+    -- debugging aid.
+    local model = not debug and not bike.hasModel and not bike.wheelModel
+        and (bike.family or "bike") == "bike"
+        and BMX.BikeMesh and BMX.BikeMesh.Get(k, WC.radius)
+    if model then
+        self.crankAngle = rSpin / C.Drive.gearRatio
+        self:DrawDetailed(model, {
+            k = k, lift0 = lift0, fwd = fwd, up = up, right = right,
+            bodyRoll = bodyRoll, bodyC = bodyC, fPos = fPos, rPos = rPos,
+            fSpin = fSpin, rSpin = rSpin, steer = steer,
+            whipAng = whipAng, barAng = barAng, barsSpin = barsSpin, barsTurn = barsTurn,
+            W = W, lod = lod, C = C,
+        })
+        return
+    end
 
     if not bike.wheelModel then
         drawWheel(self, "front", fPosD, frontAxleD, fSpin, WC.radius, fHit, debug, lod)

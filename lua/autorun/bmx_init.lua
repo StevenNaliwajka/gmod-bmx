@@ -39,6 +39,8 @@ local SHARED = {
     "bmx/sh_settings.lua",    -- every player and admin setting, in one list (after sh_config: reads its defaults)
     "bmx/sh_permissions.lua", -- CAMI privileges and BMX.Can
     "bmx/sh_util.lua",
+    "bmx/sh_lean.lua",      -- the lean/steer controller's arithmetic, shared with the client's prediction (G30)
+    "bmx/sh_predict.lua",   -- G30: the pure parts of prediction, the latency probe and lag comp
     "bmx/sh_tricks.lua",    -- the trick registry; the scoring and the overlay read it
     "bmx/sh_vehicles.lua",  -- what a vehicle is: families, input maps, pose sets, the checks
     "bmx/sh_gears.lua",     -- the gear model: ratios, cadence, which gear a bike is in (G09)
@@ -58,6 +60,7 @@ local SERVER_FILES = {
     "bmx/sv_balance.lua",
     "bmx/sv_air.lua",
     "bmx/sv_input.lua",
+    "bmx/sv_lagcomp.lua",   -- G30: bmx_lagcomp: takeoff decisions judged at the tick the input was made
     "bmx/sv_grind.lua",     -- before sv_physics, which calls it
     "bmx/sv_combo.lua",     -- chained tricks: before sv_physics too
     "bmx/sv_tricks.lua",    -- frame/bar spins and style poses: before sv_physics too
@@ -96,6 +99,7 @@ local CLIENT_FILES = {
     "bmx/cl_view.lua",
     "bmx/cl_hud.lua",
     "bmx/cl_sound.lua",
+    "bmx/cl_predict.lua",   -- G30: bmx_predict (display-only lead of the rider's own bike), bmx_latency_probe
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
     "bmx/cl_gears.lua",     -- the shift keys, sent to the server (G09)
     "bmx/cl_passenger.lua", -- who is a passenger, how they sit, where their hands go (G11)

@@ -298,7 +298,10 @@ end
 local function ollie(ent, phys, cfg, dt, inp, st, b, now)
     local bi = B.InputOf(inp)
     if st.grounded then b.lastGround = now end
-    local canPop = (now - b.lastGround) <= T.coyote and now >= b.popReady
+    -- G30: the coyote window is measured to when the rider pressed (inp.cmdAge,
+    -- 0 unless bmx_lagcomp), not to when it arrived. now - 0 == now.
+    local pressed = now - (inp.cmdAge or 0)
+    local canPop = (pressed - b.lastGround) <= T.coyote and now >= b.popReady
 
     if bi.jump then
         if not b.crouching and canPop and not st.grind and not b.kt then
@@ -314,7 +317,7 @@ local function ollie(ent, phys, cfg, dt, inp, st, b, now)
         end
     end
     -- Off the ground with SPACE down and no way to pop: not a crouch any more.
-    if b.crouching and (now - b.lastGround) > T.coyote then b.crouching, b.crouchT = false, 0 end
+    if b.crouching and (pressed - b.lastGround) > T.coyote then b.crouching, b.crouchT = false, 0 end
 end
 
 --------------------------------------------------------------------------

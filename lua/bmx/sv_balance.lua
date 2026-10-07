@@ -98,10 +98,8 @@ function BMX.Balance(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
 
     -- Numerical rates, lightly smoothed. Raw per-substep derivatives are noisy
     -- enough that a Kd of any useful size turns into a buzz.
-    local rollRate  = (roll  - st.lastRoll)  / dt
-    local pitchRate = (pitch - st.lastPitch) / dt
-    st.rollRate  = st.rollRate  + (rollRate  - st.rollRate)  * min(1, 18 * dt)
-    st.pitchRate = st.pitchRate + (pitchRate - st.pitchRate) * min(1, 18 * dt)
+    st.rollRate  = BMX.Lean.FilterRate(st.rollRate,  st.lastRoll,  roll,  dt)
+    st.pitchRate = BMX.Lean.FilterRate(st.pitchRate, st.lastPitch, pitch, dt)
     st.lastRoll  = roll
     st.lastPitch = pitch
     st.roll      = roll
@@ -223,7 +221,7 @@ function BMX.Balance(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
     -- against a quantity that was itself wrong -- the first was the inertia, and
     -- the note beside maxAssistAccel records it.
     local h      = C.Chassis.massCenterExpected.z + C.Wheel.radius
-    local topple = (C.Chassis.mass * gravity() * h * math.sin(roll)) / BMX.IRoll(ent)
+    local topple = BMX.Lean.Topple(C.Chassis.mass, gravity(), h, roll, BMX.IRoll(ent))
 
     -- Reported, not used. The debug overlay earns its keep by showing what the
     -- bike is doing about its own balance, and the gap between these two is how
@@ -235,8 +233,7 @@ function BMX.Balance(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
     end
 
     local err   = targetRoll - roll
-    local alpha = -topple + B.leanKp * err - B.leanKd * st.rollRate
-    alpha = BMX.Clamp(alpha, -ceiling, ceiling) * authority
+    local alpha = BMX.Lean.RollAlpha(topple, B.leanKp, B.leanKd, err, st.rollRate, ceiling, authority)
 
     ----------------------------------------------------------------------
     -- THE SLOW END: kickstand or foot. See C.Stand. Weighted by the authority
@@ -306,22 +303,17 @@ function BMX.Balance(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
     -- As v falls this saturates to maxSteer, which is not a failure mode: it is
     -- the correct answer. Slow riding genuinely does need big steering inputs.
     ----------------------------------------------------------------------
-    local v2 = max(speed * speed, 1)
-    local derived = math.atan(C.Wheel.wheelbase * gravity() * math.tan(roll) / v2)
+    local derived = BMX.Lean.DerivedSteer(C.Wheel.wheelbase, gravity(), roll, speed)
 
     -- Below walking pace the rider is paddling the bike around and steers it
     -- directly, because there is no lean-driven cornering to derive from.
-    local walkBlend = 1 - BMX.Ramp(speed, 0, B.walkSpeed)
-    local direct    = inp.lean * B.maxSteer
-    local target    = derived * (1 - walkBlend) + direct * walkBlend
-    target = BMX.Clamp(target, -B.maxSteer, B.maxSteer)
+    local target = BMX.Lean.SteerTarget(derived, inp.lean, speed, B.walkSpeed, B.maxSteer)
 
     -- Mild first-order lag on the bars, standing in for trail and rider grip.
     -- Without it the front end chatters over every bump the suspension passes.
-    local f = min(1, B.steerRate * dt)
     for _, w in ipairs(wheels) do
         if w.steerMode == "fork" then
-            w.steer = w.steer + (target - w.steer) * f
+            w.steer = BMX.Lean.SteerLag(w.steer, target, B.steerRate, dt)
             st.steer = w.steer
         end
     end

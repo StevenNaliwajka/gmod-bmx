@@ -157,7 +157,8 @@ function BMX.VertAir(ent, phys, cfg, dt, inp, st, w)
     -- Spine transfer.
     ----------------------------------------------------------------------
     local wDown = inp.pitchTarget < -0.1
-    if wDown and not st.spineW then st.spineWPress = now end
+    -- G30: dated to when the rider pressed it (inp.cmdAge, 0 unless bmx_lagcomp).
+    if wDown and not st.spineW then st.spineWPress = now - (inp.cmdAge or 0) end
     st.spineW = wDown
 
     if not st.spineTarget and abs(vel.z) < A.spineApexVz and not st.spineDone then

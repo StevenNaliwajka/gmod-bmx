@@ -58,10 +58,10 @@ end
 -- The list
 --------------------------------------------------------------------------
 
-T.test("bot: the trick list is ten tricks, each with a routine", function()
+T.test("bot: the trick list is fourteen tricks, each with a routine", function()
     local sv = F.server()
     local Bot = sv.env.BMX.Bot
-    T.eq(#Bot.TrickList, 10, "ten")
+    T.eq(#Bot.TrickList, 14, "fourteen")
     for _, name in ipairs(Bot.TrickList) do
         T.ok(type(Bot.Tricks[name]) == "function", name .. " has a routine")
     end

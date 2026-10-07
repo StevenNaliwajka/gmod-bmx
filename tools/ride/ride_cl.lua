@@ -170,6 +170,16 @@ local function whenBuilt(ent, fn)
 end
 
 net.Receive("ridestudio_cap", function()
+    if not saved then
+        local d = { "mesh=" .. tostring(Mesh ~= nil), "geo=" .. tostring(BMX.BikeGeo ~= nil),
+            "kinds=" .. tostring(BMX.BikeGeo and table.Count(BMX.BikeGeo.Kinds)),
+            "enabledBefore=" .. tostring(BMX.BikeMesh and BMX.BikeMesh.Enabled()) }
+        for _, n in ipairs({ "bmx_debug", "bmx_bike_model", "bmx_lod_scale", "bmx_bike_build_ms" }) do
+            local cv = GetConVar(n)
+            d[#d + 1] = n .. "=" .. (cv and cv:GetString() or "nil")
+        end
+        net.Start("ridestudio_diag") net.WriteString(table.concat(d, " ")) net.SendToServer()
+    end
     studioSettings()
     local id = net.ReadString()
     local ent, rider = net.ReadEntity(), net.ReadEntity()

@@ -16,6 +16,8 @@ util.AddNetworkString("ridestudio_cap")
 util.AddNetworkString("ridestudio_img")
 util.AddNetworkString("ridestudio_done")
 util.AddNetworkString("ridestudio_end")
+util.AddNetworkString("ridestudio_diag")
+net.Receive("ridestudio_diag", function() RIDESTUDIO.diag = net.ReadString() print("[ride] client diag: " .. RIDESTUDIO.diag) end)
 
 RIDESTUDIO = RIDESTUDIO or {}
 local S = RIDESTUDIO

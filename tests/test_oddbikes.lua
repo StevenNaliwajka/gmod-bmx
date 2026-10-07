@@ -270,7 +270,8 @@ T.test("tandem: it registers clean: two seats, the second one pedals, the front 
     T.near(stk.massFactor, 0.6, 1e-9, "the stoker weighs 0.6 of the bike's mass")
     T.ok(not B.HasSeat(d, "child"), "no child seat")
     T.ok(cfg.Wheel.wheelbase > 1.5 * B.Config.Wheel.wheelbase, "a long frame: " .. cfg.Wheel.wheelbase)
-    T.eq(d.drawer, "tandem", "drawn in code")
+    T.eq(d.drawer, nil, "drawn as a bike: no drawer of its own")
+    T.eq(d.look, "tandem", "its model (cl_geo_odd.lua), through DrawDetailed")
     T.eq(sv.lists.SpawnableEntities.bmx_tandem.Subcategory, "Bikes", "in the spawn menu under Bikes")
 end)
 
@@ -391,7 +392,10 @@ T.test("tandem: it rides straight and steers, with both aboard", function()
     T.ok(sv.env.IsValid(e:GetDriver()) and sv.env.IsValid(e.passengers.pegs), "both aboard")
 end)
 
-T.test("tandem: it is drawn: both bottom brackets, both saddles, and the stoker has hands and feet of their own", function()
+-- The model's own drawing (both bottom brackets, both saddles, the stoker's hands and
+-- feet through DrawDetailed's bb2 / gripS) needs a Mesh, which the shim does not have:
+-- tests/test_geo_odd.lua draws it with a fake one. Without, the simple bike stands in.
+T.test("tandem: it is drawn, with the simple bike standing in while there is no model", function()
     local sv, world = F.server()
     local bike = F.bike(sv, classOf(sv, "tandem"))
     local cl = F.client(world)
@@ -403,14 +407,7 @@ T.test("tandem: it is drawn: both bottom brackets, both saddles, and the stoker 
     cl.drawnCS = {}
     cb:Draw()
     T.ok(cb.ikTargets and cb.ikTargets.rFoot and cb.ikTargets.rHand, "the captain's targets")
-    local s = cb.ikTargetsStoker
-    T.ok(s and s.rFoot and s.lFoot and s.rHand and s.lHand, "the stoker's targets")
-    T.ok(cb:WorldToLocal(s.rFoot).x < cb:WorldToLocal(cb.ikTargets.rFoot).x - 20, "behind the captain's")
-    -- and the passenger code hands the stoker those targets, not the pegs'
-    local t = cl.env.BMX.PassengerTargets(nil, cb, "pegs", nil)
-    T.ok(t == s, "the passenger pose takes them")
-    local t2 = cl.env.BMX.PassengerTargets(nil, cb, "child", nil)
-    T.ok(t2 ~= s, "(a child seat does not)")
+    T.ok(#cl.beams + (cl.drawnModels or 0) + #(cl.drawnCS or {}) > 10, "something was drawn")
 end)
 
 --------------------------------------------------------------------------

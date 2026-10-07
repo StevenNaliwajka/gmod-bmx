@@ -1,20 +1,29 @@
 --[[--------------------------------------------------------------------------
     bmx/cl_oddbikes.lua
 
-    THE DRAWING OF THE ODD ONES (G13), in code like the stock bike's: a unicycle, a
-    penny-farthing and a tandem. No model, no material but the base game's.
+    THE DRAWING OF THE ODD ONES (G13): a unicycle and a penny-farthing. (The tandem
+    is bike-shaped enough for the bike's own drawing: its model, cl_geo_odd.lua,
+    gives DrawDetailed a second bottom bracket and the stoker's grips.)
 
-    WHY THEY DRAW THEMSELVES. ENT:Draw (entities/bmx_base/cl_init.lua) is the stock bike
-    from the first line: two wheels on the same radius, a fork on the front one, a seat
-    tube at the rear. A unicycle has no front wheel; a penny-farthing's two wheels are
-    26 and 6 units and its seat is over the big one; a tandem has two saddles, two sets
-    of cranks and two sets of bars. A vehicle names one of the functions here as its
+    WHY THEY DRAW THEMSELVES. ENT:Draw (entities/bmx_base/cl_init.lua) places a bike's
+    model by a front and a rear axle, a fork on the front one and cranks at a bottom
+    bracket. A unicycle has no front wheel and its cranks are on its only hub; a
+    penny-farthing's two wheels are 26 and 6 units and its cranks are on the big
+    wheel's hub, steered with it. A vehicle names one of the functions here as its
     `drawer`, and the entity hands itself over to it with its own primitives (BMX.Draw:
-    tube, joint, solid, ring, the wheel and the axle trace), so these look like the rest.
+    tube, joint, solid, ring, the wheel and the axle trace).
+
+    THE MODEL. Each is drawn as its real 3D model (cl_geo_odd.lua: kinds "unicycle"
+    and "penny", the registration's `look`), group by group through BMX.BikeMesh, each
+    group under a matrix from the same physics the simple drawing uses: the wheels'
+    traced axles and spin, the steer, the crank angle. While the model is still being
+    built (BikeMesh.Get hands back nil until it is), with bmx_bike_model 0 or under
+    bmx_debug, the simple drawing from shapes is drawn instead, as ENT:Draw does for
+    the bike.
 
     Every one of them does what Draw does for the bike and no more:
       * the wheels where the simulation has them (the same downward trace, the same disc
-        contact: the wheels turn red under bmx_debug when there is no ground)
+        contact: the simple wheels turn red under bmx_debug when there is no ground)
       * the frame, drawn from the vehicle's own registered geometry and the static sag
       * the cranks and pedals turning with the driven wheel, and the rider's hands and
         feet recorded as IK targets (bike.ikTargets) for cl_rider.lua
@@ -82,9 +91,83 @@ local function cranks(ent, H, hub, fwd, up, right, angle, len, q, ik, lod, col)
 end
 
 --------------------------------------------------------------------------
+-- THE MODEL, group by group (BMX.BikeMesh)
+--------------------------------------------------------------------------
+
+-- Rodrigues, on Vectors.
+local function rotVec(v, axis, ang)
+    if ang == 0 then return v end
+    local c, s = math.cos(ang), math.sin(ang)
+    return v * c + axis:Cross(v) * s + axis * (axis:Dot(v) * (1 - c))
+end
+
+-- `m` turned by `ang` about the model's y axis (the axles' direction) through `c`.
+local function turnY(m, c, ang)
+    local x, z = m.x - c.x, m.z - c.z
+    local co, si = math.cos(ang), math.sin(ang)
+    return Vector(c.x + x * co + z * si, m.y, c.z - x * si + z * co)
+end
+
+-- The matrix taking model space to the world through a map of points.
+local function matOf(f)
+    local o = f(Vector(0, 0, 0))
+    return BMX.BikeMesh.Matrix(o, f(Vector(1, 0, 0)) - o, f(Vector(0, 1, 0)) - o, f(Vector(0, 0, 1)) - o)
+end
+
+-- This vehicle's model (its `look`, at its registry's sizes), or nil: while it is
+-- being built, with bmx_bike_model 0, under bmx_debug, or with no BikeMesh at all.
+local function modelOf(ent, C, debug)
+    local bike = ent:Bike()
+    local BM = BMX.BikeMesh
+    if debug or not bike.look or not BM or not BM.Get then return nil end
+    local WC = C.Wheel
+    local so = C.Chassis.seatOffset
+    return BM.Get(math.max(WC.wheelbase, 1) / 39, WC.radius, bike.look, {
+        wheelbase = WC.wheelbase, rearRadius = WC.rearRadius, restLength = WC.restLength,
+        seat = { so.x, so.y, so.z },
+    })
+end
+BMX.OddModel = modelOf
+
+-- Where a hand holds a grip from A (inner end) to B (outer): the IK slides it
+-- along, `hold` is its middle (as DrawDetailed does it).
+local function gripOf(map, g)
+    local A, B = map(g.A), map(g.B)
+    local d = B - A
+    return A + d:GetNormalized() * math.min(1.75, d:Length() * 0.5), A, B
+end
+
+--------------------------------------------------------------------------
 -- THE UNICYCLE. A wheel, a fork over it (two blades to a crown), a seat post and a
 -- saddle, cranks on the hub, and the rider's arms out to the sides for balance.
 --------------------------------------------------------------------------
+
+-- The model: the frame rides the hub (the fork's bearings are on it), square to the
+-- chassis; the wheel and the cranks fixed to its axle turn together; a pedal at each
+-- crank's tip, level.
+local function unicycleModel(ent, model, hub, fwd, up, right, spin, lod, col, ik)
+    local BM = BMX.BikeMesh
+    local L = model.layout
+    local left = -right
+    local function frameMap(m) return hub + fwd * m.x + left * m.y + up * m.z end
+    local zero = Vector(0, 0, 0)
+    local function wheelMap(m) return frameMap(turnY(m, zero, spin)) end
+    local function tip(side)
+        return turnY(Vector(L.crank * side, 0, 0), zero, spin) + Vector(0, -L.pedalY * side, 0)
+    end
+    BM.BeginLighting(hub + up * 10, ent)
+        BM.DrawGroup(model, "frame", matOf(frameMap), col, lod)
+        BM.DrawGroup(model, "wheel", matOf(wheelMap), col, lod)
+        BM.DrawGroup(model, "cranks", matOf(wheelMap), col, lod)
+        for _, side in ipairs({ 1, -1 }) do
+            local t = tip(side)
+            BM.DrawGroup(model, "pedal", matOf(function(m) return frameMap(t + m) end), col, lod)
+        end
+    BM.EndLighting()
+    ik.rFoot = frameMap(tip(1)) + up * 0.9
+    ik.lFoot = frameMap(tip(-1)) + up * 0.9
+end
+
 BMX.Drawers.unicycle = function(ent, H, lod, debug)
     local bike, C = ent:Bike(), ent:Cfg()
     local dt = FrameTime()
@@ -94,26 +177,31 @@ BMX.Drawers.unicycle = function(ent, H, lod, debug)
     local r = wd.radius or C.Wheel.radius
     local col = BMX.PaletteColor(ent:GetColorIndex())
 
-    render.SetColorMaterial()
     local hub, hit = axleOf(ent, H, wd, C, lod, sag)
     local spin = spinOf(ent, "wheel", r, hit, dt)
-    H.wheel(ent, "wheel", hub, right, spin, r, hit, debug, lod)
-
-    -- The fork: two blades from the hub to a crown over the tyre, and the seat post
-    -- up from the crown to the saddle at the rider's seat.
-    local crown = hub + up * (r + 2.5)
     local seat = ent:LocalToWorld(Vector(0, 0, C.Chassis.seatOffset.z + sag - 1.5))
-    for _, side in ipairs({ 1, -1 }) do
-        local off = right * (2.2 * side)
-        H.tube(hub + off, crown + off, 1.1, col)
-    end
-    H.tube(crown - right * 2.2, crown + right * 2.2, 1.4, col)
-    H.tube(crown, seat, 1.3, H.COL.chrome)
-    H.solid("sph", seat + up * 0.8, ent:GetAngles(), Vector(9, 4, 2), H.COL.part, H.MAT.matte)
-    if lod == 0 then H.joint(crown, 2.4, col) end
-
     local ik = {}
-    cranks(ent, H, hub, fwd, up, right, spin, 6.5, 3.2, ik, lod, col)
+
+    local model = modelOf(ent, C, debug)
+    if model then
+        unicycleModel(ent, model, hub, fwd, up, right, spin, lod, col, ik)
+    else
+        render.SetColorMaterial()
+        H.wheel(ent, "wheel", hub, right, spin, r, hit, debug, lod)
+        -- The fork: two blades from the hub to a crown over the tyre, and the seat post
+        -- up from the crown to the saddle at the rider's seat.
+        local crown = hub + up * (r + 2.5)
+        for _, side in ipairs({ 1, -1 }) do
+            local off = right * (2.2 * side)
+            H.tube(hub + off, crown + off, 1.1, col)
+        end
+        H.tube(crown - right * 2.2, crown + right * 2.2, 1.4, col)
+        H.tube(crown, seat, 1.3, H.COL.chrome)
+        H.solid("sph", seat + up * 0.8, ent:GetAngles(), Vector(9, 4, 2), H.COL.part, H.MAT.matte)
+        if lod == 0 then H.joint(crown, 2.4, col) end
+        cranks(ent, H, hub, fwd, up, right, spin, 6.5, 3.2, ik, lod, col)
+    end
+
     -- Arms out to the sides, a little forward and up: a unicyclist's wings.
     ik.rHand = seat + right * 15 + fwd * 3 + up * 9
     ik.lHand = seat - right * 15 + fwd * 3 + up * 9
@@ -125,10 +213,55 @@ end
 
 --------------------------------------------------------------------------
 -- THE PENNY-FARTHING. A very large front wheel with the cranks on its hub, a very small
--- one at the back, a backbone from the fork crown to the small wheel's fork, the saddle
--- on it over the big wheel and the bars over the saddle's front. The rider sits a
+-- one at the back, a backbone from the head down to the small wheel's fork, the saddle
+-- on a spring over the big wheel and the bars in front of the saddle. The rider sits a
 -- long way up.
 --------------------------------------------------------------------------
+
+-- The model: the frame rigid, pitched to sit on both traced axles (as DrawDetailed
+-- pitches a rigid bike); the fork, bars, spoon brake, big wheel, cranks and pedals
+-- turned with the steer about the head; the cranks with the big wheel's spin.
+local function pennyModel(ent, model, S, ik)
+    local BM = BMX.BikeMesh
+    local L = model.layout
+    local up, right = S.up, S.right
+    local function P0(m) return ent:LocalToWorld(m + Vector(0, 0, S.sag)) end
+    local rA0, fA0 = P0(L.rear), P0(L.front)
+    local a, b = fA0 - rA0, S.fPos - S.rPos
+    a = a - right * a:Dot(right)
+    b = b - right * b:Dot(right)
+    local phi = math.atan2(right:Dot(a:Cross(b)), a:Dot(b))
+    local rPos = S.rPos
+    local function Pf(m) return rPos + rotVec(P0(m) - rA0, right, phi) end
+    local upF = rotVec(up, right, phi)
+    local headB = Pf(L.headB)
+    local axis = (Pf(L.headT) - headB):GetNormalized()
+    local function forkMap(m) return headB + rotVec(Pf(m) - headB, axis, -S.steer) end
+    local bb = L.bb
+    local function crankMap(m) return forkMap(turnY(m, bb, S.fSpin)) end
+    local function tip(side)
+        return turnY(bb + Vector(L.crank * side, 0, 0), bb, S.fSpin) + Vector(0, -L.pedalY * side, 0)
+    end
+    local function wheelMat(map, centre, spin)
+        return matOf(function(m) return map(turnY(centre + m, centre, spin)) end)
+    end
+    BM.BeginLighting(ent:LocalToWorld(Vector(0, 0, 20)), ent)
+        BM.DrawGroup(model, "frame", matOf(Pf), S.col, S.lod)
+        BM.DrawGroup(model, "fork", matOf(forkMap), S.col, S.lod)
+        BM.DrawGroup(model, "wheelF", wheelMat(forkMap, L.front, S.fSpin), S.col, S.lod)
+        BM.DrawGroup(model, "wheelR", wheelMat(Pf, L.rear, S.rSpin), S.col, S.lod)
+        BM.DrawGroup(model, "cranks", matOf(crankMap), S.col, S.lod)
+        for _, side in ipairs({ 1, -1 }) do
+            local t = tip(side)
+            BM.DrawGroup(model, "pedal", matOf(function(m) return forkMap(t + m) end), S.col, S.lod)
+        end
+    BM.EndLighting()
+    ik.rFoot = forkMap(tip(1)) + upF * 0.9
+    ik.lFoot = forkMap(tip(-1)) + upF * 0.9
+    ik.rHand, ik.rHandA, ik.rHandB = gripOf(forkMap, L.gripR)
+    ik.lHand, ik.lHandA, ik.lHandB = gripOf(forkMap, L.gripL)
+end
+
 BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
     local bike, C = ent:Bike(), ent:Cfg()
     local dt = FrameTime()
@@ -140,7 +273,6 @@ BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
     local rf = fwdDef.radius or C.Wheel.radius
     local rr = rearDef.radius or C.Wheel.rearRadius or 6
 
-    render.SetColorMaterial()
     -- The big wheel steers (the fork turns the whole front end), the small one does not.
     local steer = BMX.VisualSteer(ent:GetSteer(), ent:GetSpeedUPS(), C)
     local sFwd, fAxle = fwd, right
@@ -154,6 +286,18 @@ BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
     local rPos, rHit = axleOf(ent, H, rearDef, C, lod, sag)
     local fSpin = spinOf(ent, "front", rf, fHit, dt)
     local rSpin = spinOf(ent, "rear", rr, rHit, dt)
+    local ik = {}
+
+    local model = modelOf(ent, C, debug)
+    if model then
+        pennyModel(ent, model, { up = up, right = right, sag = sag, fPos = fPos, rPos = rPos, steer = steer,
+                                 fSpin = fSpin, rSpin = rSpin, col = col, lod = lod }, ik)
+        ent.ikTargets = ik
+        ent.crankAngle = fSpin
+        return
+    end
+
+    render.SetColorMaterial()
     H.wheel(ent, "front", fPos, fAxle, fSpin, rf, fHit, debug, lod)
     H.wheel(ent, "rear", rPos, right, rSpin, rr, rHit, debug, lod)
 
@@ -172,7 +316,6 @@ BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
 
     -- The backbone: from the crown, curving down and back to the small wheel's fork, and
     -- the saddle on it a little behind the big wheel's top.
-    local backbone = crown - sFwd * 4
     local saddle = ent:LocalToWorld(Vector(C.Chassis.seatOffset.x, 0, C.Chassis.seatOffset.z + sag - 2))
     H.tube(crown, saddle, 1.6, col)
     H.tube(saddle, rPos + up * (rr + 2.5), 1.6, col)
@@ -181,7 +324,6 @@ BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
     H.solid("sph", saddle + up * 1.5, ent:GetAngles(), Vector(9, 4, 2), H.COL.part, H.MAT.matte)
     if lod == 0 then H.joint(crown, 2.6, col) end
 
-    local ik = {}
     cranks(ent, H, fPos, sFwd, up, fAxle, fSpin, 8, 4.5, ik, lod, col)
     ik.rHand = gripR - fAxle * 1.5
     ik.lHand = gripL + fAxle * 1.5
@@ -189,97 +331,6 @@ BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
     ik.lHandA, ik.lHandB = ik.lHand, gripL
     ent.ikTargets = ik
     ent.crankAngle = fSpin
-end
-
---------------------------------------------------------------------------
--- THE TANDEM. A long frame with two saddles, two sets of bars (the stoker holds
--- their own, fixed), and TWO sets of cranks on a timing chain, which is why they turn
--- together. The geometry is the registration's: where the seats are says where the
--- bottom brackets go.
---------------------------------------------------------------------------
-BMX.Drawers.tandem = function(ent, H, lod, debug)
-    local bike, C = ent:Bike(), ent:Cfg()
-    local dt = FrameTime()
-    local fwd, up, right = ent:GetForward(), ent:GetUp(), ent:GetRight()
-    local sag = sagOf(C)
-    local half = C.Wheel.wheelbase * 0.5
-    local wds = wheelDefs(ent)
-    local col = BMX.PaletteColor(ent:GetColorIndex())
-    local r = C.Wheel.radius
-    local function P(v) return ent:LocalToWorld(v + Vector(0, 0, sag)) end
-
-    render.SetColorMaterial()
-    local steer = BMX.VisualSteer(ent:GetSteer(), ent:GetSpeedUPS(), C)
-    local sFwd, fAxle = fwd, right
-    if steer ~= 0 then
-        local c, s = math.cos(steer), math.sin(steer)
-        sFwd = fwd * c + right * s
-        fAxle = sFwd:Cross(up)
-        fAxle:Normalize()
-    end
-    local fPos, fHit = axleOf(ent, H, wds[1], C, lod, sag)
-    local rPos, rHit = axleOf(ent, H, wds[2], C, lod, sag)
-    local fSpin = spinOf(ent, "front", r, fHit, dt)
-    local rSpin = spinOf(ent, "rear", r, rHit, dt)
-    H.wheel(ent, "front", fPos, fAxle, fSpin, r, fHit, debug, lod)
-    H.wheel(ent, "rear", rPos, right, rSpin, r, rHit, debug, lod)
-
-    -- The frame: a head tube over the front wheel, a long top tube to the rear seat
-    -- tube, two seat tubes, a down tube between the two bottom brackets (the long
-    -- one the timing chain runs along), stays to the rear wheel.
-    local capSeat = BMX.SeatFor(bike, C, "rider")
-    local stkSeat = BMX.SeatFor(bike, C, "pegs")
-    local headT = P(Vector(half - 3, 0, r + 8))
-    local headB = P(Vector(half - 1, 0, r - 1))
-    local sj1 = P(Vector(capSeat.offset.x, 0, r + 2))        -- the captain's seat tube foot
-    local sj2 = P(Vector(stkSeat.offset.x, 0, r + 2))        -- the stoker's
-    local bb1 = P(Vector(capSeat.offset.x + 1, 0, 1.5))
-    local bb2 = P(Vector(stkSeat.offset.x + 1, 0, 1.5))
-    local seat1 = P(Vector(capSeat.offset.x, 0, capSeat.offset.z - 1))
-    local seat2 = P(Vector(stkSeat.offset.x, 0, stkSeat.offset.z - 1))
-    H.tube(headT, sj1, 1.7, col)
-    H.tube(headB, bb1, 2.0, col)
-    H.tube(bb1, bb2, 1.8, col)
-    H.tube(sj1, sj2, 1.7, col)
-    H.tube(sj2, bb2, 1.6, col)
-    H.tube(bb1, sj1, 1.6, col)
-    H.tube(headT, headB, 2.0, col)
-    for _, side in ipairs({ 1, -1 }) do
-        local off = right * (1.7 * side)
-        H.tube(bb2 + off, rPos + off, 1.0, col)
-        H.tube(sj2 + off, rPos + off, 1.0, col)
-        H.tube(headB + fAxle * (2.0 * side), fPos + fAxle * (2.0 * side), 1.1, H.COL.part)
-    end
-    for _, s in ipairs({ { sj1, seat1 }, { sj2, seat2 } }) do
-        H.tube(s[1], s[2], 1.1, H.COL.chrome)
-        H.solid("sph", s[2] + up * 0.8, ent:GetAngles(), Vector(9.5, 4, 2), H.COL.part, H.MAT.matte)
-    end
-
-    -- The captain's bars, steered with the front wheel; the stoker's, fixed to the
-    -- seat tube behind the captain, which is where a tandem's stoker holds on.
-    local barsC = headT + up * 3 + sFwd * -1
-    H.tube(headT, barsC, 1.3, H.COL.part)
-    H.tube(barsC - fAxle * 11, barsC + fAxle * 11, 1.0, H.COL.part)
-    local stoker = seat1 + up * 11 + fwd * -1
-    H.tube(sj1 + up * 0.5, stoker, 1.0, H.COL.part)
-    H.tube(stoker - right * 9, stoker + right * 9, 0.9, H.COL.part)
-
-    -- The cranks: both bottom brackets, turning together with the wheel (a timing chain
-    -- between them; the drivetrain's own is a ring on the left of the rear one).
-    local ik, ikS = {}, {}
-    local angle = rSpin / (C.Drive.gearRatio or 1)
-    cranks(ent, H, bb1, fwd, up, right, angle, 6.5, 3.4, ik, lod, col)
-    cranks(ent, H, bb2, fwd, up, right, angle, 6.5, 3.4, ikS, lod, col)
-    H.tube(bb1 - right * 3, bb2 - right * 3, 0.5, H.COL.part)
-    if lod < 2 then H.ring(bb2 - right * 3, fwd, up, 4.5, 0.6, H.COL.chrome, lod == 0 and 14 or 6) end
-
-    local gripL, gripR = barsC - fAxle * 12, barsC + fAxle * 12
-    ik.rHand, ik.lHand = gripR - fAxle * 1.5, gripL + fAxle * 1.5
-    ik.rHandA, ik.rHandB, ik.lHandA, ik.lHandB = ik.rHand, gripR, ik.lHand, gripL
-    ent.ikTargets = ik
-    ent.ikTargetsStoker = ikS
-    ikS.rHand, ikS.lHand = stoker + right * 8, stoker - right * 8
-    ent.crankAngle = angle
 end
 
 --------------------------------------------------------------------------

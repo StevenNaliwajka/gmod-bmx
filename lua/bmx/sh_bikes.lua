@@ -738,7 +738,6 @@ BMX.RegisterBike("tandem", {
     input       = "bike_rearonly",
     tricks      = {},
     grindPoints = false,
-    drawer      = "tandem",
     seats = {
         rider = { pedals = true },
         pegs  = { offset = Vector(-18, 0, 22), massFactor = 0.6, pedals = true },

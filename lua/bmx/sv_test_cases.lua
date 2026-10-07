@@ -1950,3 +1950,83 @@ function(ctx)
     ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
     ctx:ok((ctx:st().grindExitClamped or 0) == 0, "let go without being shoved out of the rail")
 end)
+
+--------------------------------------------------------------------------
+-- THE PLATFORM'S PROOF (G22): a vehicle that is not a bike.
+--
+-- The test cart (sh_bikes.lua) is four wheels, `balance = "none"`, a throttle
+-- drive on the rear pair and a front pair steered by a function. This is the
+-- same claim the offline suite makes on its own plant, on the real engine: it
+-- builds all four wheels, drives forward under throttle, keeps all four on the
+-- ground without anything balancing it, and steers by the function the right
+-- way round. It exists so that the skateboard (G23) is the SECOND vehicle to
+-- depend on the platform, not the first.
+--
+-- It rides `vehicle = "testcart"`, not `bike =`: `bike` is the stock id for
+-- every case that is not a variant, and the suite's own bookkeeping checks it.
+-- The bands are wide, as everywhere here: they catch "it does not move" and
+-- "it steers the wrong way", not a tuning change.
+--------------------------------------------------------------------------
+T.Case("test_cart_drives", { vehicle = "testcart", timeout = 30,
+    desc = "the 4-wheel test cart (no balance mode) drives forward and steers" },
+function(ctx)
+    local b = ctx.bike
+    ctx:ok(#b.wheels == 4, "four wheels were built from the registration: " .. #b.wheels)
+    ctx:ok(b:Bike().balance == "none", "it runs the none balance mode")
+
+    local drive = 0
+    for _, w in ipairs(b.wheels) do if w.drive then drive = drive + 1 end end
+    ctx:ok(drive == 2, "two of them are drive wheels: " .. drive)
+
+    -- Forward. Measured along the cart's own forward, from where it started.
+    local start, fwd = b:GetPos(), b:GetForward()
+    local peak, four = 0, 0
+    local grounded = ctx:runUntil(8, function()
+        local st = ctx:st()
+        if st.grounded and st.speed > peak then peak = st.speed end
+        local down = 0
+        for _, w in ipairs(b.wheels) do if w.onGround then down = down + 1 end end
+        if down == 4 then four = four + 1 end
+        if ctx.runway > 0 and b:GetPos():Distance(start) > ctx.runway then return true end
+        return st.speed > 200
+    end, { throttle = 1 })
+
+    ctx:ok(grounded, "the cart stayed on the ground")
+    local moved = (b:GetPos() - start):Dot(fwd)
+    ctx:log(string.format("moved %.0f units forward, peak %.0f u/s", moved, peak))
+    ctx:ok(moved > 150, "it drove FORWARD, not just somewhere")
+    ctx:between(peak, 100, 360, "top speed reached", "u/s")
+    ctx:ok(four > 20, "all four wheels were on the ground together: " .. four .. " substeps")
+
+    -- Nothing holds it up, and it stays up: roll and pitch small at speed.
+    local st = ctx:st()
+    ctx:between(math.deg(math.abs(st.roll)), 0, 10, "roll with no balance mode", "deg")
+    ctx:between(math.deg(math.abs(st.pitch)), 0, 12, "pitch with no balance mode", "deg")
+
+    -- Steering by function: slow to a gentle speed, then hold "right". The
+    -- front wheels must take a positive (right) steer angle, and turning right
+    -- DECREASES yaw in Source.
+    ctx:runUntil(6, function() return ctx:st().speed < 130 end, { brakeRear = 1 })
+    local fl, fr
+    for _, w in ipairs(b.wheels) do
+        if w.def and w.def.name == "front_l" then fl = w end
+        if w.def and w.def.name == "front_r" then fr = w end
+    end
+    local last, total = b:GetAngles().y, 0
+    ctx:runUntil(2, function()
+        local y = b:GetAngles().y
+        total = total + math.AngleDifference(y, last)
+        last = y
+        return false
+    end, { throttle = 0.4, lean = 1 })
+    ctx:log(string.format("right: front steer %+.1f deg, yaw %+.0f deg",
+        fl and math.deg(fl.steer) or 0, total))
+    ctx:ok(fl and fr and fl.steer > 0.05 and fr.steer > 0.05, "both front wheels steer right by the function")
+    ctx:ok(total < -8, "and the cart turns right")
+    for _, w in ipairs(b.wheels) do
+        if w.def and (w.def.name == "rear_l" or w.def.name == "rear_r") then
+            ctx:ok(w.steer == 0, "the rear wheels do not steer")
+        end
+    end
+    ctx:input({})
+end)

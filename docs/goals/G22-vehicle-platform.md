@@ -72,3 +72,58 @@ This is a big refactor on a live addon. Mitigate it with the suites (which is
 what they're for), a branch, and the test server before `main`. Estimated
 size: about a third of `sv_physics.lua` and `sv_input.lua` move, and
 `sv_wheel.lua` generalises its wheel loop.
+
+## Status (2026-10-07)
+
+Done on branch `worktree-agent-a4c1507d0ad52139b`, in two commits, not merged,
+not on the Workshop. Nothing about the bike changed: the 646 offline tests that
+existed before pass unchanged after both phases, and the Workshop kit test passes.
+
+**Phase 1, the refactor (no behaviour change).**
+
+- `BMX.RegisterVehicle{ id, family, wheels, balance, drive, seats, input, pose,
+  tricks, grindPoints, physics, ... }`, validated at registration like the physics
+  overrides (`lua/bmx/sh_vehicles.lua`, `sh_bikes.lua`). `BMX.RegisterBike` is the
+  bike-shaped way in and fills the bike's fields; stock, cruiser and mini register
+  through it. `BMX.Bikes` is the same table as `BMX.Vehicles`; `bmx_spawn <id>`,
+  the spawn rows, the duplicator, `bmx_base` and every convar are untouched.
+- `sv_physics.lua` loops over N wheels (drive torque shared between `drive`
+  wheels, each wheel takes its axle's brake); `BMX.Drives` (`pedal` is the old
+  function); per-wheel `steer` is `false`, `"fork"` or a function; per-wheel `radius`.
+- `BMX.BalanceModes` in `sv_balance.lua`: `singletrack` is the old code, reached
+  through the registry (it did not move; see DESIGN 6c).
+- Input maps are tables (`BMX.InputMaps`, action to key and context); `sv_input.lua`
+  reads its keys from the vehicle's map. The `bike` map is the old keys.
+- Rider pose sets (`BMX.PoseSets`) in `cl_rider.lua`; grind points per vehicle
+  (`grindPoints`) in `sv_grind.lua` and `cl_grind.lua`; the trick list gates what
+  is scored from motion.
+
+**Phase 2, the proof.**
+
+- `balance = "none"`, `drive = { kind = "throttle" }`, and the hidden `testcart`
+  (4 wheels, rear pair driven, front pair steered by a function). Not in the
+  spawn menu or `BikeIDs`; `bmx_spawn testcart` needs `bmx_debug 1`.
+- Spawn menu rows carry `Subcategory` Bikes / Boards / Scooters / Motor and
+  `Family`; `Category` is still `"BMX"` because `tests/test_bikes.lua` pins it.
+  Only Bikes is populated.
+- Vehicles settings group: `bmx_allow_bikes`, `_boards`, `_scooters`, `_motor`
+  (server, admin), honoured by `bmx_spawn` and the spawn menu's `PlayerSpawnSENT`.
+- Offline: `tests/test_platform.lua` (47 tests): validation of every field, the
+  4-wheel board and 1-wheel unicycle layouts accepted, input maps, settings and
+  spawn doors, and the cart driving forward, steering and braking on the plant.
+  Headless: `test_cart_drives` in `sv_test_cases.lua` (written, **not run**: no
+  server here). Offline total 693 passed.
+- `docs/MODDING.md` has the `RegisterVehicle` reference; `docs/DESIGN.md` 6c is
+  the platform section.
+
+**What the cart found.** Four wheels evaluated one after another in a substep
+read each other's roll as sideways slip and cancelled (the cart crept sideways at
+5 u/s). With more than two wheels each reads a snapshot taken at the top of the
+substep and carries a share of the mass in the tyre caps. Two-wheel vehicles are
+unchanged bit for bit. That is a plant result; the headless case is what checks
+it on VPhysics.
+
+**For the skateboard (G23):** the `board` balance name is reserved and runs as
+`none` with one console message until its module exists; `push` is a reserved
+drive kind with no function; the spawn menu still has one `BMX` heading (flip
+`Category` in `RegisterVehicle` and `tests/test_bikes.lua:72` when you want four).

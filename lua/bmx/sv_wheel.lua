@@ -37,14 +37,26 @@ local abs, min, max, sqrt = math.abs, math.min, math.max, math.sqrt
 -- Putting it on the axle line instead makes the spring read full compression at
 -- the nominal ride height with no travel left, which is a hundredfold force
 -- error and a bike that launches. See the comment in ENT:Initialize.
-function BMX.NewWheel(mountLocal, isFront)
+--
+-- `def` is the wheel's entry in the vehicle's `wheels` list (sh_vehicles.lua),
+-- and is optional: the suite builds bare wheels without one. It is what makes
+-- the wheel loop N wheels rather than a front and a rear: which share of the
+-- drive torque it takes (`drive`), how it steers (`steerMode`: "fork" is the
+-- single-track balance's to set, a function is called every grounded substep)
+-- and its own radius, if it has one.
+function BMX.NewWheel(mountLocal, isFront, def)
+    def = def or {}
     return setmetatable({
         mount     = mountLocal,
         isFront   = isFront,
+        def       = def,
+        drive     = def.drive or false,
+        steerMode = def.steer or false,
+        radiusOverride = def.radius,
 
         -- state
         omega       = 0,      -- rad/s, positive = rolling forwards
-        steer       = 0,      -- rad, front wheel only
+        steer       = 0,      -- rad, steered wheels only
         compression = 0,      -- units
         lastComp    = 0,
         onGround    = false,
@@ -71,6 +83,26 @@ function BMX.NewWheel(mountLocal, isFront)
         rays        = 1,      -- traces fired last substep, for the cost tests
         obstacle    = nil,    -- the second contact last substep, if any
     }, Wheel)
+end
+
+--------------------------------------------------------------------------
+-- THIS WHEEL'S Wheel config group: the vehicle's, or -- when the wheel has a
+-- radius of its own (a unicycle's, a scooter's small front) -- that group seen
+-- through an overlay with just the radius replaced. Reading through __index
+-- rather than copying keeps live tuning working on every other field, and the
+-- overlay is cached against the group it overlays, which is rebuilt when a
+-- convar moves a per-vehicle config. A wheel with no radius of its own (every
+-- bike's) gets the group itself, so nothing changes for them.
+--------------------------------------------------------------------------
+function Wheel:WheelConfig(cfg)
+    local WC = cfg.Wheel
+    local r = self.radiusOverride
+    if not r or r == WC.radius then return WC end
+    if self._ovBase ~= WC or self._ovR ~= r then
+        self._ovBase, self._ovR = WC, r
+        self._ov = setmetatable({ radius = r }, { __index = WC })
+    end
+    return self._ov
 end
 
 --------------------------------------------------------------------------
@@ -112,7 +144,7 @@ end
 -- is deliberate: the damper was fixed for this in isolation once, and the tyre,
 -- which has exactly the same problem, was left behind for a month.
 --------------------------------------------------------------------------
-local function effectiveMass(ent, phys, cfg, contact, dir)
+local function effectiveMass(ent, phys, cfg, contact, dir, share)
     local com = phys:LocalToWorld(phys:GetMassCenter())
     local rxd = (contact - com):Cross(dir)
 
@@ -126,7 +158,16 @@ local function effectiveMass(ent, phys, cfg, contact, dir)
                + ly * ly / BMX.IPitch(ent)
                + lz * lz / BMX.IYaw(ent)
 
-    return 1 / (1 / cfg.Chassis.mass + invI)
+    -- WHEN SEVERAL WHEELS ANSWER THE SAME MOTION (`share`, the wheel's
+    -- `coupling`: the number of wheels, for a vehicle with more than two; 1 for
+    -- a bike). Each cap above is the force that would null the slip IF THIS
+    -- WHEEL WERE THE ONLY ONE ACTING, and a bike's two wheels are the case they
+    -- were tuned against. Four wheels all measuring the same slip and each
+    -- nulling the whole of it overshoot it four times over and ring; each
+    -- carrying a quarter of the mass is the same constraint split between them,
+    -- and the stick-slip springs below add back up to the whole. A bike's
+    -- coupling is exactly 1, so nothing it computes changes.
+    return 1 / (1 / cfg.Chassis.mass + invI) / (share or 1)
 end
 
 --------------------------------------------------------------------------
@@ -195,13 +236,21 @@ end
 --   driveTorque  kg*units^2/s^2 delivered to THIS wheel by the drivetrain
 --   brakeTorque  kg*units^2/s^2, always opposes rotation
 --   filter       entities the ground trace must ignore
+--   snap         optional { v, w, com }: the chassis's velocity, angular
+--                velocity and mass centre at the START of the substep. With it
+--                the wheel reads the patch's velocity from that instead of from
+--                the live body, which the wheels before it in the loop have
+--                already pushed. A bike (two wheels, applied in turn, which is
+--                what its tyre caps were tuned on) passes none; see
+--                ENT:Initialize, where `coupling` is set, for why four wheels
+--                cannot be evaluated one after another.
 --
 -- Returns nothing; forces are applied directly and diagnostic state is left on
 -- the wheel for the caller.
 --------------------------------------------------------------------------
-function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
+function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, snap)
     local C     = cfg
-    local WC    = C.Wheel
+    local WC    = self:WheelConfig(C)
     local radius = WC.radius
     local maxLen = BMX.WheelReach(WC)
 
@@ -338,7 +387,8 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     end
     self.lastComp = comp
 
-    local velAt   = phys:GetVelocityAtPoint(contact)
+    local velAt   = snap and (snap.v + snap.w:Cross(contact - snap.com))
+                         or phys:GetVelocityAtPoint(contact)
 
     -- d(compression)/dt: the contact patch approaching the ground. Measured
     -- along the ground normal rather than the strut, since that is the axis the
@@ -382,7 +432,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     local damperF = WC.damper * compVel
 
     if compVel > 0 then
-        local cap = effectiveMass(ent, phys, cfg, contact, normal) * compVel / dt
+        local cap = effectiveMass(ent, phys, cfg, contact, normal, self.coupling) * compVel / dt
         if damperF > cap then damperF = cap end
     end
 
@@ -533,7 +583,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
     -- tyre had been given a numerical ceiling below its physical one, which
     -- quietly deletes the friction model.
     ----------------------------------------------------------------------
-    local invCompLong = 1 / effectiveMass(ent, phys, cfg, contact, fwdDir)
+    local invCompLong = 1 / effectiveMass(ent, phys, cfg, contact, fwdDir, self.coupling)
     if not locked then
         invCompLong = invCompLong + radius * radius / WC.inertia
     end
@@ -543,7 +593,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
         Flong = capLong * (Flong >= 0 and 1 or -1)
     end
 
-    local capLat = abs(slipLat) * effectiveMass(ent, phys, cfg, contact, rightDir) / dt
+    local capLat = abs(slipLat) * effectiveMass(ent, phys, cfg, contact, rightDir, self.coupling) / dt
     if abs(Flat) > capLat then
         Flat = capLat * (Flat >= 0 and 1 or -1)
     end
@@ -591,8 +641,8 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter)
                 local k, c = m * w * w, 2 * m * w
                 return -(k * x + (k * dt + c) * v) / (1 + c * dt / m + k * dt * dt / m)
             end
-            local mL = effectiveMass(ent, phys, cfg, contact, fwdDir)
-            local mT = effectiveMass(ent, phys, cfg, contact, rightDir)
+            local mL = effectiveMass(ent, phys, cfg, contact, fwdDir, self.coupling)
+            local mT = effectiveMass(ent, phys, cfg, contact, rightDir, self.coupling)
             local aLong = spring(d:Dot(fwdDir),   vFwd, mL)
             local aLat  = spring(d:Dot(rightDir), vLat, mT)
             if sqrt(aLong * aLong + aLat * aLat) <= Fmax then
@@ -695,7 +745,7 @@ end
 -- NOT simply the mount point.
 --------------------------------------------------------------------------
 function Wheel:VisualOffset(cfg)
-    local WC = (cfg or BMX.Config).Wheel
+    local WC = self:WheelConfig(cfg or BMX.Config)
     local drop = self.onGround
         and (WC.restLength - math.min(self.compression, WC.restLength))
         or WC.restLength

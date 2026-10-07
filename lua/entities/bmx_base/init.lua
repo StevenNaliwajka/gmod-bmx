@@ -124,14 +124,39 @@ function ENT:Initialize()
     --
     -- With the offset, at rest: mount is 12 - sag above ground, the axle sits
     -- exactly one radius up, and the origin settles at radius - sag.
-    local half = C.Wheel.wheelbase * 0.5
+    --
+    -- N WHEELS (G22): the vehicle's own `wheels` list, resolved against this
+    -- vehicle's config (a bike's layout is a function of its wheelbase). `pos` is
+    -- the axle; the mount is restLength above it, as it always was. A bike's list
+    -- is front then rear, so every loop over the wheels sees what it always saw.
     local lift = C.Wheel.restLength
-    self.wheels = {
-        BMX.NewWheel(Vector( half, 0, lift), true),   -- front
-        BMX.NewWheel(Vector(-half, 0, lift), false),  -- rear
-    }
+    self.wheels = {}
+    for _, wd in ipairs(BMX.WheelDefs(bike, C)) do
+        local front = wd.front
+        if front == nil then front = wd.pos.x > 0 end
+        self.wheels[#self.wheels + 1] = BMX.NewWheel(
+            Vector(wd.pos.x, wd.pos.y, wd.pos.z + lift), front, wd)
+    end
+
+    -- MORE THAN TWO WHEELS ARE EVALUATED TOGETHER, not one after another.
+    -- The wheels apply their forces to the chassis as they go, and a lateral
+    -- slip is measured at the patch, so the second wheel of a pair sees the roll
+    -- the first one's suspension force just gave the body (a vertical push at
+    -- 11 units to the side, 27 below the mass centre, is several u/s of
+    -- sideways velocity at the patch). Left and right tyres then answered each
+    -- other's disturbance instead of the chassis's real slip, their forces
+    -- cancelled, and the test cart crept sideways at 5 u/s for ever. So with
+    -- more than two wheels every one reads its patch's velocity from a snapshot
+    -- taken before any of them acts (BMX.PhysicsStep passes it), and each
+    -- carries only its share of the mass in the tyre's stability caps
+    -- (`coupling`, effectiveMass in sv_wheel.lua). A bike -- two wheels in line,
+    -- on the centreline, where this never showed -- is exactly as it was.
+    local coupling = #self.wheels > 2 and #self.wheels or 1
+    for _, w in ipairs(self.wheels) do w.coupling = coupling end
 
     self.st    = BMX.NewState(C)
+    -- Which vehicle this state belongs to, for the trick list (BMX.VehicleAllows).
+    self.st.def = bike
     self.input = BMX.BlankInput()
 
     self.hopCharge  = 0
@@ -163,13 +188,16 @@ function ENT:CreateSeat()
     local pod = ents.Create("prop_vehicle_prisoner_pod")
     if not IsValid(pod) then return end
 
-    pod:SetModel(bike.seatModel or "models/nova/airboat_seat.mdl")
+    -- THE SEAT (`seats` in the registration): the vehicle's own model, offset and
+    -- angles where it gives them, the config's where it does not.
+    local seat = bike.seats and bike.seats[1] or {}
+    pod:SetModel(seat.model or bike.seatModel or "models/nova/airboat_seat.mdl")
     -- A prisoner pod without a vehiclescript is not reliably a working vehicle.
     -- It is the keyvalue that gives it its seat definition and exit points.
     pod:SetKeyValue("vehiclescript", "scripts/vehicles/prisoner_pod.txt")
     pod:SetKeyValue("limitview", "0")     -- free look; the chase cam needs it
-    pod:SetPos(self:LocalToWorld(C.Chassis.seatOffset))
-    pod:SetAngles(self:LocalToWorldAngles(C.Chassis.seatAngles))
+    pod:SetPos(self:LocalToWorld(seat.offset or C.Chassis.seatOffset))
+    pod:SetAngles(self:LocalToWorldAngles(seat.angles or C.Chassis.seatAngles))
     pod:Spawn()
     pod:Activate()
 
@@ -226,7 +254,8 @@ end
 function ENT:AssertBuilt()
     local why
     if not IsValid(self:GetPod())              then why = "no seat (CreateSeat failed)"
-    elseif not self.wheels or #self.wheels ~= 2 then why = "wheels missing"
+    elseif not self.wheels or #self.wheels ~= #BMX.WheelDefs(self:Bike(), self:Cfg()) then
+        why = "wheels missing"
     elseif not self.st                          then why = "no controller state"
     elseif not self.input                       then why = "no input table"
     elseif not IsValid(self:GetPhysicsObject()) then why = "no physics object"

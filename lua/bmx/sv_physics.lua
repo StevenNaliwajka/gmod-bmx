@@ -164,6 +164,80 @@ local function drivetrain(ent, cfg, dt, inp, st, rear)
 end
 
 --------------------------------------------------------------------------
+-- THE DRIVES (G22). What turns the rider's keys into wheel torque is the
+-- vehicle's `drive = { kind = ... }`, and each kind is a function
+--
+--     drive(ent, cfg, dt, inp, st, wheel, vdef) -> torque
+--
+-- where `wheel` is the first wheel marked drive = true (the rear, on a bike) and
+-- the result is the torque for the WHOLE vehicle, which the step splits evenly
+-- between the drive wheels. `pedal` is the function above, untouched.
+--------------------------------------------------------------------------
+BMX.Drives = BMX.Drives or {}
+BMX.Drives.pedal = function(ent, cfg, dt, inp, st, wheel) return drivetrain(ent, cfg, dt, inp, st, wheel) end
+
+-- A motor: the throttle's torque, falling away linearly to nothing at maxSpeed,
+-- which is what makes the speed a limit rather than a number somebody tuned a
+-- drag term to hit. Reversing is the brake key's, as everywhere (inp.brakeRear
+-- is a brake, not a gear): a throttle vehicle does not back up.
+BMX.Drives.throttle = function(ent, cfg, dt, inp, st, wheel, vdef)
+    local d = vdef.drive
+    local top = d.maxSpeed or 400
+    local fall = BMX.Clamp(1 - (st.fwdSpeed or 0) / top, 0, 1)
+    st.cadence = wheel and wheel.omega or 0
+    return d.torque * inp.throttle * fall
+end
+
+BMX.Drives.none = function() return 0 end
+
+-- The drive a vehicle entity runs, or the one that does nothing, with a single
+-- loud message for a kind that has no function yet (`push`, until G23).
+local driveWarned = {}
+function BMX.DriveFor(ent)
+    local def = ent.Bike and ent:Bike()
+    local kind = def and def.drive and def.drive.kind or "pedal"
+    local fn = BMX.Drives[kind]
+    if fn then return fn, def end
+    if not driveWarned[kind] then
+        driveWarned[kind] = true
+        ErrorNoHalt(string.format("[BMX] drive kind %q has no implementation; vehicles " ..
+            "that name it do not drive.\n", tostring(kind)))
+    end
+    return BMX.Drives.none, def
+end
+
+--------------------------------------------------------------------------
+-- THE AXLES. The single-track code, the landing judge and the manual tracker
+-- speak of "the front wheel" and "the rear wheel". With N wheels an axle is the
+-- group of wheels with that role: ONE wheel stands for itself (so the bike sees
+-- exactly the wheel objects it always did), and several are summarised -- on the
+-- ground if any is, the worst sideways slip, the fastest spin. No wheel at all
+-- gives an axle that is never on the ground.
+--------------------------------------------------------------------------
+local function axleOf(group)
+    if #group == 1 then return group[1] end
+    local a = { onGround = false, slipLat = 0, slipLong = 0, omega = 0, load = 0,
+                contactNorm = Vector(0, 0, 1), wheels = group }
+    for _, w in ipairs(group) do
+        if w.onGround then a.onGround, a.contactNorm = true, w.contactNorm end
+        a.slipLat  = max(a.slipLat,  abs(w.slipLat  or 0))
+        a.slipLong = max(a.slipLong, abs(w.slipLong or 0))
+        a.omega    = max(a.omega, w.omega or 0)
+        a.load     = a.load + (w.load or 0)
+    end
+    return a
+end
+
+function BMX.Axles(wheels)
+    local f, r = {}, {}
+    for _, w in ipairs(wheels) do
+        local g = w.isFront and f or r
+        g[#g + 1] = w
+    end
+    return axleOf(f), axleOf(r)
+end
+
+--------------------------------------------------------------------------
 -- The main entry point.
 --------------------------------------------------------------------------
 function BMX.PhysicsStep(ent, phys, dt)
@@ -251,12 +325,19 @@ function BMX.PhysicsStep(ent, phys, dt)
     ----------------------------------------------------------------------
     -- 3. Drivetrain and brakes
     ----------------------------------------------------------------------
-    local front, rear
-    for _, w in ipairs(wheels) do
-        if w.isFront then front = w else rear = w end
-    end
+    local front, rear = BMX.Axles(wheels)
 
-    local driveTorque = hasDriver and drivetrain(ent, C, dt, inp, st, rear) or 0
+    -- THE DRIVE: the vehicle's own (BMX.Drives), and the wheels it turns. A
+    -- bike's is the pedal drive on its one drive wheel, the rear.
+    local drive, vdef = BMX.DriveFor(ent)
+    local driveWheel, nDrive = nil, 0
+    for _, w in ipairs(wheels) do
+        if w.drive then
+            driveWheel = driveWheel or w
+            nDrive = nDrive + 1
+        end
+    end
+    local driveTorque = hasDriver and drive(ent, C, dt, inp, st, driveWheel, vdef) or 0
     local brakeRear   = inp.brakeRear  * C.Drive.rearBrake
     local brakeFront  = inp.brakeFront * C.Drive.frontBrake
 
@@ -271,7 +352,7 @@ function BMX.PhysicsStep(ent, phys, dt)
     -- landed, with a rider aboard, the suspension's push is taken through the
     -- rider's legs rather than levered at the tyre. See Wheel:Simulate.
     local soak = hasDriver and (st.airMode or (st.recoverUntil or 0) > CurTime())
-    front.soak, rear.soak = soak, soak
+    for _, w in ipairs(wheels) do w.soak = soak end
 
     -- PARKED: nobody aboard, on the stand, and nobody leaning on it. A parked
     -- wheel on a slope is held by the stick-slip anchor (Wheel:Simulate), which
@@ -279,14 +360,27 @@ function BMX.PhysicsStep(ent, phys, dt)
     -- parked bike has no brake held.
     local parked = not hasDriver and st.onStand
         and not ((st.pushedUntil or 0) > CurTime())
-    front.hold, rear.hold = parked, parked
+    for _, w in ipairs(wheels) do w.hold = parked end
 
+    -- EVERY WHEEL, in list order (a bike's is front, then rear). The drive
+    -- torque is shared out between the wheels marked drive; a wheel's brake is
+    -- its axle's: the front brake on the front axle, the rear on the others.
     local filter = ent.traceFilter
-    front:Simulate(ent, phys, C, dt, 0,           brakeFront, filter)
-    rear:Simulate (ent, phys, C, dt, driveTorque, brakeRear,  filter)
+    local share = nDrive > 0 and driveTorque / nDrive or 0
+    -- More than two wheels read the chassis's motion as it was at the top of the
+    -- substep (see ENT:Initialize on `coupling`); a bike's two take it live.
+    local snap
+    if #wheels > 2 then
+        snap = { v = phys:GetVelocity(), w = st.angVel or vector_origin,
+                 com = phys:LocalToWorld(phys:GetMassCenter()) }
+    end
+    for _, w in ipairs(wheels) do
+        w:Simulate(ent, phys, C, dt, w.drive and share or 0,
+            w.isFront and brakeFront or brakeRear, filter, snap)
+    end
 
     -- The climbing push (see drivetrain): at the mass centre, along the slope.
-    if hasDriver and st.climbDir and st.climbAccel > 0 and rear.onGround then
+    if hasDriver and st.climbDir and st.climbAccel > 0 and driveWheel and driveWheel.onGround then
         phys:ApplyForceCenter(st.climbDir * (st.climbAccel * phys:GetMass() * dt))
     end
 
@@ -297,7 +391,9 @@ function BMX.PhysicsStep(ent, phys, dt)
     -- A hard landing can meet the ground with a wheel BOX before either
     -- suspension ray registers it (at landing speed the bike moves ~12 units
     -- a tick); PhysicsCollide marks that as a touchdown too (ent.bmxTouchdown).
-    local touchdown = st.airMode and (front.onGround or rear.onGround or ent.bmxTouchdown)
+    local anyDown = false
+    for _, w in ipairs(wheels) do if w.onGround then anyDown = true end end
+    local touchdown = st.airMode and (anyDown or ent.bmxTouchdown)
     ent.bmxTouchdown = nil
     if hasDriver and touchdown then
         local CR = C.Crash
@@ -340,12 +436,15 @@ function BMX.PhysicsStep(ent, phys, dt)
     -- 5. Ground state
     ----------------------------------------------------------------------
     local wasGrounded = st.grounded
-    local grounded = front.onGround or rear.onGround
+    local grounded = anyDown
 
+    -- The mean of the contact normals of every wheel on the ground, summed in
+    -- list order (a bike's: front, then rear).
     local n = Vector()
     local c = 0
-    if front.onGround then n = n + front.contactNorm; c = c + 1 end
-    if rear.onGround  then n = n + rear.contactNorm;  c = c + 1 end
+    for _, w in ipairs(wheels) do
+        if w.onGround then n = n + w.contactNorm; c = c + 1 end
+    end
     if c > 0 then
         n:Normalize()
         st.groundNormalRaw = n
@@ -389,8 +488,24 @@ function BMX.PhysicsStep(ent, phys, dt)
         end
         st.airSince = 0
 
-        BMX.Balance(ent, phys, C, dt, inp, st, wheels, st.groundNormal, speed)
-        BMX.PitchControl(ent, phys, C, dt, inp, st, wheels)
+        -- THE VEHICLE'S BALANCE MODE (sv_balance.lua): singletrack for a bike,
+        -- none for something that stands on its own wheels.
+        local mode = BMX.BalanceFor(ent)
+        mode.Ground(ent, phys, C, dt, inp, st, wheels, st.groundNormal, speed)
+        mode.Pitch(ent, phys, C, dt, inp, st, wheels)
+
+        -- STEER BY FUNCTION. A wheel whose `steer` is a function takes its angle
+        -- from it every grounded substep, after the balance has run (so it may
+        -- read the roll it just produced): a board's truck lean, a cart's
+        -- wheels following the key. "fork" wheels were steered by the balance.
+        local steered
+        for _, w in ipairs(wheels) do
+            if type(w.steerMode) == "function" then
+                w.steer = w.steerMode(w, ent, st, inp, C, dt, speed) or 0
+                steered = steered or w
+            end
+        end
+        if steered then st.steer = steered.steer end
     else
         st.airSince = st.airSince + dt
         if not st.airMode and st.airSince >= C.Air.engageDelay then
@@ -451,8 +566,11 @@ function BMX.PhysicsStep(ent, phys, dt)
     -- its front wheel is not doing a stoppie.
     ----------------------------------------------------------------------
     if hasDriver then
-        local done = BMX.TrackManual(st, C, front, rear, speed, dt)
-        if done and ent.AwardTricks then ent:AwardTricks(done) end
+        -- Wheelies and stoppies, for a vehicle whose trick list has them.
+        if BMX.VehicleAllows(vdef, "wheelie") or BMX.VehicleAllows(vdef, "stoppie") then
+            local done = BMX.TrackManual(st, C, front, rear, speed, dt)
+            if done and ent.AwardTricks then ent:AwardTricks(done) end
+        end
         -- Frame and bar spins, poses, anything registered (sv_tricks.lua):
         -- after the manual, so a bar spin knows whether one is under way.
         if BMX.TricksTick then

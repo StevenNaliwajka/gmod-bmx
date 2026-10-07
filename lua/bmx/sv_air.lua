@@ -218,7 +218,7 @@ function BMX.ScoreAir(st)
 
     for _, id in ipairs(BMX.TrickOrder) do
         local t = BMX.Tricks[id]
-        if t.kind == "spin" then
+        if t.kind == "spin" and BMX.VehicleAllows(st.def, id) then
             local total = st[t.axis] or 0
             local n = floor(abs(total) / TAU)
             if n > 0 and (t.sign == 0 or (total > 0) == (t.sign > 0)) then

@@ -372,6 +372,63 @@ after mounting: 88 where it should have been 0. When several unrelated things
 fail at once, look for the shared precondition, not for a common factor in the
 symptoms.
 
+## 6c. The vehicle platform (G22)
+
+The simulation was written for a bike and most of it never needed to be: the
+raycast wheel, the tyre model, air control, launch classification, grinds,
+combos and scoring know nothing about pedals. What was bike-shaped was a handful
+of places that said "the front wheel and the rear wheel", so the refactor made
+those places data, and the bike became one client of a platform.
+
+A vehicle is **a registry entry, a balance mode, an input map, a rider pose set
+and a trick list** (`BMX.RegisterVehicle`, `sh_bikes.lua`; the vocabulary and the
+checks in `sh_vehicles.lua`; the reference in `docs/MODDING.md`). The pieces, and
+where each one went:
+
+| Part | Was | Is now |
+|---|---|---|
+| Wheels | `{ front, rear }` hard-coded in `ENT:Initialize` | the vehicle's `wheels` list (any count, any layout), each with `pos`, `radius`, a `steer` of `false`, `"fork"` or a function, and a `drive` flag. `sv_physics.lua` loops over them: drive torque is shared between the drive wheels, a wheel takes its axle's brake. |
+| Balance | `BMX.Balance` and `BMX.PitchControl` called by name | `BMX.BalanceModes[mode].Ground / .Pitch`, chosen by the vehicle's `balance`. `singletrack` is the old code, in place; `none` only keeps the roll and pitch books; `board` is reserved for the skateboard. |
+| Drive | the pedal drivetrain | `BMX.Drives[kind]`: `pedal` (the old function), `throttle` (torque falling to zero at a top speed), `none`; `push` is reserved. |
+| Input | a block of `IN_*` tests in the usercmd hook | an input map, a table of action to key and context, that `sv_input.lua` reads. The `bike` map is the old keys. |
+| Rider | `BMX.RiderPose` and the style poses | a pose set (`BMX.PoseSets`), named by the vehicle; `cl_rider.lua` fills in the bike's and a plain seated one. |
+| Grinds | the crank point and peg offsets read from the config | the vehicle's `grindPoints`, read by `sv_grind.lua` and by the sparks in `cl_grind.lua`. |
+| Tricks | everything registered | the vehicle's `tricks` list gates what is scored from motion. |
+| Registry | `BMX.Bikes` | `BMX.Vehicles`, with `BMX.Bikes` the same table, so `bmx_spawn <id>`, the class names, the duplicator and every convar are what they were. |
+
+**What did not move.** The entity class is still `bmx_base`, because the
+duplicator and saved games depend on it, and a vehicle is a derived class
+`bmx_<id>` of it exactly as a bike always was. The single-track controller stayed
+in `sv_balance.lua`, registered as a mode: four hundred lines of tuned controller
+are not worth moving to make a registry, and the history of that file is the
+record of why each line is there.
+
+**The proof is not a bicycle.** The test cart (`bmx_spawn testcart`, hidden,
+needs `bmx_debug 1`) is four wheels in a rectangle, `balance = "none"`, a
+throttle on the rear pair and a front pair steered by a function. It is in the
+shipped files so the suites run what ships, and it is what made two assumptions
+visible that a bike never tests:
+
+- **Wheels are evaluated together, not in turn.** Each wheel applies its force
+  to the chassis as it goes and reads a patch velocity that includes whatever
+  the wheels before it just did. For two wheels on the centreline that never
+  mattered. For four, the left wheel's suspension push rolls the body, the right
+  wheel reads that roll as a sideways slip, and the two tyres answer each other
+  instead of the chassis: equal and opposite forces, no net effect, and a cart
+  that crept sideways at 5 u/s for ever. With more than two wheels every one now
+  reads its patch velocity from a snapshot taken at the top of the substep
+  (`snap` in `Wheel:Simulate`), and carries a share of the mass in the tyre's
+  stability caps (`coupling`). A vehicle with two wheels is bit for bit what it
+  was.
+- **A balance mode must still keep the books.** `none` applies no torque and
+  holds nothing up, but the tip rule, the landing judge, the air control and the
+  HUD all read `st.roll`, `st.pitch` and their rates, so it keeps writing them
+  the way the single-track mode does.
+
+What the board (G23) adds on top is a `board` balance module, a `push` drive, a
+`steer` function for truck lean, an input map and a pose set; none of it needs a
+change to the core.
+
 ## 7. Roadmap
 
 | Phase | Deliverable | Status |

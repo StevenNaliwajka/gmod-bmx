@@ -27,6 +27,21 @@
     Y-left, Z-up frame:
         roll  > 0   leaning RIGHT   torque about +ent:GetForward()
         pitch > 0   nose UP         torque about +ent:GetRight()
+
+    BALANCE MODES ARE MODULES (G22). Everything above this line of the file is
+    the `singletrack` mode: two wheels in line, steering derived from lean. It is
+    registered at the bottom as BMX.BalanceModes.singletrack, and the physics step
+    asks the vehicle which mode it runs (`balance = ...` in its registration)
+    instead of calling it by name. A mode is a table of two functions with the
+    signatures BMX.Balance and BMX.PitchControl already had:
+
+        Ground(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
+        Pitch (ent, phys, cfg, dt, inp, st, wheels)
+
+    BMX.Balance and BMX.PitchControl are still the singletrack functions under
+    their old names. The code did not move, only the way it is reached: moving
+    four hundred lines of tuned controller to make a registry is a way to break
+    it, and the history of this file is the record of why each line is there.
 ----------------------------------------------------------------------------]]
 
 BMX = BMX or {}
@@ -305,7 +320,7 @@ function BMX.Balance(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
     -- Without it the front end chatters over every bump the suspension passes.
     local f = min(1, B.steerRate * dt)
     for _, w in ipairs(wheels) do
-        if w.isFront then
+        if w.steerMode == "fork" then
             w.steer = w.steer + (target - w.steer) * f
             st.steer = w.steer
         end
@@ -433,3 +448,59 @@ function BMX.PitchControl(ent, phys, cfg, dt, inp, st, wheels)
 
     BMX.ApplyTorque(phys, ent, axisR, torque, dt)
 end
+
+--------------------------------------------------------------------------
+-- THE MODES.
+--------------------------------------------------------------------------
+BMX.BalanceModes = BMX.BalanceModes or {}
+
+-- Today's code, reached through the registry.
+BMX.BalanceModes.singletrack = {
+    Ground = function(...) return BMX.Balance(...) end,
+    Pitch  = function(...) return BMX.PitchControl(...) end,
+}
+
+-- The mode a vehicle entity runs. A name with no module behind it (`board`
+-- before G23 lands, or a typo that slipped past the registry) runs as `none`,
+-- and says so once per name rather than once per substep.
+local warned = {}
+function BMX.BalanceFor(ent)
+    local def = ent.Bike and ent:Bike()
+    local name = def and def.balance or "singletrack"
+    local mode = BMX.BalanceModes[name]
+    if mode then return mode end
+    if not warned[name] then
+        warned[name] = true
+        ErrorNoHalt(string.format("[BMX] balance mode %q has no module; vehicles that " ..
+            "name it run as \"none\".\n", tostring(name)))
+    end
+    return BMX.BalanceModes.none
+end
+
+--------------------------------------------------------------------------
+-- `none`: NOTHING HOLDS THE VEHICLE UP. A motor vehicle whose centre of mass
+-- is low enough, or a cart on four wheels, stands on its suspension like any
+-- rigid body; there is no lean target, no assist, no kickstand and no wheelie
+-- hold to run.
+--
+-- What it does keep doing is the BOOKKEEPING, because the rest of the step reads
+-- it: st.roll and st.pitch (the tip rule, the landing judge, the HUD, the
+-- camera), their rates and the history the air control differentiates against.
+-- Taken exactly as the single-track mode takes them -- roll against gravity,
+-- pitch against the ground -- so a vehicle that switches mode does not change
+-- what those numbers mean. Steering is the wheels' own (`steer` functions in the
+-- registration), applied by the physics step after this returns.
+--------------------------------------------------------------------------
+BMX.BalanceModes.none = {
+    Ground = function(ent, phys, cfg, dt, inp, st, wheels, groundNormal, speed)
+        local roll  = select(1, BMX.Attitude(ent, BMX.BalanceUp(ent, cfg, groundNormal)))
+        local pitch = select(2, BMX.Attitude(ent, groundNormal))
+        st.rollRate  = st.rollRate  + ((roll  - st.lastRoll)  / dt - st.rollRate)  * min(1, 18 * dt)
+        st.pitchRate = st.pitchRate + ((pitch - st.lastPitch) / dt - st.pitchRate) * min(1, 18 * dt)
+        st.lastRoll, st.lastPitch = roll, pitch
+        st.roll, st.pitch = roll, pitch
+        st.onStand = false
+        st.leanAuthority, st.leanError = 0, 0
+    end,
+    Pitch = function() end,
+}

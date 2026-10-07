@@ -10,6 +10,12 @@
     gets all of that for free and adds zero packets. A net message would only
     add a second, unordered, unvalidated channel saying the same thing.
 
+    THE KEYS ARE DATA (G22). Which usercmd bit each action reads is the vehicle's
+    INPUT MAP (BMX.InputMaps, sh_vehicles.lua): `down("sprint")` below asks the
+    map which key sprint is on. The list that follows is the `bike` map, the one
+    every bike registers with; a vehicle with other controls registers its own,
+    and the keybind panel (G19) is generated from the same table.
+
     CONTROLS. Context-sensitive, the same way GTA's are: W/S and A/D mean
     different things on the ground and in the air, because a rider's hands do.
 
@@ -107,7 +113,16 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     if ply.BMXScripted then return end
 
     local buttons = cmd:GetButtons()
-    local function down(bit_) return bit.band(buttons, bit_) ~= 0 end
+    -- THE KEYS COME FROM THE VEHICLE'S INPUT MAP (sh_vehicles.lua), by action
+    -- name: down("sprint") asks which key the map binds sprint to and whether it
+    -- is held. An action the map does not have is never down, so a vehicle with
+    -- the plain map simply has no trick keys, and a key rebinding or a G19
+    -- keybind panel is a change to the table, not to this function.
+    local map = BMX.InputMapFor(bike)
+    local function down(action)
+        local a = map.actions[action]
+        return a ~= nil and bit.band(buttons, a.key) ~= 0
+    end
 
     local dz   = BMX.Clamp(ply:GetInfoNum("bmx_stick_deadzone", 0.1), 0, 0.9)
     local fwd  = deadzone(axis(cmd:GetForwardMove(), "sv_forwardspeed", 400), dz)
@@ -116,16 +131,16 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     -- Digital fallback: some clients (and every bot) send buttons with zero
     -- move axes. Without this the bike is unrideable and the cause is invisible.
     if fwd == 0 then
-        if down(IN_FORWARD) then fwd = 1 elseif down(IN_BACK) then fwd = -1 end
+        if down("forward") then fwd = 1 elseif down("back") then fwd = -1 end
     end
     if side == 0 then
-        if down(IN_MOVERIGHT) then side = 1 elseif down(IN_MOVELEFT) then side = -1 end
+        if down("right") then side = 1 elseif down("left") then side = -1 end
     end
 
-    inp.sprint     = down(IN_SPEED)
-    inp.tuck       = down(IN_DUCK)
-    inp.wheelieMod = down(IN_ATTACK2)
-    inp.brakeFront = down(IN_ATTACK) and 1 or 0
+    inp.sprint     = down("sprint")
+    inp.tuck       = down("tuck")
+    inp.wheelieMod = down("weightBack")
+    inp.brakeFront = down("brakeFront") and 1 or 0
 
     -- Follow the DEBOUNCED air mode, not raw ground contact. Two reasons: the
     -- networked Grounded flag is a 20 Hz copy of something that changes at
@@ -185,18 +200,18 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     local sdir = side > 0.1 and 1 or (side < -0.1 and -1 or 0)
     inp.whip, inp.bar, inp.pose = 0, 0, nil
     if airborne or manual then
-        local alt = down(IN_WALK)
+        local alt = down("alt")
         inp.poseMod = alt
-        local wKey = fwd > 0.1  or (down(IN_FORWARD) and inp.airLatch ~= 1)
-        local sKey = fwd < -0.1 or (down(IN_BACK)    and inp.airLatch ~= -1)
+        local wKey = fwd > 0.1  or (down("forward") and inp.airLatch ~= 1)
+        local sKey = fwd < -0.1 or (down("back")    and inp.airLatch ~= -1)
         inp.pose = BMX.DecodePose({ alt = alt, rmb = inp.wheelieMod, fwd = wKey, back = sKey,
-            side = sdir, jump = down(IN_JUMP), air = airborne, manual = manual })
+            side = sdir, jump = down("hop"), air = airborne, manual = manual })
         if inp.pose and airborne then
             -- Hands are busy: no flip, no roll, no 360 under a pose.
             fwd, side = 0, 0
             inp.wheelieMod = false
         elseif airborne then
-            local lmb, rKey = down(IN_ATTACK), down(IN_RELOAD)
+            local lmb, rKey = down("brakeFront"), down("bar")
             if lmb and rKey then
                 local w = sdir ~= 0 and sdir or 1
                 inp.whip, inp.bar = w, w
@@ -206,7 +221,7 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
                 inp.bar = sdir ~= 0 and sdir or 1
             end
             if inp.whip ~= 0 or inp.bar ~= 0 then side = 0 end
-        elseif manual and down(IN_RELOAD) then
+        elseif manual and down("bar") then
             inp.bar = sdir ~= 0 and sdir or 1       -- a barspin in a manual
         end
     else
@@ -252,7 +267,7 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     -- manual. R is also the barspin key in the air and in a manual (G03), so
     -- the bell takes only what that leaves. A press that began in the air and
     -- is still held on landing is not a ring (ringHeld). See sv_bell.lua.
-    local ringKey = down(IN_RELOAD)
+    local ringKey = down("bar")
     if ringKey and not inp.ringHeld and not airborne and not inp.wheelieMod
         and not (bike.st and bike.st.manual) and BMX.Bell then
         BMX.Bell.Ring(bike)
@@ -299,7 +314,7 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
 
     -- Bunny hop: edge-triggered on release, so the press starts a preload and
     -- the release spends it. Holding SPACE forever must not hop.
-    local jump = down(IN_JUMP)
+    local jump = down("hop")
     if jump and not inp.hop then
         bike.hopCharge = 0
         bike.hopHeld   = true

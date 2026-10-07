@@ -503,6 +503,26 @@ BMX.RiderPoses = {
     tabletop = { bikeRoll = 70 },
 }
 
+--------------------------------------------------------------------------
+-- THE POSE SETS (G22). A vehicle names one (`pose = "bike"`), and the set is
+-- two things: `rider(s)`, the bone offsets for the ride (BMX.RiderPose above is
+-- the bike's), and `poses`, the style-trick IK targets (BMX.RiderPoses). The
+-- ids are declared in sh_vehicles.lua so a registration can be checked; this is
+-- where the client fills them in.
+--
+-- `seated` is the plain one for a vehicle with no pedals and no bars to
+-- animate: the stock seated pose with the torso following the vehicle's pitch,
+-- and no style poses. A board's set (G23) is the next to be added here.
+--------------------------------------------------------------------------
+BMX.PoseSets.bike.rider = function(s) return BMX.RiderPose(s) end
+BMX.PoseSets.bike.poses = BMX.RiderPoses
+
+BMX.PoseSets.seated.rider = function(s)
+    local spine = math.deg(s.pitch or 0) * RIDER.pitchFollow
+    return { spine = Angle(0, spine, 0), head = Angle(0, -spine * 0.7, 0) }
+end
+BMX.PoseSets.seated.poses = {}
+
 local POSE_HANDS = { "rHand", "lHand" }
 local POSE_LIMBS = { "rHand", "lHand", "rFoot", "lFoot" }
 
@@ -524,10 +544,11 @@ end
 
 -- What the weights add up to for the bike's drawing, in radians: the roll of
 -- the whole bike, the bars folded forward, the bars turned.
-function BMX.PoseDrawAngles(W)
+function BMX.PoseDrawAngles(W, poses)
+    poses = poses or BMX.RiderPoses
     local roll, turn, spin = 0, 0, 0
     for name, w in pairs(W or {}) do
-        local d = BMX.RiderPoses[name]
+        local d = poses[name]
         if d then
             roll = roll + math.rad(d.bikeRoll or 0) * w
             turn = turn + math.rad(d.barsTurn or 0) * w
@@ -538,10 +559,11 @@ function BMX.PoseDrawAngles(W)
 end
 
 -- The torso: degrees forward and degrees of twist.
-function BMX.PoseBody(W)
+function BMX.PoseBody(W, poses)
+    poses = poses or BMX.RiderPoses
     local lean, twist = 0, 0
     for name, w in pairs(W or {}) do
-        local d = BMX.RiderPoses[name]
+        local d = poses[name]
         if d then
             lean  = lean  + (d.spineLean  or 0) * w
             twist = twist + (d.spineTwist or 0) * w
@@ -554,9 +576,10 @@ end
 -- `toWorld` turns a bike-space point into a world one. A hand that is being
 -- posed gives up its grip RANGE: the solver would otherwise take the nearest
 -- point on the bar and ignore the pose.
-function BMX.ApplyPoseTargets(ik, W, toWorld)
+function BMX.ApplyPoseTargets(ik, W, toWorld, poses)
+    poses = poses or BMX.RiderPoses
     for name, w in pairs(W or {}) do
-        local d = BMX.RiderPoses[name]
+        local d = poses[name]
         if d and w > 0 then
             for _, key in ipairs(POSE_LIMBS) do
                 if d[key] and ik[key] then
@@ -628,7 +651,8 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     if not grounded then bike.bmxAirVz = vz end
     bike.bmxWasAir = not grounded
     bike.bmxLand = math.max(0, (bike.bmxLand or 0) - dt * LAND_RECOVER)
-    local pose = BMX.RiderPose({
+    local set = BMX.PoseSetFor(bike)
+    local pose = set.rider({
         crank    = bike.crankAngle or 0,
         speed    = bike:GetSpeedUPS(),
         topSpeed = C.Drive.maxCadence * C.Drive.gearRatio * C.Wheel.radius,
@@ -642,7 +666,7 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
             ply.bmxSpineTwist or 0)
     end
     -- A style pose folds and twists the torso too (BMX.RiderPoses).
-    local poseLean, poseTwist = BMX.PoseBody(bike.poseW)
+    local poseLean, poseTwist = BMX.PoseBody(bike.poseW, set.poses)
     -- ...and so does the rider's chosen stance (sh_stance.lua, G21).
     poseLean = poseLean + (BMX.StanceLean and BMX.StanceLean(ply) or 0)
     if poseLean ~= 0 or poseTwist ~= 0 then

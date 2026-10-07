@@ -17,6 +17,17 @@ steers from lean, hops and lands, wheelies, stoppies, grinds, flips and scores
 combos. Its feel numbers were derived and measured before anybody rode it, and
 are now being tuned from what riders say. See [Tuning](docs/TUNING.md).
 
+## Official server
+
+**Petopia**, Peter Griffin's Garry's Mod server, is the official BMX server:
+
+    connect gmod.naliwajka.com:27015
+
+Paste that into the Garry's Mod console (~), or find "Petopia" in the server
+browser. Type `/vote bmx` in chat to switch it to BMX.
+
+Found a bug or have an idea? [Open an issue on GitHub](https://github.com/StevenNaliwajka/gmod-bmx/issues).
+
 ## Three pieces
 
 This repository is **BMX**, the vehicle addon: the bikes, their physics,

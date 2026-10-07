@@ -422,6 +422,15 @@ T.test("the rooftop billboards stand on their building's roof, out of reach", fu
             n = n + 1
             T.ok(s.pos[3] - s.h / 2 > s.roof, s.text .. " above its roof")
             T.ok(s.pos[3] - s.h / 2 > 528, s.text .. " above the wall")
+            -- within one building's width, so no neighbour hides part of it
+            local side = L.rows[s.side]
+            local ax = (s.side == "north" or s.side == "south") and 1 or 2
+            local on
+            for _, bd in ipairs(side) do
+                local top = bd.tower or bd
+                if top[ax] <= s.at - s.w / 2 and top[ax + 3] >= s.at + s.w / 2 then on = top end
+            end
+            T.ok(on and math.abs(on[6] - s.roof) < 0.01, s.text .. " fits on one roof")
             -- outside the play box: nobody rides into it
             local p = City.Maps.gm_skatepark.park
             T.ok(s.pos[1] < p[1] or s.pos[1] > p[4] or s.pos[2] < p[2] or s.pos[2] > p[5], s.text .. " outside the box")

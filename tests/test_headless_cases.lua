@@ -123,3 +123,13 @@ T.test("headless: a work-in-progress case is listed but not run by the full suit
     end
     T.ok(S.cases.bot_wheelie and not S.cases.bot_wheelie.wip, "a trick that lands runs in the full suite")
 end)
+
+T.test("headless: every bot trick is in the full run -- none left in progress", function()
+    local S, sv = suite()
+    for _, name in ipairs(sv.env.BMX.Bot.TrickList) do
+        local c = S.cases["bot_" .. name:lower():gsub("[^%w]+", "_")]
+        T.ok(c, name .. " has a case")
+        T.ok(c and not c.wip, name .. " runs in the full suite")
+    end
+    T.ok(not S.cases.bot_finds_a_ramp_in_the_world.wip, "and so does finding a ramp")
+end)

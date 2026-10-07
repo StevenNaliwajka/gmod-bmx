@@ -279,91 +279,103 @@ end
 --------------------------------------------------------------------------
 -- Signs
 --------------------------------------------------------------------------
--- Three looks, after Petopia's own pages (naliwajka.com/petopia: a 1998
--- desktop -- navy title bars, silver bevels, cyan and yellow on navy):
---   window     a Windows-98 window: title bar, three buttons, silver body
---   neon       a dark panel with a coloured frame and glowing text
---   billboard  a big rooftop board: navy, a yellow rule, huge type
--- `text` is the headline, `sub` the line under it, `title` the window's
--- title bar. Colours are {r,g,b}.
+-- The looks:
+--   ad        a billboard advertisement: a painted panel in a white frame,
+--             a headline, a tagline, a brand line and a colour band, with
+--             lamps along the top
+--   transit   a station sign: a coloured roundel with the line number and
+--             the station name, white on dark grey
+--   street    a green US street sign with a block number
+-- Ad fields: text (headline), sub (tagline), brand (small line), bg / fg /
+-- band colours as {r,g,b}.
 local fontsMade = false
 local function makeFonts()
     if fontsMade then return end
     fontsMade = true
     surface.CreateFont("BMXCitySign", { font = "Coolvetica", size = 120, weight = 800, antialias = true })
     surface.CreateFont("BMXCitySignSub", { font = "Roboto", size = 40, weight = 700, antialias = true })
-    surface.CreateFont("BMXCityWin", { font = "Tahoma", size = 110, weight = 900, antialias = true })
-    surface.CreateFont("BMXCityWinTitle", { font = "Tahoma", size = 30, weight = 800, antialias = true })
-    surface.CreateFont("BMXCityWinSub", { font = "Tahoma", size = 34, weight = 700, antialias = true })
+    for _, sz in ipairs({ 120, 100, 84, 70, 58 }) do
+        surface.CreateFont("BMXCityAd" .. sz, { font = "Impact", size = sz, weight = 500, antialias = true })
+    end
+    for _, sz in ipairs({ 44, 36, 30 }) do
+        surface.CreateFont("BMXCityAdSub" .. sz, { font = "Roboto", size = sz, weight = 800, antialias = true })
+    end
+    surface.CreateFont("BMXCityAdBrand", { font = "Roboto", size = 26, weight = 700, antialias = true })
+    surface.CreateFont("BMXCityTransit", { font = "Roboto", size = 70, weight = 800, antialias = true })
 end
 
-local NAVY, NAVY2 = Color(0, 0, 128), Color(16, 132, 208)
-local SILVER, WHITE, GREY, DARK = Color(192, 192, 192), Color(255, 255, 255), Color(128, 128, 128), Color(40, 40, 40)
+local WHITE = Color(255, 255, 255)
 
-local function bevel(x, y, w, h, raised)
-    local tl, br = raised and WHITE or GREY, raised and GREY or WHITE
-    surface.SetDrawColor(tl) surface.DrawRect(x, y, w, 3) surface.DrawRect(x, y, 3, h)
-    surface.SetDrawColor(br) surface.DrawRect(x, y + h - 3, w, 3) surface.DrawRect(x + w - 3, y, 3, h)
+-- The biggest of a font family's sizes that fits `text` in `room` pixels.
+local function fit(prefix, sizes, text, room)
+    for _, sz in ipairs(sizes) do
+        surface.SetFont(prefix .. sz)
+        if surface.GetTextSize(text) <= room then return prefix .. sz end
+    end
+    return prefix .. sizes[#sizes]
 end
+local function col(t, d) t = t or d return Color(t[1], t[2], t[3], t[4] or 255) end
 
-local function windowSign(s, pw, ph, c)
-    local tb = math.min(ph * 0.2, 44)
-    surface.SetDrawColor(SILVER) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
-    bevel(-pw / 2, -ph / 2, pw, ph, true)
-    -- title bar: navy fading to blue, as 98 drew it
-    local x0, y0, w0 = -pw / 2 + 6, -ph / 2 + 6, pw - 12
-    for i = 0, 15 do
-        local f = i / 15
-        surface.SetDrawColor(NAVY.r + (NAVY2.r - NAVY.r) * f, NAVY.g + (NAVY2.g - NAVY.g) * f, NAVY.b + (NAVY2.b - NAVY.b) * f, 255)
-        surface.DrawRect(x0 + w0 * i / 16, y0, w0 / 16 + 1, tb)
-    end
-    draw.SimpleText(s.title or "Petopia", "BMXCityWinTitle", x0 + 10, y0 + tb / 2, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-    for i = 1, 3 do
-        local bx = x0 + w0 - i * (tb + 2) - 2
-        surface.SetDrawColor(SILVER) surface.DrawRect(bx, y0 + 4, tb - 6, tb - 8)
-        bevel(bx, y0 + 4, tb - 6, tb - 8, true)
-        draw.SimpleText(({ "x", "o", "_" })[i], "BMXCityWinTitle", bx + (tb - 6) / 2, y0 + tb / 2, DARK, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    end
-    -- the body: a sunken field, the headline in the sign's colour
-    local by = y0 + tb + 8
-    local bh = ph / 2 - 6 - by - 6
-    surface.SetDrawColor(s.field and Color(s.field[1], s.field[2], s.field[3]) or NAVY)
-    surface.DrawRect(x0 + 4, by, w0 - 8, bh)
-    bevel(x0 + 4, by, w0 - 8, bh, false)
-    local hasSub = s.sub ~= nil
-    draw.SimpleText(s.text, "BMXCityWin", 0, by + bh * (hasSub and 0.4 or 0.5), Color(c[1], c[2], c[3]), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    if hasSub then
-        draw.SimpleText(s.sub, "BMXCityWinSub", 0, by + bh * 0.82, WHITE, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    end
-end
-
-local function neonSign(s, pw, ph, c)
-    surface.SetDrawColor(c[1], c[2], c[3], 255)
-    surface.DrawRect(-pw / 2 - 10, -ph / 2 - 10, pw + 20, ph + 20)
-    surface.SetDrawColor(14, 16, 22, 255)
-    surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
-    local glow = Color(c[1], c[2], c[3], 60)
-    for _, o in ipairs({ { -3, 0 }, { 3, 0 }, { 0, -3 }, { 0, 3 } }) do
-        draw.SimpleText(s.text, "BMXCitySign", o[1], -ph * 0.1 + o[2], glow, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    end
-    draw.SimpleText(s.text, "BMXCitySign", 0, -ph * 0.1, Color(c[1], c[2], c[3], 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+local function adSign(s, pw, ph)
+    local bg, fg, band = col(s.bg, { 245, 240, 225 }), col(s.fg or s.color, { 200, 30, 30 }), col(s.band, { 30, 60, 150 })
+    -- frame and a dark trim, like a painted board in its steel surround
+    surface.SetDrawColor(235, 235, 235, 255) surface.DrawRect(-pw / 2 - 14, -ph / 2 - 14, pw + 28, ph + 28)
+    surface.SetDrawColor(60, 60, 64, 255) surface.DrawRect(-pw / 2 - 4, -ph / 2 - 4, pw + 8, ph + 8)
+    surface.SetDrawColor(bg) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    -- the colour band across the bottom third, the brand line on it
+    surface.SetDrawColor(band) surface.DrawRect(-pw / 2, ph * 0.2, pw, ph * 0.3)
+    -- a big disc at the right, the way an ad puts its product
+    local r = ph * 0.34
+    draw.NoTexture()
+    surface.SetDrawColor(fg.r, fg.g, fg.b, 60)
+    local poly, cx, cy = {}, pw / 2 - r * 1.3, -ph * 0.08
+    for i = 0, 23 do local a = i / 24 * math.pi * 2 poly[#poly + 1] = { x = cx + math.cos(a) * r, y = cy + math.sin(a) * r } end
+    surface.DrawPoly(poly)
+    -- the headline and tagline stay clear of the disc
+    local room = (cx - r) - (-pw / 2 + pw * 0.05) - 16
+    draw.SimpleText(s.text, fit("BMXCityAd", { 120, 100, 84, 70, 58 }, s.text, room), -pw / 2 + pw * 0.05, -ph * 0.16, fg, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     if s.sub then
-        draw.SimpleText(s.sub, "BMXCitySignSub", 0, ph * 0.32, Color(235, 235, 235, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.SimpleText(s.sub, fit("BMXCityAdSub", { 44, 36, 30 }, s.sub, room), -pw / 2 + pw * 0.05, ph * 0.08,
+            col(s.subColor, { 40, 40, 40 }), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    end
+    if s.brand then draw.SimpleText(s.brand, "BMXCityAdBrand", -pw / 2 + pw * 0.05, ph * 0.35, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    -- lamps on arms along the top edge
+    for i = 1, 4 do
+        local lx = -pw / 2 + pw * (i - 0.5) / 4
+        surface.SetDrawColor(50, 50, 55, 255) surface.DrawRect(lx - 3, -ph / 2 - 40, 6, 30)
+        surface.SetDrawColor(255, 245, 200, 255) surface.DrawRect(lx - 16, -ph / 2 - 46, 32, 10)
     end
 end
 
-local function billboardSign(s, pw, ph, c)
-    surface.SetDrawColor(NAVY) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
-    surface.SetDrawColor(255, 255, 0, 255)
-    surface.DrawRect(-pw / 2, -ph / 2, pw, 8) surface.DrawRect(-pw / 2, ph / 2 - 8, pw, 8)
-    surface.DrawRect(-pw / 2, ph * 0.18, pw, 4)
-    draw.SimpleText(s.text, "BMXCitySign", 0, -ph * 0.14, Color(c[1], c[2], c[3]), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    if s.sub then
-        draw.SimpleText(s.sub, "BMXCitySignSub", 0, ph * 0.34, Color(0, 255, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    end
+local function transitSign(s, pw, ph)
+    local c = col(s.color, { 220, 40, 40 })
+    surface.SetDrawColor(36, 38, 42, 255) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    surface.SetDrawColor(200, 200, 200, 255) surface.DrawOutlinedRect(-pw / 2, -ph / 2, pw, ph, 4)
+    local r = ph * 0.36
+    local cx = -pw / 2 + ph * 0.5
+    draw.NoTexture()
+    surface.SetDrawColor(c)
+    local poly = {}
+    for i = 0, 23 do local a = i / 24 * math.pi * 2 poly[#poly + 1] = { x = cx + math.cos(a) * r, y = math.sin(a) * r } end
+    surface.DrawPoly(poly)
+    draw.SimpleText(s.line or "1", "BMXCityTransit", cx, 0, WHITE, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText(s.text, "BMXCityTransit", cx + r + 24, -ph * 0.08, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    if s.sub then draw.SimpleText(s.sub, "BMXCitySignSub", cx + r + 26, ph * 0.28, Color(190, 190, 190), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
 end
 
-local LOOKS = { window = windowSign, neon = neonSign, billboard = billboardSign }
+-- A US street sign: green, a white border, white capitals, a block number.
+local function streetSign(s, pw, ph)
+    surface.SetDrawColor(0, 110, 60, 255) surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    surface.SetDrawColor(255, 255, 255, 255)
+    surface.DrawOutlinedRect(-pw / 2 + 8, -ph / 2 + 8, pw - 16, ph - 16, 6)
+    local num = s.sub and s.sub ~= ""
+    draw.SimpleText(s.text, "BMXCitySign", num and -pw * 0.06 or 0, 0, WHITE, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    if num then draw.SimpleText(s.sub, "BMXCitySignSub", pw / 2 - 40, ph * 0.18, WHITE, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER) end
+end
+
+local LOOKS = { ad = adSign, transit = transitSign, street = streetSign }
+-- the panel's height in 3D2D pixels for each look (its width follows)
+local PANEL_PX = { ad = 360, transit = 180, street = 170 }
 
 local function drawSigns(layout)
     makeFonts()
@@ -376,13 +388,11 @@ local function drawSigns(layout)
             local ang = n:Angle()
             ang:RotateAroundAxis(ang:Up(), 90)
             ang:RotateAroundAxis(ang:Forward(), 90)
-            -- neon/billboard: the headline font is 55% of the panel's height;
-            -- a window is laid out 360 px tall, title bar and all
-            local scale = (s.look == "window") and (s.h / 360) or ((s.h * 0.55) / 120)
+            local scale = s.h / (PANEL_PX[s.look] or 360)
             local pw, ph = s.w / scale, s.h / scale
-            local look = LOOKS[s.look or "neon"] or neonSign
+            local look = LOOKS[s.look or "ad"] or adSign
             cam.Start3D2D(p + n * 0.5, ang, scale)
-                look(s, pw, ph, s.color)
+                look(s, pw, ph)
             cam.End3D2D()
         end
     end

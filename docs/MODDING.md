@@ -258,6 +258,25 @@ points stay; the bonus is gone.
 
 *Server.* Off the rail. `why` is `"hop"`, `"end"`, `"slow"` or `"rider"`.
 
+### `BMX_BoardPopped` (bike, ply, height, nollie)
+
+*Server.* A skateboard rider released SPACE and popped an ollie. `height` is the
+peak the pop is aimed at, in units (7 for a tap, 26 for a full crouch); `nollie`
+is true if it was popped off the nose.
+
+### `BMX_BoardFlipStarted` (bike, ply, flipId)
+
+*Server.* The deck began a flip. `flipId` is `kickflip`, `heelflip`, `popshove`,
+`frontshove`, `flip360`, `varialheel`, `varialkick`, `hardflip` or `impossible`
+(`BMX.Board.Flips`). Whether it was caught is `BMX_TrickLanded` (paid) or
+`BMX_Crashed` with the reason `"flip"` (not).
+
+### `BMX_BoardGrind` (bike, ply, moveId)
+
+*Server.* A skateboard locked onto a rail or ledge. `moveId` is `grind5050`,
+`grind50`, `nosegrind`, `crooked`, `smith`, `feeble`, `boardslide`, `lipslide`,
+`noseslide` or `tailslide` (`BMX.Board.Grinds`). `BMX_GrindStarted` fires too.
+
 ### `BMX_CanRecolor` (bike, paletteIndex)
 
 *Server, vetoable.* Asked before a bike is painted.

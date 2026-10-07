@@ -105,6 +105,19 @@ function ENT:SetupDataTables()
     -- the next state the client needs.
     self:NetworkVar("Int",   7, "TrickBits")
 
+    -- THE BOARD's state (sv_board.lua, G23), for the board family: the deck's
+    -- lean (radians), the push phase (0..1 through a kick, -1 not kicking), the
+    -- crouch (0..1 of the ollie's preload), the balance meter (-1..1, a manual or a
+    -- grind), the deck's own flip angles as one byte each, and the flags (stance,
+    -- switch, fakie, manual...: BMX.Board.Flag). Idle on a bike, and free: an
+    -- unwritten networked var costs nothing.
+    self:NetworkVar("Float", 5, "BoardLean")
+    self:NetworkVar("Float", 6, "PushPhase")
+    self:NetworkVar("Float", 7, "Crouch")
+    self:NetworkVar("Float", 8, "Meter")
+    self:NetworkVar("Int",   8, "BoardBits")
+    self:NetworkVar("Int",   9, "BoardFlags")
+
     if SERVER then
         self:SetColorIndex(self:Bike().colorIndex or 1)
         self:SetStandDown(true)             -- spawned parked

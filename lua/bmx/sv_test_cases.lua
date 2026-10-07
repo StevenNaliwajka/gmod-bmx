@@ -2030,3 +2030,203 @@ function(ctx)
     end
     ctx:input({})
 end)
+
+--------------------------------------------------------------------------
+-- THE SKATEBOARD (G23), on the real engine. Like the cart these ride
+-- `vehicle = "skateboard"`. The board's input is the standard fields (W as
+-- throttle, S as brakeRear, A / D as lean) plus its own record (SPACE, ALT, RMB,
+-- CTRL and the raw directions), written together by boardInput below.
+--------------------------------------------------------------------------
+local function boardInput(ctx, t)
+    t = t or {}
+    ctx:input({ throttle = t.push and 1 or 0, brakeRear = t.brake and 1 or 0, lean = t.lean or 0 })
+    local b = BMX.Board.InputOf(ctx.bike.input)
+    b.fwd = (t.push and 1 or 0) - (t.brake and 1 or 0)
+    b.side = t.side or 0
+    b.jump, b.alt, b.grab = t.jump or false, t.alt or false, t.grab or false
+    b.duck, b.swap = t.duck or false, t.swap or false
+end
+
+-- Push until `speed`, or give up. Returns whether it got there on the ground.
+local function boardTo(ctx, speed, timeout)
+    local got = false
+    local ok = ctx:runUntil(timeout or 10, function()
+        got = ctx:st().fwdSpeed >= speed
+        return got
+    end, nil)
+    return ok and got
+end
+
+T.Case("board_pushes_to_speed", { vehicle = "skateboard", timeout = 30,
+    desc = "the skateboard: W kicks it up to speed, one stroke every 0.6 s, flat on four wheels" },
+function(ctx)
+    local b = ctx.bike
+    ctx:ok(#b.wheels == 4, "four wheels: " .. #b.wheels)
+    ctx:ok(b:Bike().balance == "board" and b:Bike().drive.kind == "push", "the board balance and the push drive")
+
+    local start, fwd = b:GetPos(), b:GetForward()
+    local kicks, was, four, peakRoll, peakPitch = 0, false, 0, 0, 0
+    boardInput(ctx, { push = true })
+    local grounded = ctx:runUntil(8, function()
+        local st = ctx:st()
+        local k = st.board and st.board.ps.kicking or false
+        if k and not was then kicks = kicks + 1 end
+        was = k
+        local down = 0
+        for _, w in ipairs(b.wheels) do if w.onGround then down = down + 1 end end
+        if down == 4 then four = four + 1 end
+        peakRoll = math.max(peakRoll, math.abs(st.roll))
+        peakPitch = math.max(peakPitch, math.abs(st.pitch))
+        if ctx.runway > 0 and b:GetPos():Distance(start) > ctx.runway then return true end
+        return st.fwdSpeed > 230
+    end)
+    ctx:ok(grounded, "it stayed on the ground")
+    local moved = (b:GetPos() - start):Dot(fwd)
+    local v = ctx:st().fwdSpeed
+    ctx:log(string.format("moved %.0f units, %.0f u/s after %d kicks", moved, v, kicks))
+    ctx:ok(moved > 200, "it went FORWARD")
+    ctx:between(v, 120, 320, "speed from pushing", "u/s")
+    ctx:ok(kicks >= 3, "it kicked more than once: " .. kicks)
+    ctx:ok(four > 100, "all four wheels were down together: " .. four .. " substeps")
+    ctx:between(math.deg(peakRoll), 0, 8, "roll while pushing", "deg")
+    ctx:between(math.deg(peakPitch), 0, 8, "pitch while pushing", "deg")
+
+    -- Let go: it rolls on. S: the foot takes the speed off.
+    boardInput(ctx, {})
+    ctx:wait(1.0)
+    local coast = ctx:st().fwdSpeed
+    ctx:ok(coast > v * 0.75, "it coasts: " .. math.floor(v) .. " -> " .. math.floor(coast))
+    boardInput(ctx, { brake = true })
+    ctx:wait(1.5)
+    ctx:ok(ctx:st().fwdSpeed < coast * 0.5, "the foot drag slows it: " .. math.floor(coast) .. " -> " .. math.floor(ctx:st().fwdSpeed))
+    boardInput(ctx, {})
+end)
+
+T.Case("board_carves_without_tipping", { vehicle = "skateboard", timeout = 30,
+    desc = "the skateboard: A and D lean the deck and turn the trucks, it goes round both ways and never tips" },
+function(ctx)
+    local b = ctx.bike
+    local start = b:GetPos()
+    boardInput(ctx, { push = true })
+    ctx:runUntil(7, function()
+        return ctx:st().fwdSpeed > 110 or (ctx.runway > 0 and b:GetPos():Distance(start) > ctx.runway)
+    end)
+    ctx:ok(ctx:st().fwdSpeed > 70, "up to a carving speed: " .. math.floor(ctx:st().fwdSpeed))
+
+    local function carve(side, label)
+        boardInput(ctx, { lean = side, side = side })
+        local last, total, peakRoll, peakLean, steer = b:GetAngles().y, 0, 0, 0, 0
+        ctx:runUntil(2.2, function()
+            local y = b:GetAngles().y
+            total = total + math.AngleDifference(y, last)
+            last = y
+            peakRoll = math.max(peakRoll, math.abs(ctx:st().roll))
+            peakLean = math.max(peakLean, math.abs(ctx:st().board.lean))
+            steer = math.max(steer, math.abs(b.wheels[1].steer))
+            return false
+        end)
+        ctx:log(string.format("%s: yaw %+.0f deg, lean %.0f deg, front truck %.1f deg, roll %.1f deg",
+            label, total, math.deg(peakLean), math.deg(steer), math.deg(peakRoll)))
+        ctx:between(math.deg(peakLean), 14, 26, label .. ": the deck leaned", "deg")
+        ctx:ok(steer > 0.02, label .. ": the trucks turned")
+        ctx:between(math.deg(peakRoll), 0, 12, label .. ": the chassis never tipped", "deg")
+        return total
+    end
+    local right = carve(1, "right")
+    ctx:ok(right < -20, "it went round to the right (yaw falls)")
+    local left = carve(-1, "left")
+    ctx:ok(left > 20, "and to the left")
+    ctx:ok(ctx:st().speed > 20, "still rolling")
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+    boardInput(ctx, {})
+end)
+
+T.Case("board_ollie_height", { vehicle = "skateboard", timeout = 40,
+    desc = "the skateboard: hold SPACE to crouch, release to pop; the longer the hold the higher, and it lands" },
+function(ctx)
+    local b = ctx.bike
+    local start = b:GetPos()
+    boardInput(ctx, { push = true })
+    ctx:runUntil(7, function()
+        return ctx:st().fwdSpeed > 90 or (ctx.runway > 0 and b:GetPos():Distance(start) > ctx.runway)
+    end)
+    boardInput(ctx, {})
+
+    local function pop(hold)
+        -- Roll level, then crouch, release, and watch the height over the ground
+        -- the board left.
+        ctx:wait(0.4)
+        local ground = b:GetPos().z
+        boardInput(ctx, { jump = true })
+        ctx:wait(hold)
+        local crouch = b:GetCrouch()
+        boardInput(ctx, {})
+        local peak, air, t0 = ground, false, CurTime()
+        while CurTime() - t0 < 1.4 do
+            peak = math.max(peak, b:GetPos().z)
+            if not ctx:st().grounded then air = true end
+            coroutine.yield()
+        end
+        return peak - ground, air, crouch
+    end
+    local tap, airT = pop(0.0)
+    local full, airF, crouch = pop(0.5)
+    ctx:log(string.format("a tap %.1f u high, a full crouch %.1f u (crouch %.2f)", tap, full, crouch))
+    ctx:ok(airT and airF, "both left the ground")
+    ctx:between(tap, 3, 20, "the height of a tap", "u")
+    ctx:between(full, 14, 40, "the height of a full crouch", "u")
+    ctx:ok(full > tap + 4, "a longer hold goes higher")
+    ctx:between(crouch, 0.9, 1.01, "the crouch was networked", "")
+    ctx:ok(ctx:waitUntil(function() return ctx:st().grounded end, 3, "landing"), "it came down")
+    ctx:ok(IsValid(b:GetDriver()), "and the rider is still on it")
+    ctx:between(math.deg(math.abs(ctx:st().roll)), 0, 20, "roll after landing", "deg")
+end)
+
+T.Case("board_crowd", { vehicle = "skateboard", timeout = 40,
+    desc = "two dozen skateboards out (parked, tipped and dropped) keep the server's tick rate" },
+function(ctx)
+    local want = 1 / engine.TickInterval()
+    local function tickRate(secs)
+        local n, t0 = 0, SysTime()
+        hook.Add("Tick", "BMX.Test.BoardCrowd", function() n = n + 1 end)
+        ctx:wait(secs)
+        hook.Remove("Tick", "BMX.Test.BoardCrowd")
+        return n / math.max(SysTime() - t0, 1e-3)
+    end
+    boardInput(ctx, {})
+    local alone = tickRate(2)
+
+    local made = {}
+    local function put(pos, ang)
+        local e = ents.Create(BMX.ClassFor("skateboard"))
+        if not IsValid(e) then return end
+        e:SetPos(pos)
+        e:SetAngles(ang)
+        e:Spawn()
+        e:Activate()
+        made[#made + 1] = e
+    end
+    local rest = BMX.RestHeight(ctx.cfg)
+    for i = 1, 8 do
+        put(ctx.ground + Vector(-200 + i * 50, 260, rest + 1), Angle(0, 90, 0))
+        put(ctx.ground + Vector(-200 + i * 50, -260, 12), Angle(0, 0, 90))
+        put(ctx.ground + Vector(-200 + i * 50, 420, 200 + i * 20), Angle(i * 40, i * 25, i * 60))
+    end
+    ctx:wait(1)
+    local crowded = tickRate(4)
+    ctx:log(string.format("%d boards: %.1f ticks/s of %.0f (alone %.1f)", #made + 1, crowded, want, alone))
+    ctx:ok(#made == 24, "all 24 extra boards spawned")
+    ctx:between(crowded / want, 0.9, 1.1, "the server keeps its tickrate with 25 boards out")
+    ctx:between(crowded / math.max(alone, 1), 0.9, 1.1, "as many ticks as with one board")
+    local bad = 0
+    for _, e in ipairs(made) do
+        if not IsValid(e) then bad = bad + 1
+        else
+            local p, v = e:GetPos(), e:GetVelocity()
+            if p.x ~= p.x or p.z ~= p.z or v.x ~= v.x or v.z ~= v.z then bad = bad + 1 end
+        end
+    end
+    ctx:ok(bad == 0, "every board survived, with finite state (" .. bad .. " bad)")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "the ridden board's rider is still aboard")
+    for _, e in ipairs(made) do SafeRemoveEntity(e) end
+end)

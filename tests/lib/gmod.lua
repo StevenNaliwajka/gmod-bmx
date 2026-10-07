@@ -716,7 +716,7 @@ function M.Realm(world, which)
     for _, k in ipairs({ "SetMoveType", "SetSolid", "SetCollisionBounds",
             "SetCustomCollisionCheck", "SetNoDraw", "DrawShadow", "SetKeyValue",
             "Activate", "SetRenderMode", "StopSound",
-            "SetRenderBounds", "SetUseType" }) do
+            "SetRenderBounds", "SetUseType", "SetLocalAngles" }) do
         Ent[k] = function() end
     end
     function Ent:SetNotSolid(b) self._notSolid = b end

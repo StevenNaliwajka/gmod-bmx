@@ -38,12 +38,21 @@ function ENT:BuildPhysics()
     if not hulls then return false end
     self:PhysicsInitMultiConvex(hulls)
     self:SetSolid(SOLID_VPHYSICS)
-    self:SetMoveType(MOVETYPE_NONE)
+    -- MOVETYPE_VPHYSICS, FROZEN -- the same recipe as bmx_park_piece, whose
+    -- shapes the bike demonstrably rides up. This was MOVETYPE_NONE, and on
+    -- the real server (CI 2663) NOTHING built here collided: a 277 u run
+    -- straight through a wall, a 20 degree slope a trace reported as flat
+    -- ground (normal z 1.000), a wedge and a curb the bike never touched. A
+    -- NONE-movetype entity is not simulated as a physics body, so the
+    -- multi-convex shape is never in the world. The offline suite has no
+    -- VPhysics and could not have shown it.
+    self:SetMoveType(MOVETYPE_VPHYSICS)
     self:EnableCustomCollisions(true)
     local phys = self:GetPhysicsObject()
     if IsValid(phys) then
-        phys:EnableMotion(false)
+        phys:SetMass(500)
         phys:SetMaterial("metal")
+        phys:EnableMotion(false)
     end
     self._built = true
     return true

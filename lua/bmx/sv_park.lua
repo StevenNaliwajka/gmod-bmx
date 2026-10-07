@@ -69,6 +69,9 @@ function P.Place(ply, shapeId, params, pos, ang)
     e:SetAngles(ang or Angle(0, 0, 0))
     e:Spawn()
     e:Activate()
+    P.Ground(e)
+    -- And once more next tick, when the physics the spawn made is settled in.
+    if timer and timer.Simple then timer.Simple(0, function() if IsValid(e) then P.Ground(e) end end) end
     if IsValid(ply) then
         e.BMXOwner = ply
         cleanup.Add(ply, "props", e)
@@ -88,7 +91,82 @@ hook.Add("PlayerSpawnSENT", "BMX.ParkCap", function(ply, class)
 end)
 
 hook.Add("PlayerSpawnedSENT", "BMX.ParkOwner", function(ply, ent)
-    if IsValid(ent) and P.IsPiece(ent) then ent.BMXOwner = ply end
+    if IsValid(ent) and P.IsPiece(ent) then
+        ent.BMXOwner = ply
+        P.Ground(ent)
+    end
+end)
+
+--------------------------------------------------------------------------
+-- Grounding. A piece stands ON the ground: upright, frozen, its floor on
+-- the highest surface under its footprint (so on a bump it rests on the
+-- bump rather than sinking into it). The spawn menu puts a SENT a hand's
+-- width above where you aim, a physgun lets go of one in mid-air, and a
+-- preset is laid at ONE height for the whole layout -- each of those left
+-- ramps hovering, and a hovering kicker is a lip a wheel hits from below.
+-- It is also what lets the navmesh (sv_nav.lua) run up a ramp: a piece on
+-- the floor shares its edge with the floor's areas.
+--------------------------------------------------------------------------
+local cvGround = CreateConVar("bmx_park_ground", "1", FLAGS,
+    "BMX: park pieces settle onto the ground when placed or dropped (0 = they stay where they are put).")
+
+-- The z a piece's floor should be at: the highest ground under its corners,
+-- edge midpoints and centre. `trace(x, y, fromZ)` -> z or nil (injectable
+-- for the offline tests). Returns nil when there is no ground under it.
+function P.GroundZ(b, pos, yawDeg, trace)
+    local best
+    for _, f in ipairs({ { 0, 0 }, { 1, 1 }, { 1, -1 }, { -1, 1 }, { -1, -1 },
+                         { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+        -- 2 u in from the edge: a trace on the edge itself can graze the
+        -- next piece over, snapped flush against this one.
+        local x, y = P.Rotate(f[1] * math.max(b.hl - 2, 0), f[2] * math.max(b.hw - 2, 0), yawDeg)
+        local z = trace(pos.x + x, pos.y + y, pos.z + 48)
+        if z and (not best or z > best) then best = z end
+    end
+    return best
+end
+
+function P.Ground(e, force)
+    if not IsValid(e) or (not force and not cvGround:GetBool()) then return false end
+    local b = P.Build(e:GetShape(), e:GetParams())
+    if not b then return false end
+    local yaw = e:GetAngles().y
+    local z = P.GroundZ(b, e:GetPos(), yaw, function(x, y, fromZ)
+        local tr = util.TraceLine({ start = Vector(x, y, fromZ), endpos = Vector(x, y, fromZ - 8192),
+            mask = MASK_SOLID, filter = function(o)
+                return o ~= e and not o:IsPlayer() and not o:IsVehicle() and not o:IsNPC()
+                    and o:GetClass() ~= "prop_ragdoll"
+            end })
+        if tr.Hit and not tr.StartSolid then return tr.HitPos.z end
+    end)
+    if not z then return false end
+    local pos = e:GetPos()
+    local at, ang = Vector(pos.x, pos.y, z), Angle(0, yaw, 0)
+    -- Frozen FIRST: a body moved into contact while awake is pushed back out.
+    local phys = e:GetPhysicsObject()
+    if IsValid(phys) then phys:EnableMotion(false) end
+    e:SetPos(at)
+    e:SetAngles(ang)
+    if IsValid(phys) then
+        phys:SetPos(at)
+        phys:SetAngles(ang)
+        phys:EnableMotion(false)
+        phys:Sleep()
+    end
+    if BMX.Nav and BMX.Nav.Touch then BMX.Nav.Touch(e:WorldSpaceAABB()) end
+    return true
+end
+
+-- Let go of a piece and it settles. Next frame: the physgun is still
+-- holding it inside this hook.
+hook.Add("PhysgunDrop", "BMX.ParkGround", function(_, ent)
+    if not (IsValid(ent) and P.IsPiece(ent)) then return end
+    timer.Simple(0, function() P.Ground(ent) end)
+end)
+
+-- A piece gone: the ground it stood on is open again.
+hook.Add("EntityRemoved", "BMX.ParkNav", function(ent)
+    if P.IsPiece(ent) and BMX.Nav and BMX.Nav.Touch then BMX.Nav.Touch(ent:WorldSpaceAABB()) end
 end)
 
 --------------------------------------------------------------------------

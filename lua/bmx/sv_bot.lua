@@ -54,13 +54,17 @@ Bot.TrickList = { "Bunny Hop", "Wheelie", "Stoppie", "Combo", "Backflip",
                   "Frontflip", "Barrel Roll", "360", "Crank Grind", "Double Peg Grind" }
 
 Bot.Config = {
-    flipSpeed  = 340,   -- u/s at a launch's foot, for the air tricks
-    stageBack  = 750,   -- u behind a launch's foot where the run at it starts
+    -- The run at a launch is SPRINTED (Drive.sprintTorque / sprintCadence):
+    -- stopping at the start and pedalling up to 340 reached the lip well
+    -- short of it, and 1.06 s of air on a real server is not enough to flip.
+    flipSpeed  = 400,   -- u/s wanted at a launch's lip, for the air tricks
+    stageBack  = 900,   -- u behind a launch's foot where the run at it starts
     margin     = 0.12,  -- rad past a full turn the air controller aims for
     settle     = 0.15,  -- s before touchdown the spin should be finished
     spinGain   = 9,     -- 1/s, rate loop gain in the air
     ahead      = 1.15,  -- how far ahead of an on-time spin to run
     brakeShare = 1.0,   -- of an axis's full braking the pacing counts on
+    landRate   = 4,     -- rad/s of spin a landing on the wheels can soak
     attempts   = 3,     -- per trick, before the bot gives up on it
 }
 
@@ -357,9 +361,20 @@ function Brain:flySpin(axis, sign, target)
     local accel = A[Ax.accel]
     local maxRate = accel * 1.35 / (A.damping / 1.35) * 0.95
     local landedFor = 0
+    local touched = false
     while true do
-        if not self:riding() then return false end
+        if not self:riding() then
+            self:say(string.format("thrown: spin %.0f deg", math.deg((self:st()[Ax.spin] or 0) * sign)))
+            return false
+        end
         local st = self:st()
+        if not touched and st.grounded then
+            touched = true
+            local att = select(2, BMX.Attitude(self.bike, UP))
+            local roll = select(1, BMX.Attitude(self.bike, UP))
+            self:say(string.format("touchdown: spin %.0f deg, rate %.1f rad/s, pitch %.0f, roll %.0f",
+                math.deg((st[Ax.spin] or 0) * sign), Ax.rate(st, self.bike) * sign, math.deg(att), math.deg(roll)))
+        end
         if st.grounded and not st.airMode then
             landedFor = landedFor + engine.TickInterval()
             if landedFor > 0.1 then return true end
@@ -391,13 +406,14 @@ end
 function Brain:launch()
     local here = self.bike:GetPos()
     if self.allowFindRamp then
-        local l, n = BMX.FindLaunch(here, { filter = self:filter() })
+        local l, n, rejected = BMX.FindLaunch(here, { filter = self:filter() })
         if l then
             self:say(string.format("found a launch: %.0f u high, %.0f deg, %.0f u away (%d seen)",
                 l.height, math.deg(l.angle), (l.foot - here):Length(), n))
             return l
         end
-        self:say("no launch in the world here (" .. n .. " seen)")
+        self:say("no launch in the world here (" .. n .. " seen" ..
+            ((rejected and rejected ~= "") and (": " .. rejected) or "") .. ")")
     end
     if not self.allowSpawnRamp then return nil end
     local C = BMX.Launch.Config
@@ -413,13 +429,18 @@ end
 
 -- Ride at a launch and leave its lip with a hop. Returns true once airborne.
 function Brain:hitLaunch(l, speed)
+    -- Measured from just behind the foot, past the ramp itself: from the foot
+    -- the hull starts touching the slope and every ramp had "no room".
+    local filter = self:filter()
+    if IsValid(l.entity) then filter[#filter + 1] = l.entity end
+    local from = l.foot - l.dir * 30
     local back = math.min(Bot.Config.stageBack,
-        BMX.Launch.Runway(l.foot, -l.dir, Bot.Config.stageBack + 50, { filter = self:filter() }) - 30)
-    if back < 300 then return false, "no room to ride at it" end
+        BMX.Launch.Runway(from, -l.dir, Bot.Config.stageBack, { filter = filter }) + 30)
+    if back < 300 then return false, string.format("no room to ride at it (%.0f u)", back) end
     local stage = l.foot - l.dir * back
-    local ok, why = self:rideTo(stage, 200, 70, 20)
+    local ok, why = self:rideTo(stage, 160, 90, 20)
     if not ok then return false, why end
-    self:stop(3)
+    -- No stop: straight on to the line from the stage, sprinting.
     -- Ride the line through the foot and the lip; preload the hop so it is
     -- released on the lip, and go once the wheels leave the ramp.
     local C = self.bike:Cfg()
@@ -437,8 +458,12 @@ function Brain:hitLaunch(l, speed)
             self.bike.hopRelease, released = true, true
         end
         return false
-    end, 14)
+    end, 14, function() return { sprint = true } end)
     if not airborne then return false, why or "never left the lip" end
+    local v = self.bike:GetVelocity()
+    self:say(string.format("off the lip at %.0f u/s (vz %.0f), pitch %.0f, %s",
+        self:speed(), v.z, math.deg(select(2, BMX.Attitude(self.bike, UP))),
+        released and "hopped" or "no hop"))
     return true
 end
 
@@ -535,6 +560,29 @@ Bot.AirTricks = {
     ["360"]         = { axis = "yaw",   sign =  1 },
 }
 
+-- The most an axis can turn in `t` seconds and still be slowed to a
+-- landable rate by the end: spin up tucked, flat out, until braking
+-- (untucked, flat out) has just enough room to get down to `landRate` in
+-- what is left. Not to zero: a landing on the wheels soaks up the rest
+-- (Crash.soakSpin). Simulated with the air model, so it answers for the
+-- bike's real numbers.
+function Bot.MaxSpin(A, accel, t, landRate)
+    landRate = landRate or Bot.Config.landRate
+    local w, th, dt = 0, 0, 0.01
+    local n = math.floor(t / dt)
+    for i = 1, n do
+        local left = (n - i) * dt
+        local brakeA = accel + A.damping * w
+        if (w - landRate) / brakeA >= left then
+            w = math.max(w - brakeA * dt, 0)
+        else
+            w = w + (accel * 1.35 - A.damping / 1.35 * w) * dt
+        end
+        th = th + w * dt
+    end
+    return th
+end
+
 -- The part of an air trick done in the air: from takeoff to touchdown, and
 -- the landing checked. Its own function so a bike already in the air -- off
 -- a map's gap, or a test's launch -- can do it too.
@@ -547,7 +595,18 @@ function Brain:airPart(name, t0)
         local p0 = select(2, BMX.Attitude(self.bike, UP))
         target = math.max(target, TAU + p0)
     end
-    self:say(string.format("airborne: %.2f s to land, aiming for %.0f deg", self:timeToLand(), math.deg(target)))
+    local tLand = self:timeToLand()
+    self:say(string.format("airborne: %.2f s to land, aiming for %.0f deg", tLand, math.deg(target)))
+    -- NOT ENOUGH AIR, NOT STARTED. Half a flip is a landing on the head; the
+    -- bot keeps its wheels under it and calls it a miss instead.
+    local Air = self.bike:Cfg().Air
+    local can = Bot.MaxSpin(Air, Air[AXES[A.axis].accel], tLand - Bot.Config.settle * 0.5)
+    if can < target * 0.97 then
+        self:say(string.format("only %.0f deg of spin in %.2f s of air: not starting", math.deg(can), tLand))
+        self:set({})
+        self:waitLanded(0.5, 3)
+        return false, "not enough air"
+    end
     self:flySpin(A.axis, A.sign, target)
     self:set({})
     self:waitLanded(0.8, 3)
@@ -588,7 +647,6 @@ function Brain:layRail(kind, centre, dir)
     local e = ents.Create("prop_physics")
     if not IsValid(e) then return nil end
     e:SetModel(R.model)
-    e:Spawn()
     local mn, mx = e:OBBMins(), e:OBBMaxs()
     local size = mx - mn
     local yaw = math.deg(math.atan2(dir.y, dir.x))
@@ -597,16 +655,18 @@ function Brain:layRail(kind, centre, dir)
     if size.z >= size.x and size.z >= size.y then ang = Angle(90, yaw, 0)
     elseif size.y >= size.x then ang = Angle(0, yaw - 90, 0)
     else ang = Angle(0, yaw, 0) end
+    -- Posed before Spawn: once a prop has a body, only the body moves it.
     e:SetAngles(ang)
     e:SetPos(centre)
-    local p = e:GetPhysicsObject()
-    if IsValid(p) then p:EnableMotion(false) end
     -- Centre it over `centre`, its top R.top above the ground there.
     local lo, hi = e:WorldSpaceAABB()
     local shift = Vector(centre.x - (lo.x + hi.x) * 0.5, centre.y - (lo.y + hi.y) * 0.5,
                          centre.z + R.top - hi.z)
-    e:SetPos(e:GetPos() + shift)
-    if IsValid(p) then p:SetPos(e:GetPos()) p:EnableMotion(false) end
+    local at = centre + shift
+    e:SetPos(at)
+    e:Spawn()
+    local p = e:GetPhysicsObject()
+    if IsValid(p) then p:SetPos(at) p:SetAngles(ang) p:EnableMotion(false) end
     e.BMXRail = true
     self.props[#self.props + 1] = e
     return e
@@ -656,8 +716,25 @@ local function grindTrick(name)
         local t0 = CurTime()
         local pressedAt, released = nil, false
         local C = cfg
+        b:say(string.format("rail %s: %.0f long, %.1f wide, top +%.0f; hop at %.0f u/s",
+            name, railLen, width, hi.z - ground.z, GRIND_SPEED))
+        local closest, overAt = math.huge, nil
         ok, why = b:rideLine(press, rideDir, GRIND_SPEED, function(along)
             if b:st().grind then return true end
+            if pressedAt then
+                local c = b.bike:LocalToWorld(BMX.GrindCrankPoint(cfg))
+                local rel = c - centre
+                local u = rel:Dot(dir)
+                if math.abs(u) < railLen * 0.5 then
+                    local lat = rel:Dot(Vector(-dir.y, dir.x, 0)) - lateral
+                    local d = math.abs(c.z - hi.z) + math.abs(lat)
+                    if d < closest then
+                        closest = d
+                        overAt = string.format("%.0f along, %.1f off line, %.1f above top, %.0f u/s, vz %.0f",
+                            u + railLen * 0.5, lat, c.z - hi.z, b:speed(), b.bike:GetVelocity().z)
+                    end
+                end
+            end
             if not pressedAt and along >= 0 then
                 b.bike.hopHeld, b.bike.hopCharge, pressedAt = true, 0, CurTime()
             end
@@ -666,6 +743,7 @@ local function grindTrick(name)
             end
             return released and CurTime() - pressedAt > 2
         end, 14)
+        b:say("closest the crank point came: " .. (overAt or "never over the rail"))
         -- On it: hold still and let the rail's end finish it.
         local tg = CurTime()
         while b:st().grind and CurTime() - tg < 6 do b:set({}) tick() end

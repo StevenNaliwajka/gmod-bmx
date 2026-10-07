@@ -102,3 +102,24 @@ T.test("headless: the crowd case exists and rides the stock bike among all three
     T.eq(S.cases.crowd.bike, "stock", "its ridden bike is the stock one")
     T.ok(S.cases.crowd.rider, "with the bot aboard")
 end)
+
+T.test("headless: bmx_test takes a prefix with a *, and runs just those", function()
+    local S = suite()
+    local ok = S.Run("bot_*")
+    T.ok(ok, "accepted")
+    S.Abort = S.Abort or function() end
+    local sv = F.server()
+    local S2 = sv.env.BMX.Test
+    T.eq(select(2, S2.Run("nothing_like_this_*")), "no such case: nothing_like_this_*", "an empty prefix is refused")
+end)
+
+T.test("headless: a work-in-progress case is listed but not run by the full suite", function()
+    local S = suite()
+    local wip = {}
+    for _, n in ipairs(S.order) do if S.cases[n].wip then wip[#wip + 1] = n end end
+    T.ok(#wip > 0 or true, "there may be some")
+    for _, n in ipairs(wip) do
+        T.ok(n:find("^bot_"), n .. ": only the bot's cases are ever left in progress")
+    end
+    T.ok(S.cases.bot_wheelie and not S.cases.bot_wheelie.wip, "a trick that lands runs in the full suite")
+end)

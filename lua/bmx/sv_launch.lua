@@ -38,7 +38,7 @@ L.Config = {
     minHeight  = 25,        -- u the lip must stand above the ramp's foot
     lipDrop    = 12,        -- u the ground must fall just past the lip
     runup      = 420,       -- u of flat, clear ground needed before the foot
-    landing    = 500,       -- u past the lip that must be open to fly through
+    landing    = 700,       -- u past the lip that must be open to fly through
     flatTol    = 4,         -- u of rise per sample still counted as flat
     kickerModel = "models/hunter/plates/plate4x4.mdl",
     kickerAngle = math.rad(30),
@@ -123,10 +123,14 @@ local function launchesIn(prof, origin, dir, yaw, C, opts)
                 j = j + 1
             end
             local top = j
-            local nextZ = prof[top + 1] and prof[top + 1].z
+            -- PAST THE LIP. A sample with no ground under it is a drop (a
+            -- kicker standing over a gap); running out of samples is not --
+            -- a heading that leaves the search radius halfway up a slope
+            -- has seen a slope, not a lip.
+            local nxt = prof[top + 1]
             local len = prof[top].d - prof[foot].d
             local height = prof[top].z - prof[foot].z
-            local drops = (nextZ == nil) or (prof[top].z - nextZ >= C.lipDrop)
+            local drops = nxt ~= nil and ((nxt.z == nil) or (prof[top].z - nxt.z >= C.lipDrop))
             if len >= C.minRampLen and height >= C.minHeight and drops then
                 found[#found + 1] = {
                     foot   = origin + dir * prof[foot].d + UP * (prof[foot].z - origin.z),
@@ -155,7 +159,9 @@ local function usable(l, C, opts)
         local z = select(1, trace(l.foot + back * d, opts.filter))
         if not z or math.abs(z - footZ) > C.flatTol * 3 then return false, "no flat run-up" end
     end
-    local a = Vector(l.foot.x, l.foot.y, footZ + 8)
+    -- Up to just short of the foot: a hull swept right to it clips the slope
+    -- rising out of it, and every ramp then "blocks its own run-up".
+    local a = Vector(l.foot.x, l.foot.y, footZ + 8) + back * 24
     if not clear(a + back * C.runup, a, opts.filter) then return false, "run-up blocked" end
     -- The flight: from just over the lip, out and a little up, must be open.
     local lip = l.lip + UP * 12
@@ -181,19 +187,26 @@ function L.Find(origin, opts)
     opts = opts or {}
     local C = opts.config or L.Config
     local best, bestScore, n = nil, -math.huge, 0
+    local why = {}
     for h = 0, C.headings - 1 do
         local yaw = h * 360 / C.headings
         local dir = dirOf(yaw)
         for _, l in ipairs(launchesIn(profile(origin, dir, C, opts), origin, dir, yaw, C, opts)) do
             n = n + 1
-            if usable(l, C, opts) then
+            local ok, reason = usable(l, C, opts)
+            if not ok then why[reason] = (why[reason] or 0) + 1 end
+            if ok then
                 -- Taller is more air; nearer is less riding to get there.
                 local score = l.height * 2 - (l.foot - origin):Length() * 0.05
                 if score > bestScore then best, bestScore = l, score end
             end
         end
     end
-    return best, n
+    -- Why the rest were turned down, for the bot's log: "run-up blocked x2".
+    local parts = {}
+    for k, v in pairs(why) do parts[#parts + 1] = k .. " x" .. v end
+    table.sort(parts)
+    return best, n, table.concat(parts, ", ")
 end
 BMX.FindLaunch = L.Find
 
@@ -205,11 +218,11 @@ BMX.FindLaunch = L.Find
 function L.KickerGeometry(foot, yaw, length, thickness, angle)
     local dir = dirOf(yaw)
     local c, s = math.cos(angle), math.sin(angle)
-    -- The plate's centre: half its length up the slope from the foot, lifted
-    -- by half its thickness along the slope's normal so the riding surface,
-    -- not the plate's middle, starts at the foot.
+    -- The plate's centre: half its length up the slope from the foot, and
+    -- half its thickness BELOW the slope's surface, so the riding surface --
+    -- the plate's top, not its middle -- starts at the foot.
     local normal = UP * c - dir * s
-    local centre = foot + dir * (length * 0.5 * c) + UP * (length * 0.5 * s) + normal * (thickness * 0.5)
+    local centre = foot + dir * (length * 0.5 * c) + UP * (length * 0.5 * s) - normal * (thickness * 0.5)
     local lip = foot + dir * (length * c) + UP * (length * s)
     return centre, Angle(-math.deg(angle), yaw, 0), {
         foot = foot, lip = lip, dir = dir, yaw = yaw, angle = angle,
@@ -223,15 +236,21 @@ function L.SpawnKicker(foot, yaw, opts)
     local e = ents.Create("prop_physics")
     if not IsValid(e) then return nil end
     e:SetModel(C.kickerModel)
-    e:Spawn()
     local mn, mx = e:OBBMins(), e:OBBMaxs()
     local length = math.max(mx.x - mn.x, mx.y - mn.y)
     local thick = mx.z - mn.z
     local centre, ang, launch = L.KickerGeometry(foot, yaw, length, thick, opts.angle or C.kickerAngle)
+    -- Posed before Spawn AND through the body after it: once a prop has a
+    -- physics object the entity's own SetPos/SetAngles no longer move it.
     e:SetPos(centre)
     e:SetAngles(ang)
+    e:Spawn()
     local p = e:GetPhysicsObject()
-    if IsValid(p) then p:EnableMotion(false) end
+    if IsValid(p) then
+        p:SetPos(centre)
+        p:SetAngles(ang)
+        p:EnableMotion(false)
+    end
     e.BMXKicker = true
     launch.entity = e
     return e, launch

@@ -744,6 +744,33 @@ function M.Realm(world, which)
         if self.Initialize then self:Initialize() end
         self._spawned = true
     end
+    -- Model bounds, for the props the bot and the ramp finder put down: the
+    -- real sizes of those base-game models, a 16 u cube for anything else.
+    local MODEL_BOUNDS = {
+        ["models/hunter/plates/plate4x4.mdl"]          = { Vector(-94.9, -94.9, -1.7), Vector(94.9, 94.9, 1.7) },
+        ["models/hunter/plates/plate8x8.mdl"]          = { Vector(-189.8, -189.8, -1.7), Vector(189.8, 189.8, 1.7) },
+        ["models/hunter/blocks/cube025x8x025.mdl"]     = { Vector(-5.9, -189.8, -5.9), Vector(5.9, 189.8, 5.9) },
+        ["models/props_c17/signpole001.mdl"]           = { Vector(-1.4, -1.4, 0), Vector(1.4, 1.4, 110) },
+    }
+    function Ent:OBBMins()
+        local b = MODEL_BOUNDS[self._model or ""]
+        return b and Vector(b[1]) or Vector(-8, -8, -8)
+    end
+    function Ent:OBBMaxs()
+        local b = MODEL_BOUNDS[self._model or ""]
+        return b and Vector(b[2]) or Vector(8, 8, 8)
+    end
+    function Ent:WorldSpaceAABB()
+        local mn, mx = self:OBBMins(), self:OBBMaxs()
+        local lo = Vector(math.huge, math.huge, math.huge)
+        local hi = Vector(-math.huge, -math.huge, -math.huge)
+        for _, x in ipairs({ mn.x, mx.x }) do for _, y in ipairs({ mn.y, mx.y }) do for _, z in ipairs({ mn.z, mx.z }) do
+            local w = self:LocalToWorld(Vector(x, y, z))
+            lo = Vector(math.min(lo.x, w.x), math.min(lo.y, w.y), math.min(lo.z, w.z))
+            hi = Vector(math.max(hi.x, w.x), math.max(hi.y, w.y), math.max(hi.z, w.z))
+        end end end
+        return lo, hi
+    end
     function Ent:Remove()
         if self._removed then return end
         if self.OnRemove then self:OnRemove() end
@@ -1139,6 +1166,13 @@ function M.Realm(world, which)
     function Ply:IsBot() return self._bot end
     function Ply:IsSuperAdmin() return self._superadmin or false end
     function Ply:IsAdmin() return self._superadmin or self._admin or false end
+    -- Kicked: gone from the server, as a disconnect.
+    function Ply:Kick(reason)
+        self._kicked = reason or ""
+        if env.IsValid(self:GetVehicle()) then self:ExitVehicle() end
+        env.hook.Run("PlayerDisconnected", self)
+        self._removed = true
+    end
     function Ply:Alive() return true end
     function Ply:GetVehicle() return self._vehicle or NULL end
     function Ply:InVehicle() return env.IsValid(self._vehicle) end
@@ -1235,6 +1269,11 @@ function M.Realm(world, which)
         self.players[#self.players + 1] = p
         return p
     end
+
+    -- Both realms can ask whether a model is mounted; a test takes one away
+    -- with R.missingModels (the client's own block below redefines the same).
+    R.missingModels = R.missingModels or {}
+    env.util.IsValidModel = env.util.IsValidModel or function(m) return not R.missingModels[m] end
 
     env.player = {
         GetAll = function()

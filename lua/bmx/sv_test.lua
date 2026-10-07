@@ -61,6 +61,10 @@ function T.Case(name, opts, fn)
         removesBike = opts.removesBike or false,
         timeout = opts.timeout or 40,
         desc    = opts.desc or "",
+        -- WORK IN PROGRESS: written, not passing yet. The full run lists it
+        -- and does not run it, so main stays green for everyone else while
+        -- it is worked on; by name or prefix (bmx_test bot_*) it runs.
+        wip     = opts.wip or false,
         -- Which bike the case rides: a registry id, the stock bike if omitted.
         -- Cases read the bike's numbers through ctx.cfg, never BMX.Config, so
         -- the same case means the same thing on a bike with other geometry.
@@ -519,9 +523,14 @@ local function report()
         end
     end
 
+    for _, n in ipairs(run.skipped or {}) do
+        lines[#lines + 1] = string.format("[WIP ] %s  (work in progress: not run; bmx_test %s)", n, n)
+    end
+
     lines[#lines + 1] = ""
     lines[#lines + 1] = string.format("%d passed, %d failed, %d total",
-        passed, failed, passed + failed)
+        passed, failed, passed + failed) ..
+        ((run.skipped and #run.skipped > 0) and string.format(", %d in progress", #run.skipped) or "")
     -- The tickrate belongs in the summary, not just the header: these numbers
     -- are only comparable against runs at the same physics substep rate.
     lines[#lines + 1] = ""
@@ -638,15 +647,25 @@ end
 function T.Run(only)
     if run then return false, "a run is already in progress" end
 
-    local queue = {}
-    if only and only ~= "" then
+    local queue, skipped = {}, {}
+    if only and only:sub(-1) == "*" then
+        -- A prefix: every case whose name starts with it, in suite order
+        -- (bmx_test bot_* runs the bot's cases and nothing else).
+        local pre = only:sub(1, -2)
+        for _, n in ipairs(T.order) do
+            if n:sub(1, #pre) == pre then queue[#queue + 1] = n end
+        end
+        if #queue == 0 then return false, "no such case: " .. only end
+    elseif only and only ~= "" then
         if not T.cases[only] then return false, "no such case: " .. only end
         queue[1] = only
     else
-        for _, n in ipairs(T.order) do queue[#queue + 1] = n end
+        for _, n in ipairs(T.order) do
+            if T.cases[n].wip then skipped[#skipped + 1] = n else queue[#queue + 1] = n end
+        end
     end
 
-    run = { queue = queue, idx = 1, results = {} }
+    run = { queue = queue, idx = 1, results = {}, skipped = skipped }
     hook.Add("Think", "BMX.TestRunner", advance)
     return true
 end

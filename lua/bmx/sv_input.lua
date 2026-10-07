@@ -91,6 +91,7 @@ function BMX.BlankInput()
         pose        = nil, -- a pose name (sh_tricks.lua), or nil
         tuck        = false,
         sprint      = false,
+        clutch      = false, -- the clutch lever pulled in (a motorcycle's SHIFT, G15)
         wheelieMod  = false,
         leanFwd     = false, -- weight forward over the bars (LMB + Ctrl, G02)
         noseTrim    = 0,     -- -1..1, W / S: trims a nose manual
@@ -142,6 +143,9 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     end
 
     inp.sprint     = down("sprint")
+    -- THE CLUTCH LEVER (G15), on SHIFT in a motorcycle's map, which has no sprint:
+    -- a map without the action is never down, so no other vehicle has a clutch.
+    inp.clutch     = down("clutch")
     inp.tuck       = down("tuck")
     inp.wheelieMod = down("weightBack")
     -- THE FRONT BRAKE is the map's `brakeFront` on the GROUND, which a fixie's and
@@ -253,7 +257,8 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
         local wKey = fwd > 0.1  or (down("forward") and inp.airLatch ~= 1)
         local sKey = fwd < -0.1 or (down("back")    and inp.airLatch ~= -1)
         inp.pose = BMX.DecodePose({ alt = alt, rmb = inp.wheelieMod, fwd = wKey, back = sKey,
-            side = sdir, jump = down("hop"), air = airborne, manual = manual })
+            side = sdir, jump = down("hop"), air = airborne, manual = manual,
+            moto = bike:Bike().family == "moto" })
         if inp.pose and airborne then
             -- Hands are busy: no flip, no roll, no 360 under a pose.
             fwd, side = 0, 0

@@ -67,6 +67,25 @@ BMX.Sounds = {
         level  = 75,
     },
 
+    -- THE MOTORS (G14, G15; cl_motor.lua). Loops whose PITCH follows the networked rpm.
+    -- `motor` is an electric whine (an e-bike's assist, the e-moto) and `engine` the
+    -- dirt bike's and moped's petrol note. Both are base-game stand-ins: the airboat's
+    -- fan motor, sped up, is the nearest thing to a whine in the game files, and the
+    -- jeep-engine idle loop is the nearest to a single cylinder. Nobody has heard them.
+    -- Standing in for: an electric motor; a two-stroke.
+    motor = {
+        path   = "vehicles/airboat/fan_motor_fullthrottle_loop1.wav",
+        vol    = 0.3,
+        pitch  = { 70, 230 },      -- mapped across 0 -> the motor's top rpm
+        level  = 62,
+    },
+    engine = {
+        path   = "vehicles/v8/v8_idle_loop1.wav",
+        vol    = 0.55,
+        pitch  = { 55, 190 },      -- idle -> redline
+        level  = 78,
+    },
+
     -- THE WIND, which is what sells speed on a downhill or a big air. A loop,
     -- client-side, whose volume follows speed SQUARED (BMX.WindVolume): air
     -- resistance is quadratic, so a rider hears almost nothing at a walk and a

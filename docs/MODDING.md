@@ -189,7 +189,7 @@ A vehicle that says nothing gets: `balance = "none"`, `drive = { kind = "none" }
 | `family` | `"bike"`, `"board"`, `"skates"`, `"scooter"` or `"moto"`. Decides the spawn menu heading (Bikes, Boards, Scooters, Motor; skates are under Boards) and which `bmx_allow_*` setting can switch it off. |
 | `wheels` | A list of wheels, or a function of the config returning one. At least one, at most eight. See below. |
 | `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (reserved for the skateboard; runs as `none`, with a message, until its module exists), or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
-| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "coaster" }` (the same, a coaster brake: freewheeling, S is the brake and, with the `bike_rearonly` map, that is all there is), `{ kind = "fixed" }` (a fixed gear, below), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", ... }` (reserved for the board) or `{ kind = "none" }`. `pedal`, `fixed`, `coaster` and `throttle` need at least one wheel with `drive = true`. |
+| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "coaster" }` (the same, a coaster brake: freewheeling, S is the brake and, with the `bike_rearonly` map, that is all there is), `{ kind = "fixed" }` (a fixed gear, below), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", ... }` (reserved for the board), `{ kind = "assist", assist = 0-3 }` (an e-bike: the pedal drive plus a motor, below), `{ kind = "engine", ... }` (a petrol engine, below) or `{ kind = "none" }`. `pedal`, `fixed`, `coaster`, `throttle`, `assist` and `engine` need at least one wheel with `drive = true`. `throttle` also takes `battery` (the pack as a multiple of `bmx_ebike_battery`), `regen` (a braking torque on S) and `motorRatio`; without them it is the test cart's plain motor. |
 | `seats` | `{ rider = {...}, pegs = {...}, child = {...} }` (G11): the vehicle's seats, each `{ model, offset, angles, massFactor }` with every key optional (an empty table is all defaults). `rider` is always there; omitted, it is the config's `Chassis.seatOffset` and `seatAngles`. `pegs` seats a second player on the rear pegs, `child` in a child seat. `offset` may be a `Vector` or a function of the config (so a seat can follow a frame's size); `massFactor` is the passenger's mass as a fraction of the bike's own `Chassis.mass` (default 0.6 on the pegs, 0.25 in the child seat). The old list form, `{ { model, offset, angles } }`, is still the rider's seat. Checked at registration: an unknown seat or key, a bad type, a `massFactor` outside 0-2. See "Passengers" below. |
 | `input` | An id in `BMX.InputMaps`: `"bike"`, `"drive"`, `"road"`, `"bike_rearonly"`, or one you register. |
 | `pose` | An id in `BMX.PoseSets` (the rider's pose on the client): `"bike"`, `"seated"`, `"road"` (tucked over the drops) or `"upright"`. |
@@ -250,6 +250,50 @@ and `bmx_allow_motor` (default 1; Options > BMX > Server > Vehicles) switch a
 whole heading off for the spawn menu and `bmx_spawn`. Off stops new ones being
 spawned; ones already out stay. `BMX_CanSpawn` is still the gamemode's own veto
 on top.
+
+### Motor vehicles (G14, G15)
+
+The shipped `ebike`, `emoto`, `dirtbike` and `moped` are registry entries of family
+`moto` (the Motor heading, `bmx_allow_motor`, and the CAMI privilege "BMX - Spawn Motor
+Vehicles", an admin by default). They are single-track vehicles; what makes them motors is
+the drive. The model is `lua/bmx/sh_motor.lua` (pure functions: the assist's cut-off, the
+battery's arithmetic, the torque curve, the clutch), the drives and the battery are
+`sv_motor.lua`, the HUD and the sounds `cl_motor.lua`.
+
+**`assist`** (`drive = { kind = "assist", assist = 1, motorRatio = 12 }`): the pedal drive's
+torque plus LEVEL times what the rider asks of the pedals (`crankTorque * throttle / gear
+ratio`), faded out over the last 2 km/h under `bmx_ebike_limit` (25 by default), so the
+legs take over above it. Level 0-3, on the mouse wheel and `[` `]` (the `ebike` input map:
+the road bike's shift actions mean the level), spawning at `assist`. The motor's torque is
+cut as the front wheel rises (`M.WheelieCut`): level 3 is four times a rider's push through
+one tyre and loops a bike over otherwise.
+
+**`throttle` with `battery` / `regen`**: a no-legs motor, `torque` falling to nothing at
+`maxSpeed`; S adds `regen` of braking torque and puts the energy back in the pack.
+
+**The battery** is Wh on the vehicle's state (`st.battery`, networked as `Battery`, 0-1, or
+-1 for infinite). Capacity is `bmx_ebike_battery` times the drive's `battery` (default 1);
+0 is infinite. It drains with the motor's work at the wheel, `torque * omega` in newton-metres
+(a torque unit is `1 / 39.37^2` N m) divided by 0.85, and regen returns 60% of what braking
+takes. A parked, unridden vehicle recharges in two minutes. An empty pack means no motor.
+
+**`engine`** (`drive = { kind = "engine", torque, curve = { {rpm, fraction}, ... }, idle,
+redline, inertia, friction, clutch, engageRpm, ratio, popGain, popTime, pedalStart }`; all but
+the last four are required, and `ratio` only without `gears`): an engine with a torque curve
+over rpm, an inertia, engine braking and a rev limiter, behind a clutch and the road bike's
+gear model. `gears = { ratios = {...} }` is as for the road bike, but a ratio here is wheel
+revolutions per ENGINE revolution, so the lowest gear is the smallest number. The clutch lever
+is SHIFT (the `moto` input map, `inp.clutch`); a centrifugal bite (`engageRpm`) means a
+stopped bike in gear neither stalls nor creeps. Let the lever go with the throttle open and
+the engine well above the wheel's speed (a clutch pop) and the stored revs dump into the wheel
+and the nose is kicked up for `popTime` seconds: a wheelie, which RMB holds. `pedalStart`
+(the moped) is metres of pedalling before the engine catches. The clutch is three states
+(open, locked, slipping: `M.EngineStep`) and, locked, the wheel carries the engine's inertia
+(`wheel.extraInertia`, sv_wheel.lua).
+
+**FMX tricks** are ordinary pose tricks: `heel_clicker` and `cliffhanger` are registered in
+`sh_motor.lua` with `BMX.RegisterTrick`, decoded for a vehicle whose family is `moto`
+(`DecodePose`'s `moto` flag: Alt + A / D, Alt + S; Alt + W + S is the registry's superman).
 
 ## 2. Tricks
 

@@ -249,7 +249,7 @@ client{ name = "bmx_rider_ik", kind = "bool", default = true, category = "rider"
     help = "Put riders' hands on the grips and feet on the pedals. Off uses a simpler swing, which looks worse but costs less." }
 client{ name = "bmx_shift_wheel", kind = "bool", default = true, category = "rider",
     label = "Shift gears with the mouse wheel",
-    help = "On a bike with gears (the road bike), the mouse wheel changes gear as well as [ and ]. Off leaves the wheel to the weapon switch." }
+    help = "On a bike with gears (the road bike, the dirt bike) or an assist level (the e-bike), the mouse wheel changes it as well as [ and ]. Off leaves the wheel to the weapon switch." }
 client{ name = "bmx_rider_pose", kind = "choice", default = "seated", choices = { "seated", "standing", "attack" },
     category = "rider", label = "Riding position",
     help = "How you sit on the bike: seated, standing on the pedals, or the low attack position. Other players see it too." }
@@ -305,7 +305,17 @@ server{ name = "bmx_allow_scooters", kind = "bool", default = true, category = "
     help = "Players may spawn scooters, when there are any. Off stops new ones being spawned." }
 server{ name = "bmx_allow_motor", kind = "bool", default = true, category = "vehicles",
     label = "Allow motor vehicles",
-    help = "Players may spawn motorbikes and e-bikes, when there are any. Off stops new ones being spawned." }
+    help = "Players may spawn the e-bike, e-moto, dirt bike and moped. Off stops new ones being spawned. (They also need the CAMI privilege \"BMX - Spawn Motor Vehicles\", an admin by default.)" }
+
+-- Motor vehicles (G14): the e-bike's cut-off and its battery. Created in sv_motor.lua;
+-- sh_motor.lua reads them. The privilege "BMX - Spawn Motor Vehicles" (an admin by
+-- default) says who may spawn them at all.
+server{ name = "bmx_ebike_limit", kind = "float", default = 25, min = 5, max = 100, decimals = 0,
+    category = "vehicles", label = "E-bike assist limit (km/h)",
+    help = "The speed an e-bike's motor stops helping at. Above it the rider pedals on alone. 25 is the legal limit in much of Europe." }
+server{ name = "bmx_ebike_battery", kind = "int", default = 500, min = 0, max = 5000,
+    category = "vehicles", label = "E-bike battery (Wh)",
+    help = "An e-bike's battery in watt-hours; an e-moto carries three times as much. It drains with the motor's work and recharges while the bike is parked. 0 means it never runs down." }
 
 server{ name = "bmx_air_assist", kind = "bool", default = true, category = "feel",
     label = "Air assist on vert ramps",

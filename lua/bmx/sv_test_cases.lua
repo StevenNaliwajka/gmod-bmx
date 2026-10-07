@@ -2201,3 +2201,130 @@ function(ctx)
     if got then ctx:between(got.held or 0, 1.8, 4, "held for", "s") end
     ctx:ok(IsValid(ctx.bike:GetDriver()), "rider aboard after the rear came down")
 end)
+
+--------------------------------------------------------------------------
+-- THE MOTOR VEHICLES (G14, G15). Each rides `vehicle = "<id>"`, like the cart and
+-- the fixie, so the suite's "every other case is a stock case" check holds. Written
+-- against the offline plant (tests/test_motor.lua has the same claims there, with
+-- the plant's numbers); NOT RUN on a real server yet, so the bands are wide and
+-- say what they are about, not what the plant measured.
+--------------------------------------------------------------------------
+T.Case("ebike_top_speed", { vehicle = "ebike", timeout = 30,
+    desc = "an e-bike at assist level 3 on the flat holds the assist limit: the motor fades out at bmx_ebike_limit and the legs cannot take it further" },
+function(ctx)
+    local b = ctx.bike
+    BMX.SetAssist(b, 3)
+    local limit = BMX.Motor.LimitUps()
+    ctx:ok(BMX.Motor.Level(b) == 3, "assist level 3")
+
+    local peak = 0
+    ctx:runUntil(9, function()
+        local st = ctx:st()
+        if st.grounded and st.speed > peak then peak = st.speed end
+        return false
+    end, { throttle = 1 })
+    ctx:log(string.format("peak %.0f u/s (%.1f km/h) against a limit of %.0f u/s%s", peak, BMX.ToKMH(peak), limit,
+        ctx.stoppedAtEdge and " (reached the edge of the test ground)" or ""))
+    ctx:ok(peak > limit * 0.8, "it got up to the limit's neighbourhood (else the run was too short to judge)")
+    ctx:between(peak, limit * 0.8, limit * 1.05, "top speed on assist", "u/s")
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard (level 3 does not loop the bike)")
+
+    -- The pack was worked, and the HUD's number is networked.
+    local cap = BMX.Motor.CapacityWh(b:Bike())
+    if cap then
+        ctx:ok(ctx:st().battery < cap, "the battery went down with the motor's work")
+        ctx:between(b:GetBattery(), 0.5, 1, "networked charge", "of full")
+    else
+        ctx:ok(b:GetBattery() == -1, "an infinite pack is networked as -1")
+    end
+    -- Level 0 is a heavy bicycle: slower than the limit, and the pack is not touched.
+    ctx:input({})
+    ctx:wait(1.5)
+    BMX.SetAssist(b, 0)
+    local before = ctx:st().battery
+    ctx:runUntil(4, nil, { throttle = 1 })
+    ctx:ok(ctx:st().battery == before, "level 0 draws nothing")
+end)
+
+T.Case("dirtbike_wheelie_on_clutch_pop", { vehicle = "dirtbike", timeout = 30,
+    desc = "the dirt bike revved with the clutch in and the lever let go with the throttle open pops its front wheel up; the same throttle with the clutch alone does not" },
+function(ctx)
+    local b = ctx.bike
+    local f = ctx:wheels()
+    ctx:ok(BMX.Gears.Count(b) == 5, "five gears")
+
+    -- Revved on the spot with the clutch pulled in: the engine runs up, the bike goes nowhere.
+    ctx:runUntil(1.5, nil, { throttle = 1, clutch = true })
+    ctx:log(string.format("revved to %.0f rpm, %.0f u/s", ctx:st().rpm or 0, ctx:st().speed))
+    ctx:between(ctx:st().rpm or 0, 7000, 11500, "rpm with the clutch in", "rpm")
+    ctx:between(ctx:st().speed, 0, 20, "speed with the clutch in", "u/s")
+
+    -- Let go.
+    local maxPitch, up, t0, last = 0, 0, CurTime(), CurTime()
+    ctx:runUntil(2.5, function()
+        local now = CurTime()
+        if not f.onGround then up = up + (now - last) end
+        last = now
+        maxPitch = math.max(maxPitch, ctx:st().pitch)
+        return false
+    end, { throttle = 1 })
+    ctx:log(string.format("max pitch %.0f deg, front wheel up %.2f s", math.deg(maxPitch), up))
+    ctx:between(math.deg(maxPitch), 10, 85, "peak pitch after the pop", "deg")
+    ctx:between(up, 0.2, 2.4, "front wheel off the ground", "s")
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+
+    -- THE CONTROL: the same bike, the same throttle, the clutch left alone, does not wheelie.
+    ctx:input({})
+    ctx:wait(2)
+    ctx:runUntil(3, nil, { brakeRear = 1 })
+    ctx:wait(0.5)
+    local plain, upPlain, last2 = 0, 0, CurTime()
+    ctx:runUntil(1.5, function()
+        local now = CurTime()
+        if not f.onGround then upPlain = upPlain + (now - last2) end
+        last2 = now
+        plain = math.max(plain, ctx:st().pitch)
+        return false
+    end, { throttle = 1 })
+    ctx:log(string.format("a plain launch: max pitch %.0f deg, front up %.2f s", math.deg(plain), upPlain))
+    ctx:between(math.deg(plain), -5, 14, "pitch on a plain launch", "deg")
+end)
+
+T.Case("dirtbike_lands_big_jump", { vehicle = "dirtbike", timeout = 30,
+    desc = "the dirt bike dropped 250 units lands on its wheels, uses its travel and keeps its rider" },
+function(ctx)
+    local b = ctx.bike
+    local phys = b:GetPhysicsObject()
+    if not ctx:ok(IsValid(phys), "a physics object") then return end
+    ctx:wait(ctx.cfg.Crash.grace + 0.3)
+
+    local crashed = false
+    hook.Add("BMX_Crash", "BMX.TestBigJump", function(e) if e == b then crashed = true end end)
+
+    phys:SetPos(ctx.ground + Vector(0, 0, 250), true)
+    phys:SetAngles(Angle(0, 0, 0))
+    phys:SetVelocity(Vector(120, 0, 0))
+    phys:SetAngleVelocity(Vector(0, 0, 0))
+    phys:Wake()
+
+    local f, r = ctx:wheels()
+    local deepest = 0
+    ctx:ok(ctx:waitUntil(function()
+        deepest = math.max(deepest, f.compression or 0, r.compression or 0)
+        return ctx:st().airMode
+    end, 1, "the drop to be a flight"), "air mode engaged")
+    ctx:waitUntil(function()
+        deepest = math.max(deepest, f.compression or 0, r.compression or 0)
+        return ctx:st().grounded and not ctx:st().airMode
+    end, 4, "the landing")
+    ctx:wait(1.2)
+    hook.Remove("BMX_Crash", "BMX.TestBigJump")
+
+    ctx:log(string.format("deepest compression %.1f of %.1f travel, roll %.0f deg", deepest, ctx.cfg.Wheel.restLength,
+        math.deg(ctx:st().roll)))
+    ctx:ok(not crashed, "no crash on a 250 unit drop")
+    ctx:ok(IsValid(b:GetDriver()), "the rider is still aboard")
+    ctx:ok(f.onGround and r.onGround, "on both wheels afterwards")
+    ctx:between(deepest, ctx.cfg.Wheel.restLength * 0.4, ctx.cfg.Wheel.restLength * 2.2, "suspension compression on landing", "u")
+    ctx:between(math.deg(math.abs(ctx:st().roll)), 0, 20, "roll once it has settled", "deg")
+end)

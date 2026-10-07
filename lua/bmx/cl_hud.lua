@@ -166,10 +166,21 @@ local function drawRiderHUD(bike)
     -- speed, with the cadence under it in rpm so the shift is a decision the
     -- rider can see (60-110 is where the legs want to be).
     local gear = BMX.Gears.Label(bike)
+    -- A MOTOR'S LINES (G14, G15; cl_motor.lua): the assist level and the battery on an
+    -- e-bike or e-moto, the engine's rpm and the clutch on a dirt bike.
+    local mi = BMX.MotorHudInfo and BMX.MotorHudInfo(bike)
     if gear then
         label(gear, x + w - 14, y + 12, "BMX.Small", COL_FG, TEXT_ALIGN_RIGHT)
-        label(string.format("%.0f rpm", bike:GetCadence() * 60 / (2 * math.pi)),
-            x + w - 14, y + 30, "BMX.Small", COL_DIM, TEXT_ALIGN_RIGHT)
+        label((mi and mi.rpmLabel) or string.format("%.0f rpm", bike:GetCadence() * 60 / (2 * math.pi)),
+            x + w - 14, y + 30, "BMX.Small", mi and mi.clutch and COL_WARN or COL_DIM, TEXT_ALIGN_RIGHT)
+    elseif mi and mi.assist then
+        label(mi.assist, x + w - 14, y + 12, "BMX.Small", COL_FG, TEXT_ALIGN_RIGHT)
+    end
+    if mi and mi.batteryLabel then
+        label(mi.batteryLabel, x + w - 14, y + 62, "BMX.Small", COL_DIM, TEXT_ALIGN_RIGHT)
+        if mi.battery then
+            bar(x + 14, y + 88, w - 28, 5, mi.battery, mi.battery < 0.15 and COL_BAD or COL_GOOD)
+        end
     end
 
     ----------------------------------------------------------------------
@@ -188,9 +199,17 @@ local function drawRiderHUD(bike)
     -- caps top speed, so showing it explains why pedalling stopped helping.
     ----------------------------------------------------------------------
     local cadFrac = bike:GetCadence() / bike:Cfg().Drive.maxCadence
-    bar(x + 14, y + 54, w - 28, 6, cadFrac,
-        cadFrac > 0.95 and COL_WARN or COL_GOOD)
-    label("cadence", x + 14, y + 62, "BMX.Small", COL_DIM)
+    if mi and mi.rpm then
+        -- An engine's rev counter in the legs' place: red at the limiter.
+        bar(x + 14, y + 54, w - 28, 6, mi.rpm, mi.rpm > 0.95 and COL_WARN or COL_GOOD)
+        label(mi.clutch and "clutch" or "rpm", x + 14, y + 62, "BMX.Small", COL_DIM)
+    elseif mi and mi.batteryLabel and not mi.assist then
+        -- An e-moto has no legs: nothing to show as a cadence.
+    else
+        bar(x + 14, y + 54, w - 28, 6, cadFrac,
+            cadFrac > 0.95 and COL_WARN or COL_GOOD)
+        label("cadence", x + 14, y + 62, "BMX.Small", COL_DIM)
+    end
 
     ----------------------------------------------------------------------
     -- Stamina, only once it has been spent: a permanently full bar is chrome.

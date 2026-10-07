@@ -53,6 +53,7 @@ Then, in game:
 /bike (in chat)      a window to spawn any bike or park piece (also bmx_menu)
 bmx_spawn            spawn a bike where you are looking
 bmx_spawn cruiser    the 24-inch cruiser (or: mini, road, fixie, city, stock)
+bmx_spawn dirtbike   a motor vehicle (or: ebike, emoto, moped); needs the privilege below
 ```
 
 or find **BMX** in the spawn menu's Entities tab. There are six bikes: the
@@ -64,7 +65,17 @@ a **Fixie** (the cranks are locked to the rear wheel: S skids, S at a standstill
 rolls it backwards, A/D at a standstill is a trackstand; no front brake unless
 `bmx_fixie_frontbrake 1`) and a **City Bike** (upright, heavy, coaster brake, a
 basket that keeps small props in while you ride gently and throws them out on a
-hop or a crash, and a child seat on the context menu). Press `E` on the bike to
+hop or a crash, and a child seat on the context menu). There are also four
+**motor vehicles**, under Motor in the spawn menu (an admin by default: the CAMI
+privilege "BMX - Spawn Motor Vehicles"; `bmx_allow_motor 0` switches them off): an
+**E-Bike** (pedal assist: the mouse wheel or `[` `]` set a level 0-3, the motor adds that
+many times your pedalling up to `bmx_ebike_limit` km/h, 25 by default; the battery,
+`bmx_ebike_battery` Wh, drains with the motor and recharges while parked, 0 = never runs
+down), an **E-Moto** (throttle on `W`, regen on `S`, about 2.5x a BMX's top speed), a
+**Dirt Bike** (an engine with a torque curve, five gears on `]` `[` or the wheel, a clutch on
+`SHIFT`: let go with the throttle open to pop a wheelie; Alt in the air for superman, heel
+clicker and cliffhanger) and a **Moped** (pedal it off and the engine takes over).
+Press `E` on the bike to
 get on, or `E` on the back of a ridden BMX or cruiser to stand on its pegs behind
 the rider (`bmx_passengers 0` turns that off); `E` again to get off, beside it.
 Get off at a slow stop and the kickstand

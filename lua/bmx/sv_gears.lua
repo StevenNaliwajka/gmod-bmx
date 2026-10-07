@@ -21,6 +21,8 @@ util.AddNetworkString("bmx_shift")
 -- nil if it did not move (single-speed, at the end of the box, or too soon).
 function BMX.Shift(bike, dir)
     if not IsValid(bike) or not bike.Bike then return nil end
+    -- An e-bike has no gears; the same keys are its assist level (sv_motor.lua).
+    if BMX.Motor and BMX.Motor.IsAssist(bike) and BMX.ShiftAssist then return BMX.ShiftAssist(bike, dir) end
     local n = BMX.Gears.Count(bike)
     if n == 0 then return nil end
     local now = CurTime()

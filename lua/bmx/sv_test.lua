@@ -319,6 +319,8 @@ function Ctx:input(t)
     -- Weight forward and the nose manual's trim (G02, sv_input.lua).
     i.leanFwd     = t.leanFwd     or false
     i.noseTrim    = t.noseTrim    or 0
+    -- The clutch lever (a motorcycle's SHIFT, G15).
+    i.clutch      = t.clutch      or false
 end
 
 function Ctx:st() return self.bike.st end

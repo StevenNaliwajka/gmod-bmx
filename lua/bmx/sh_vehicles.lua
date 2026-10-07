@@ -244,6 +244,22 @@ do
     BMX.RegisterInputMap{ id = "bike_rearonly", label = "Bike, rear brake only", actions = actions }
 end
 
+-- THE PENNY-FARTHING'S MAP (G13): steer, pedal, the front brake (the spoon brake, the
+-- one that takes the rider over the bars) and S, which back-pedals the direct drive
+-- (the pedal drive's own reverse at a walk). No trick keys: it is not that kind of bike.
+BMX.RegisterInputMap{
+    id = "penny", label = "Penny-farthing",
+    actions = {
+        forward    = { key = IN_FORWARD,   ctx = { G, A }, label = "Pedal" },
+        back       = { key = IN_BACK,      ctx = { G, A }, label = "Back-pedal / rear brake" },
+        left       = { key = IN_MOVELEFT,  ctx = { G, A }, label = "Lean left" },
+        right      = { key = IN_MOVERIGHT, ctx = { G, A }, label = "Lean right" },
+        sprint     = { key = IN_SPEED,     ctx = { G },    label = "Sprint" },
+        brakeFront = { key = IN_ATTACK,    ctx = { G, A }, label = "Front (spoon) brake: hard at speed and you go over the bars" },
+        hop        = { key = IN_JUMP,      ctx = { G, A }, label = "Hop" },
+    },
+}
+
 -- THE UNICYCLE'S MAP (G13): pedal forward and BACK (there is no brake, S pedals
 -- backwards), lean, hop, sprint. No trick keys: the mouse's yaw, which twists it
 -- round, is not a key and is read from the usercmd (sv_unicycle.lua).

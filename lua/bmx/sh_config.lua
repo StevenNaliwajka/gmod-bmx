@@ -1037,6 +1037,26 @@ C.Unicycle = {
 }
 
 --------------------------------------------------------------------------
+-- THE PENNY-FARTHING (G13; sv_penny.lua). A pedal drive straight on the front wheel,
+-- a rider a long way up, and the physics of that: a hard front brake pitches the whole
+-- thing over the bars, a HEADER, which is what the bike was famous for.
+--
+--   headerPitch   nose-down angle past which, with the front brake held, the rider is
+--                 over the bars (radians)
+--   headerBrake   how much front brake counts as "hard" (0..1)
+--   headerSpeed   u/s below which a stoppie is only a stoppie
+--   headerSeverity  the crash's severity (0..1), which scales the throw and the damage
+--   headerThrow   extra forward speed on the throw, u/s: over the bars, not just off
+--------------------------------------------------------------------------
+C.Penny = {
+    headerPitch = math.rad(14),
+    headerBrake = 0.6,
+    headerSpeed = 90,
+    headerSeverity = 0.85,
+    headerThrow = 140,
+}
+
+--------------------------------------------------------------------------
 -- CONVARS
 --
 -- Only the numbers a tuner reaches for repeatedly. Everything else is a code

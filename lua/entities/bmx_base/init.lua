@@ -554,6 +554,9 @@ function ENT:Crash(reason, severity)
     if BMX.Passenger and BMX.Passenger.Eject then BMX.Passenger.Eject(self, vel, severity) end
 
     local throw = vel + Vector(0, 0, CR.ejectLift * severity)
+    -- OVER THE BARS (G13, the penny-farthing's header): a crash that says where the rider
+    -- goes adds it to the throw, once.
+    if self.crashBoost then throw = throw + self.crashBoost self.crashBoost = nil end
     local dmg = math.floor(severity * vel:Length() * CR.damageScale)
     local bike = self
     local function hurt()

@@ -123,3 +123,71 @@ BMX.Drawers.unicycle = function(ent, H, lod, debug)
     ent.crankAngle = spin
 end
 
+--------------------------------------------------------------------------
+-- THE PENNY-FARTHING. A very large front wheel with the cranks on its hub, a very small
+-- one at the back, a backbone from the fork crown to the small wheel's fork, the saddle
+-- on it over the big wheel and the bars over the saddle's front. The rider sits a
+-- long way up.
+--------------------------------------------------------------------------
+BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
+    local bike, C = ent:Bike(), ent:Cfg()
+    local dt = FrameTime()
+    local fwd, up, right = ent:GetForward(), ent:GetUp(), ent:GetRight()
+    local sag = sagOf(C)
+    local wds = wheelDefs(ent)
+    local fwdDef, rearDef = wds[1], wds[2]
+    local col = BMX.PaletteColor(ent:GetColorIndex())
+    local rf = fwdDef.radius or C.Wheel.radius
+    local rr = rearDef.radius or C.Wheel.rearRadius or 6
+
+    render.SetColorMaterial()
+    -- The big wheel steers (the fork turns the whole front end), the small one does not.
+    local steer = BMX.VisualSteer(ent:GetSteer(), ent:GetSpeedUPS(), C)
+    local sFwd, fAxle = fwd, right
+    if steer ~= 0 then
+        local c, s = math.cos(steer), math.sin(steer)
+        sFwd = fwd * c + right * s
+        fAxle = sFwd:Cross(up)
+        fAxle:Normalize()
+    end
+    local fPos, fHit = axleOf(ent, H, fwdDef, C, lod, sag)
+    local rPos, rHit = axleOf(ent, H, rearDef, C, lod, sag)
+    local fSpin = spinOf(ent, "front", rf, fHit, dt)
+    local rSpin = spinOf(ent, "rear", rr, rHit, dt)
+    H.wheel(ent, "front", fPos, fAxle, fSpin, rf, fHit, debug, lod)
+    H.wheel(ent, "rear", rPos, right, rSpin, rr, rHit, debug, lod)
+
+    -- The fork: two blades up from the big hub to a crown over the tyre's top.
+    local crown = fPos + up * (rf + 3)
+    for _, side in ipairs({ 1, -1 }) do
+        local off = fAxle * (2.6 * side)
+        H.tube(fPos + off, crown + off, 1.2, H.COL.part)
+    end
+    H.tube(crown - fAxle * 2.6, crown + fAxle * 2.6, 1.5, H.COL.part)
+    -- The bars, a plain bar over the crown and a stem up to it.
+    local barsC = crown + up * 5 + sFwd * 1
+    H.tube(crown, barsC, 1.3, H.COL.part)
+    H.tube(barsC - fAxle * 11, barsC + fAxle * 11, 1.0, H.COL.part)
+    local gripL, gripR = barsC - fAxle * 12, barsC + fAxle * 12
+
+    -- The backbone: from the crown, curving down and back to the small wheel's fork, and
+    -- the saddle on it a little behind the big wheel's top.
+    local backbone = crown - sFwd * 4
+    local saddle = ent:LocalToWorld(Vector(C.Chassis.seatOffset.x, 0, C.Chassis.seatOffset.z + sag - 2))
+    H.tube(crown, saddle, 1.6, col)
+    H.tube(saddle, rPos + up * (rr + 2.5), 1.6, col)
+    H.tube(rPos + up * (rr + 2.5) + right * 1.8, rPos + right * 1.8, 1.0, H.COL.part)
+    H.tube(rPos + up * (rr + 2.5) - right * 1.8, rPos - right * 1.8, 1.0, H.COL.part)
+    H.solid("sph", saddle + up * 1.5, ent:GetAngles(), Vector(9, 4, 2), H.COL.part, H.MAT.matte)
+    if lod == 0 then H.joint(crown, 2.6, col) end
+
+    local ik = {}
+    cranks(ent, H, fPos, sFwd, up, fAxle, fSpin, 8, 4.5, ik, lod, col)
+    ik.rHand = gripR - fAxle * 1.5
+    ik.lHand = gripL + fAxle * 1.5
+    ik.rHandA, ik.rHandB = ik.rHand, gripR
+    ik.lHandA, ik.lHandB = ik.lHand, gripL
+    ent.ikTargets = ik
+    ent.crankAngle = fSpin
+end
+

@@ -100,7 +100,10 @@ function Wheel:WheelConfig(cfg)
     if not r or r == WC.radius then return WC end
     if self._ovBase ~= WC or self._ovR ~= r then
         self._ovBase, self._ovR = WC, r
-        self._ov = setmetatable({ radius = r }, { __index = WC })
+        -- ...and the wheel's own inertia: a solid disc's is mr^2/2, so it goes with the
+        -- square of the radius (a penny-farthing's small wheel is not a 26-unit one's
+        -- flywheel). Nothing that has a radius of its own of the config's is changed.
+        self._ov = setmetatable({ radius = r, inertia = WC.inertia * (r / WC.radius) ^ 2 }, { __index = WC })
     end
     return self._ov
 end

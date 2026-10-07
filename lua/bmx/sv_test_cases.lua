@@ -2263,3 +2263,44 @@ function(ctx)
     ctx:input({})
 end)
 
+--------------------------------------------------------------------------
+-- penny_header: full front brake at 15 mph takes the rider over the bars, forward.
+--
+-- Written against the plant, where a header is what 0.5 g at the front patch does to a
+-- mass centre 62 units up and 18 behind it. The penny-farthing's own rule (sv_penny.lua)
+-- only decides it is a crash once the nose is 14 degrees down with the brake held; what
+-- VPhysics can change is how soon the nose gets there, so the wait is long and the claim
+-- is the reason ("header") and the direction of the throw.
+--------------------------------------------------------------------------
+T.Case("penny_header", { vehicle = "penny", timeout = 45,
+    desc = "full front brake at 15 mph ejects the penny-farthing's rider forward, as a header" },
+function(ctx)
+    local b = ctx.bike
+    ctx:ok(#b.wheels == 2 and b.wheels[1].drive and not b.wheels[2].drive, "the front wheel is the drive wheel")
+    ctx:wait(0.5)
+    if not ctx:accelerateTo(255, 16) then return end
+    local why, throw, fwd
+    hook.Add("BMX_Crashed", "BMX.TestHeader", function(bike, ply, reason)
+        if bike == b then why = reason end
+    end)
+    hook.Add("BMX_RiderCrashed", "BMX.TestHeader", function(ply, v, bike)
+        if bike == b then throw, fwd = v, bike:GetForward() end
+    end)
+    local v0 = ctx:st().speed
+    ctx:log(string.format("braking from %.0f u/s (%.1f mph)", v0, BMX.ToMPH(v0)))
+    ctx:input({ brakeFront = 1 })
+    local out = ctx:waitUntil(function() return not IsValid(b:GetDriver()) end, 4, "the rider to go over the bars")
+    ctx:wait(0.3)
+    hook.Remove("BMX_Crashed", "BMX.TestHeader")
+    hook.Remove("BMX_RiderCrashed", "BMX.TestHeader")
+    ctx:ok(out, "the rider came off")
+    ctx:ok(why == "header", "and it was a header: " .. tostring(why))
+    if throw then
+        ctx:log(string.format("thrown %.0f u/s forward, %.0f up", throw:Dot(fwd), throw.z))
+        ctx:ok(throw:Dot(fwd) > v0 * 0.5, "thrown FORWARD, over the bars")
+    else
+        ctx:ok(false, "BMX_RiderCrashed did not fire")
+    end
+    ctx:input({})
+end)
+

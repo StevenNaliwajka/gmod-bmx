@@ -606,6 +606,68 @@ BMX.RegisterVehicle({
 })
 
 --------------------------------------------------------------------------
+-- THE PENNY-FARTHING (G13): a 26-unit front wheel with the cranks on its hub
+-- (`front-direct`: the front wheel is the drive wheel), a 6-unit wheel at the back, and
+-- a rider sat a long way up. The `pennyfarthing` balance is the single-track one with
+-- the header on its pitch (sv_penny.lua): hard on the front brake at speed and the whole
+-- thing goes over the bars. That is the physics, not a script: the mass centre is 62 units
+-- off the ground and 18 behind the front patch, which a brake harder than ~0.3 g
+-- (g * 18 / 62) takes the back wheel off with.
+--
+--   Wheel radius 26, rearRadius 6   the big wheel and the small one. The rear axle is
+--                               radius - rearRadius LOWER on the chassis (-20): the
+--                               wheels' registration gives it, and the hull is built
+--                               from the same two numbers (BMX.CollisionBoxes)
+--   wheelbase 44, loadShare 0.75   the axles' distance and the front's share of the weight:
+--                               the rider is over the big wheel, which carries about three
+--                               quarters of it (rest height is derived from the share)
+--   mass centre (4, 0, 36)      36 above the front axle = 62 above the ground, and 18
+--                               behind the front patch (the header's lever)
+--   seat (8, 0, 33)             the saddle, behind the top of the big wheel
+--   Drive gearRatio 1, maxCadence 9, crankTorque 340000   direct drive: a stroke is a
+--                               wheel turn. The legs' ceiling is 9 * 26 = 234 u/s
+--                               (21 km/h), a penny-farthing's top gear
+--   frontBrake 700000           the spoon brake: ~0.5 g at the tyre, so a full pull is
+--                               over the 0.3 g the header needs and half a pull is not
+--   inertia 600                 the big wheel's flywheel; the small one's is that times
+--                               (6/26)^2 (BMX.Wheel:WheelConfig), as a disc's goes
+--   Balance maxLean 28, maxSteer 30 deg   it leans less than a BMX and steers less: it
+--                               is a big wheel under a high rider
+--   tricks none                 the header is the trick
+BMX.RegisterVehicle({
+    id          = "penny",
+    family      = "bike",
+    printName   = "Penny-Farthing",
+    description = "A 26-unit front wheel with the pedals on its hub, a tiny one behind, the rider a long way up. It leans and steers like a bike, and a hard front brake at speed takes you over the bars: a header.",
+    colorIndex  = 7,
+    wheels = function(cfg)
+        local half = cfg.Wheel.wheelbase * 0.5
+        local rr = cfg.Wheel.rearRadius or 6
+        return {
+            { pos = Vector( half, 0, 0), steer = "fork", drive = true,  name = "front" },
+            { pos = Vector(-half, 0, -(cfg.Wheel.radius - rr)), radius = rr, steer = false, drive = false, name = "rear" },
+        }
+    end,
+    balance = "pennyfarthing",
+    drive   = { kind = "front-direct" },
+    input   = "penny",
+    pose    = "upright",
+    tricks  = {},
+    grindPoints = false,
+    drawer  = "pennyfarthing",
+    physics = {
+        Chassis = { mass = 84, hullMin = Vector(-6, -4, 14), hullMax = Vector(18, 4, 62),
+                    massCenterExpected = Vector(4, 0, 36), seatOffset = Vector(8, 0, 33),
+                    barHullCentre = false, pegHullHalfWidth = false },
+        Wheel   = { radius = 26, rearRadius = 6, wheelbase = 44, restLength = 8, spring = 16000, damper = 800,
+                    loadShare = 0.75, inertia = 600, grip = 1.3, rollingResistance = 0.010 },
+        Drive   = { gearRatio = 1, maxCadence = 11, crankTorque = 340000, frontBrake = 700000, dragArea = 0.0065 },
+        Balance = { maxLean = math.rad(28), maxSteer = math.rad(30) },
+        Hop     = { popSpeed = 70 },
+    },
+})
+
+--------------------------------------------------------------------------
 -- THE TEST CART: the platform's proof that it is not a bicycle.
 --
 -- Four wheels in a rectangle, no balance mode at all (`none`: it stands on its

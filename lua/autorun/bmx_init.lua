@@ -48,6 +48,7 @@ local SHARED = {
     "bmx/sh_city.lua",      -- the city around the park: layout builder
     "bmx/sh_city_maps.lua", -- ...and which maps have one
     "bmx/sh_park.lua",      -- the park pieces: one generator for collision and drawing
+    "bmx/sh_menu.lua",      -- /bike: what the spawn window lists (after bikes and park)
 }
 
 local SERVER_FILES = {
@@ -73,6 +74,7 @@ local SERVER_FILES = {
     "bmx/sv_debug.lua",
     "bmx/sv_city.lua",      -- the city's colliders and admin commands
     "bmx/sv_park.lua",      -- park pieces: placing, the cap, save/load, presets
+    "bmx/sv_menu.lua",      -- /bike in chat, and park pieces placed from the window
 
     -- The headless harness loads last: its cases reference BMX.Config, the
     -- wheel/balance state and the entity, so everything it asserts on must
@@ -97,6 +99,7 @@ local CLIENT_FILES = {
     "bmx/cl_city.lua",      -- draws the city, runs the subway trains
     "bmx/cl_park.lua",      -- draws the park pieces
     "bmx/cl_options.lua",   -- spawn menu > Options > BMX, built from BMX.Settings
+    "bmx/cl_menu.lua",      -- the /bike window (bmx_menu)
 }
 
 if SERVER then

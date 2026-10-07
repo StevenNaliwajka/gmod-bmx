@@ -85,6 +85,7 @@ local CLIENT_FILES = {
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
     "bmx/cl_filmer.lua",    -- views through a bmx_filmer_cam (bmx_filmer_view)
+    "bmx/cl_replay.lua",    -- the last 30 s, played back (bmx_replay)
     "bmx/cl_grind.lua",     -- sparks and the scrape while a bike grinds
     "bmx/cl_tricks.lua",    -- the trick list overlay (bmx_tricks)
     "bmx/cl_report.lua",    -- bmx_report: a paste-able block for a bug report

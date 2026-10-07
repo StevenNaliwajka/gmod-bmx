@@ -215,6 +215,16 @@ client{ name = "bmx_cam_air", kind = "float", default = 0.6, min = 0, max = 1, d
     category = "camera", label = "Trick camera",
     help = "In the air the camera pulls back and widens a little so the whole trick is in frame, then eases back on landing. 0 turns it off." }
 
+client{ name = "bmx_replay_buffer", kind = "bool", default = true, category = "camera",
+    label = "Record the replay buffer",
+    help = "Keep the last 30 seconds of you and nearby riders so you can watch them back (bmx_replay). Turn it off to save a little memory." }
+client{ name = "bmx_replay_key", kind = "int", default = 20, min = 0, max = 159, category = "camera",
+    label = "Replay key",
+    help = "The key that starts and stops the replay while you ride, as a Garry's Mod key number (20 is J, 0 turns the key off). You can also bind bmx_replay to any key." }
+client{ name = "bmx_replay_fov", kind = "float", default = 112, min = 80, max = 140, decimals = 0,
+    category = "camera", label = "Fisheye replay FOV",
+    help = "How wide the 'filmer follow' replay camera sees. Wider looks more like a fisheye skate video." }
+
 client{ name = "bmx_hud", kind = "bool", default = true, category = "hud",
     label = "Show the rider HUD",
     help = "The speedometer, trick names, score and combo while you ride." }

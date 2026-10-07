@@ -122,11 +122,14 @@ while True:
     j = b.index(b"\0", i); print(b[i:j].decode()); i = j + 1
     i += 8 + 4                        # size, crc
 PY
-want="$(cd "$ROOT" && git ls-files lua | tr 'A-Z' 'a-z' | sort)"
+# The addon is its Lua and the spawn-menu pictures (materials/entities, one per Q-menu
+# entry: tests/test_spawn_icons.lua), and nothing else.
+want="$(cd "$ROOT" && git ls-files lua materials/entities | tr 'A-Z' 'a-z' | sort)"
 got="$(grep -v '^addon.json$' "$TMP/gma.txt" | sort)"
-ok '[ "$want" = "$got" ]' "the .gma holds exactly the addon's lua files ($(echo "$got" | wc -l))"
+ok '[ "$want" = "$got" ]' "the .gma holds exactly the addon's lua files and spawn icons ($(echo "$got" | wc -l))"
 ok 'grep -q "^lua/bmx/sv_rules.lua$" "$TMP/gma.txt"' "including the new server settings"
-ok '! grep -qvE "^(lua/|addon\.json$)" "$TMP/gma.txt"' "and nothing outside lua/ (tests, tools, docs stay out)"
+ok 'grep -q "^materials/entities/bmx_base.png$" "$TMP/gma.txt"' "including the spawn-menu pictures"
+ok '! grep -qvE "^(lua/|materials/entities/[a-z0-9_]+\.png$|addon\.json$)" "$TMP/gma.txt"' "and nothing else (tests, tools, docs stay out)"
 
 echo "$pass passed, $fail failed"
 [ "$fail" = 0 ]

@@ -641,3 +641,68 @@ function B.MeterStep(m, dt, push, P)
     m.v = m.v + (P.unstable * m.v + w + P.control * push) * dt
     return m.v
 end
+
+--------------------------------------------------------------------------
+-- THE GRABS (G17's pose system). RMB in the air, and a direction, puts a hand on
+-- the deck: the pose is held and scored per tenth of a second (Tricks.poseTick),
+-- merged with a spin into one trick when both are in the same air ("360 Indy"),
+-- and must be let go of before the wheels touch or the landing bails
+-- (sv_tricks.lua). The IK targets are cl_board.lua's (B.GrabRows).
+--
+--   RMB          method      RMB+A    indy         RMB+D   melon
+--   RMB+W        nosegrab    RMB+S    tailgrab     RMB+S+D stalefish
+--------------------------------------------------------------------------
+B.GrabOrder = { "method", "indy", "melon", "nosegrab", "tailgrab", "stalefish" }
+local GRAB_DEF = {
+    method    = { name = "Method",    per = 14, input = "RMB in the air" },
+    indy      = { name = "Indy",      per = 10, input = "RMB + A in the air" },
+    melon     = { name = "Melon",     per = 10, input = "RMB + D in the air" },
+    nosegrab  = { name = "Nosegrab",  per = 10, input = "RMB + W in the air" },
+    tailgrab  = { name = "Tailgrab",  per = 10, input = "RMB + S in the air" },
+    stalefish = { name = "Stalefish", per = 12, input = "RMB + S + D in the air" },
+}
+B.Grabs = GRAB_DEF
+
+-- The grab the keys pick (RMB being down). `k` is B.Keys.
+function B.GrabFor(k)
+    if k.s and k.d and not k.w then return "stalefish" end
+    if k.w and not k.s then return "nosegrab" end
+    if k.s and not k.w then return "tailgrab" end
+    if k.a and not k.d then return "indy" end
+    if k.d and not k.a then return "melon" end
+    return "method"
+end
+
+for _, id in ipairs(B.GrabOrder) do
+    local g = GRAB_DEF[id]
+    BMX.RegisterTrick{ id = id, name = g.name, kind = "pose", pose = id, points = g.per, input = g.input,
+        canStart = function(st) return st.airMode and true or false end }
+end
+
+--------------------------------------------------------------------------
+-- THE STYLE: reverts, powerslides, switch. A revert is a half turn on landing on
+-- a steep surface (A or D within revertWindow of touching down, on a surface
+-- steeper than revertSlope) that keeps the combo, which is the THPS combo glue. A
+-- powerslide is CTRL with A / D at speed: the board is turned slideAngle off its
+-- travel and scrubs. Switch is LMB on the ground at a roll.
+--------------------------------------------------------------------------
+T.revertWindow = 0.3
+T.revertSlope  = math.rad(25)
+T.revertTime   = 0.28
+T.revertPoints = 100
+T.slideAngle   = math.rad(35)
+T.slideRate    = math.rad(420)      -- the fastest the board is turned into or out of a slide
+T.slideMinSpeed = 80
+T.slideMinTime = 0.5
+T.slideRatePay = 80
+T.swapMaxSpeed = 220
+
+BMX.RegisterTrick{ id = "board_revert", name = "Revert", kind = "custom", points = T.revertPoints,
+    input = "A / D on touching down on a transition" }
+BMX.RegisterTrick{ id = "board_powerslide", name = "Powerslide", kind = "ground", points = T.slideRatePay,
+    input = "CTRL + A / D at speed" }
+
+-- Does a landing on a surface with this normal qualify for a revert?
+function B.RevertSurface(normal)
+    return normal.z < math.cos(T.revertSlope)
+end

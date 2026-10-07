@@ -63,6 +63,7 @@ local SERVER_FILES = {
     "bmx/sv_physics.lua",
     "bmx/sv_board.lua",     -- the skateboard (G23): the board balance, the push drive, the decoder
     "bmx/sv_board_tricks.lua", -- ...its flips and what a landing pays (wraps BMX.ScoreExtras: after sv_tricks)
+    "bmx/sv_board_carry.lua",  -- ...and carrying one (weapon_bmx_board)
     "bmx/sv_board_grind.lua",  -- ...its grinds, slides and manuals (wraps sv_grind.lua's entry points)
     "bmx/sv_seat.lua",
     "bmx/sv_compat_ragmod.lua", -- RagMod, if installed: before the crash path asks
@@ -74,6 +75,7 @@ local SERVER_FILES = {
     "bmx/sv_scores.lua",    -- personal bests + leaderboard; listens to the public hooks
     "bmx/sv_launch.lua",    -- finding a ramp to get air off, or putting one down
     "bmx/sv_bot.lua",       -- a bot rider that does tricks (bmx_bot_spawn)
+    "bmx/sv_board_bot.lua", -- ...and its skateboard tricks (Kickflip, Manual, 50-50 Grind)
     "bmx/sv_games.lua",     -- SKATE, Trick Attack, Combo Mambo (loads bmx/games/*)
     "bmx/sv_debug.lua",
     "bmx/sv_city.lua",      -- the city's colliders and admin commands

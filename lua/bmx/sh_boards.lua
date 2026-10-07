@@ -96,7 +96,8 @@ BMX.RegisterVehicle({
                     "flip360", "varialheel", "varialkick", "hardflip", "impossible",
                     "grind5050", "grind50", "nosegrind", "crooked", "smith", "feeble",
                     "boardslide", "lipslide", "noseslide", "tailslide",
-                    "board_manual", "board_nosemanual" },
+                    "board_manual", "board_nosemanual", "board_revert", "board_powerslide",
+                    "method", "indy", "melon", "nosegrab", "tailgrab", "stalefish" },
     grindPoints = B.GrindPoints,
     physics = {
         Chassis = {

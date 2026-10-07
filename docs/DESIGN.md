@@ -429,6 +429,44 @@ What the board (G23) adds on top is a `board` balance module, a `push` drive, a
 `steer` function for truck lean, an input map and a pose set; none of it needs a
 change to the core.
 
+## 6d. The skateboard (G23)
+
+The second client of the platform, and the first that is not a bike in any part of
+how it stays up. Six decisions, each one a thing the bike's design does not answer.
+
+**The deck's lean is a state, not the chassis's roll.** A real deck pivots on its
+trucks with the wheels flat on the ground; a rigid raycast body that rolls lifts a
+wheel. So the chassis is held flat to the ground (`board` balance: a PD on roll and
+pitch against the surface normal, plus the cancellation of the roll the tyres'
+sideways force would give it, `lat * h / I`, which does not depend on the thing it
+controls) and the lean is `st.board.lean`, a second-order spring after the key. The
+trucks turn by `atan(sin(lean) * k)`, the front with the lean and the rear against
+it, limited to what the tyres hold (`aLatMax`). The lean is networked and drawn.
+
+**The deck is a separate body from the rider.** Flips rotate the deck (three angles,
+a byte each) on a clock from the pop, the way the tailwhip turns a frame; the
+physics body flies its own path. The catch is a rule (within 20 degrees of flat,
+wheels down, else a bail through the ordinary crash path), so it is testable offline.
+
+**The tyre cap sets the carving.** On this light chassis the explicit tyre cap
+(`effectiveMass / dt`) is what limits sideways force, not the stiffness, so a hard
+carve runs at 5 to 10 degrees of slip and costs speed. `aLatMax` of 160 u/s^2 keeps
+that to a few u/s^2; raising it makes boards draggy in turns (measured on the plant).
+
+**Grinds reuse the bike's finder and placement**, with one new hook: the vehicle is
+asked which move this is (`grindPoints.moves`) and the pose takes a yaw and pitch.
+The contact heights are below every hull box (trucks 0.2 under the axle line,
+slides 0.1 over it with the 0.3 clearance), because a pose that overlaps the hull is
+refused.
+
+**Kinematic turns.** The kick-turn, the revert and the powerslide turn the physics
+object directly (four tyres resist a yaw torque with far more than a foot can give).
+A powerslide is the turn and the cost is the tyres'.
+
+**The balance meter** is an inverted pendulum with a wobble and a start offset:
+unattended it is lost in about three seconds whatever the phase, and held it stays
+held, so a manual or a grind is a skill and not a timer.
+
 ## 7. Roadmap
 
 | Phase | Deliverable | Status |

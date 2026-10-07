@@ -89,6 +89,8 @@ function BMX.BikesOwnedBy(ply)
             if e.BMXOwner == ply then n = n + 1 end
         end
     end
+    -- A board under the player's arm (weapon_bmx_board, sv_board_carry.lua) is theirs.
+    if IsValid(ply) and ply.HasWeapon and ply:HasWeapon("weapon_bmx_board") then n = n + 1 end
     return n
 end
 

@@ -193,7 +193,7 @@ BMX.Drives.push = function(ent, cfg, dt, inp, st, wheel, vdef)
 
     -- The pushing foot is busy while the rider crouches, holds a manual, slides or
     -- turns on the spot.
-    local busy = b.crouching or b.kt or b.manual or b.powerslide
+    local busy = b.crouching or b.kt or b.manual or b.powerslide or b.revert
     local want = inp.throttle > 0.3 and not busy
     local add, began = B.PushStep(b.ps, dt, want, max(along, 0), d)
     if add > 0 then phys:ApplyForceCenter(fwd * (add * phys:GetMass())) end
@@ -421,6 +421,7 @@ function BMX.BoardIdle(ent, st)
     if not b then return end
     b.crouching, b.crouchT, b.kt, b.manual, b.meter = false, 0, nil, nil, nil
     b.pitchTarget, b.pitchFF, b.mtr, st.manual = 0, 0, nil, nil
+    b.revert, b.powerslide, b.slideT = nil, nil, nil
     b.lean, b.leanRate = 0, 0
     b.flipRoll, b.flipYaw, b.flipPitch, b.flip, b.latch, b.popAt = 0, 0, 0, nil, nil, nil
     b.ps = {}
@@ -474,7 +475,7 @@ local function decode(ply, bike, cmd, down, fwd, side)
     inp.leanTarget = air and (spin and side or 0) or side
 
     -- A grab is RMB in the air with a direction, a pose of G17's.
-    inp.pose = (air and b.grab and B.GrabFor) and B.GrabFor(fwd, side) or nil
+    inp.pose = (air and b.grab) and B.GrabFor(B.Keys(inp)) or nil
 
     -- A hop off a rail is the bike's (sv_grind.lua reads these); the board's own
     -- grind step reads b.jump, so they stay clear.

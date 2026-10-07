@@ -107,13 +107,13 @@ A vehicle that says nothing gets: `balance = "none"`, `drive = { kind = "none" }
 | `id` | Lower-case letters, digits and `_`. Becomes the class `bmx_<id>`. |
 | `family` | `"bike"`, `"board"`, `"skates"`, `"scooter"` or `"moto"`. Decides the spawn menu heading (Bikes, Boards, Scooters, Motor; skates are under Boards) and which `bmx_allow_*` setting can switch it off. |
 | `wheels` | A list of wheels, or a function of the config returning one. At least one, at most eight. See below. |
-| `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (reserved for the skateboard; runs as `none`, with a message, until its module exists), or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
-| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", ... }` (reserved for the board) or `{ kind = "none" }`. `pedal` and `throttle` need at least one wheel with `drive = true`. |
+| `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (the skateboard's, `sv_board.lua`: the chassis is held flat to the ground and the rider's lean is a state of its own that the steering reads; needs no particular wheel layout), or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
+| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", torque = N, maxSpeed = N, kickInterval = N }` (a rider's kick: `torque` is the speed one kick adds at a standstill, u/s, falling to nothing at `maxSpeed`, one kick every `kickInterval` seconds while the throttle is held; also the foot-drag brake and the kick-turn) or `{ kind = "none" }`. `pedal` and `throttle` need at least one wheel with `drive = true`. |
 | `seats` | `{ { model, offset, angles } }`. One seat for now (passengers are G11). Omitted: the config's `Chassis.seatOffset` and `seatAngles`. |
 | `input` | An id in `BMX.InputMaps`: `"bike"` or `"drive"`, or one you register. |
 | `pose` | An id in `BMX.PoseSets` (the rider's pose on the client): `"bike"` or `"seated"`. |
 | `tricks` | `"all"` or a list of registered trick ids. Limits what is scored from motion: the flips and turns, the held wheelie and stoppie, and registered custom ticks. |
-| `grindPoints` | `false` (cannot grind) or `{ crank = Vector or fn(cfg), pegs = { y, z, x = { ... } } or fn(cfg) }`: where a pipe is looked for and ridden on, and where the pegs are on an edge. |
+| `grindPoints` | `false` (cannot grind) or `{ crank = Vector or fn(cfg), pegs = { y, z, x = { ... } } or fn(cfg), moves = fn }`: where a pipe is looked for and ridden on, where the pegs are on an edge, and optionally `moves(ent, st, rail, dh, vel)`, called when a rail is found, which answers with the move (`{ id, name, mult, yaw, pitch, signed, reverse, crank = Vector, peg = fn(side) -> Vector }`: which point of the vehicle rides the rail, how it is turned and pitched, what it is called and the multiple of the grind rate it pays) or `nil` for no grind here. The skateboard's ten grinds and slides are one (`BMX.Board.GrindMoves`). |
 | `physics`, `bones`, and every appearance field above | As for a bike. |
 | `hidden` | Not in the spawn menu or `BMX.BikeIDs()`. |
 | `debugOnly` | `bmx_spawn` and the spawn door refuse it unless the player has `bmx_debug 1`. |
@@ -147,11 +147,41 @@ map lacks is never down. `BMX.InputActions(mapId, ctx)` lists a map's actions fo
 keybind panel. The `bike` map is the controls in the game's help; `drive` is
 forward, back, left, right, jump.
 
+**An input map may have a decoder.** `BMX.InputMaps.<id>.decode = function(ply, bike, cmd, down, fwd, side)`: `sv_input.lua` hands the usercmd over instead of decoding it as a bike's, so a vehicle whose keys mean other things reads them itself (the skateboard's, `sv_board.lua`). It must write `bike.input` (the standard fields, and anything of its own) and suppress the engine's use of the keys.
+
+**A balance mode may have more than `Ground` and `Pitch`.** `Tick(ent, phys, cfg, dt, inp, st, vdef)` runs once a substep with a rider aboard, on the ground and in the air (a skateboard's ollie, lean and tricks), and `Idle(ent, st)` once a substep with nobody aboard.
+
+**A pose set may bring its own base pose and solver** (`cl_board.lua`): `rider(s)` the bone offsets (it also gets `s.bike` and `s.ply`), `poses` the style-pose rows, `activity(ply, bike)` the base sequence in place of the seated drive pose, `solveIK(ply, bike)` the limb solver. A family can draw itself: `BMX.DrawVehicle[family] = function(ent, kit)`, handed `BMX.DrawKit` (the primitives the bike is drawn from).
+
 **Server settings.** `bmx_allow_bikes`, `bmx_allow_boards`, `bmx_allow_scooters`
 and `bmx_allow_motor` (default 1; Options > BMX > Server > Vehicles) switch a
 whole heading off for the spawn menu and `bmx_spawn`. Off stops new ones being
 spawned; ones already out stay. `BMX_CanSpawn` is still the gamemode's own veto
 on top.
+
+### The skateboard (G23)
+
+`skateboard` is registered in `sh_boards.lua` against the vocabulary in `sh_board.lua`
+(`BMX.Board`): four wheels whose steer functions are `atan(sin(lean) * k)`, the
+`board` balance, the `push` drive, the `board` input map and pose set. Everything
+numeric is `BMX.Board.Tune`. Spawn it from the Boards tab, `bmx_spawn skateboard`,
+or carry it (`weapon_bmx_board`, in the Weapons tab or `bmx_give_board`: left mouse
+drops it, `bmx_pickup_board` takes it back; a carried board counts toward
+`bmx_max_per_player`).
+
+Controls: W pushes, S drags a foot (a kick-turn at a standstill), A / D lean (CTRL
+with them at speed is a powerslide), hold SPACE to crouch and release to ollie (ALT
+with it: a nollie), after the pop W / A / S / D and their pairs pick a flip (see
+`BMX.Board.Flips`; with `bmx_board_flick 1` flick the mouse), RMB and a direction in
+the air is a grab, RMB on the ground a manual (ALT: nose manual, W / S balance it),
+SPACE held in the air near a rail or ledge grinds (release to pop out;
+`bmx_board_autogrind 1` grinds on contact), CTRL + A / D in the air spins, A / D on
+touching down on a transition is a revert, LMB swaps feet (switch). Player settings:
+`bmx_stance` (regular or goofy), `bmx_board_flick`, `bmx_board_autogrind`.
+
+Adding a board is a `BMX.RegisterVehicle` with `balance = "board"`, `drive = { kind =
+"push" }`, `input = "board"`, `pose = "board"` and its own `wheels`; add flips with
+`BMX.Board.Flips` before the first board is spawned.
 
 ## 2. Tricks
 

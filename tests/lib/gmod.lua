@@ -1186,6 +1186,15 @@ function M.Realm(world, which)
         self._weapons[#self._weapons + 1] = c
     end
     function Ply:StripWeapons() self._weapons, self._activeWep = {}, nil end
+    function Ply:HasWeapon(c)
+        for _, w in ipairs(self._weapons or {}) do if w == c then return true end end
+        return false
+    end
+    function Ply:StripWeapon(c)
+        local keep = {}
+        for _, w in ipairs(self._weapons or {}) do if w ~= c then keep[#keep + 1] = w end end
+        self._weapons = keep
+    end
     function Ply:SelectWeapon(c) self._activeWep = c end
     function Ply:GetActiveWeapon() return self._activeWep and wep(self._activeWep) or NULL end
     function Ply:GetAmmo() return table.Copy(self._ammo or {}) end

@@ -465,6 +465,10 @@ function BMX.PhysicsStep(ent, phys, dt)
         if BMX.FiniteVec(f) then phys:ApplyForceCenter(f) end
     end
 
+    -- 7a''. Water (sv_water.lua): drag per submerged wheel, from what the
+    -- bike's Think last measured.
+    if BMX.Water then BMX.Water.Drag(ent, phys, vel, dt) end
+
     ----------------------------------------------------------------------
     -- 7a'. Nobody aboard, rolling: scrub it down (Stand.riderlessDecel), so a
     -- bike let go of at speed rolls on for a few seconds and then falls,
@@ -561,7 +565,7 @@ function BMX.PhysicsStep(ent, phys, dt)
 
             ent.hopReady = CurTime() + H.cooldown
             local H = BMX.Sounds.hop
-            ent:EmitSound(BMX.SoundFile("hop"), H.level, 110, H.vol)
+            if BMX.SoundsOn() then ent:EmitSound(BMX.SoundFile("hop"), H.level, 110, H.vol) end
         end
         ent.hopCharge = 0
     end

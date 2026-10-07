@@ -67,6 +67,17 @@ BMX.Sounds = {
         level  = 75,
     },
 
+    -- THE WIND, which is what sells speed on a downhill or a big air. A loop,
+    -- client-side, whose volume follows speed SQUARED (BMX.WindVolume): air
+    -- resistance is quadratic, so a rider hears almost nothing at a walk and a
+    -- great deal at the bottom of a halfpipe. Standing in for: rushing air.
+    wind = {
+        path   = "ambient/wind/wind_med1.wav",
+        vol    = 0.5,
+        pitch  = { 70, 125 },
+        level  = 60,
+    },
+
     ----------------------------------------------------------------------
     -- ONE-SHOTS. `variants` means the path carries a %d and the files are
     -- numbered 1..variants, which is how the suite proves every one of them is
@@ -88,6 +99,16 @@ BMX.Sounds = {
     -- The puff of smoke when a bike changes colour (sh_color.lua).
     recolor = { path = "garrysmod/balloon_pop_cute.wav", vol = 0.45, level = 68 },
 
+    -- The bike bell (R, on the ground). Played on every client from a net
+    -- message (sv_bell.lua) so each listener's own bmx_vol_bell applies.
+    -- Standing in for: a ting-ting. A bike may name another key in its registry
+    -- entry (`bell = "horn"`) or `bell = false` for none.
+    bell = { path = "buttons/bell1.wav", vol = 0.8, pitch = { 118, 128 }, level = 70 },
+
+    -- A wheel going into water at speed (sv_water.lua). Standing in for: a splash.
+    splash = { path = "ambient/water/water_splash%d.wav",
+               variants = 3, vol = 0.9, level = 76 },
+
     -- Frame hitting the world. Standing in for: a crash.
     crash = { path = "physics/metal/metal_box_impact_hard%d.wav",
               variants = 3, vol = 1.0, level = 80 },
@@ -101,3 +122,31 @@ function BMX.SoundFile(key)
     return string.format(s.path, math.random(1, s.variants))
 end
 
+
+--------------------------------------------------------------------------
+-- bmx_sounds 0 (server): the admin switch that silences every bike sound.
+--
+-- REPLICATED, because the loops are client-side: a client has to be able to
+-- read the server's decision to stop making noise. Only the server may create
+-- a replicated convar, hence the guard. Everything that plays a bike sound asks
+-- BMX.SoundsOn() first; with no convar at all (a client that has not received
+-- it yet) it is on, since silence is the surprising default.
+--------------------------------------------------------------------------
+if SERVER then
+    CreateConVar("bmx_sounds", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
+        "BMX: 1 = bikes make sounds; 0 = every bike sound is muted for everyone.")
+end
+
+function BMX.SoundsOn()
+    local cv = GetConVar("bmx_sounds")
+    return not cv or cv:GetBool()
+end
+
+-- How loud the wind is, 0..1, at `speed` against `top` (the speed the
+-- drivetrain tops out at, which is the natural scale for "fast"). Quadratic,
+-- like the air.
+function BMX.WindVolume(speed, top)
+    local f = (speed or 0) / math.max(top or 1, 1)
+    if f <= 0 then return 0 end
+    return math.min(f * f, 1)
+end

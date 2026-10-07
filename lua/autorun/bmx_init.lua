@@ -52,6 +52,8 @@ local SERVER_FILES = {
     "bmx/sv_physics.lua",
     "bmx/sv_seat.lua",
     "bmx/sv_compat_ragmod.lua", -- RagMod, if installed: before the crash path asks
+    "bmx/sv_bell.lua",      -- R on the ground rings the bell
+    "bmx/sv_water.lua",     -- drag, splash and ejection in water (sv_physics checks for it)
     "bmx/sv_rules.lua",     -- server-owner settings: bike limit, scoring on/off
     "bmx/sv_launch.lua",    -- finding a ramp to get air off, or putting one down
     "bmx/sv_bot.lua",       -- a bot rider that does tricks (bmx_bot_spawn)

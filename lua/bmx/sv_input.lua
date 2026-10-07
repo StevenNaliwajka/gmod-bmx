@@ -22,6 +22,7 @@
         SPACE            hold to preload, release to bunny hop
         SHIFT            sprint (drains stamina)
         CTRL             tuck (less drag, faster rotation in the air)
+        R                the bell, on the ground (sv_bell.lua)
 
     Nothing here is predicted. GMod has no vehicle prediction API, so the
     simulation is server-authoritative exactly like simfphys and LVS. High-ping
@@ -157,6 +158,17 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     if airborne and inp.airLatch then fwd = 0 end
     if airborne and inp.airLatchSide then side = 0 end
     inp.leanTarget = side
+
+    -- THE BELL: R (IN_RELOAD), a fresh press, on the ground and out of a
+    -- manual. R is also the barspin key in the air and in a manual (G03), so
+    -- the bell takes only what that leaves. A press that began in the air and
+    -- is still held on landing is not a ring (ringHeld). See sv_bell.lua.
+    local ringKey = down(IN_RELOAD)
+    if ringKey and not inp.ringHeld and not airborne and not inp.wheelieMod
+        and not (bike.st and bike.st.manual) and BMX.Bell then
+        BMX.Bell.Ring(bike)
+    end
+    inp.ringHeld = ringKey
 
     if airborne then
         ------------------------------------------------------------------

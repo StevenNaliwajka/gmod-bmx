@@ -113,6 +113,7 @@ M.bit = bitlib
 M.IN = {
     ATTACK = 1, JUMP = 2, DUCK = 4, FORWARD = 8, BACK = 16, USE = 32,
     MOVELEFT = 512, MOVERIGHT = 1024, ATTACK2 = 2048, SPEED = 131072,
+    RELOAD = 8192,
 }
 
 --------------------------------------------------------------------------
@@ -576,6 +577,8 @@ function M.Realm(world, which)
         TraceHull = trace,
         AddNetworkString = function(name) R.netStrings[name] = true end,
         PrecacheSound = function() end,
+        -- No water in the shim: a test that wants some replaces this (test_ambient.lua).
+        PointContents = function() return 0 end,
     }
     env.physenv = { GetGravity = function() return Vector(0, 0, -world.gravity) end }
     env.engine = { TickInterval = function() return world.dt end }

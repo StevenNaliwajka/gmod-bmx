@@ -41,6 +41,38 @@ for _, s in pairs(BMX.Sounds) do
 end
 
 --------------------------------------------------------------------------
+-- Volumes, per player. 0..1 each, archived, and multiplied onto the sound's own
+-- level rather than replacing it, so 1 is "as designed" and 0 is silent.
+--
+--   bmx_vol_ride   tyres, skids, the freewheel tick (and the grind scrape)
+--   bmx_vol_wind   the speed whoosh
+--   bmx_vol_bell   the bell, whoever rings it
+--
+-- The admin's bmx_sounds 0 (sh_sound.lua) is checked on top of these: it mutes
+-- everything for everybody, whatever their sliders say.
+--------------------------------------------------------------------------
+local cvRide = CreateClientConVar("bmx_vol_ride", "1", true, false, "BMX: volume of tyre, skid and freewheel sounds, 0-1.")
+local cvWind = CreateClientConVar("bmx_vol_wind", "1", true, false, "BMX: volume of the wind whoosh, 0-1.")
+local cvBell = CreateClientConVar("bmx_vol_bell", "1", true, false, "BMX: volume of bike bells, 0-1.")
+
+local function vol(cv) return math.Clamp(cv:GetFloat(), 0, 1) end
+BMX.VolRide = function() return vol(cvRide) end
+BMX.VolWind = function() return vol(cvWind) end
+BMX.VolBell = function() return vol(cvBell) end
+
+-- The server decided a bell rang (sv_bell.lua); how loud is this listener's.
+net.Receive("bmx_bell", function()
+    local ent = net.ReadEntity()
+    local key = net.ReadString()
+    local S = BMX.Sounds[key]
+    if not IsValid(ent) or not S or not BMX.SoundsOn() then return end
+    local v = BMX.VolBell()
+    if v <= 0 then return end
+    ent:EmitSound(BMX.SoundFile(key), S.level, S.pitch and math.random(S.pitch[1], S.pitch[2]) or 100,
+        S.vol * v)
+end)
+
+--------------------------------------------------------------------------
 -- Per-bike sound state.
 --
 -- Keyed by entity rather than stored on it so that a removed bike cannot leave
@@ -53,6 +85,7 @@ local live = {}
 local function stopAll(state)
     if state.roll then state.roll:Stop() end
     if state.skid then state.skid:Stop() end
+    if state.wind then state.wind:Stop() end
 end
 
 local function channel(ent, state, key)
@@ -75,6 +108,10 @@ local function update(ent, state, dt)
     local topSpeed = cfg.Drive.maxCadence * cfg.Drive.gearRatio * cfg.Wheel.radius
     local frac     = math.Clamp(speed / math.max(topSpeed, 1), 0, 1)
 
+    -- Muted by the server: stop what is playing and make nothing.
+    if not BMX.SoundsOn() then stopAll(state) return end
+    local vRide = BMX.VolRide()
+
     ----------------------------------------------------------------------
     -- Rolling
     ----------------------------------------------------------------------
@@ -82,7 +119,7 @@ local function update(ent, state, dt)
     local roll = channel(ent, state, "roll")
     if grounded and speed > 12 then
         if not playing(roll) then roll:PlayEx(0, S.pitch[1]) end
-        roll:ChangeVolume(S.vol * math.min(1, frac * 2.2), 0.1)
+        roll:ChangeVolume(S.vol * math.min(1, frac * 2.2) * vRide, 0.1)
         roll:ChangePitch(Lerp(frac, S.pitch[1], S.pitch[2]), 0.1)
         state.rollStop = nil
     elseif playing(roll) then
@@ -106,7 +143,7 @@ local function update(ent, state, dt)
     local skid = channel(ent, state, "skid")
     if grounded and ent:GetSkidding() and speed > 25 then
         if not playing(skid) then skid:PlayEx(0, S.pitch[1]) end
-        skid:ChangeVolume(S.vol, 0.05)
+        skid:ChangeVolume(S.vol * vRide, 0.05)
         skid:ChangePitch(Lerp(frac, S.pitch[1], S.pitch[2]), 0.08)
         state.skidStop = nil
     elseif playing(skid) then
@@ -129,17 +166,36 @@ local function update(ent, state, dt)
     local coasting = grounded and speed > 20
         and ent:GetCadence() < cfg.Drive.maxCadence * 0.06
 
-    if coasting then
+    if coasting and vRide > 0 then
         -- One tick per pawl. Rate follows wheel speed, which is what makes it
         -- read as a freewheel rather than a metronome.
         local rate = math.max(0.02, 1 / math.max(speed * 0.22, 1))
         state.tickAt = (state.tickAt or 0) - dt
         if state.tickAt <= 0 then
             state.tickAt = rate
-            ent:EmitSound(S.path, S.level, Lerp(frac, S.pitch[1], S.pitch[2]), S.vol)
+            ent:EmitSound(S.path, S.level, Lerp(frac, S.pitch[1], S.pitch[2]), S.vol * vRide)
         end
     else
         state.tickAt = 0
+    end
+
+    ----------------------------------------------------------------------
+    -- Wind. Loudness follows speed squared (BMX.WindVolume), and it is the
+    -- one sound that does NOT stop in the air: a big air is exactly when it
+    -- should be loudest. Only a ridden bike has any: a riderless one rolling
+    -- to a stop does not whoosh.
+    ----------------------------------------------------------------------
+    S = BMX.Sounds.wind
+    local wind = channel(ent, state, "wind")
+    -- Wind is measured against a bike's own top speed, so a ridden-out cruiser
+    -- and a mini both reach full whoosh at their own top.
+    local wv = IsValid(ent:GetDriver()) and BMX.WindVolume(speed, topSpeed * 1.3) * S.vol * BMX.VolWind() or 0
+    if wv > 0.01 then
+        if not playing(wind) then wind:PlayEx(0, S.pitch[1]) end
+        wind:ChangeVolume(wv, 0.15)
+        wind:ChangePitch(Lerp(frac, S.pitch[1], S.pitch[2]), 0.2)
+    elseif playing(wind) then
+        wind:Stop()
     end
 end
 

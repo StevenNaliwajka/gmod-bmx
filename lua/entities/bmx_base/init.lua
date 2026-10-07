@@ -318,6 +318,9 @@ function ENT:Think()
         end
     end
 
+    -- Water: which wheels and whether the rider's chest is under (20 Hz).
+    if st and BMX.Water then BMX.Water.Think(self) end
+
     -- Live tuning. Reading a dozen convars 20 times a second is free and it
     -- means a tuner sees a change immediately instead of respawning the bike.
     BMX.ApplyConVars()
@@ -343,7 +346,7 @@ function ENT:OnLanded(tricks, front, rear)
     local phys = self:GetPhysicsObject()
     local fall = IsValid(phys) and math.abs(math.min(phys:GetVelocity().z, 0)) or 0
 
-    if fall > 40 then
+    if fall > 40 and BMX.SoundsOn() then
         local key = fall > 320 and "land_hard" or "land_soft"
         local L   = BMX.Sounds[key]
         self:EmitSound(BMX.SoundFile(key), L.level, math.random(94, 106),
@@ -494,7 +497,7 @@ function ENT:Crash(reason, severity)
     end)
 
     local CS = BMX.Sounds.crash
-    self:EmitSound(BMX.SoundFile("crash"), CS.level, 100, CS.vol)
+    if BMX.SoundsOn() then self:EmitSound(BMX.SoundFile("crash"), CS.level, 100, CS.vol) end
 end
 
 --------------------------------------------------------------------------

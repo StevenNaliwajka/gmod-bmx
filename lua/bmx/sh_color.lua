@@ -77,7 +77,7 @@ if SERVER then
                 net.WriteUInt(i, 5)
             net.SendPVS(bike:GetPos())
             local S = BMX.Sounds.recolor
-            bike:EmitSound(BMX.SoundFile("recolor"), S.level, math.random(96, 108), S.vol)
+            if BMX.SoundsOn() then bike:EmitSound(BMX.SoundFile("recolor"), S.level, math.random(96, 108), S.vol) end
         end
         return true
     end

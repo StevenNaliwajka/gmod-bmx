@@ -244,7 +244,12 @@ BMX.RegisterBike("cruiser", {
     colorIndex  = 8,            -- blue
     physics = {
         Chassis = { mass = 94, seatOffset = Vector(-11.6, 0, 19.8) },  -- x 43/39
-        Wheel   = { radius = 12, wheelbase = 43 },
+        -- restLength 10 rather than 8: more travel for a bigger wheel, and
+        -- the wheel boxes' floor -(radius - restLength) back at the stock -2.
+        -- At 8 it was -4, below the chainring, and a crank grind is held by
+        -- whichever is lower -- so the cruiser ground on its wheel boxes'
+        -- floor 2.6 u above the pipe (grind_pipe@cruiser, on the dev server).
+        Wheel   = { radius = 12, wheelbase = 43, restLength = 10 },
         Drive   = { crankTorque = 340000 },
     },
 })

@@ -445,3 +445,61 @@ T.test("bikes: the client resolves each bike's own config", function()
         T.eq(cb:Cfg().Wheel.wheelbase, (id == "cruiser") and 43 or 34, id .. " wheelbase on the client")
     end
 end)
+
+--------------------------------------------------------------------------
+-- Grinding, on each bike's own geometry
+--------------------------------------------------------------------------
+
+-- A crank grind holds the bike by the chainring, or by the wheel boxes' floor
+-- if that is lower (sv_grind.lua). A floor well below the chainring means the
+-- bike grinds on thin air above the pipe: the cruiser did, by 2.6 u, on a real
+-- server, before its suspension travel was set to match its wheel.
+T.test("bikes: each crank grind is held by the chainring, not by a low hull floor", function()
+    local sv = F.server()
+    local B = sv.env.BMX
+    for _, id in ipairs(SHIPPED) do
+        local cfg = B.ConfigFor(B.Bikes[id])
+        local crank = B.GrindCrankPoint(cfg)
+        local floor = cfg.Chassis.wheelHullBottom or -(cfg.Wheel.radius - cfg.Wheel.restLength)
+        local held = math.min(crank.z, floor)
+        T.between(crank.z - held + cfg.Grind.clearance, 0, 1.5,
+            id .. ": chainring height above the pipe while grinding")
+    end
+end)
+
+-- The headless grind_pipe case, on the plant: a thin rail along x, the bike
+-- placed just over it moving along it.
+local function grindOnRail(id)
+    local E0 = F.server().env
+    local sv = F.server({ solids = { { E0.Vector(-3000, -1, 28), E0.Vector(3000, 1, 30) } } })
+    local E, B = sv.env, sv.env.BMX
+    local cfg = B.ConfigFor(B.Bikes[id])
+    local bike = F.bike(sv, B.ClassFor(id), E.Vector(-2500, 400, sv.world.groundZ + B.RestHeight(cfg)))
+    F.scripted(sv, bike)
+    sv:run(0.3)
+    local crank = B.GrindCrankPoint(cfg)
+    F.place(bike, E.Vector(-2000, 0, 34 - crank.z), E.Angle(0, 0, 0))
+    bike:GetPhysicsObject():SetVelocity(E.Vector(300, 0, -20))
+    bike.st.grounded = false
+    local worstUp, ground = 0, 0
+    sv:run(1.2, function()
+        local g = bike.st.grind
+        if g then
+            ground = ground + 1
+            local c = bike:LocalToWorld(crank)
+            worstUp = math.max(worstUp, math.abs(c.z - g.point.z))
+        end
+        return false
+    end)
+    return bike, worstUp, ground, sv
+end
+
+for _, id in ipairs(SHIPPED) do
+    T.test("bikes: the " .. id .. " crank-grinds a rail with its chainring on top", function()
+        local bike, worstUp, ticks, sv = grindOnRail(id)
+        T.ok(ticks > 20, "it locked on and ground (" .. ticks .. " substeps)")
+        T.between(worstUp, 0, 1.5, "chainring kept on the rail's top, u")
+        T.ok(sv.env.IsValid(bike:GetDriver()), "rider still aboard")
+        T.eq(#sv.errors, 0, "no errors: " .. table.concat(sv.errors, " | "))
+    end)
+end

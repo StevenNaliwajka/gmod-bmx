@@ -88,10 +88,17 @@ T.test("headless: no case reads the stock bike's config where it means its own b
     for line in src:gmatch("[^\n]+") do
         local name = line:match('^T%.Case%("([%w_]+)"')
         if name then current = name end
-        if current and current ~= "per_bike_physics" and line:find("BMX%.Config")
+        if current and current ~= "per_bike_physics" and line:find("BMX%.Config[^%w]")
            and not line:match("^%s*%-%-") then
             bad[#bad + 1] = current .. ": " .. line
         end
     end
     T.eq(#bad, 0, "BMX.Config in a bike case: " .. table.concat(bad, " | "))
+end)
+
+T.test("headless: the crowd case exists and rides the stock bike among all three kinds", function()
+    local S = suite()
+    T.ok(S.cases.crowd, "crowd is a case")
+    T.eq(S.cases.crowd.bike, "stock", "its ridden bike is the stock one")
+    T.ok(S.cases.crowd.rider, "with the bot aboard")
 end)

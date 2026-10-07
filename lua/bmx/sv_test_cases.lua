@@ -1272,6 +1272,79 @@ function(ctx)
 end)
 
 --------------------------------------------------------------------------
+T.Case("crowd", { timeout = 40,
+    desc = "a server with two dozen bikes out keeps its tick rate, and none of them NaNs" },
+function(ctx)
+    -- THE QUESTION A PUBLIC SERVER ASKS FIRST, and the one the offline suite
+    -- cannot answer: what the bikes cost VPhysics and the Lua substep for real.
+    -- So: the ridden bike (standing, so it cannot run out of test ground in
+    -- the seven seconds this takes), eight parked, eight fallen and eight
+    -- dropped tumbling from height -- every state a bike on a busy server is in
+    -- -- and then count the ticks the server actually manages per real second.
+    -- A server that falls behind runs fewer ticks than its tickrate, and that is
+    -- what a player feels as everything going slow-motion and rubber-banding.
+    local want = 1 / engine.TickInterval()
+    local function tickRate(secs)
+        local n, t0 = 0, SysTime()
+        hook.Add("Tick", "BMX.Test.Crowd", function() n = n + 1 end)
+        ctx:wait(secs)
+        hook.Remove("Tick", "BMX.Test.Crowd")
+        return n / math.max(SysTime() - t0, 1e-3)
+    end
+
+    ctx:input({})
+    local alone = tickRate(2)
+    ctx:log(string.format("one bike: %.1f ticks/s of %.0f", alone, want))
+
+    local ids, made = BMX.BikeIDs(), {}
+    local function put(i, pos, ang)
+        local id = ids[(i - 1) % #ids + 1]
+        local e = ents.Create(BMX.ClassFor(id))
+        if not IsValid(e) then return end
+        e:SetPos(pos)
+        e:SetAngles(ang)
+        e:Spawn()
+        e:Activate()
+        made[#made + 1] = e
+        return e
+    end
+    for i = 1, 8 do
+        local cfg = BMX.ConfigFor(BMX.Bikes[ids[(i - 1) % #ids + 1]])
+        put(i, ctx.ground + Vector(-200 + i * 50, 260, BMX.RestHeight(cfg) + 1), Angle(0, 90, 0))
+        put(i, ctx.ground + Vector(-200 + i * 50, -260, 20), Angle(0, 0, 90))
+        put(i, ctx.ground + Vector(-200 + i * 50, 420, 200 + i * 20), Angle(i * 40, i * 25, i * 60))
+    end
+    ctx:log(string.format("%d more bikes out: parked, fallen and dropped", #made))
+    ctx:wait(1)     -- the drops land and the tumbling starts
+
+    local crowded = tickRate(4)
+    ctx:log(string.format("%d bikes: %.1f ticks/s of %.0f", #made + 1, crowded, want))
+    if engine.ServerFrameTime then
+        local ft, sd = engine.ServerFrameTime()
+        ctx:log(string.format("server frame time %.2f ms (sd %.2f) of a %.2f ms tick",
+            ft * 1000, (sd or 0) * 1000, engine.TickInterval() * 1000))
+    end
+
+    ctx:ok(#made == 24, "all 24 extra bikes spawned")
+    ctx:between(crowded / want, 0.9, 1.1, "the server keeps its tickrate with 25 bikes out")
+    ctx:between(crowded / math.max(alone, 1), 0.9, 1.1, "as many ticks as with one bike")
+
+    local bad = 0
+    for _, e in ipairs(made) do
+        if not IsValid(e) then
+            bad = bad + 1
+        else
+            local p, v = e:GetPos(), e:GetVelocity()
+            if p.x ~= p.x or p.z ~= p.z or v.x ~= v.x or v.z ~= v.z then bad = bad + 1 end
+        end
+    end
+    ctx:ok(bad == 0, "every bike in the crowd survived, with finite state (" .. bad .. " bad)")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "the ridden bike's rider is still aboard")
+
+    for _, e in ipairs(made) do SafeRemoveEntity(e) end
+end)
+
+--------------------------------------------------------------------------
 -- THE OTHER SHIPPED BIKES, held to the same bands.
 --
 -- The cruiser and the mini are the stock bike with other geometry (see

@@ -74,6 +74,7 @@ local CLIENT_FILES = {
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
     "bmx/cl_grind.lua",     -- sparks and the scrape while a bike grinds
+    "bmx/cl_report.lua",    -- bmx_report: a paste-able block for a bug report
     "bmx/cl_city.lua",      -- draws the city, runs the subway trains
 }
 

@@ -1,0 +1,76 @@
+name: Bug report
+description: Something broke, or the bike did something it should not.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. The fastest way to a fix is the report block below: open the
+        console, type `bmx_report`, and paste what it prints (it is also copied
+        to your clipboard).
+  - type: input
+    id: vehicle
+    attributes:
+      label: Which bike?
+      description: Stock BMX, Cruiser, Mini BMX, or "All bikes" if it is every one.
+      placeholder: All bikes
+    validations:
+      required: false
+  - type: input
+    id: map
+    attributes:
+      label: Map and gamemode
+      placeholder: gm_flatgrass, Sandbox
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Singleplayer or multiplayer?
+      options:
+        - Singleplayer
+        - Listen server (you host)
+        - Dedicated server
+    validations:
+      required: true
+  - type: dropdown
+    id: branch
+    attributes:
+      label: Game branch
+      options:
+        - Main (default)
+        - x86-64
+        - Other beta
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: What were you doing (a trick, a rail, a ramp, getting on)? A video helps a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: errors
+    attributes:
+      label: Console errors
+      description: Any red text or `[BMX]` lines from the console, if there were any.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: report
+    attributes:
+      label: bmx_report output
+      description: Type `bmx_report` in the console and paste it here.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: dump
+    attributes:
+      label: bmx_dump_config output (only if you changed tuning)
+      description: Server console, `bmx_dump_config`. Skip this if you never touched a tuning convar.
+      render: text
+    validations:
+      required: false

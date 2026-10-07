@@ -212,8 +212,8 @@ BMX.Drawers.unicycle = function(ent, H, lod, debug)
     local sway = math.sin(CurTime() * 1.7 + ent:EntIndex()) * 0.6
     local function hand(side)
         local lift = -bal * side * 4 + sway * side
-        local out = 15 + math.max(0, -bal * side) * 3
-        return seat + right * (out * side) + fwd * 4 + up * (17 + lift)
+        local out = 14 + math.max(0, -bal * side) * 3
+        return seat + right * (out * side) + fwd * 5 + up * (12.5 + lift)
     end
     ik.rHand = hand(1)
     ik.lHand = hand(-1)

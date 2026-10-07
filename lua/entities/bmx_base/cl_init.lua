@@ -842,6 +842,25 @@ function ENT:Draw()
     -- a bike spawned parked). Drawn from the bottom bracket to the ground on
     -- the LEFT, the side a parked bike leans on (Stand.standLean).
     ----------------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- THE CHILD SEAT (G11), when it is switched on and the bike has one: a pan, a
+    -- back and two rails to the rear dropouts, over the rear wheel, where the pod
+    -- (sv_passenger.lua) puts the child. Drawn from the seat registration's own
+    -- offset so it sits under whoever is in it.
+    ----------------------------------------------------------------------
+    if self.GetChildSeat and self:GetChildSeat() and BMX.HasSeat(bike, "child") then
+        local sd = BMX.SeatFor(bike, C, "child")
+        local pan = self:LocalToWorld(sd.offset - Vector(0, 0, 3))
+        solid("box", pan, bodyAng, Vector(9, 9, 2) * 1, COL_PART, MAT.matte)
+        local back = pan - fwdW * 4.5
+        tube(back - rightW * 4, back - rightW * 4 + upW * 9, 1.0, COL_PART)
+        tube(back + rightW * 4, back + rightW * 4 + upW * 9, 1.0, COL_PART)
+        tube(back - rightW * 4 + upW * 9, back + rightW * 4 + upW * 9, 1.0, COL_PART)
+        for _, side in ipairs({ 1, -1 }) do
+            tube(pan - fwdW * 3 + rightW * (4 * side) - upW * 1, rPosD + rightW * (2.5 * side), 0.8, COL_CHROME)
+        end
+    end
+
     if self:GetStandDown() then
         local from = bb - rightW * (2 * k)
         local want = from - upW * (16 * k) - rightW * (7 * k)

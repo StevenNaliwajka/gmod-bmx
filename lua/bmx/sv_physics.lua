@@ -387,6 +387,12 @@ function BMX.PhysicsStep(ent, phys, dt)
             w.isFront and brakeFront or brakeRear, filter, snap)
     end
 
+    -- A PASSENGER'S WEIGHT, where they sit rather than at the mass centre
+    -- (sv_passenger.lua): a couple, no net force.
+    if ent.paxMass and ent.paxMass > 0 and BMX.Passenger and BMX.Passenger.ApplyWeight then
+        BMX.Passenger.ApplyWeight(ent, phys, dt)
+    end
+
     -- The climbing push (see drivetrain): at the mass centre, along the slope.
     if hasDriver and st.climbDir and st.climbAccel > 0 and driveWheel and driveWheel.onGround then
         phys:ApplyForceCenter(st.climbDir * (st.climbAccel * phys:GetMass() * dt))

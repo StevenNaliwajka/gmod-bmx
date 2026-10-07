@@ -57,15 +57,26 @@ ENT.IsBMX = true
 --------------------------------------------------------------------------
 function ENT:Cfg()
     local rev = BMX.ConfigRevision
-    if self._cfg and self._cfgRev == rev then return self._cfg end
-    self._cfg, self._cfgRev = BMX.ConfigFor(self:Bike()), rev
-    return self._cfg
+    -- A PASSENGER'S MASS (G11, sv_passenger.lua): the bike runs on the same config
+    -- with `paxMass` kilograms more Chassis.mass while somebody rides on it. Server
+    -- state only; the client never sets it, and a bike with nobody on it is the
+    -- plain config, shared by reference as it always was.
+    local pm = self.paxMass or 0
+    if self._cfg and self._cfgRev == rev and self._cfgPax == pm then return self._cfg end
+    local cfg = BMX.ConfigFor(self:Bike())
+    if pm > 0 then cfg = BMX.WithMass(cfg, pm) end
+    self._cfg, self._cfgRev, self._cfgPax = cfg, rev, pm
+    return cfg
 end
 
 function ENT:SetupDataTables()
     -- Identity / state the client needs to draw and to build a HUD.
     self:NetworkVar("Entity", 0, "Driver")
     self:NetworkVar("Entity", 1, "Pod")
+    -- The second rider, by seat (G11): on the rear pegs, or in the child seat. The
+    -- client tells a passenger from the rider by these and by the pod they sit in.
+    self:NetworkVar("Entity", 2, "PaxPegs")
+    self:NetworkVar("Entity", 3, "PaxChild")
 
     self:NetworkVar("Bool",  0, "Grounded")
     self:NetworkVar("Bool",  1, "Sprinting")
@@ -81,6 +92,8 @@ function ENT:SetupDataTables()
     -- stop) or the bike was spawned parked. Networked so it is drawn only
     -- when it is really there. See C.Stand.deploySpeed.
     self:NetworkVar("Bool",  3, "StandDown")
+    -- The child seat, on or off (G11): the context-menu toggle on a bike that has one.
+    self:NetworkVar("Bool",  4, "ChildSeat")
 
     -- Steer is networked because the fork and bars have to point somewhere the
     -- client cannot derive: it is an OUTPUT of the balance controller, not a

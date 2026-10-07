@@ -292,6 +292,11 @@ local function unbind(ply, bike)
         local st = bike.st
         local slow = st and (st.speed or 0) < bike:Cfg().Stand.deploySpeed
         bike:SetStandDown(slow and not bike.bmxCrashing or false)
+        -- A passenger goes when the rider does, unless it is a crash, which throws
+        -- them itself (ENT:Crash). A bike with only a passenger on it is nobody's.
+        if not bike.bmxCrashing and BMX.Passenger and BMX.Passenger.DismountAll then
+            BMX.Passenger.DismountAll(bike)
+        end
         bike.bmxCrashing = nil
 
         bike:SetDriver(NULL)
@@ -308,6 +313,12 @@ BMX.UnbindRider = unbind
 
 hook.Add("PlayerEnteredVehicle", "BMX.Mount", function(ply, veh)
     if IsValid(veh) and IsValid(veh.BMXBike) then
+        -- A passenger's pod (sv_passenger.lua) is not the rider's: no input is
+        -- read from them and they do not become the driver.
+        if veh.BMXPassenger then
+            BMX.Passenger.Bind(ply, veh.BMXBike, veh)
+            return
+        end
         bind(ply, veh.BMXBike)
     end
 end)
@@ -345,7 +356,7 @@ end
 hook.Add("PlayerLeaveVehicle", "BMX.Dismount", function(ply, veh)
     if IsValid(veh) and veh.BMXBike then
         local bike = veh.BMXBike
-        unbind(ply, bike)
+        if veh.BMXPassenger then BMX.Passenger.Unbind(ply) else unbind(ply, bike) end
         if IsValid(bike) and IsValid(ply) then
             local spot = BMX.ExitPoint(bike, ply)
             if spot then
@@ -362,10 +373,12 @@ end)
 -- gamemode, and a bike left holding a dead player's entity keeps steering.
 hook.Add("PlayerDeath", "BMX.DismountOnDeath", function(ply)
     if IsValid(ply.BMXBike) then unbind(ply, ply.BMXBike) end
+    if ply.BMXPax then BMX.Passenger.Unbind(ply) end
 end)
 
 hook.Add("PlayerDisconnected", "BMX.DismountOnDisconnect", function(ply)
     if IsValid(ply.BMXBike) then unbind(ply, ply.BMXBike) end
+    if ply.BMXPax then BMX.Passenger.Unbind(ply) end
 end)
 
 --------------------------------------------------------------------------
@@ -395,6 +408,12 @@ hook.Add("ShouldCollide", "BMX.RiderPassthrough", function(a, b)
     else return end
 
     if other == bike:GetPod() or other == bike:GetDriver() then
+        return false
+    end
+    -- A passenger, their pod, and whatever the bike is carrying (the basket's
+    -- props, sv_basket.lua) are as much a part of it as the rider.
+    if other.BMXBike == bike or other.BMXBasket == bike
+        or (BMX.Passenger and BMX.Passenger.IsPassengerOf and BMX.Passenger.IsPassengerOf(other, bike)) then
         return false
     end
 end)

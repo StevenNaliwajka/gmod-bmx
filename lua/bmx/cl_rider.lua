@@ -670,6 +670,13 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
         return
     end
 
+    -- A PASSENGER is not at the bars: their pose is their own (cl_passenger.lua).
+    if BMX.IsPassenger and BMX.IsPassenger(ply) then
+        BMX.PassengerPose(ply, bike)
+        animated[ply] = true
+        return
+    end
+
     local C = bike:Cfg()
     local useIK = cv_ik:GetBool() and bike.ikTargets ~= nil
 

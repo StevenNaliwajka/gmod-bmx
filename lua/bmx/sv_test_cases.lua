@@ -2065,3 +2065,74 @@ function(ctx)
     ctx:ok(skid, "the skid was networked (b:GetSkidding())")
     ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
 end)
+
+--------------------------------------------------------------------------
+-- A SECOND RIDER (G11): the pegs, boarded and crashed with two bots.
+--
+-- THE HARNESS CAN SEAT A SECOND BOT: a bot is a player, player.CreateNextBot makes
+-- another by name, and EnterVehicle takes any pod. So this case makes "BMXTestPax"
+-- (once, kept for the rest of the run like the rider bot) and has it board the way a
+-- person does, minus the aiming: BMX.Passenger.TryBoard, which is what E calls. If the server has no free player
+-- slot the case says so and passes nothing it did not check, rather than failing for
+-- a reason that is the server's.
+--
+-- It checks the three things the goal asks: both are seated, the mass changed, and a
+-- forced crash puts both off the bike with a BMX_RiderCrashed for each and no error
+-- (the harness's own universal check, NaN and a vanished bike, runs after it).
+--
+-- Written against the offline plant (tests/test_passenger.lua); not yet run on a
+-- server, where the second bot's seating is the one thing the plant cannot show.
+--------------------------------------------------------------------------
+local PAX_NAME = "BMXTestPax"
+
+local function ensurePaxBot()
+    for _, p in ipairs(player.GetAll()) do
+        if p:IsBot() and p:Nick() == PAX_NAME then return p end
+    end
+    if #player.GetAll() >= game.MaxPlayers() then return nil, "no free player slot" end
+    local b = player.CreateNextBot(PAX_NAME)
+    if not IsValid(b) then return nil, "player.CreateNextBot returned nothing" end
+    return b
+end
+
+T.Case("passenger_mount_and_crash", { timeout = 40,
+    desc = "a second bot boards the rear pegs (E), the bike gets heavier, and a forced crash puts both off with BMX_RiderCrashed for each" },
+function(ctx)
+    local b = ctx.bike
+    local pax, why = ensurePaxBot()
+    if not pax then
+        ctx:log("SKIPPED the boarding: " .. tostring(why))
+        return
+    end
+    pax.BMXScripted = true
+    pax:SetPos(ctx.ground + Vector(-40, 0, 8))
+    if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+
+    local base = b:Cfg().Chassis.mass
+    local m0 = b:GetPhysicsObject():GetMass()
+    ctx:wait(0.3)
+    BMX.Passenger.TryBoard(b, pax, true)        -- E on the rear, without a trace to point with
+    ctx:wait(0.3)
+    ctx:ok(pax:InVehicle(), "the passenger is seated")
+    ctx:ok(b:GetPaxPegs() == pax, "on the pegs, and the bike knows")
+    ctx:ok(b:GetDriver() == ctx.bot, "the rider is undisturbed")
+    ctx:between(b:GetPhysicsObject():GetMass() / m0, 1.5, 1.7, "mass with the passenger over without", "x")
+    ctx:ok(ctx:st().grounded, "still on its wheels")
+
+    -- Ride a little with the two of them, then crash it.
+    ctx:accelerateTo(120, 12)
+    local took = {}
+    hook.Add("BMX_RiderCrashed", "BMX.TestPaxCrash", function(ply, vel, bike)
+        if bike == b then took[#took + 1] = ply end
+        return true            -- ours: no ragdoll to clean up after the case
+    end)
+    b:Crash("angle", 0.6)
+    ctx:wait(0.4)
+    hook.Remove("BMX_RiderCrashed", "BMX.TestPaxCrash")
+    ctx:ok(#took == 2, "BMX_RiderCrashed fired for each: " .. #took)
+    ctx:ok(not pax:InVehicle(), "the passenger is off the bike")
+    ctx:ok(not IsValid(b:GetDriver()), "and so is the rider")
+    ctx:ok(not IsValid(b:GetPaxPegs()), "the pegs are empty")
+    ctx:between(b:GetPhysicsObject():GetMass() / m0, 0.99, 1.01, "mass is back", "x")
+    if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+end)

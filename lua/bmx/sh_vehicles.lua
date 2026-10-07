@@ -278,7 +278,11 @@ local TOP_LEVEL = {
 BMX.VehicleKeys = TOP_LEVEL
 
 local WHEEL_KEYS = { pos = true, radius = true, steer = true, drive = true, front = true, name = true }
-local SEAT_KEYS  = { model = true, offset = true, angles = true }
+local SEAT_KEYS  = { model = true, offset = true, angles = true, massFactor = true }
+
+-- The kinds of seat a vehicle may have (sh_passenger.lua says what each is).
+BMX.SeatKinds = { "rider", "pegs", "child" }
+BMX.SeatKindSet = { rider = true, pegs = true, child = true }
 local GRIND_KEYS = { crank = true, pegs = true }
 
 local MAX_WHEELS = 8
@@ -434,23 +438,36 @@ function BMX.ValidateVehicle(def)
         end
     end
 
-    -- Seats: one for now (a passenger is G11).
+    -- Seats (G11): the old list (the rider's seat, at most one), or a map by kind,
+    -- { rider = {...}, pegs = {...}, child = {...} }. See sh_passenger.lua.
     if def.seats ~= nil then
-        if not istable(def.seats) or #def.seats > 1 then
-            bad[#bad + 1] = "seats must be a list of at most one seat (passengers are G11)"
+        local function seat(label, sd)
+            if not istable(sd) then bad[#bad + 1] = label .. " is not a table" return end
+            for k in pairs(sd) do
+                if not SEAT_KEYS[k] then bad[#bad + 1] = string.format("%s has unknown key %q", label, tostring(k)) end
+            end
+            if sd.offset ~= nil and not (isvector(sd.offset) or isfunction(sd.offset)) then
+                bad[#bad + 1] = label .. ".offset must be a Vector or a function of the config"
+            end
+            if sd.angles ~= nil and not isangle(sd.angles) then bad[#bad + 1] = label .. ".angles must be an Angle" end
+            if sd.model ~= nil and not isstring(sd.model) then bad[#bad + 1] = label .. ".model must be a string" end
+            if sd.massFactor ~= nil and not (isnumber(sd.massFactor) and sd.massFactor >= 0 and sd.massFactor <= 2) then
+                bad[#bad + 1] = label .. ".massFactor must be a number from 0 to 2 (a fraction of the bike's mass)"
+            end
+        end
+        if not istable(def.seats) then
+            bad[#bad + 1] = "seats must be a list of at most one seat, or a table of rider / pegs / child seats"
+        elseif #def.seats > 0 then
+            if #def.seats > 1 then
+                bad[#bad + 1] = "seats must be a list of at most one seat, or a table of rider / pegs / child seats"
+            end
+            for i, sd in ipairs(def.seats) do seat("seats[" .. i .. "]", sd) end
         else
-            for i, s in ipairs(def.seats) do
-                if not istable(s) then
-                    bad[#bad + 1] = "seats[" .. i .. "] is not a table"
+            for kind, sd in pairs(def.seats) do
+                if not BMX.SeatKindSet[kind] then
+                    bad[#bad + 1] = string.format("seats has unknown seat %q (rider, pegs or child)", tostring(kind))
                 else
-                    for k in pairs(s) do
-                        if not SEAT_KEYS[k] then
-                            bad[#bad + 1] = string.format("seats[%d] has unknown key %q", i, tostring(k))
-                        end
-                    end
-                    if s.offset ~= nil and not isvector(s.offset) then bad[#bad + 1] = "seats[" .. i .. "].offset must be a Vector" end
-                    if s.angles ~= nil and not isangle(s.angles) then bad[#bad + 1] = "seats[" .. i .. "].angles must be an Angle" end
-                    if s.model ~= nil and not isstring(s.model) then bad[#bad + 1] = "seats[" .. i .. "].model must be a string" end
+                    seat("seats." .. kind, sd)
                 end
             end
         end

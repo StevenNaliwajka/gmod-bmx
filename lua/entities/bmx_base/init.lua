@@ -182,22 +182,27 @@ end
 -- dragging in a physics controller that wants to drive.
 --------------------------------------------------------------------------
 function ENT:CreateSeat()
-    local bike = self:Bike()
-    local C    = self:Cfg()
+    -- THE RIDER'S SEAT (`seats` in the registration, BMX.SeatFor): the vehicle's own
+    -- model, offset and angles where it gives them, the config's where it does not.
+    local pod = self:BuildPod(BMX.SeatFor(self:Bike(), self:Cfg(), "rider"))
+    if not IsValid(pod) then return end
+    pod.BMXBike = self
+    self:SetPod(pod)
+end
 
+-- A pod for a seat, parented to the bike. The rider's and a passenger's are made the
+-- same way (sv_passenger.lua builds the others, on first boarding).
+function ENT:BuildPod(seat)
     local pod = ents.Create("prop_vehicle_prisoner_pod")
     if not IsValid(pod) then return end
 
-    -- THE SEAT (`seats` in the registration): the vehicle's own model, offset and
-    -- angles where it gives them, the config's where it does not.
-    local seat = bike.seats and bike.seats[1] or {}
-    pod:SetModel(seat.model or bike.seatModel or "models/nova/airboat_seat.mdl")
+    pod:SetModel(seat.model or "models/nova/airboat_seat.mdl")
     -- A prisoner pod without a vehiclescript is not reliably a working vehicle.
     -- It is the keyvalue that gives it its seat definition and exit points.
     pod:SetKeyValue("vehiclescript", "scripts/vehicles/prisoner_pod.txt")
     pod:SetKeyValue("limitview", "0")     -- free look; the chase cam needs it
-    pod:SetPos(self:LocalToWorld(seat.offset or C.Chassis.seatOffset))
-    pod:SetAngles(self:LocalToWorldAngles(seat.angles or C.Chassis.seatAngles))
+    pod:SetPos(self:LocalToWorld(seat.offset))
+    pod:SetAngles(self:LocalToWorldAngles(seat.angles))
     pod:Spawn()
     pod:Activate()
 
@@ -220,8 +225,8 @@ function ENT:CreateSeat()
     pod.DoNotDuplicate = true
 
     pod.BMXBike = self
-    self:SetPod(pod)
     self:DeleteOnRemove(pod)
+    return pod
 end
 
 --------------------------------------------------------------------------
@@ -232,7 +237,14 @@ function ENT:Use(activator)
     if not IsValid(activator) or not activator:IsPlayer() then return end
     if activator:InVehicle() then return end
     local pod = self:GetPod()
-    if not IsValid(pod) or IsValid(self:GetDriver()) then return end
+    if not IsValid(pod) then return end
+    -- E ON AN OCCUPIED BIKE is a second rider boarding, at the rear: the pegs, or
+    -- the child seat if it is on (sv_passenger.lua). Nothing else about getting on
+    -- a ridden bike was ever possible, so nothing changes for anyone else.
+    if IsValid(self:GetDriver()) then
+        if BMX.Passenger and BMX.Passenger.TryBoard then BMX.Passenger.TryBoard(self, activator) end
+        return
+    end
     -- (ply, bike) like every public hook that has a rider in it. Through 1.1.0
     -- this was (bike, ply), and the name is the same, so it cannot be kept as
     -- an alias: MODDING.md says so.
@@ -275,6 +287,13 @@ function ENT:RebuildTraceFilter()
     local f = { self, self:GetPod() }
     local d = self:GetDriver()
     if IsValid(d) then f[#f + 1] = d end
+    -- ...and whoever is riding with them, and the pods they sit in.
+    for _, pod in pairs(self.paxPods or {}) do
+        if IsValid(pod) then f[#f + 1] = pod end
+    end
+    for _, ply in pairs(self.passengers or {}) do
+        if IsValid(ply) then f[#f + 1] = ply end
+    end
     self.traceFilter = f
 end
 
@@ -527,6 +546,11 @@ function ENT:Crash(reason, severity)
 
     self.bmxCrashing = true             -- a thrown rider puts no stand down
     ply:ExitVehicle()
+
+    -- A passenger goes too (sv_passenger.lua): thrown with the bike's momentum and
+    -- ragdolled the same way, BMX_RiderCrashed fired for each. After the veto above,
+    -- so a gamemode that keeps the rider on keeps the passenger on.
+    if BMX.Passenger and BMX.Passenger.Eject then BMX.Passenger.Eject(self, vel, severity) end
 
     local throw = vel + Vector(0, 0, CR.ejectLift * severity)
     local dmg = math.floor(severity * vel:Length() * CR.damageScale)

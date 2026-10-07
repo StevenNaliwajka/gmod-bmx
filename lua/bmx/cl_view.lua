@@ -197,6 +197,10 @@ hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
     local bike = BMX.LocalBike(ply)
     if not bike then sBike = nil return end
 
+    -- A PASSENGER LOOKS WHERE THEY LIKE (G11): the view is the pod's own, which is
+    -- free look and the mouse, and is what a camera person wants (G28).
+    if BMX.IsPassenger and BMX.IsPassenger(ply) then sBike = nil return end
+
     -- Cinematic mode (cl_cinematic.lua, L) takes the whole view.
     if BMX.CinematicActive and BMX.CinematicActive(ply) then
         sBike = nil

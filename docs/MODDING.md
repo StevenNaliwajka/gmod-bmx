@@ -73,6 +73,35 @@ neighbouring gears' bands must overlap. `BMX.Gears.Covers(def, cfg, lowSpeed)`
 checks that for a box, `BMX.Gears.InBand`, `Best` and `CadenceRpm` are the pieces,
 and the road bike's own box is tested against it.
 
+### Passengers
+
+`seats = { pegs = {} }` is the whole of it for a bike that can carry someone on its
+rear pegs (the BMX and the cruiser do), `seats = { child = {} }` for one with a child
+seat (the city bike, G12). E on the rear half of a ridden bike (`BMX_CanMount` is asked
+first) seats the next player in the child seat if it is switched on and free, else on
+the pegs. The passenger gets a pod of their own, parented to the bike, invisible,
+non-solid and `DoNotDuplicate` like the rider's, made the first time somebody takes
+that seat. They cannot steer (input is read only from the rider) but can look round and
+use the mouse, and get off with E.
+
+- **Mass:** the bike runs on a config with the passenger's `massFactor x Chassis.mass`
+  more mass (`ENT:Cfg`), its physics object is that heavy and its inertia is measured
+  again, so wheelies and the balance get harder through the same numbers everything
+  else reads. VPhysics has no way to move a mass centre at runtime, so the passenger's
+  weight is applied where they sit, as a couple (weight down at the seat, the same up
+  at the mass centre): the rear sags and the front lightens, with no net force.
+- **Crash:** the passenger is thrown with the rider, each their own way, and goes the
+  same ladder: `BMX_RiderCrashed(ply, vel, bike)` for each of them, then RagMod, then
+  our ragdoll, then the shove. A rider who gets off, dies or leaves takes the passenger
+  off too.
+- **Score:** every trick is x2 with a passenger aboard (times the vehicle's own
+  `scoreMult`).
+- **Child seat:** a Child seat toggle on the bike's context menu (hold C and right-click)
+  switches it on and off; it cannot be switched off with somebody in it. A child is drawn
+  at 0.6 scale. Only the bike's owner or an admin can switch it.
+- `bmx_passengers 0` (server; Options > BMX > Server > Vehicles) stops boarding and puts
+  everyone aboard off.
+
 ### Physics overrides
 
 `physics` is grouped exactly as `BMX.Config` is (`sh_config.lua`): `Chassis`,
@@ -136,7 +165,7 @@ A vehicle that says nothing gets: `balance = "none"`, `drive = { kind = "none" }
 | `wheels` | A list of wheels, or a function of the config returning one. At least one, at most eight. See below. |
 | `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (reserved for the skateboard; runs as `none`, with a message, until its module exists), or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
 | `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "fixed" }` (a fixed gear, below), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", ... }` (reserved for the board) or `{ kind = "none" }`. `pedal`, `fixed` and `throttle` need at least one wheel with `drive = true`. |
-| `seats` | `{ { model, offset, angles } }`. One seat for now (passengers are G11). Omitted: the config's `Chassis.seatOffset` and `seatAngles`. |
+| `seats` | `{ rider = {...}, pegs = {...}, child = {...} }` (G11): the vehicle's seats, each `{ model, offset, angles, massFactor }` with every key optional (an empty table is all defaults). `rider` is always there; omitted, it is the config's `Chassis.seatOffset` and `seatAngles`. `pegs` seats a second player on the rear pegs, `child` in a child seat. `offset` may be a `Vector` or a function of the config (so a seat can follow a frame's size); `massFactor` is the passenger's mass as a fraction of the bike's own `Chassis.mass` (default 0.6 on the pegs, 0.25 in the child seat). The old list form, `{ { model, offset, angles } }`, is still the rider's seat. Checked at registration: an unknown seat or key, a bad type, a `massFactor` outside 0-2. See "Passengers" below. |
 | `input` | An id in `BMX.InputMaps`: `"bike"`, `"drive"`, `"road"`, `"bike_rearonly"`, or one you register. |
 | `pose` | An id in `BMX.PoseSets` (the rider's pose on the client): `"bike"`, `"seated"`, `"road"` (tucked over the drops) or `"upright"`. |
 | `tricks` | `"all"` or a list of registered trick ids. Limits what is scored from motion: the flips and turns, the held wheelie and stoppie, and registered custom ticks. |
@@ -251,7 +280,9 @@ addon's own limit (`bmx_max_per_player`) also uses.
 ragdoll. `vel` is the throw velocity (a vector) and `bike` the bike they came
 off. Return `true` to take the rider yourself (spawn your own ragdoll, or none):
 the built-in ragdoll is then skipped. RagMod is handled this way by
-`bmx_ragmod`. `BMX_Crash` is the earlier veto, before the throw is decided.
+`bmx_ragmod`. It fires once for every person thrown: the rider, then each passenger
+(G11, with the bike's momentum and a little of their own). `BMX_Crash` is the earlier
+veto, before the throw is decided.
 
 ### `BMX_Crash` (bike, ply, reason, severity)
 

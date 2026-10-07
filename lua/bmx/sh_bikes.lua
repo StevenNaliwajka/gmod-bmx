@@ -144,8 +144,12 @@ end
 --                 axle's brake it takes (default: pos.x > 0).
 --   balance       "singletrack" | "board" | "none": sv_balance.lua.
 --   drive         { kind = "pedal" | "throttle" | "push" | "none", ... }
---   seats         { { model, offset, angles } }: the rider's seat. Omitted, it
---                 is the config's Chassis.seatOffset / seatAngles.
+--   seats         { rider = {...}, pegs = {...}, child = {...} }: the seats. Each is
+--                 { model, offset, angles, massFactor }, every key optional (an empty
+--                 table is all defaults, sh_passenger.lua). `rider` is always there;
+--                 omitted, it is the config's Chassis.seatOffset / seatAngles. `pegs` is
+--                 a second rider on the rear pegs, `child` a child seat. The older list
+--                 form, { { model, offset, angles } }, is still the rider's seat.
 --   input         an id in BMX.InputMaps (sh_vehicles.lua).
 --   pose          an id in BMX.PoseSets (cl_rider.lua fills each in).
 --   tricks        "all", or a list of trick ids this vehicle can do.
@@ -375,6 +379,8 @@ BMX.RegisterBike("stock", {
     printName   = "BMX",
     description = "Street BMX with lean-driven handling.",
     colorIndex  = 1,            -- red; see BMX.Palette in sh_color.lua
+    -- A second rider can stand on the rear pegs (G11): E on the back of a ridden bike.
+    seats       = { pegs = {} },
 })
 
 -- THE OTHER TWO are the stock bike with other geometry, and nothing else: no
@@ -399,6 +405,7 @@ BMX.RegisterBike("cruiser", {
     printName   = "BMX Cruiser",
     description = "24-inch cruiser: longer, heavier and faster at the top end, slower off the line.",
     colorIndex  = 8,            -- blue
+    seats       = { pegs = {} },
     physics = {
         Chassis = { mass = 94, seatOffset = Vector(-11.6, 0, 19.8) },  -- x 43/39
         -- restLength 10 rather than 8: more travel for a bigger wheel, and

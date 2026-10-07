@@ -990,7 +990,6 @@ function G.WheelDims(radius, o)
         s = s,
     }
 end
-G.tyreProfile = function(R) return tyreProfile(R) end
 
 local function tyreProfile(R)
     -- the casing as an ellipse from bead to bead; returns points (r, y)
@@ -1006,6 +1005,8 @@ local function tyreProfile(R)
     end
     return pts, c, a, b
 end
+
+G.tyreProfile = tyreProfile
 
 local function buildWheel(M, group, R, opt)
     local o = V(0, 0, 0)

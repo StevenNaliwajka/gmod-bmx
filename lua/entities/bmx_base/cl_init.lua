@@ -946,6 +946,9 @@ function ENT:Draw()
             seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
             extra = BMX.ModelExtra and BMX.ModelExtra(bike, C) or nil,
         } or nil)
+    -- A tandem's stoker targets come only from the detailed model (DrawDetailed): a
+    -- frame drawn without it must not leave last frame's world points behind.
+    if not model then self.ikTargetsStoker = nil end
     if model then
         self.crankAngle = rSpin / BMX.GearRatio(self, C)
         -- A motorbike has pegs where the pedals are, and an engine's ratio would spin

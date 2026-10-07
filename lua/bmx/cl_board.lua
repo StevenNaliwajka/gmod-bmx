@@ -366,6 +366,19 @@ function B.DrawModel(ent, model, d)
     BM.EndLighting()
 end
 
+-- The board's built model, or nil while it builds (asking advances the build; the
+-- studios pump it, BMX.BikeModelFor).
+function BMX.BoardModel(ent)
+    local bike, C = ent:Bike(), ent:Cfg()
+    local BM, WC = BMX.BikeMesh, C.Wheel
+    if not bike.look or not BM then return nil end
+    local wheels = BMX.WheelDefs(bike, C)
+    return BM.Get(WC.wheelbase / 39, WC.radius, bike.look, {
+        wheelbase = WC.wheelbase, restLength = WC.restLength,
+        extra = { track = wheels[1] and math.abs(wheels[1].pos.y) or 4.6 },
+    })
+end
+
 BMX.DrawVehicle = BMX.DrawVehicle or {}
 BMX.DrawVehicle.board = function(ent, kit)
     local bike = ent:Bike()
@@ -410,10 +423,7 @@ BMX.DrawVehicle.board = function(ent, kit)
     -- 0 or bmx_debug wants the simple board; the primitives below stand in meanwhile.
     local BM = BMX.BikeMesh
     local wheels = BMX.WheelDefs(bike, C)
-    local model = not debug and bike.look and BM and BM.Get(WC.wheelbase / 39, WC.radius, bike.look, {
-        wheelbase = WC.wheelbase, restLength = WC.restLength,
-        extra = { track = wheels[1] and math.abs(wheels[1].pos.y) or 4.6 },
-    }) or nil
+    local model = not debug and BMX.BoardModel(ent) or nil
 
     ------------------------------------------------------------------------
     -- Deck: the paint underneath, grip tape on top, the nose and tail kicked up.

@@ -203,6 +203,18 @@ function SC.DrawModel(ent, model, d)
 end
 
 BMX.DrawVehicle = BMX.DrawVehicle or {}
+-- The scooter's built model, or nil while it builds (asking advances the build).
+function BMX.ScooterModel(ent)
+    local bike, C = ent:Bike(), ent:Cfg()
+    local BM, WC = BMX.BikeMesh, C.Wheel
+    if not bike.look or not BM then return nil end
+    return BM.Get(WC.wheelbase / 39, WC.radius, bike.look, {
+        wheelbase = WC.wheelbase, restLength = WC.restLength,
+        seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
+        extra = SC.ModelExtra(),
+    })
+end
+
 BMX.DrawVehicle.scooter = function(ent, kit)
     local bike = ent:Bike()
     local C = ent:Cfg()
@@ -288,11 +300,7 @@ BMX.DrawVehicle.scooter = function(ent, kit)
     -- bmx_bike_model is 0 or bmx_debug wants the simple one; the primitives below stand
     -- in meanwhile. The rider's targets further down are the same either way.
     local BM = BMX.BikeMesh
-    local model = not debug and bike.look and BM and BM.Get(WC.wheelbase / 39, WC.radius, bike.look, {
-        wheelbase = WC.wheelbase, restLength = WC.restLength,
-        seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
-        extra = SC.ModelExtra(),
-    }) or nil
+    local model = not debug and BMX.ScooterModel(ent) or nil
     if model then
         SC.DrawModel(ent, model, {
             P = P, headB = headB, steerAxis = steerAxis, whip = whipAng, bar = barAng, steer = steer,

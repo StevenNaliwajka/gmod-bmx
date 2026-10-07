@@ -573,6 +573,10 @@ end
 function BMX.BikeModelFor(ent)
     local bike = ent.Bike and ent:Bike()
     if not bike or bike.hasModel or bike.wheelModel or not bike.look or not BMX.BikeMesh then return nil end
+    -- A vehicle with its own drawer asks for its model its own way: the same cache entry.
+    if bike.family == "board" and BMX.BoardModel then return BMX.BoardModel(ent) end
+    if bike.family == "scooter" and BMX.ScooterModel then return BMX.ScooterModel(ent) end
+    if bike.drawer and BMX.OddModel then return BMX.OddModel(ent, ent:Cfg(), false) end
     local C = ent:Cfg()
     local WC = C.Wheel
     local k = WC.wheelbase / 39

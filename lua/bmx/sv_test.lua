@@ -87,6 +87,9 @@ function T.Variant(name, bike, opts)
         timeout = opts.timeout or base.timeout,
         desc = base.desc .. " (on the " .. bike .. " bike)",
         bike = bike,
+        -- A variant may be listed-not-run on its own (a bike the case was never
+        -- meant to hold to), without taking the stock bike's case with it.
+        wip = opts.wip,
     }, base.fn)
 end
 
@@ -96,6 +99,22 @@ end
 function T.Solid(ctx, hulls)
     local e = ents.Create("bmx_test_solid")
     if not IsValid(e) then return nil end
+    -- THE HULLS ARE WRITTEN ACROSS y = -300..300, AROUND WHEREVER THE CASE'S
+    -- GROUND IS, so they are moved to the ground's own y here. They used to be
+    -- taken as world coordinates, which is right only when the test ground
+    -- happens to sit within 300 u of y = 0; anywhere else every wall, slope,
+    -- wedge and curb was built a lane away from the bike (CI 2663 and 1004:
+    -- 47 failures, all of them "the bike rode straight through it").
+    local dy = ctx.ground and ctx.ground.y or 0
+    if dy ~= 0 then
+        local moved = {}
+        for i, h in ipairs(hulls) do
+            local m = {}
+            for j, p in ipairs(h) do m[j] = Vector(p.x, p.y + dy, p.z) end
+            moved[i] = m
+        end
+        hulls = moved
+    end
     local lo, hi = Vector(math.huge, math.huge, math.huge), Vector(-math.huge, -math.huge, -math.huge)
     for _, h in ipairs(hulls) do
         for _, p in ipairs(h) do
@@ -109,6 +128,14 @@ function T.Solid(ctx, hulls)
     -- Say so loudly if the engine built no body: a case then measures an
     -- empty map and every number in it is about nothing (CI 2663).
     ctx:ok(IsValid(e:GetPhysicsObject()), "the test geometry has a physics body")
+    -- And what a ray from above its middle finds, so a solid that is there but
+    -- not collidable is visible in the report rather than inferred from a
+    -- bike that rode through it.
+    local mid = (lo + hi) * 0.5
+    local probe = util.TraceLine({ start = Vector(mid.x, mid.y, hi.z + 100),
+        endpos = Vector(mid.x, mid.y, lo.z - 100), mask = MASK_SOLID })
+    ctx:log(string.format("test solid: x %.0f..%.0f y %.0f..%.0f z %.0f..%.0f, ground y %.0f; a ray down its middle hits %s at z %.1f",
+        lo.x, hi.x, lo.y, hi.y, lo.z, hi.z, dy, tostring(probe.Entity), probe.HitPos.z))
     ctx.solids = ctx.solids or {}
     ctx.solids[#ctx.solids + 1] = e
     return e

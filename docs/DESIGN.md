@@ -808,6 +808,17 @@ A real model needs: a frame, a fork that steers with the front wheel, two
 wheels, and cranks. `frameOffset` / `frameAngles` align it against the axle
 line, which is where the entity origin sits.
 
+**Every spawn-menu entry has a picture of itself** (`materials/entities/<class>.png`,
+128x128): the vehicles, every park piece in every variant and size, the rack, the
+filmer camera and the weapons. Nobody should have to pick "Bowl corner, Mid (M)"
+from its name. The pictures are renders of the real thing in game, not drawings.
+`tools/icons/` spawns each one on a test server, the client draws it through its
+own `Draw`, and the difference between a black and a white shot is the matte. The
+sizes and variants of a park shape share one camera, so S looks smaller than L and
+Tall looks taller than Low. `tests/test_spawn_icons.lua` fails for an entry with no
+picture, and for a picture with no entry. `tools/icons/README.md` says how to shoot
+one.
+
 **Ripped assets do not go in a public repository.** A GTA 5 BMX model, or
 anything extracted from another game, is the fastest way to have the repository
 taken down. Original or CC0 only, licensed separately from the code and stated

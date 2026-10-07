@@ -368,7 +368,9 @@ function deriveOne(id)
         BikeID    = id,
         PrintName = BMX.Bikes[id].printName,
         Category  = "BMX",
-        Spawnable = true,
+        -- A hidden vehicle (the debug test cart) has no spawn-menu row, and the class
+        -- must not put one back: Spawnable alone is enough for the menu to list it.
+        Spawnable = not BMX.Bikes[id].hidden,
     }, "bmx_" .. id)
 
     registerDuplicator("bmx_" .. id)

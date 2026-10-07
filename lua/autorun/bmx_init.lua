@@ -98,6 +98,7 @@ local SERVER_FILES = {
     "bmx/sv_park.lua",      -- park pieces: placing, the cap, save/load, presets
     "bmx/sv_nav.lua",       -- a navmesh a bike can use, and the trick spots on it
     "bmx/sv_menu.lua",      -- /bike in chat, and park pieces placed from the window
+    "bmx/sv_icons.lua",     -- the spawn-menu pictures, sent to clients without the Workshop copy
 
     -- The headless harness loads last: its cases reference BMX.Config, the
     -- wheel/balance state and the entity, so everything it asserts on must

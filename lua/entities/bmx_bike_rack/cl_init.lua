@@ -19,6 +19,10 @@ end
 function ENT:Draw()
     local H = BMX.Draw
     if not H then return end
+    -- The primitives cache their shapes on the entity being drawn. Without this they
+    -- used whichever bike was drawn last, and once that bike was removed every rack
+    -- errored ("attempt to index field 'prims'") and drew nothing.
+    if BMX.DrawKit and BMX.DrawKit.begin then BMX.DrawKit.begin(self) end
     local at = function(x, y, z) return self:LocalToWorld(Vector(x, y, z)) end
 
     -- The base bar, the post, and the two uprights.
@@ -41,5 +45,11 @@ function ENT:Draw()
     -- The hitch it hangs from, when it is on a car.
     if self:GetCarried() then
         H.tube(at(0, 0, 2), at(-14, 0, 2), 2.0, H.COL.chrome)
+    end
+end
+
+function ENT:OnRemove()
+    for _, m in pairs(self.prims or {}) do
+        if m and IsValid(m) then m:Remove() end
     end
 end

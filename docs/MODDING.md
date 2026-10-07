@@ -31,6 +31,11 @@ The id is lower-case and becomes the entity class `bmx_<id>`
 (`BMX.ClassFor("chopper")`). It appears in the spawn menu under BMX, in
 `bmx_spawn chopper`, in the duplicator, and as `ent.BikeID`.
 
+It also needs a picture: `materials/entities/bmx_chopper.png`, 128x128. The suite
+fails without one (`tests/test_spawn_icons.lua`). Shoot it in game with
+`tools/icons/shoot.sh bmx_chopper`; see `tools/icons/README.md`. An addon of your
+own puts the icon in its own `materials/entities/`.
+
 ### Registry fields (`lua/bmx/sh_bikes.lua`)
 
 | Field | Meaning |

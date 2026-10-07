@@ -118,6 +118,34 @@ Server console or `server.cfg`; all three are saved.
 | `bmx_combos 0` | `1` | Tricks still score, but chaining them pays no combo bonus. |
 | `bmx_crash_ragdoll 0` | `1` | A crash shoves the rider off instead of ragdolling them. |
 
+## The trick bot
+
+An admin (or the server console) can put a bot rider on a bike that rides
+around and does tricks on its own:
+
+```
+bmx_bot_spawn [stock|cruiser|mini]   a bot on a bike where you are looking
+bmx_bot_trick Backflip                every bot does that trick next
+bmx_bot_status                        what each bot has tried and landed
+bmx_bot_remove                        every bot rider gone, with its bikes and ramps
+```
+
+It works through Bunny Hop, Wheelie, Stoppie, Combo, Backflip, Frontflip,
+Barrel Roll, 360, Crank Grind and Double Peg Grind (plus the style tricks in
+the trick registry), announces each landing in chat, and gets back on after a
+crash. It drives the bike exactly the way a player's keys do, and each trick
+counts only if the addon's own scoring pays it. For air it looks for a ramp in
+the map (any 12-40 degree slope that ends in a lip, with room before and
+after); with none it puts its own kicker down and takes it away afterwards.
+Every trick is a case in the headless suite (`bmx_test bot_*`), ridden on a
+real server.
+
+`bmx_bot_name` (default `Peter Griffin`) and `bmx_bot_model` name and dress
+it. **The model is not part of this addon**, which ships no content that is
+not its own: mount a player model on your server (from the Workshop, say) and
+point `bmx_bot_model` at it. Players need it too, so add the Workshop item
+with `resource.AddWorkshop`.
+
 ## First run
 
 Run this once on any new server build before tuning anything:

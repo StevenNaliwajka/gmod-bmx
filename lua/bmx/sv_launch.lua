@@ -40,6 +40,14 @@ L.Config = {
     lipDrop    = 12,        -- u the ground must fall just past the lip
     runup      = 420,       -- u of flat, clear ground needed before the foot
     landing    = 450,       -- u past the lip that must be open to fly through
+    -- The jump a launch is judged by (L.Flight): a bike leaving the lip at
+    -- about what the bot reaches, hopped. A launch must give minAir of it
+    -- and come down on something that is ground, not a wall, with rollout
+    -- of flat after the landing.
+    flightSpeed = 290, flightVz = 225, maxAir = 2.5,
+    minAir      = 0.9,
+    landNormal  = 0.75,
+    rollout     = 250,
     flatTol    = 4,         -- u of rise per sample still counted as flat
     kickerModel = "models/hunter/plates/plate8x8.mdl",  -- square: no long axis to line up
     kickerPlates = 2,
@@ -67,7 +75,7 @@ local function defaultClear(a, b, filter)
         start = a, endpos = b, mins = Vector(-14, -14, 0), maxs = Vector(14, 14, 36),
         filter = filter, mask = MASK_SOLID,
     })
-    return not tr.Hit, tr.Fraction
+    return not tr.Hit, tr.Fraction, tr.HitNormal
 end
 
 local function dirOf(yaw)
@@ -86,7 +94,9 @@ function L.Runway(from, dir, maxLen, opts)
     local trace, clear = opts.trace or defaultTrace, opts.clear or defaultClear
     local z0 = select(1, trace(from, opts.filter))
     if not z0 then return 0 end
-    local ok, frac = clear(Vector(from.x, from.y, z0 + 8), Vector(from.x, from.y, z0 + 8) + dir * maxLen, opts.filter)
+    -- From just off the ground: a hull starting 8 u up slid over kerbs and
+    -- park edges a wheel then hit, and the run at a ramp stalled on them.
+    local ok, frac = clear(Vector(from.x, from.y, z0 + 3), Vector(from.x, from.y, z0 + 3) + dir * maxLen, opts.filter)
     local len = ok and maxLen or maxLen * frac
     local d, step, last = 0, 60, z0
     while d <= len do
@@ -156,6 +166,43 @@ local function launchesIn(prof, origin, dir, yaw, C, opts)
 end
 
 -- Can this launch be used: flat clear ground to ride at it, open air past it?
+-- FLY IT. Where does a bike leaving this lip at a typical speed come down,
+-- after how long, and on what? The arc is swept a slice at a time with the
+-- same hull and ground questions as everything else, so a landing ramp
+-- beyond a kicker is a landing (the straight "is it open" sweep this replaced
+-- called a funbox's far side "something in the way"), a bowl or a ledge is
+-- what it is, and the air time a trick needs is measured rather than hoped
+-- for. Returns { t, at, normal } or nil (it never comes down within C.maxAir).
+function L.Flight(l, C, opts)
+    local trace, clear = opts.trace or defaultTrace, opts.clear or defaultClear
+    local g = C.gravity or 600
+    local p0 = l.lip + UP * 14
+    local v, vz = C.flightSpeed, C.flightVz
+    local dt = 0.06
+    local prev = p0
+    for i = 1, math.floor(C.maxAir / dt) do
+        local t = i * dt
+        local p = p0 + l.dir * (v * t) + UP * (vz * t - 0.5 * g * t * t)
+        -- The ground first: the slice that reaches it also sweeps the hull
+        -- into it, and that hit is the landing, not a wall (every jump on
+        -- open ground was refused as "landing on a wall" until this order).
+        local gz, gn = trace(p, opts.filter)
+        if gz and p.z - 14 <= gz then
+            return { t = t, at = Vector(p.x, p.y, gz), normal = gn or UP }
+        end
+        local ok, frac, hn = clear(prev, p, opts.filter)
+        if not ok then
+            local at = prev + (p - prev) * (frac or 0)
+            -- What it hit decides: a floor or a landing slope is a landing,
+            -- a face is a wall.
+            local landing = hn and hn.z >= C.landNormal
+            return { t = t - dt + dt * (frac or 0), at = at, normal = hn or Vector(1, 0, 0), wall = not landing }
+        end
+        prev = p
+    end
+    return nil
+end
+
 local function usable(l, C, opts)
     local trace, clear = opts.trace or defaultTrace, opts.clear or defaultClear
     -- The run-up, back from the foot: flat and clear for C.runup.
@@ -169,17 +216,18 @@ local function usable(l, C, opts)
     -- rising out of it, and every ramp then "blocks its own run-up".
     local a = Vector(l.foot.x, l.foot.y, footZ + 8) + back * 24
     if not clear(a + back * C.runup, a, opts.filter) then return false, "run-up blocked" end
-    -- The flight: from just over the lip, out and a little up, must be open.
-    local lip = l.lip + UP * 12
-    if not clear(lip + l.dir * 8, lip + l.dir * C.landing + UP * 30, opts.filter) then
-        return false, "something in the way past the lip"
-    end
-    -- And there is ground to land on, not a pit, within reach of the jump.
-    local z = select(1, trace(l.lip + l.dir * C.landing * 0.8, opts.filter))
-    if not z or l.lip.z - z > 600 then return false, "nothing to land on" end
-    l.landZ = z
+    -- The jump itself.
+    local f = L.Flight(l, C, opts)
+    if not f then return false, "nothing to land on" end
+    if f.wall or (f.normal and f.normal.z < C.landNormal) then return false, "it would land on a wall" end
+    if f.t < C.minAir then return false, string.format("only %.2f s of air", f.t) end
+    -- And room to ride away from the landing.
+    local roll = L.Runway(f.at, l.dir, C.rollout, opts)
+    if roll < C.rollout * 0.8 then return false, "no room to ride away" end
+    l.landZ, l.airTime, l.landAt = f.at.z, f.t, f.at
     return true
 end
+L.Usable = usable
 
 --------------------------------------------------------------------------
 -- Find the best launch near `origin`. Returns the launch table or nil, and
@@ -292,15 +340,30 @@ BMX.SpawnKicker = L.SpawnKicker
 function L.PlanKicker(origin, opts)
     opts = opts or {}
     local C = opts.config or L.Config
-    local need = C.runup + 200 + C.landing + 300
-    local bestYaw, bestLen = nil, 0
+    local trace = opts.trace or defaultTrace
+    local z = select(1, trace(origin, opts.filter)) or origin.z
+    local base = Vector(origin.x, origin.y, z)
+    -- The kicker's own size, from its model and plate count (as SpawnKicker
+    -- lays it), so the jump can be flown before anything is put down.
+    local each = C.kickerLength or (379.6)
+    local total = each * (C.kickerPlates or 1)
+    local best, bestYaw, bestLen = nil, nil, 0
     for h = 0, C.headings - 1 do
         local yaw = h * 360 / C.headings
-        local len = L.Runway(origin, dirOf(yaw), need + 200, opts)
-        if len > bestLen then bestYaw, bestLen = yaw, len end
+        local dir = dirOf(yaw)
+        local under = C.runup + total * math.cos(C.kickerAngle)
+        local len = L.Runway(base, dir, under, opts)
+        if len >= under * 0.98 then
+            local foot = base + dir * C.runup
+            local _, _, l = L.KickerGeometry(foot, yaw, total, 0, C.kickerAngle)
+            -- The run-up is from the origin, and known clear; fly the jump.
+            local f = L.Flight(l, C, opts)
+            if f and not f.wall and (f.normal.z >= C.landNormal) and f.t >= C.minAir and
+               L.Runway(f.at, dir, C.rollout, opts) >= C.rollout * 0.8 then
+                return foot, yaw, len
+            end
+        end
+        if len > bestLen then bestLen = len end
     end
-    if not bestYaw or bestLen < need * 0.75 then return nil, bestLen end
-    local z = select(1, (opts.trace or defaultTrace)(origin, opts.filter)) or origin.z
-    local foot = Vector(origin.x, origin.y, z) + dirOf(bestYaw) * C.runup
-    return foot, bestYaw, bestLen
+    return nil, bestLen
 end

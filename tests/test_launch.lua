@@ -270,3 +270,98 @@ T.test("kicker: the finder recognises the bot's own kicker shape", function()
     T.ok(found, "found")
     T.near(found.height, l.height, 12, "the same height")
 end)
+
+--------------------------------------------------------------------------
+-- Flying the jump (L.Flight): what a launch is judged by
+--------------------------------------------------------------------------
+
+T.test("flight: off a lip over flat ground, the arc's air time is the ballistics'", function()
+    local E = env()
+    local C = E.BMX.Launch.Config
+    local w = world(E, function() return 0 end)
+    local l = { lip = E.Vector(0, 0, 100), dir = E.Vector(1, 0, 0) }
+    local f = E.BMX.Launch.Flight(l, C, w)
+    T.ok(f, "it comes down")
+    local vz, h = C.flightVz, 100
+    local t = (vz + math.sqrt(vz * vz + 2 * 600 * h)) / 600
+    T.near(f.t, t, 0.07, "air time, s")
+    T.near(f.at.x, C.flightSpeed * t, 25, "lands where the arc says")
+end)
+
+T.test("flight: a landing ramp past a kicker is a landing, not something in the way", function()
+    local E = env()
+    local tanUp, tanDown = math.tan(math.rad(24)), math.tan(math.rad(20))
+    -- Kicker 400-560 up to 71 u, a gap, then a landing deck from 760 sloping
+    -- down from 60 u back to the ground: a funbox with a gap.
+    local w = world(E, function(x, y)
+        if math.abs(y) > 200 then return 0 end
+        if x >= 400 and x <= 560 then return (x - 400) * tanUp end
+        if x >= 760 and x <= 760 + 60 / tanDown then return 60 - (x - 760) * tanDown end
+        return 0
+    end)
+    local l = E.BMX.FindLaunch(E.Vector(0, 0, 0), w)
+    T.ok(l, "found, with the landing ramp in its flight")
+    T.ok(l and l.airTime and l.airTime > 0.9, "and enough air: " .. tostring(l and l.airTime))
+end)
+
+T.test("flight: a kicker too small for a trick's air is refused, and says so", function()
+    local E = env()
+    local C = setmetatable({ minAir = 1.6 }, { __index = E.BMX.Launch.Config })
+    local w = world(E, kicker(400, 160, 26))
+    local l, n, why = E.BMX.FindLaunch(E.Vector(0, 0, 0), { trace = w.trace, clear = w.clear, config = C })
+    T.eq(l, nil, "refused")
+    T.ok(why:find("of air", 1, true), "why: " .. why)
+end)
+
+T.test("flight: coming down onto a ledge face is landing on a wall", function()
+    local E = env()
+    local base = kicker(400, 160, 26)
+    local w = world(E, base, { { E.Vector(800, -300, 0), E.Vector(820, 300, 120) } })
+    local l, n, why = E.BMX.FindLaunch(E.Vector(0, 0, 0), w)
+    T.ok(not l or l.dir.x < 0.99, "not that way")
+end)
+
+T.test("plan kicker: not where the jump would come down in a hole", function()
+    local E = env()
+    -- Open everywhere, but along +x there is a pit where a kicker's jump lands.
+    local w = world(E, function(x, y)
+        if y > -150 and y < 150 and x > 1700 and x < 2400 then return -400 end
+        return 0
+    end)
+    local foot, yaw = E.BMX.Launch.PlanKicker(E.Vector(0, 0, 0), w)
+    T.ok(foot, "somewhere")
+    T.ok(math.abs(math.AngleDifference(yaw, 0)) > 1, "but not toward the pit: " .. tostring(yaw))
+end)
+
+T.test("flight: the launch table carries the air time and where it lands", function()
+    local E = env()
+    local l = E.BMX.FindLaunch(E.Vector(0, 0, 0), world(E, kicker(400, 160, 26)))
+    T.ok(l and l.airTime and l.landAt, "both")
+    T.ok(l.landAt.x > l.lip.x, "beyond the lip")
+end)
+
+T.test("flight: a hull swept into the floor on the last slice is a landing, not a wall", function()
+    local E = env()
+    local C = E.BMX.Launch.Config
+    -- A clear() that reports the floor as a hit with an upward normal, as
+    -- the engine's hull trace does when a slice ends below the ground.
+    local function trace(p) return 0, E.Vector(0, 0, 1) end
+    local function clear(a, b)
+        if b.z < 0 then return false, a.z / (a.z - b.z), E.Vector(0, 0, 1) end
+        return true, 1
+    end
+    local f = E.BMX.Launch.Flight({ lip = E.Vector(0, 0, 100), dir = E.Vector(1, 0, 0) }, C, { trace = trace, clear = clear })
+    T.ok(f and not f.wall, "landed")
+end)
+
+T.test("flight: a face hit on the way is a wall", function()
+    local E = env()
+    local C = E.BMX.Launch.Config
+    local function trace(p) return 0, E.Vector(0, 0, 1) end
+    local function clear(a, b)
+        if b.x > 200 then return false, 0.5, E.Vector(-1, 0, 0) end
+        return true, 1
+    end
+    local f = E.BMX.Launch.Flight({ lip = E.Vector(0, 0, 100), dir = E.Vector(1, 0, 0) }, C, { trace = trace, clear = clear })
+    T.ok(f and f.wall, "a wall")
+end)

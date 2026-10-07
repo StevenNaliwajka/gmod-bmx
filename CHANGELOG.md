@@ -9,6 +9,15 @@ a Workshop update goes out only when the owner says so.
 
 **New**
 
+- **A trick bot**: `bmx_bot_spawn` puts a bot rider on a bike that rides
+  around doing Bunny Hops, Wheelies, Stoppies, Combos, Backflips, Frontflips,
+  Barrel Rolls, 360s, Crank Grinds and Double Peg Grinds -- finding ramps in
+  the map, or putting its own kicker down. `bmx_bot_name` / `bmx_bot_model`
+  name and dress it (the model is the server's to mount). Every trick is
+  proved on a real server by the headless suite.
+- **RMB + A/D in the air is a spin** (a 360), stronger than before, and no
+  longer also a barrel roll.
+
 - **Combos**, the Tony Hawk way. Tricks chained together -- air into a grind,
   the grind into a manual, the manual into a hop -- build a combo, and landing
   it pays the chain's points again for every trick past the first. Bail before

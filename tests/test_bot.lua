@@ -507,11 +507,11 @@ T.test("max spin: a bunny hop's air is not enough for a flip; a kicker's is", fu
     T.ok(E.BMX.Bot.MaxSpin(A, A.pitchAccel, 1.25) > 2 * math.pi, "1.25 s: a flip")
 end)
 
-T.test("max spin: a 360 fits in a kicker's air at yawAccel 12, and did not at 4", function()
+T.test("max spin: a 360 fits in a kicker's air at yawAccel 16, and did not at 4", function()
     local E = F.server().env
     local A = E.BMX.Config.Air
-    T.eq(A.yawAccel, 12, "the spin's strength")
-    T.ok(E.BMX.Bot.MaxSpin(A, A.yawAccel, 1.25) > 2 * math.pi, "at 12: a 360 in 1.25 s")
+    T.eq(A.yawAccel, 16, "the spin's strength")
+    T.ok(E.BMX.Bot.MaxSpin(A, A.yawAccel, 1.25) > 2 * math.pi, "at 16: a 360 in 1.25 s")
     T.ok(E.BMX.Bot.MaxSpin(A, 4, 1.25) < 2 * math.pi, "at the old 4: not")
 end)
 
@@ -561,4 +561,109 @@ T.test("air: RMB alone, with no A or D, does nothing in the air", function()
     sv:run(0.6)
     T.between(math.abs(bike.st.spinYaw), 0, 0.05, "no spin")
     T.between(math.abs(bike.st.spinRoll), 0, 0.05, "no roll")
+end)
+
+--------------------------------------------------------------------------
+-- Finding room in a park (findSpot, openRun, rideTo), from the skatepark runs
+--------------------------------------------------------------------------
+
+local function job(sv, brain, fn, secs)
+    local out
+    brain.job = coroutine.create(function() return fn() end)
+    brain.jobDone = function(a, b, c) out = { a, b, c } end
+    sv:run(secs or 20, function() return out ~= nil end)
+    return out
+end
+
+T.test("roam: findSpot returns the nearest place that passes the test, and says where", function()
+    local sv, bike, _, brain = rig()
+    local here = bike:GetPos()
+    local res = job(sv, brain, function()
+        return brain:findSpot(function(p) return (p - here):Length() > 550 and "yes" or nil end, "far enough")
+    end)
+    T.ok(res and res[1], "found one")
+    local d = (res[1] - here):Length()
+    T.between(d, 550, 700, "on the first ring past 550 u")
+    T.eq(res[2], "yes", "with the test's answer")
+    T.ok(table.concat(brain.log, "\n"):find("far enough: a spot", 1, true), "and logged it")
+end)
+
+T.test("roam: a place behind a wall is not offered (it could not be ridden to)", function()
+    local E0 = F.server().env
+    local sv = F.server({ solids = { { E0.Vector(150, -3000, -50), E0.Vector(170, 3000, 400) } } })
+    local bike = F.bike(sv)
+    local ply = F.scripted(sv, bike)
+    sv:run(0.5)
+    local brain = sv.env.BMX.Bot.Attach(ply, bike, { quiet = true })
+    local res = job(sv, brain, function()
+        return brain:findSpot(function(p) return p.x > 300 and "x" or nil end, "the far side")
+    end, 30)
+    T.eq(res and res[1], nil, "nowhere: everything with x > 300 is behind the wall")
+end)
+
+T.test("roam: with no run here, openRun rides to a spot that has one", function()
+    local sv, bike, _, brain = rig()
+    local E = sv.env
+    local start = bike:GetPos()
+    -- Pretend the bot's own spot is boxed in: the first look finds nothing.
+    local real = brain.openRunHere
+    local calls = 0
+    brain.openRunHere = function(self, need)
+        calls = calls + 1
+        if calls == 1 then return E.Vector(1, 0, 0), 100 end
+        return real(self, need)
+    end
+    local res = job(sv, brain, function() return brain:openRun(600) end, 40)
+    T.ok(res and res[1], "a direction in the end")
+    T.ok((bike:GetPos() - start):Length() > 150, "after riding somewhere else")
+end)
+
+T.test("roam: rideTo gives up when it is stuck against something, not after the whole timeout", function()
+    local E0 = F.server().env
+    local sv = F.server({ solids = { { E0.Vector(120, -3000, -50), E0.Vector(140, 3000, 400) } } })
+    local bike = F.bike(sv)
+    local ply = F.scripted(sv, bike)
+    sv:run(0.5)
+    local brain = sv.env.BMX.Bot.Attach(ply, bike, { quiet = true })
+    local t0 = sv.world.time
+    local res = job(sv, brain, function() return brain:rideTo(sv.env.Vector(800, 0, 0), 150, 50, 30) end, 35)
+    T.ok(res and not res[1], "did not get there")
+    T.between(sv.world.time - t0, 0, 12, "and stopped trying well before 30 s")
+end)
+
+--------------------------------------------------------------------------
+-- Part spins: one turn, then hands off
+--------------------------------------------------------------------------
+
+T.test("tailwhip: one whip, then hands off -- no second whip started in the air", function()
+    local sv, bike, _, brain = rig()
+    launched(sv, bike, 14)
+    local presses, was = 0, false
+    local res = job(sv, brain, function() return brain:airPartSpin("Tailwhip", "whip", 0) end, 8)
+    T.ok(res and res[1], "landed: " .. tostring(res and res[2]))
+    local s = scored(brain, "Tailwhip")
+    T.ok(s, "a Tailwhip paid")
+    T.eq(s and s.count or 1, 1, "one")
+end)
+
+--------------------------------------------------------------------------
+-- The grind hop's air: level, not steering
+--------------------------------------------------------------------------
+
+T.test("lines: in the air the line's lean is replaced by the caller's air lean, never steering", function()
+    local sv, bike, _, brain = rig()
+    local E = sv.env
+    launched(sv, bike, 0)                       -- really in the air
+    sv:run(0.1)
+    local seen
+    local res = job(sv, brain, function()
+        return brain:rideLine(bike:GetPos() + E.Vector(0, 200, 0), E.Vector(1, 0, 0), 200, function()
+            seen = bike.input.leanTarget
+            return true
+        end, 1, function() return { airLean = 0.37 } end)
+    end, 2)
+    -- The done() check runs before the input is written on the first tick,
+    -- so look at what was written.
+    T.near(bike.input.leanTarget, 0.37, 1e-9, "the air lean, though the line is far to the left")
+    T.eq(bike.input.throttle, 0, "and no pedalling")
 end)

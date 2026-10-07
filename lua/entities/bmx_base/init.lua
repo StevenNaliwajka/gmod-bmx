@@ -372,6 +372,10 @@ end
 -- held wheelie or stoppie, see BMX.TrackManual). One path, so a gamemode
 -- listening on BMX_TricksLanded hears about both kinds the same way.
 function ENT:AwardTricks(tricks)
+    -- bmx_scoring 0 (sv_rules.lua): a server that does not want scoring gets
+    -- none of it -- no points, no callout, no combo -- rather than a score
+    -- nobody can see going up.
+    if BMX.ScoringEnabled and not BMX.ScoringEnabled() then return 0 end
     local total = 0
     for _, t in ipairs(tricks) do total = total + t.points end
     if total <= 0 then return 0 end

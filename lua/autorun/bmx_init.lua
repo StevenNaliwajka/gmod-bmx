@@ -49,6 +49,7 @@ local SERVER_FILES = {
     "bmx/sv_combo.lua",     -- chained tricks: before sv_physics too
     "bmx/sv_physics.lua",
     "bmx/sv_seat.lua",
+    "bmx/sv_rules.lua",     -- server-owner settings: bike limit, scoring on/off
     "bmx/sv_debug.lua",
 
     -- The headless harness loads last: its cases reference BMX.Config, the

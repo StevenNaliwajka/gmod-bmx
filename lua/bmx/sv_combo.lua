@@ -44,6 +44,7 @@ end
 function BMX.ComboAdd(ent, tricks)
     local st = ent.st
     if not st or not ent:Cfg().Combo.enabled then return end
+    if BMX.CombosEnabled and not BMX.CombosEnabled() then return end   -- bmx_combos 0
     local c = st.combo or { n = 0, base = 0, names = {} }
     for _, t in ipairs(tricks) do
         c.n = c.n + 1
@@ -62,7 +63,9 @@ function BMX.ComboEnd(ent, landed)
     if not c then return 0 end
     st.combo = nil
     local bonus = 0
-    if landed and c.n >= 2 then
+    -- Switched off mid-combo (bmx_scoring / bmx_combos): the chain closes
+    -- without paying, as if it had never been a combo.
+    if landed and c.n >= 2 and (not BMX.CombosEnabled or BMX.CombosEnabled()) then
         bonus = c.base * (c.n - 1)
         ent:SetScore(ent:GetScore() + bonus)
     end

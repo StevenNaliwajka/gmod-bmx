@@ -247,6 +247,18 @@ deliberately *not* attempted is local prediction, which in the absence of engine
 support means reconciling two divergent physics simulations and produces
 rubber-banding worse than the latency it hides.
 
+**G30 adds two opt-in things, neither of which is that.** `bmx_predict` (client,
+default 0) does not simulate a second bike: it draws the rider's own bike's lean
+and steer a moment *ahead* of the networked state, by replaying the rider's recent
+input through the shared lean/steer arithmetic (`sh_lean.lua`, `sh_predict.lua`),
+rooted in the networked state every frame so nothing accumulates to be snapped
+back. It is a picture and nothing else: the server never reads it, so the
+simulation stays authoritative. `bmx_lagcomp` (server, default 0) stamps each
+usercmd's input with its age and judges takeoff decisions (hop release, ollie
+pop, spine W) against the bike's recorded state at that moment; it changes which
+tick an input is attributed to and nothing it does. Measure with
+`bmx_latency_probe` (docs/TUNING.md).
+
 What actually crosses the wire:
 
 - **Usercmds** (free, already sent every tick, already ordered, already
@@ -466,7 +478,45 @@ a line or two; the rest is new files. What each taught:
   whole load is released when the bike's acceleration, measured over a window, passes a
   number. Which number is the one thing the plant cannot tell us; it is a registry field.
 
-## 6e. The oddballs (G13)
+## 6e. The skateboard (G23)
+
+The second client of the platform, and the first that is not a bike in any part of
+how it stays up. Six decisions, each one a thing the bike's design does not answer.
+
+**The deck's lean is a state, not the chassis's roll.** A real deck pivots on its
+trucks with the wheels flat on the ground; a rigid raycast body that rolls lifts a
+wheel. So the chassis is held flat to the ground (`board` balance: a PD on roll and
+pitch against the surface normal, plus the cancellation of the roll the tyres'
+sideways force would give it, `lat * h / I`, which does not depend on the thing it
+controls) and the lean is `st.board.lean`, a second-order spring after the key. The
+trucks turn by `atan(sin(lean) * k)`, the front with the lean and the rear against
+it, limited to what the tyres hold (`aLatMax`). The lean is networked and drawn.
+
+**The deck is a separate body from the rider.** Flips rotate the deck (three angles,
+a byte each) on a clock from the pop, the way the tailwhip turns a frame; the
+physics body flies its own path. The catch is a rule (within 20 degrees of flat,
+wheels down, else a bail through the ordinary crash path), so it is testable offline.
+
+**The tyre cap sets the carving.** On this light chassis the explicit tyre cap
+(`effectiveMass / dt`) is what limits sideways force, not the stiffness, so a hard
+carve runs at 5 to 10 degrees of slip and costs speed. `aLatMax` of 160 u/s^2 keeps
+that to a few u/s^2; raising it makes boards draggy in turns (measured on the plant).
+
+**Grinds reuse the bike's finder and placement**, with one new hook: the vehicle is
+asked which move this is (`grindPoints.moves`) and the pose takes a yaw and pitch.
+The contact heights are below every hull box (trucks 0.2 under the axle line,
+slides 0.1 over it with the 0.3 clearance), because a pose that overlaps the hull is
+refused.
+
+**Kinematic turns.** The kick-turn, the revert and the powerslide turn the physics
+object directly (four tyres resist a yaw torque with far more than a foot can give).
+A powerslide is the turn and the cost is the tyres'.
+
+**The balance meter** is an inverted pendulum with a wobble and a start offset:
+unattended it is lost in about three seconds whatever the phase, and held it stays
+held, so a manual or a grind is a skill and not a timer.
+
+## 6f. The oddballs (G13)
 
 The unicycle, penny-farthing, tandem and downhill bike, then a rack and a lock. Each
 took a small change to shared code (an optional field, one guard) and the rest is new
@@ -607,13 +657,35 @@ once on a timer and anything later joined a queue that had already been drained.
 
 ## 8. Content and licensing
 
-The stock bike ships no model at all. `cl_init.lua` draws a 20-inch BMX from
-camera-facing beams and boxes: frame, fork, tall swept bars that turn with the
-steer angle, seat, cranks that turn at the networked cadence, chain, pegs, and a
-kickstand when parked. It is sized from the bike's own wheelbase, and the stays
-and fork run to where the wheels actually are, so the drawing still shows exactly
-where the simulation has its wheels: the debugging property the old placeholder
-(a Hunter plate with wheel rings) was kept for. Zero content dependencies, clone
+The stock bike ships no model file. Its model is BUILT, in code:
+`bmx/cl_bikegeo.lua` makes a mid-school street BMX at real dimensions as
+triangles (swept and lathed tubes, extruded plates, lofted saddle and cranks:
+~75k triangles), `bmx/cl_bikemesh.lua` turns it into IMeshes once per bike size
+(in a coroutine, a few ms a frame; the simple bike stands in meanwhile), makes
+its VertexLitGeneric materials over render-target textures (white base, flat
+normal map for Phong, a fixed HL2 reflection cubemap, the down-tube graphic and
+tyre lettering drawn at runtime), and lights it. `cl_init.lua`'s `DrawDetailed`
+places each rigid part -- frame, fork, bars, both wheels, cranks, two pedals --
+by one matrix read off a point map, so the tricks (whip, barspin, turndown)
+compose exactly the rotations the simple bike uses, and the rider's hands and
+feet come from the same maps. The frame is rigid, so it is pitched about the
+rear axle until its front dropouts meet the front wheel: the rear wheel is
+exactly where the simulation has it, the front within a fraction of a unit.
+
+Three things about drawing IMeshes in GMod that cost an evening each:
+an IMesh is not lit by the engine (engine lighting is suppressed and an
+ambient cube sampled with `render.ComputeLighting` along the six axes is set,
+plus one directional light from the bright side); a local light given without
+its falloff terms divides by zero and turns everything flat full-bright; and
+Source's front faces are wound the other way from the builder's right-handed
+convention, so the converter swaps each triangle's last two vertices (with
+`$nocull` the model looked fine and drew every back face too).
+
+The simple bike -- camera-facing beams, XQM cylinders and spheres, the stays
+and fork running to where the wheels actually are -- remains as
+`bmx_bike_model 0` and as what `bmx_debug` draws: it shows exactly where the
+simulation has its wheels, the debugging property the old placeholder (a
+Hunter plate with wheel rings) was kept for. Zero content dependencies, clone
 and ride.
 
 A real model needs: a frame, a fork that steers with the front wheel, two

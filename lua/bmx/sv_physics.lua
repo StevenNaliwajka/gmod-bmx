@@ -620,9 +620,15 @@ function BMX.PhysicsStep(ent, phys, dt)
             if paid and ent.AwardTricks then ent:AwardTricks(paid) end
         end
         if BMX.ComboThink then BMX.ComboThink(ent, st) end
+        -- THE BALANCE MODE'S OWN TICK, if it has one: the skateboard's ollie, lean
+        -- and tricks (sv_board.lua), which run in the air as well as on the ground.
+        local mode = BMX.BalanceFor(ent)
+        if mode.Tick then mode.Tick(ent, phys, C, dt, inp, st, vdef) end
     else
         st.manual = nil
         if BMX.TricksIdle then BMX.TricksIdle(ent, st) end
+        local idle = BMX.BalanceFor(ent).Idle
+        if idle then idle(ent, st) end
         -- Got off with a combo open: it was landed, and it banks.
         if st.combo and BMX.ComboEnd then BMX.ComboEnd(ent, true) end
     end
@@ -715,7 +721,12 @@ function BMX.PhysicsStep(ent, phys, dt)
         ent.hopRelease = false
         ent.hopHeld    = false
 
-        if grounded and hasDriver and CurTime() >= (ent.hopReady or 0) then
+        -- G30 (bmx_lagcomp): a release pressed while the bike was still on the
+        -- ground counts, though it has left it by the time the command arrived.
+        local pressedGrounded = grounded
+            or (BMX.LagCompGrace and BMX.LagCompGrace(ent, ent.hopReleaseAge))
+        ent.hopReleaseAge = nil
+        if pressedGrounded and hasDriver and CurTime() >= (ent.hopReady or 0) then
             local charge = max(H.minCharge, (ent.hopCharge or 0) / H.chargeTime)
 
             -- Pop along the surface normal, not along world up, so hopping off

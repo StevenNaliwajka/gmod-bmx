@@ -312,6 +312,8 @@ local TOP_LEVEL = {
     physics = true,
     -- the bikes' extras: gears (G09), a score multiplier (G09), the bar shape (G09)
     gears = true, scoreMult = true, barStyle = true,
+    -- the built-in detailed model to draw: "bmx" (cl_bikegeo.lua), or nil for the simple bike
+    look = true,
     -- a box small props ride in (G12, sv_basket.lua)
     basket = true,
     -- appearance and mount points (as RegisterBike always took them)
@@ -335,7 +337,7 @@ local SEAT_KEYS  = { model = true, offset = true, angles = true, massFactor = tr
 -- The kinds of seat a vehicle may have (sh_passenger.lua says what each is).
 BMX.SeatKinds = { "rider", "pegs", "child" }
 BMX.SeatKindSet = { rider = true, pegs = true, child = true }
-local GRIND_KEYS = { crank = true, pegs = true }
+local GRIND_KEYS = { crank = true, pegs = true, moves = true }
 
 local MAX_WHEELS = 8
 
@@ -606,6 +608,8 @@ function BMX.ValidateVehicle(def)
                     bad[#bad + 1] = "grindPoints.crank must be a Vector, a function of the config, or false"
                 elseif k == "pegs" and not (v == false or istable(v) or isfunction(v)) then
                     bad[#bad + 1] = "grindPoints.pegs must be { y, z, x = {...} }, a function of the config, or false"
+                elseif k == "moves" and not (v == false or isfunction(v)) then
+                    bad[#bad + 1] = "grindPoints.moves must be a function (ent, st, rail, dh, vel) -> move, or false"
                 end
             end
         end
@@ -656,6 +660,9 @@ function BMX.GrindPointsFor(def, cfg)
     if c then out.crank = c end
     local p = resolved(gp.pegs, cfg)
     if p then out.pegs = p end
+    -- Not resolved against the config: a move is a function of the grind that is
+    -- about to happen, and is called as one (sv_grind.lua, TryGrind).
+    if gp.moves then out.moves = gp.moves end
     return out
 end
 

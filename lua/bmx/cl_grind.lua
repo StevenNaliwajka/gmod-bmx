@@ -13,6 +13,8 @@ BMX = BMX or {}
 
 -- Where sparks come from, entity-local, for a grind code.
 function BMX.GrindContacts(ent, code)
+    -- A skateboard's grinds have codes of their own (4 and up: sh_board.lua).
+    if code >= 4 and BMX.Board and BMX.Board.SparkPoints then return BMX.Board.SparkPoints(code) end
     -- From the vehicle's own grind points (`grindPoints`, sh_vehicles.lua): the
     -- same ones the server grinds on.
     local gp = BMX.GrindPointsFor(ent:Bike(), ent:Cfg())

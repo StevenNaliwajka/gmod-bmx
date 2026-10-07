@@ -147,3 +147,35 @@ the owner's call.
   sessions per milestone.
 - **Input design:** flick tricks on keyboard. Prototype two schemes (Skate
   flick on the mouse vs THPS direction+button) and let players pick.
+
+## Status (2026-10-07)
+
+M1 to M4 are built on branch `worktree-agent-a1d287f97fa46838c` (one commit each),
+not merged, not on the Workshop. M5 (a real deck model, real sounds) is not started:
+the board is procedural and the sounds are base-game placeholders recorded in
+`sh_sound.lua` (`board_pop`, `board_push`).
+
+- **M1 Ride:** `skateboard` through `RegisterVehicle`; the `board` balance
+  (`sv_board.lua`), the `push` drive, truck steer, the ollie (pop height proportional
+  to the hold), the stance setting, the edge bail, the procedural deck, trucks and
+  wheels, and the rider's feet on the bolts with the push foot driven by the push phase.
+- **M2 Flip:** nine flips, a 20 degree catch, scored and comboed, optional mouse flick.
+- **M3 Grind:** ten grinds and slides through `grindPoints.moves`, manual and nose
+  manual, one balance meter on the HUD.
+- **M4 Style:** six grabs on the pose system, reverts, powerslide, switch, spin (180),
+  `weapon_bmx_board`, bot tricks (Kickflip, Manual, 50-50 Grind).
+
+Tests: offline `test_board.lua`, `test_board_flips.lua`, `test_board_grind.lua`,
+`test_board_style.lua` (closed-loop rides on the plant); headless cases
+`board_pushes_to_speed`, `board_carves_without_tipping`, `board_ollie_height`,
+`board_kickflip_lands`, `board_bails_on_bad_catch`, `board_50_50_on_rail`,
+`board_manual_holds`, `board_drops_in_to_quarter`, `board_crowd` (written, **not run**:
+no server here).
+
+**What the plant could not say, the biggest feel risks:** the carve (the tyre cap makes
+slip large on a light chassis, see DESIGN 6d), the rider's pose on a real player model
+(the seat is turned 180 or 0 degrees for regular or goofy and the pelvis is lowered by
+a measured offset: every number is in `Tune` or `cl_board.lua`), whether the standing
+base pose sits the root where the feet should be, the pop and the flip timing against
+real VPhysics landings, and the bot's 50-50 timing. Ride sessions with `bmx_debug 1`
+per the tuning guide.

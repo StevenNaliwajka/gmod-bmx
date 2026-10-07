@@ -287,3 +287,52 @@ first:
 
 A per-bike override of a field that has a convar is opted out of live tuning
 for that field (see sh_config.lua), so tune these by editing `sh_bikes.lua`.
+
+## Measuring input-to-visible-lean latency (G30)
+
+The number that decides whether the bike feels tight on a server is the time
+from a key going down to the bike on screen visibly leaning. It is ping plus
+the interpolation delay plus the server's own response, and it is measured with
+a client command, `bmx_latency_probe [trials]`, which needs a live server.
+
+**Method.** Both ends are timestamps on the one client clock (`SysTime`), so
+there is no clock sync to get wrong, and it holds under `net_fakelag` (which
+delays packets, not the client's clock). It is `BMX.Predict.ProbeFeed`
+(`sh_predict.lua`), tested offline on synthetic timelines.
+
+1. On the server, flat ground, a stock bike at the tuning tickrate (record it,
+   see docs/TESTING.md). In the client console set the lag: `net_fakelag 0`,
+   then `50`, `100`, `150` in turn (it is the one-way delay the client adds, so
+   the displayed ping is about twice it plus the real one). Note `ping` in the
+   scoreboard each time.
+2. Get on the bike, reach a steady 250-300 u/s straight and level, hands off.
+3. `bmx_latency_probe 8`. It prints "ready". Tap D and let go, about two seconds
+   apart, eight times. Each tap prints its latency in chat.
+4. A trial starts at the first usercmd with a non-zero side axis and ends at the
+   first frame the DRAWN roll has moved 1.5 degrees from its baseline in the
+   pressed direction. The next trial waits for the key to be up and the roll to
+   be still, so one tail never starts the next.
+5. The report is min / median / max in ms plus `ping`, `net_fakelag` and
+   `bmx_predict`. With `bmx_predict 1` it prints the networked lean and the
+   drawn (predicted) lean side by side. Repeat for each row below, once with
+   `bmx_predict 0` and once with `1`.
+
+Read the median; a max far above it is a dropped packet or a hitch, not the
+bike. Do not tune `leanKp` to hide a number from this table: it measures the
+network, and a stiffer controller only moves the part after it.
+
+| net_fakelag | ping shown | networked median (ms) | predicted median (ms) | min | max | date / tickrate |
+|---|---|---|---|---|---|---|
+| 0 (baseline) | | | | | | |
+| 50 | | | | | | |
+| 100 | | | | | | |
+| 150 | | | | | | |
+
+**Expected, not measured:** the networked column should sit near
+`ping + cl_interp (0.1 s) + about one server tick + the controller's own rise`,
+and the predicted column should drop by roughly `ping + cl_interp` from it. If
+it does not, the prediction's horizon is wrong: `P.Horizon` in `sh_predict.lua`.
+
+The prediction (`bmx_predict`, default 0) and the lag compensation
+(`bmx_lagcomp`, default 0) both ship OFF until riders say they are better. See
+docs/DESIGN.md section 5.

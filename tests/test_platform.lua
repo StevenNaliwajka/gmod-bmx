@@ -437,6 +437,9 @@ end)
 T.test("cart: a vehicle whose balance mode has no module runs as none, and says so once", function()
     local sv = F.server()
     local B, E = sv.env.BMX, sv.env
+    -- `board` has a module now (the skateboard, G23, sv_board.lua); take it away in
+    -- this realm to have a name that is valid but has no code behind it.
+    B.BalanceModes.board = nil
     B.RegisterVehicle(board(E, { id = "plat_nomod", balance = "board", drive = { kind = "none" } }))
     local e = F.bike(sv, "bmx_plat_nomod", E.Vector(0, 0, sv.world.groundZ + 12))
     F.scripted(sv, e)

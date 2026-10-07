@@ -361,10 +361,18 @@ the bike is fun. See [docs/TESTING.md](docs/TESTING.md).
 
 Code is MIT, see [LICENSE](LICENSE).
 
-The bike ships **no model**: it is drawn in code from tubes and boxes (frame,
-fork, bars, seat, cranks that turn as you pedal, chain, pegs), sized from its
-own geometry. So the addon has zero content dependencies and can be cloned and
-ridden immediately. A bike def can supply a real `model` instead.
+The bike ships **no model file**: its detailed model is built in code
+(`lua/bmx/cl_bikegeo.lua`) -- a mid-school street BMX at real dimensions,
+~75k triangles, with welds, gussets, a laced 36-spoke wheel, a link chain,
+pinned pedals, skinwall tyres with tread and lettering, and a down-tube
+graphic drawn at runtime -- and lit and drawn as meshes by
+`lua/bmx/cl_bikemesh.lua`. It is original work under the same MIT licence as
+the code, so the addon still has zero content dependencies and can be cloned
+and ridden immediately. `bmx_bike_model 0` draws the simple bike made of
+shapes instead, and `bmx_debug` shows that one too, because it draws exactly
+where the simulation has its wheels. A bike def can supply a real `model`.
+To look at the model without the game: `tools/bike/export.lua` and
+`tools/bike/preview.py`.
 
 **Do not add ripped assets.** A GTA 5 BMX model, or anything extracted from
 another game, in a public repository is the fastest way to get it taken down.

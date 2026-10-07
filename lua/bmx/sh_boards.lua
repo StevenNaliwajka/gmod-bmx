@@ -68,6 +68,10 @@ end
 -- line's hanger height at each truck. `pegs` is what an edge is ridden on, the
 -- trucks' track.
 B.GrindPoints = {
+    -- The moves (sv_board_grind.lua) choose which point of the board rides the rail;
+    -- the function is looked up when a rail is found, since the server file that
+    -- defines it loads after this one.
+    moves = function(...) return B.GrindMoves(...) end,
     crank = Vector(0, 0, 0.8),
     pegs  = function(cfg)
         local half = cfg.Wheel.wheelbase * 0.5
@@ -89,7 +93,10 @@ BMX.RegisterVehicle({
     input       = "board",
     pose        = "board",
     tricks      = { "spin360", "board180", "kickflip", "heelflip", "popshove", "frontshove",
-                    "flip360", "varialheel", "varialkick", "hardflip", "impossible" },
+                    "flip360", "varialheel", "varialkick", "hardflip", "impossible",
+                    "grind5050", "grind50", "nosegrind", "crooked", "smith", "feeble",
+                    "boardslide", "lipslide", "noseslide", "tailslide",
+                    "board_manual", "board_nosemanual" },
     grindPoints = B.GrindPoints,
     physics = {
         Chassis = {
@@ -119,5 +126,7 @@ BMX.RegisterVehicle({
         Drive = { rearBrake = 0, frontBrake = 0, dragArea = 0.007, maxCadence = 50 },
         Crash = { maxLandAngle = math.rad(35), recoverTime = 0.5 },
         Air   = { yawAccel = 16 },
+        -- Popping off a rail is an ollie: a tap is 90 u/s up, a held one 150.
+        Grind = { hopSpeed = 150, minHop = 0.6 },
     },
 })

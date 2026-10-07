@@ -181,4 +181,5 @@ function BMX.BoardTricks(ent, phys, C, dt, inp, st, b, now)
     pickFlip(ent, st, b, inp, now)
     advanceFlip(b, now)
     groundResolve(ent, st, b, now)
+    if B.ManualStep then B.ManualStep(ent, phys, C, dt, inp, st, b, now) end
 end

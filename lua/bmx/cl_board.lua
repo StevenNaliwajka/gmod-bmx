@@ -414,9 +414,19 @@ BMX.DrawVehicle.board = function(ent, kit)
 end
 
 --------------------------------------------------------------------------
--- THE HUD: the ollie's preload at the centre, the stance words under the speed.
--- (The balance meter joins them in sv_board_grind's milestone.)
+-- THE HUD: the ollie's preload at the centre, the stance words under the speed,
+-- and the BALANCE METER of a manual or a grind (THPS style): a bar with a safe
+-- middle and a marker that drifts toward an end, which A / D (a grind) or W / S (a
+-- manual) bring back. Pure in B.MeterLayout so the suite can read it.
 --------------------------------------------------------------------------
+-- The marker's place along a bar `w` wide, and the colour of the zone it is in:
+-- green near the middle, amber past two thirds, red past nine tenths.
+function B.MeterLayout(meter, w)
+    local m = math.Clamp(meter or 0, -1, 1)
+    local a = math.abs(m)
+    local col = a < 0.66 and Color(120, 220, 120) or (a < 0.9 and Color(240, 190, 80) or Color(235, 90, 60))
+    return (m * 0.5 + 0.5) * w, col
+end
 hook.Add("HUDPaint", "BMX.Board.HUD", function()
     local ply = LocalPlayer()
     if not IsValid(ply) then return end
@@ -431,6 +441,18 @@ hook.Add("HUDPaint", "BMX.Board.HUD", function()
             crouch >= 0.999 and Color(120, 220, 120) or Color(240, 190, 80))
     end
     local flags = bike:GetBoardFlags()
+    if B.HasFlag(flags, "meter") then
+        local w, h = 240, 10
+        local x, y = sw * 0.5 - w / 2, sh * 0.7
+        draw.RoundedBox(4, x, y, w, h, Color(0, 0, 0, 150))
+        draw.RoundedBox(4, x + w * 0.17, y, w * 0.66, h, Color(60, 120, 60, 120))
+        local px, col = B.MeterLayout(bike:GetMeter(), w)
+        draw.RoundedBox(3, x + px - 3, y - 3, 6, h + 6, col)
+        local what = B.HasFlag(flags, "grind") and "BALANCE  A / D"
+            or (B.HasFlag(flags, "nose") and "NOSE MANUAL  W / S" or "MANUAL  W / S")
+        draw.SimpleText(what, "BMX.Small", sw * 0.5, y + h + 6, Color(255, 255, 255, 220),
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+    end
     local words = {}
     if B.HasFlag(flags, "switch") then words[#words + 1] = "SWITCH" end
     if B.HasFlag(flags, "fakie") then words[#words + 1] = "FAKIE" end

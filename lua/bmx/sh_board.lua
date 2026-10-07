@@ -480,3 +480,164 @@ end
 BMX.RegisterTrick{ id = "board180", name = "180", kind = "custom", points = 120,
     input = "CTRL + A / D in the air (a half turn)" }
 
+--------------------------------------------------------------------------
+-- THE GRINDS AND SLIDES. Hold SPACE in the air near a rail or a ledge (or turn
+-- on bmx_board_autogrind and just touch it) and the board locks on. WHICH grind
+-- is two things the rider already did: how the board is turned to the rail (along
+-- it is a grind, across it a slide) and the keys held as it locked on.
+--
+--           along the rail                          across it
+--    none     50-50                          none    boardslide
+--      W      nosegrind                        W     noseslide        (ledges)
+--      S      5-0                              S     tailslide        (ledges)
+--    W+A/D    crooked                         A/D    lipslide         (ledges)
+--    S+A      smith (ledges)
+--    S+D      feeble (ledges)
+--
+-- Each is a CONTACT RULE: which point of the board rides the rail and how the
+-- board sits on it. `x` is where on the deck (board space, x forward) the rail
+-- is; `z` its height (a truck's hanger for the grinds, the deck's underside for
+-- the slides); `pitch` the nose-up angle the board holds (a 5-0 is on the back
+-- truck with the nose up, a nosegrind on the front with the tail up); `yaw` how
+-- far the board is turned off the rail's own line (a crooked grind is angled), and
+-- `toward` (smith, feeble) which side of a ledge the nose points to: the drop, for
+-- the smith (the front truck hangs below the edge), the top for the feeble.
+-- `edge` marks the ones that need a ledge or coping, an edge to hang a truck off:
+-- on a round rail they fall back to the plain version (smith to 5-0, the slides
+-- to a boardslide). `mult` is the points multiplier on the grind's rate.
+--
+-- The contact heights are chosen so the rail is BELOW everything the hull
+-- has (BMX.CollisionBoxes: the trucks' boxes start at the axle line, the deck's
+-- slab at 0.95), or the pose would be refused as no room (sv_grind.lua,
+-- GrindPoseClear). The pose puts the contact point Grind.clearance (0.3) above the
+-- rail, so a truck grinds 0.2 under the axle line (the rail 0.5 under it) and a
+-- slide rides 0.1 over it (the rail 0.2 under): the deck floats a unit above a
+-- rail it slides, which nobody can see from the camera and which keeps a ledge's
+-- top, under the half of the board on its side, out of the trucks' boxes.
+--------------------------------------------------------------------------
+T.truckX, T.tipX = 8, 13.5
+T.truckZ, T.deckZ = -0.2, 0.1
+T.grindEdgeY = 3                   -- how far the board's middle hangs over the drop of a ledge
+T.alongAngle = math.rad(45)        -- within this of the rail's line it is a grind, past it a slide
+T.meterGrind  = { unstable = 0.7, wobble = 0.08, control = 1.5 }
+T.meterManual = { unstable = 0.8, wobble = 0.09, control = 1.6 }
+T.manualMinSpeed = 40
+T.manualPitch = math.rad(13)
+T.manualMin = 0.8
+T.manualRate = { manual = 150, nose = 170 }
+
+B.Grinds = {
+    grind5050  = { name = "50-50",         along = true,  x = 0,           z = T.truckZ, pitch = 0,     yaw = 0,    mult = 1.0,
+                   input = "SPACE onto a rail, no other key" },
+    grind50    = { name = "5-0",           along = true,  x = -T.truckX,   z = T.truckZ, pitch = 0.12,  yaw = 0,    mult = 1.2,
+                   input = "SPACE + S onto a rail" },
+    nosegrind  = { name = "Nosegrind",     along = true,  x = T.truckX,    z = T.truckZ, pitch = -0.12, yaw = 0,    mult = 1.2,
+                   input = "SPACE + W onto a rail" },
+    crooked    = { name = "Crooked Grind", along = true,  x = T.truckX,    z = T.truckZ, pitch = -0.12, yaw = 0.5,  mult = 1.5,
+                   input = "SPACE + W + A / D onto a rail" },
+    smith      = { name = "Smith Grind",   along = true,  x = -T.truckX,   z = T.truckZ, pitch = -0.12, yaw = 0.6,  mult = 1.5, edge = true,
+                   toward = "drop", input = "SPACE + S + A onto a ledge" },
+    feeble     = { name = "Feeble Grind",  along = true,  x = -T.truckX,   z = T.truckZ, pitch = 0.1,   yaw = 0.6,  mult = 1.5, edge = true,
+                   toward = "top", input = "SPACE + S + D onto a ledge" },
+    boardslide = { name = "Boardslide",    along = false, x = 3,           z = T.deckZ,  pitch = 0,     yaw = math.pi / 2, mult = 1.3,
+                   input = "SPACE across a rail, no other key" },
+    lipslide   = { name = "Lipslide",      along = false, x = -3,          z = T.deckZ,  pitch = 0,     yaw = math.pi / 2, mult = 1.5, edge = true,
+                   input = "SPACE + A / D across a ledge" },
+    noseslide  = { name = "Noseslide",     along = false, x = T.tipX,      z = T.deckZ,  pitch = -0.1,  yaw = math.pi / 2, mult = 1.6, edge = true,
+                   input = "SPACE + W across a ledge" },
+    tailslide  = { name = "Tailslide",     along = false, x = -T.tipX,     z = T.deckZ,  pitch = 0.1,   yaw = math.pi / 2, mult = 1.6, edge = true,
+                   input = "SPACE + S across a ledge" },
+}
+B.GrindOrder = { "grind5050", "grind50", "nosegrind", "crooked", "smith", "feeble",
+                 "boardslide", "lipslide", "noseslide", "tailslide" }
+
+-- The grind the keys pick, for a board turned `along` or across the rail, on a
+-- ledge (`edge`) or a round rail. `k` is B.Keys.
+function B.ClassifyGrind(k, along, edge)
+    local side = (k.a or k.d) and not (k.a and k.d)
+    local id
+    if along then
+        if k.w and not k.s then id = side and "crooked" or "nosegrind"
+        elseif k.s and not k.w then
+            if k.a and not k.d then id = "smith"
+            elseif k.d and not k.a then id = "feeble"
+            else id = "grind50" end
+        else id = "grind5050" end
+    else
+        if k.w and not k.s then id = "noseslide"
+        elseif k.s and not k.w then id = "tailslide"
+        elseif side then id = "lipslide"
+        else id = "boardslide" end
+    end
+    if B.Grinds[id].edge and not edge then
+        id = along and "grind50" or "boardslide"
+    end
+    return id
+end
+
+-- Is the board turned along the rail's line or across it? `angle` is the angle
+-- between the board's forward and the rail's line, 0..pi/2 once folded (a board
+-- pointing against the rail is as along it as one pointing with it).
+function B.IsAlong(angle)
+    local a = abs(angle) % math.pi
+    if a > math.pi / 2 then a = math.pi - a end
+    return a <= T.alongAngle
+end
+
+-- The point of the board (board space) that rides the rail for a grind: on a round
+-- rail the middle of the deck's line, on a ledge the board hangs over the drop, so
+-- the contact is `sgn` * grindEdgeY to the side the ledge's top is on (an across
+-- slide has the ledge's edge straight under it).
+function B.GrindContact(id, edge, sgn)
+    local g = B.Grinds[id]
+    local y = (edge and g.along) and (sgn or 1) * T.grindEdgeY or 0
+    return Vector(g.x, y, g.z)
+end
+
+-- WHERE THE SPARKS COME FROM (cl_grind.lua asks by the grind code the server
+-- networks, ENT:GetGrind): codes 1 to 3 are the bike's; the board's start at 4.
+-- 4 both trucks, 5 the back truck, 6 the front truck, 7 the deck's middle, 8 the
+-- nose, 9 the tail. Board space.
+B.SparkCode = { grind5050 = 4, grind50 = 5, smith = 5, feeble = 5, nosegrind = 6, crooked = 6,
+                boardslide = 7, lipslide = 7, noseslide = 8, tailslide = 9 }
+function B.SparkPoints(code)
+    local z, tx, tip = T.truckZ, T.truckX, T.tipX
+    if code == 4 then return { Vector(tx, 0, z), Vector(-tx, 0, z) }
+    elseif code == 5 then return { Vector(-tx, 0, z) }
+    elseif code == 6 then return { Vector(tx, 0, z) }
+    elseif code == 7 then return { Vector(0, 0, T.deckZ) }
+    elseif code == 8 then return { Vector(tip, 0, T.deckZ) }
+    elseif code == 9 then return { Vector(-tip, 0, T.deckZ) } end
+    return {}
+end
+
+for _, id in ipairs(B.GrindOrder) do
+    local g = B.Grinds[id]
+    BMX.RegisterTrick{ id = id, name = g.name, kind = "grind",
+        points = BMX.Config.Grind.pointsPerSec * g.mult, input = g.input }
+end
+
+-- THE MANUALS, held on the ground (RMB; with ALT the nose manual) and balanced
+-- with W and S against a meter (the HUD's), scored per second held.
+BMX.RegisterTrick{ id = "board_manual", name = "Manual", kind = "ground",
+    points = T.manualRate.manual, input = "RMB on the ground (W / S balance it)" }
+BMX.RegisterTrick{ id = "board_nosemanual", name = "Nose Manual", kind = "ground",
+    points = T.manualRate.nose, input = "ALT + RMB on the ground (W / S balance it)" }
+
+-- THE BALANCE METER. A value in -1..1 that drifts away from zero faster the further
+-- it is (an inverted pendulum, so it can be held and cannot be ignored) with a
+-- slow wobble on top, and that the rider's keys push back. Past 1 either way
+-- the trick is over: `unstable` is how hard it runs away, `wobble` the amplitude
+-- of the disturbance, `control` what a key can do about it. Pure, so the suite
+-- can run it. `m` is { v = value, t = time, phase = radians }; `push` is the key,
+-- -1..1, already signed so that a positive push raises the meter.
+function B.MeterStep(m, dt, push, P)
+    m.t = (m.t or 0) + dt
+    local w = P.wobble * (math.sin(1.9 * m.t + (m.phase or 0)) * 0.65
+        + math.sin(4.3 * m.t + 2 * (m.phase or 0)) * 0.35)
+    -- It starts off true by a little, one way or the other by the phase, so an
+    -- unattended meter is lost in a few seconds whatever the wobble does.
+    if m.v == nil then m.v = 0.12 * (math.sin((m.phase or 0) * 3.7 + 1) >= 0 and 1 or -1) end
+    m.v = m.v + (P.unstable * m.v + w + P.control * push) * dt
+    return m.v
+end

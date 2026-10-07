@@ -266,13 +266,19 @@ end
 function BMX.GrindPose(g, cfg)
     local G = cfg.Grind
     local f = g.dir
-    if g.kind == "crank" then
-        local th = g.yawSide * G.crankYaw
+    -- A bike on a pipe is turned across it by Grind.crankYaw; a move of a vehicle's
+    -- own (g.yaw, a board's: along the rail, angled to it, across it) says how far.
+    if g.kind == "crank" or g.yaw then
+        local th = g.yaw or (g.yawSide * G.crankYaw)
         local c, s = math.cos(th), math.sin(th)
         f = Vector(f.x * c - f.y * s, f.x * s + f.y * c, f.z)
     end
     local ang = f:Angle()
     ang.r = 0
+    -- ...and the angle the nose is held at (g.pitch, radians, nose up): a 5-0 or a
+    -- nosegrind. The contact point below is found in the pitched frame, so it stays
+    -- on the rail.
+    if g.pitch then ang.p = ang.p - math.deg(g.pitch) end
     local L = g.localPoint
     local fa, ra, ua = ang:Forward(), ang:Right(), ang:Up()
     -- Entity:LocalToWorld without an entity: local +Y is -Right.
@@ -420,24 +426,47 @@ function BMX.TryGrind(ent, phys, cfg, st, vel)
         return false
     end
 
+    -- THE VEHICLE'S OWN MOVES (`grindPoints.moves`: the skateboard's, sv_board_grind.lua).
+    -- A function of the rail and the keys that answers with a move -- which point
+    -- of the vehicle rides it, how it is turned and pitched, what it is called and
+    -- what it pays -- or nothing, in which case there is no grind here.
+    local mv
+    if gp.moves then
+        mv = gp.moves(ent, st, rail, dh, vel)
+        if not mv then return false end
+    end
+
     local g = { kind = rail.kind, point = rail.point, dir = rail.dir, n = rail.n,
                 side = rail.side, speed = along, started = CurTime() }
+    -- Turn the way the bike is already turned off the rail.
+    local f0 = ent:GetForward()
+    g.yawSide = (dh.x * f0.y - dh.y * f0.x) >= 0 and 1 or -1
     if rail.kind == "crank" then
-        -- The pipe meets the chainring, or the wheel boxes' floor if that is
-        -- lower: the boxes then clear the pipe instead of sitting in it.
-        local CH, W = cfg.Chassis, cfg.Wheel
-        local floor = CH.wheelHullBottom or -(W.radius - W.restLength)
-        g.localPoint = Vector(crank.x, crank.y, math.min(crank.z, floor))
-        -- Turn the way the bike is already turned off the pipe.
-        local f = ent:GetForward()
-        g.yawSide = (dh.x * f.y - dh.y * f.x) >= 0 and 1 or -1
+        if mv then
+            g.localPoint = mv.crank
+        else
+            -- The pipe meets the chainring, or the wheel boxes' floor if that is
+            -- lower: the boxes then clear the pipe instead of sitting in it.
+            local CH, W = cfg.Chassis, cfg.Wheel
+            local floor = CH.wheelHullBottom or -(W.radius - W.restLength)
+            g.localPoint = Vector(crank.x, crank.y, math.min(crank.z, floor))
+        end
     else
         -- Pegs on the side the top is on; the bike hangs off the other.
-        if not gp.pegs then return false end
+        if not gp.pegs and not mv then return false end
         local left = UP:Cross(dh)
         local sgn = left:Dot(rail.side) > 0 and 1 or -1
-        g.localPoint = Vector(0, sgn * gp.pegs.y, gp.pegs.z)
+        if mv then
+            g.localPoint = mv.peg(sgn)
+        else
+            g.localPoint = Vector(0, sgn * gp.pegs.y, gp.pegs.z)
+        end
         g.point = g.point + rail.side * G.pegInset
+    end
+    if mv then
+        g.name, g.mult, g.move = mv.name, mv.mult, mv.id
+        g.yaw = mv.yaw * (mv.signed and g.yawSide or 1) + (mv.reverse and math.pi or 0)
+        g.pitch = mv.pitch
     end
     g.n = perp(dh)
 
@@ -490,10 +519,12 @@ function BMX.EndGrind(ent, phys, cfg, st, why, charge)
     st.lastRoll, st.lastPitch = st.roll, st.pitch
     st.rollRate, st.pitchRate = 0, 0
 
+    -- A move of its own (g.name, g.mult) pays under its name and at its rate; one
+    -- that was lost (g.void: a board's balance) pays nothing.
     local t = CurTime() - g.started
-    if t >= G.minTime and ent.AwardTricks and IsValid(ent:GetDriver()) then
-        ent:AwardTricks({ { name = NAMES[g.kind], count = 1,
-                            points = floor(t * G.pointsPerSec),
+    if t >= G.minTime and ent.AwardTricks and IsValid(ent:GetDriver()) and not g.void then
+        ent:AwardTricks({ { name = g.name or NAMES[g.kind], count = 1,
+                            points = floor(t * G.pointsPerSec * (g.mult or 1)),
                             grind = t } })     -- seconds on the rail, for sv_scores.lua
     end
     hook.Run("BMX_GrindEnded", ent, g.kind, why, t)

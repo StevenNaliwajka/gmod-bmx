@@ -2292,3 +2292,143 @@ function(ctx)
     for _, n in ipairs(landed) do ctx:ok(not n:find("Kickflip", 1, true), "no Kickflip was paid") end
 end)
 
+--------------------------------------------------------------------------
+-- THE BOARD'S GRINDS AND MANUALS (M3), on a real park flat rail and in a manual.
+--------------------------------------------------------------------------
+T.Case("board_50_50_on_rail", { vehicle = "skateboard", timeout = 40,
+    desc = "the skateboard: SPACE in the air over a park flat rail locks a 50-50, trucks on the rail, and pays it" },
+function(ctx)
+    local g = ctx.ground
+    local b = ctx.bike
+    local rail = BMX.Park.Build("flatrail", { 2 })
+    local at = Vector(g.x + 500, g.y, g.z)
+    if not parkPiece(ctx, "flatrail", { 2 }, at, 0) then return end
+    ctx:wait(0.3)
+    local line = BMX.Park.WorldGrind(rail, at, 0)[1]
+    ctx:log(string.format("rail %.0f long, top at +%.0f", line.b.x - line.a.x, line.a.z - g.z))
+
+    local landed = {}
+    hook.Add("BMX_TrickLanded", "BMX.Test.Board5050", function(ply, t) landed[#landed + 1] = t.name end)
+    boardInput(ctx, { jump = true })
+    -- In the air, the middle of the deck's underside over the rail's top, moving along it.
+    local crank = BMX.GrindPointsFor(b:Bike(), ctx.cfg).crank
+    local ang = Angle(0, 0, 0)
+    local off = ang:Forward() * crank.x - ang:Right() * crank.y + ang:Up() * crank.z
+    local phys = b:GetPhysicsObject()
+    phys:SetAngles(ang)
+    phys:SetPos(Vector(line.a.x + 8, line.a.y, line.a.z + 5) - off)
+    phys:SetVelocity(Vector(240, 0, -30))
+    phys:SetAngleVelocity(Vector(0, 0, 0))
+    ctx:st().grounded, ctx:st().groundedFor = false, 0
+
+    local worstUp, worstSide, started, move = 0, 0, false, nil
+    local endedWhy
+    hook.Add("BMX_GrindEnded", "BMX.Test.Board5050", function(e, kind, why) if e == b then endedWhy = endedWhy or why end end)
+    ctx:waitUntil(function()
+        local gr = ctx:st().grind
+        if gr then
+            started, move = true, gr.move
+            local c = b:LocalToWorld(BMX.Board.GrindContact(gr.move, false))
+            worstUp = math.max(worstUp, math.abs(c.z - (gr.point.z + ctx.cfg.Grind.clearance)))
+            worstSide = math.max(worstSide, math.abs(c.y - line.a.y))
+            -- Hold the balance meter near zero with A / D while it lasts.
+            local m = ctx:st().board.meter or 0
+            boardInput(ctx, { jump = true, side = m > 0.1 and -1 or (m < -0.1 and 1 or 0) })
+        end
+        return endedWhy ~= nil
+    end, 5, "the grind to end")
+    hook.Remove("BMX_GrindEnded", "BMX.Test.Board5050")
+    hook.Remove("BMX_TrickLanded", "BMX.Test.Board5050")
+    ctx:ok(started and move == "grind5050", "locked into a 50-50: " .. tostring(move))
+    ctx:ok(endedWhy == "end" or endedWhy == "slow", "let go where the rail ends: " .. tostring(endedWhy))
+    ctx:between(worstUp, 0, 1.5, "the trucks stayed on the rail's top", "u")
+    ctx:between(worstSide, 0, 2.5, "and on its line", "u")
+    local paid = false
+    for _, n in ipairs(landed) do if n == "50-50" then paid = true end end
+    ctx:ok(paid, "a 50-50 was paid: " .. table.concat(landed, ", "))
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+end)
+
+T.Case("board_manual_holds", { vehicle = "skateboard", timeout = 40,
+    desc = "the skateboard: RMB at speed lifts the nose on the back wheels and holds it for three seconds against the meter, and pays" },
+function(ctx)
+    local b = ctx.bike
+    local start = b:GetPos()
+    local landed = {}
+    hook.Add("BMX_TrickLanded", "BMX.Test.BoardManual", function(ply, t) landed[#landed + 1] = t.name end)
+    boardInput(ctx, { push = true })
+    ctx:runUntil(7, function()
+        return ctx:st().fwdSpeed > 100 or (ctx.runway > 0 and b:GetPos():Distance(start) > ctx.runway)
+    end)
+    boardInput(ctx, { grab = true })
+    ctx:wait(0.6)
+    ctx:ok(ctx:st().board.manual == "manual", "a manual started: " .. tostring(ctx:st().board.manual))
+    local front, rear = 0, 0
+    for _, w in ipairs(b.wheels) do
+        if w.onGround then if w.isFront then front = front + 1 else rear = rear + 1 end end
+    end
+    ctx:ok(front == 0 and rear == 2, "on the back wheels only: " .. rear .. " rear, " .. front .. " front")
+    ctx:between(math.deg(ctx:st().pitch), 6, 25, "the nose is up", "deg")
+
+    -- Hold it three seconds, W / S against the meter, stopping before the end of the ground.
+    local t0, worst = CurTime(), 0
+    while CurTime() - t0 < 3 do
+        local m = ctx:st().board.meter or 0
+        worst = math.max(worst, math.abs(m))
+        local push = m > 0.1 and 1 or (m < -0.1 and -1 or 0)         -- W lowers it
+        boardInput(ctx, { grab = true, push = push > 0, brake = push < 0 })
+        local st = ctx:st()
+        if not st.board.manual then break end
+        if ctx.runway > 0 and b:GetPos():Distance(start) > ctx.runway then break end
+        coroutine.yield()
+    end
+    ctx:ok(ctx:st().board.manual == "manual", "still holding it after three seconds")
+    ctx:between(worst, 0, 0.95, "the meter stayed in range", "")
+    boardInput(ctx, {})
+    ctx:wait(0.6)
+    hook.Remove("BMX_TrickLanded", "BMX.Test.BoardManual")
+    local paid = false
+    for _, n in ipairs(landed) do if n:find("Manual", 1, true) then paid = true end end
+    ctx:ok(paid, "a Manual was paid: " .. table.concat(landed, ", "))
+    ctx:ok(IsValid(b:GetDriver()), "rider aboard")
+    ctx:between(math.deg(math.abs(ctx:st().pitch)), 0, 8, "level again", "deg")
+end)
+
+T.Case("board_drops_in_to_quarter", { vehicle = "skateboard", timeout = 40,
+    desc = "the skateboard: rolling off the top of a 75 degree quarter pipe it follows the transition down and rides out onto the floor" },
+function(ctx)
+    local g = ctx.ground
+    local R, top = 100, math.rad(75)
+    local xb = g.x + 800
+    local pts, hulls = {}, {}
+    for i = 0, 6 do
+        local a = top * i / 6
+        pts[#pts + 1] = { xb - R * math.sin(a), g.z + R * (1 - math.cos(a)) }
+    end
+    for i = 1, #pts - 1 do
+        local a, bb = pts[i + 1], pts[i]
+        hulls[#hulls + 1] = hull({ a, bb, { bb[1], g.z - 8 }, { a[1], g.z - 8 } }, -300, 300)
+    end
+    local xt, zt = pts[#pts][1], pts[#pts][2]
+    hulls[#hulls + 1] = hull({ { xt - 240, g.z - 8 }, { xt, g.z - 8 }, { xt, zt }, { xt - 240, zt } }, -300, 300)
+    T.Solid(ctx, hulls)
+    ctx:wait(0.3)
+
+    boardInput(ctx, {})
+    local rest = BMX.RestHeight(ctx.cfg)
+    putBike(ctx, Vector(xt - 100, g.y, zt + rest + 1), Angle(0, 0, 0), Vector(120, 0, 0))
+    local crashed
+    hook.Add("BMX_Crashed", "BMX.Test.BoardDropIn", function(ent, ply, reason) if ent == ctx.bike then crashed = reason end end)
+    local peakSpeed = 0
+    local out = ctx:waitUntil(function()
+        peakSpeed = math.max(peakSpeed, ctx:st().speed)
+        return ctx:st().grounded and ctx.bike:GetPos().x > xb + 60 and ctx.bike:GetPos().z < g.z + rest + 6
+    end, 8, "the board to ride out onto the floor")
+    hook.Remove("BMX_Crashed", "BMX.Test.BoardDropIn")
+    ctx:log(string.format("peak %.0f u/s, crash %s", peakSpeed, tostring(crashed)))
+    ctx:ok(out, "rode out of the transition onto the floor")
+    ctx:ok(crashed == nil, "no bail on the way down: " .. tostring(crashed))
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
+    ctx:between(peakSpeed, 150, 700, "speed picked up going down", "u/s")
+    ctx:between(math.deg(math.abs(ctx:st().roll or 0)), 0, 30, "roll on the way out", "deg")
+end)

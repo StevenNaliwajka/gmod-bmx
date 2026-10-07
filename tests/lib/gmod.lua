@@ -266,6 +266,9 @@ function M.Realm(world, which)
     env.SIMPLE_USE = 1
     env.KEY_K = 21
     env.KEY_L = 22
+    -- The bracket keys and the wheel: the road bike's gear shift (G09). The engine's numbers.
+    env.KEY_LBRACKET, env.KEY_RBRACKET = 53, 54
+    env.MOUSE_WHEEL_UP, env.MOUSE_WHEEL_DOWN = 112, 113
     env.IsFirstTimePredicted = function() return true end
     function env.VectorRand()
         return Vector(math.random() * 2 - 1, math.random() * 2 - 1, math.random() * 2 - 1)
@@ -1184,6 +1187,9 @@ function M.Realm(world, which)
     function Ply:GetBodygroup(i) return (self._bg or {})[i] or 0 end
     function Ply:GetPlayerColor() return self._pcol or Vector(0.24, 0.34, 0.41) end
     function Ply:Alive() return (self._health or 100) > 0 end
+    -- A player's model scale, networked in the engine: a child in a child seat is small (G11).
+    function Ply:SetModelScale(s) self._modelScale = s end
+    function Ply:GetModelScale() return self._modelScale or 1 end
     function Ply:GetWeapons()
         local o = {}
         for _, c in ipairs(self._weapons or {}) do o[#o + 1] = wep(c) end

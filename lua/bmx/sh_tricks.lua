@@ -249,3 +249,17 @@ BMX.RegisterTrick{ id = "crank_grind", name = "Crank Grind", kind = "grind",
     points = G.pointsPerSec, input = "bunny hop onto a pipe, along it" }
 BMX.RegisterTrick{ id = "peg_grind", name = "Double Peg Grind", kind = "grind",
     points = G.pointsPerSec, input = "bunny hop onto a ledge edge, along it" }
+
+-- THE FIXIE'S TWO (G10): held on the ground and paid a second at a time by
+-- BMX.Fixie.Tick (sv_fixie.lua). Registered for every vehicle and paid only on a
+-- fixed gear (canStart), so the overlay lists them and no other bike earns them.
+-- The functions are the server's; the client only ever reads the names.
+local function fixedGear(st) return BMX.Fixie ~= nil and BMX.Fixie.IsFixed(st) end
+BMX.RegisterTrick{ id = "fakie", name = "Fakie", kind = "custom", points = 40,
+    input = "S at a standstill on a fixie: pedal backwards and roll back (paid per second)",
+    canStart = function(st, inp) return fixedGear(st) end,
+    onTick = function(ent, st, inp, dt) BMX.Fixie.Tick("fakie", ent, st, inp, dt) end }
+BMX.RegisterTrick{ id = "trackstand", name = "Trackstand", kind = "custom", points = 25,
+    input = "A or D held at a standstill on a fixie, nothing else (paid per second)",
+    canStart = function(st, inp) return fixedGear(st) end,
+    onTick = function(ent, st, inp, dt) BMX.Fixie.Tick("trackstand", ent, st, inp, dt) end }

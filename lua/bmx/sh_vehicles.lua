@@ -86,12 +86,19 @@ BMX.BalanceModeNames = { singletrack = true, board = true, none = true }
 --
 --   pedal      the bike's legs, with the stamina and the climbing assist, all of
 --              it read from the config's Drive group
+--   fixed      a fixed gear (G10): the pedal drive with the cranks LOCKED to the
+--              rear wheel through a stiff spring. No freewheel: coasting turns the
+--              legs, S is a skid stop, S at a standstill pedals backwards
+--   coaster    a coaster brake (G12): the pedal drive, freewheeling; its brake is S
+--              (the rear brake) and the vehicle has no front brake to speak of
 --   throttle   a motor: torque, falling to nothing at maxSpeed
 --   push       reserved for the skateboard (G23): a kick every kickInterval
 --   none       coasts
 --------------------------------------------------------------------------
 BMX.DriveKinds = {
     pedal    = {},
+    fixed    = {},
+    coaster  = {},
     throttle = { torque = "number", maxSpeed = "number" },
     push     = { torque = "number", maxSpeed = "number", kickInterval = "number" },
     none     = {},
@@ -123,13 +130,20 @@ function BMX.RegisterInputMap(def)
     assert(istable(def.actions), def.id .. ": an input map needs actions")
     for name, a in pairs(def.actions) do
         assert(isstring(name), def.id .. ": action names are strings")
-        assert(istable(a) and isnumber(a.key), def.id .. "." .. name .. ": needs a numeric key (an IN_ bit)")
+        -- A usercmd bit (`key`, what sv_input.lua reads) and/or client-read BUTTONS
+        -- (`buttons`: KEY_ and MOUSE_ codes, which are not usercmd bits and so
+        -- cannot be tested in StartCommand). The gear shift is the second kind:
+        -- [ and ] and the mouse wheel are seen by the client (cl_gears.lua), which
+        -- tells the server, so an action with only `buttons` is never "down" to
+        -- the usercmd decode and is still listed for a keybind panel.
+        assert(istable(a) and (isnumber(a.key) or istable(a.buttons)),
+            def.id .. "." .. name .. ": needs a numeric key (an IN_ bit) or a buttons list")
         assert(istable(a.ctx) and #a.ctx > 0, def.id .. "." .. name .. ": needs a ctx list")
         for _, c in ipairs(a.ctx) do
             assert(BMX.InputContexts[c], def.id .. "." .. name .. ": unknown context " .. tostring(c))
         end
         for k in pairs(a) do
-            assert(k == "key" or k == "ctx" or k == "label",
+            assert(k == "key" or k == "ctx" or k == "label" or k == "buttons",
                 def.id .. "." .. name .. ": unknown field " .. tostring(k))
         end
     end
@@ -146,7 +160,7 @@ function BMX.InputActions(mapId, ctx)
     for name, a in pairs(map.actions) do
         local hit = ctx == nil
         for _, c in ipairs(a.ctx) do if c == ctx then hit = true end end
-        if hit then out[#out + 1] = { name = name, key = a.key, ctx = a.ctx, label = a.label or name } end
+        if hit then out[#out + 1] = { name = name, key = a.key, buttons = a.buttons, ctx = a.ctx, label = a.label or name } end
     end
     table.sort(out, function(a, b) return a.name < b.name end)
     return out
@@ -193,6 +207,33 @@ BMX.RegisterInputMap{
     },
 }
 
+-- THE ROAD BIKE'S MAP (G09): the bike's keys, plus the gear shift. Shifting is
+-- [ and ] or the mouse wheel; those are client buttons, not usercmd bits, so the
+-- actions carry `buttons` rather than a `key` (see RegisterInputMap). (KEY_ and
+-- MOUSE_ are engine enums in both realms; the numbers are the fallback for a
+-- build that lacks one.)
+do
+    local actions = {}
+    for name, a in pairs(BMX.InputMaps.bike.actions) do actions[name] = a end
+    actions.shiftUp   = { buttons = { KEY_RBRACKET or 54, MOUSE_WHEEL_UP or 112 },
+                          ctx = { G, A }, label = "Shift up (] or wheel up)" }
+    actions.shiftDown = { buttons = { KEY_LBRACKET or 53, MOUSE_WHEEL_DOWN or 113 },
+                          ctx = { G, A }, label = "Shift down ([ or wheel down)" }
+    BMX.RegisterInputMap{ id = "road", label = "Road bike", actions = actions }
+end
+
+-- THE FIXIE'S AND THE CITY BIKE'S MAP (G10, G12): the bike's keys without the
+-- front brake. A fixed gear's brake is its legs and a Dutch bike's is the
+-- coaster, so LMB does nothing on the ground (sv_input.lua; the fixie takes it
+-- back with bmx_fixie_frontbrake 1). It stays a key in the air and on a grind,
+-- because a tailwhip is a frame trick, not a brake.
+do
+    local actions = {}
+    for name, a in pairs(BMX.InputMaps.bike.actions) do actions[name] = a end
+    actions.brakeFront = { key = IN_ATTACK, ctx = { A, GR }, label = "Tailwhip (there is no front brake)" }
+    BMX.RegisterInputMap{ id = "bike_rearonly", label = "Bike, rear brake only", actions = actions }
+end
+
 --------------------------------------------------------------------------
 -- RIDER POSE SETS. The ids are declared here, shared, so a registration can be
 -- checked; cl_rider.lua fills in the `rider` function (the bone offsets) and
@@ -209,6 +250,8 @@ function BMX.RegisterPoseSet(id, meta)
 end
 BMX.RegisterPoseSet("bike",   { label = "Bike: hands on the bars, feet on the pedals" })
 BMX.RegisterPoseSet("seated", { label = "Seated: the stock pose, no limbs animated" })
+BMX.RegisterPoseSet("road",   { label = "Road: tucked over the bars, hands on the drops" })
+BMX.RegisterPoseSet("upright", { label = "Upright: sat up, hands on swept-back bars" })
 
 -- The pose set a vehicle entity's rider uses (client).
 function BMX.PoseSetFor(ent)
@@ -225,6 +268,10 @@ local TOP_LEVEL = {
     id = true, family = true, wheels = true, balance = true, drive = true,
     seats = true, input = true, pose = true, tricks = true, grindPoints = true,
     physics = true,
+    -- the bikes' extras: gears (G09), a score multiplier (G09), the bar shape (G09)
+    gears = true, scoreMult = true, barStyle = true,
+    -- a box small props ride in (G12, sv_basket.lua)
+    basket = true,
     -- appearance and mount points (as RegisterBike always took them)
     printName = true, description = true, author = true, model = true,
     colorIndex = true, seatModel = true, wheelModel = true, forkModel = true,
@@ -236,7 +283,11 @@ local TOP_LEVEL = {
 BMX.VehicleKeys = TOP_LEVEL
 
 local WHEEL_KEYS = { pos = true, radius = true, steer = true, drive = true, front = true, name = true }
-local SEAT_KEYS  = { model = true, offset = true, angles = true }
+local SEAT_KEYS  = { model = true, offset = true, angles = true, massFactor = true }
+
+-- The kinds of seat a vehicle may have (sh_passenger.lua says what each is).
+BMX.SeatKinds = { "rider", "pegs", "child" }
+BMX.SeatKindSet = { rider = true, pegs = true, child = true }
 local GRIND_KEYS = { crank = true, pegs = true }
 
 local MAX_WHEELS = 8
@@ -275,6 +326,66 @@ local function resolved(v, cfg)
     return v
 end
 BMX.Resolved = resolved
+
+-- THE DRAWN BAR SHAPES (cl_init.lua): flat is the BMX's riser bar.
+BMX.BarStyles = { flat = true, drop = true, swept = true }
+
+-- GEARS (G09; the model is sh_gears.lua). `gears = { ratios = {...}, start = n }`:
+-- 2 to 11 ratios, each wheel revolutions per crank revolution (what
+-- Drive.gearRatio is for a single-speed bike), lowest first and strictly
+-- rising, and the gear a new bike is in. Anything else is a typo, and a bike
+-- whose ratios are out of order is a bike whose shift keys go the wrong way.
+local GEAR_KEYS = { ratios = true, start = true }
+function BMX.CheckGears(g, bad)
+    if g == nil then return end
+    if not istable(g) then bad[#bad + 1] = "gears must be { ratios = {...}, start = n }" return end
+    for k in pairs(g) do
+        if not GEAR_KEYS[k] then bad[#bad + 1] = string.format("gears has unknown key %q", tostring(k)) end
+    end
+    local r = g.ratios
+    if not istable(r) or #r < 2 or #r > 11 then
+        bad[#bad + 1] = "gears.ratios must be a list of 2 to 11 ratios"
+        return
+    end
+    local prev = 0
+    for i, v in ipairs(r) do
+        if not (isnumber(v) and v == v and v > 0 and v < 20) then
+            bad[#bad + 1] = "gears.ratios[" .. i .. "] must be a number above 0 and under 20"
+        elseif v <= prev then
+            bad[#bad + 1] = "gears.ratios must rise, lowest gear first (ratios[" .. i .. "])"
+        else
+            prev = v
+        end
+    end
+    if g.start ~= nil and not (isnumber(g.start) and g.start >= 1 and g.start <= #r and g.start == math.floor(g.start)) then
+        bad[#bad + 1] = "gears.start must be a whole gear number, 1 to " .. #r
+    end
+end
+
+-- THE BASKET (G12; the model is sv_basket.lua): a box in chassis space the vehicle
+-- carries small props in. `basket = { mins = Vector, maxs = Vector, maxMass = kg,
+-- hold = u/s^2 }`: mins and maxs are the box's corners, maxMass the heaviest prop it
+-- takes (default 12), hold the acceleration the load stays in through (default 1500,
+-- two and a half g).
+local BASKET_KEYS = { mins = "vector", maxs = "vector", maxMass = "number", hold = "number" }
+function BMX.CheckBasket(b, bad)
+    if b == nil then return end
+    if not istable(b) then bad[#bad + 1] = "basket must be a table { mins, maxs }" return end
+    for k, v in pairs(b) do
+        if not BASKET_KEYS[k] then
+            bad[#bad + 1] = string.format("basket has unknown key %q", tostring(k))
+        elseif BASKET_KEYS[k] == "vector" and not isvector(v) then
+            bad[#bad + 1] = "basket." .. k .. " must be a Vector"
+        elseif BASKET_KEYS[k] == "number" and not (isnumber(v) and v > 0) then
+            bad[#bad + 1] = "basket." .. k .. " must be a positive number"
+        end
+    end
+    if not (isvector(b.mins) and isvector(b.maxs)) then
+        if b.mins == nil or b.maxs == nil then bad[#bad + 1] = "a basket needs mins and maxs" end
+    elseif not (b.maxs.x > b.mins.x and b.maxs.y > b.mins.y and b.maxs.z > b.mins.z) then
+        bad[#bad + 1] = "basket.maxs must be above and beyond basket.mins on every axis"
+    end
+end
 
 function BMX.ValidateVehicle(def)
     local bad = {}
@@ -336,7 +447,7 @@ function BMX.ValidateVehicle(def)
     -- Drive.
     local drive = def.drive
     if not istable(drive) or not BMX.DriveKinds[drive.kind] then
-        bad[#bad + 1] = "drive.kind must be one of pedal, throttle, push, none"
+        bad[#bad + 1] = "drive.kind must be one of pedal, fixed, coaster, throttle, push, none"
     else
         local allowed = BMX.DriveKinds[drive.kind]
         for k, v in pairs(drive) do
@@ -348,7 +459,8 @@ function BMX.ValidateVehicle(def)
                 end
             end
         end
-        if (drive.kind == "pedal" or drive.kind == "throttle") and nWheels > 0 and nDrive == 0 then
+        if (drive.kind == "pedal" or drive.kind == "fixed" or drive.kind == "coaster" or drive.kind == "throttle")
+            and nWheels > 0 and nDrive == 0 then
             bad[#bad + 1] = "a " .. drive.kind .. " drive needs at least one wheel with drive = true"
         end
         if drive.kind == "throttle" and not (isnumber(drive.torque) and drive.torque > 0) then
@@ -356,27 +468,51 @@ function BMX.ValidateVehicle(def)
         end
     end
 
-    -- Seats: one for now (a passenger is G11).
+    -- Seats (G11): the old list (the rider's seat, at most one), or a map by kind,
+    -- { rider = {...}, pegs = {...}, child = {...} }. See sh_passenger.lua.
     if def.seats ~= nil then
-        if not istable(def.seats) or #def.seats > 1 then
-            bad[#bad + 1] = "seats must be a list of at most one seat (passengers are G11)"
+        local function seat(label, sd)
+            if not istable(sd) then bad[#bad + 1] = label .. " is not a table" return end
+            for k in pairs(sd) do
+                if not SEAT_KEYS[k] then bad[#bad + 1] = string.format("%s has unknown key %q", label, tostring(k)) end
+            end
+            if sd.offset ~= nil and not (isvector(sd.offset) or isfunction(sd.offset)) then
+                bad[#bad + 1] = label .. ".offset must be a Vector or a function of the config"
+            end
+            if sd.angles ~= nil and not isangle(sd.angles) then bad[#bad + 1] = label .. ".angles must be an Angle" end
+            if sd.model ~= nil and not isstring(sd.model) then bad[#bad + 1] = label .. ".model must be a string" end
+            if sd.massFactor ~= nil and not (isnumber(sd.massFactor) and sd.massFactor >= 0 and sd.massFactor <= 2) then
+                bad[#bad + 1] = label .. ".massFactor must be a number from 0 to 2 (a fraction of the bike's mass)"
+            end
+        end
+        if not istable(def.seats) then
+            bad[#bad + 1] = "seats must be a list of at most one seat, or a table of rider / pegs / child seats"
+        elseif #def.seats > 0 then
+            if #def.seats > 1 then
+                bad[#bad + 1] = "seats must be a list of at most one seat, or a table of rider / pegs / child seats"
+            end
+            for i, sd in ipairs(def.seats) do seat("seats[" .. i .. "]", sd) end
         else
-            for i, s in ipairs(def.seats) do
-                if not istable(s) then
-                    bad[#bad + 1] = "seats[" .. i .. "] is not a table"
+            for kind, sd in pairs(def.seats) do
+                if not BMX.SeatKindSet[kind] then
+                    bad[#bad + 1] = string.format("seats has unknown seat %q (rider, pegs or child)", tostring(kind))
                 else
-                    for k in pairs(s) do
-                        if not SEAT_KEYS[k] then
-                            bad[#bad + 1] = string.format("seats[%d] has unknown key %q", i, tostring(k))
-                        end
-                    end
-                    if s.offset ~= nil and not isvector(s.offset) then bad[#bad + 1] = "seats[" .. i .. "].offset must be a Vector" end
-                    if s.angles ~= nil and not isangle(s.angles) then bad[#bad + 1] = "seats[" .. i .. "].angles must be an Angle" end
-                    if s.model ~= nil and not isstring(s.model) then bad[#bad + 1] = "seats[" .. i .. "].model must be a string" end
+                    seat("seats." .. kind, sd)
                 end
             end
         end
     end
+
+    -- Gears: absent (single speed) or { ratios = { ... }, start = n }.
+    BMX.CheckGears(def.gears, bad)
+    if def.scoreMult ~= nil and not (isnumber(def.scoreMult) and def.scoreMult > 0 and def.scoreMult <= 10) then
+        bad[#bad + 1] = "scoreMult must be a number above 0 and at most 10"
+    end
+    if def.barStyle ~= nil and not BMX.BarStyles[def.barStyle] then
+        bad[#bad + 1] = string.format("barStyle %q is not one of flat, drop, swept", tostring(def.barStyle))
+    end
+
+    BMX.CheckBasket(def.basket, bad)
 
     -- Input map and pose set: by id.
     if not BMX.InputMaps[def.input] then

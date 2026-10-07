@@ -162,6 +162,16 @@ local function drawRiderHUD(bike)
     label(string.format("%.0f", shown), x + 108, y + 10, "BMX.Big", COL_FG, TEXT_ALIGN_RIGHT)
     label(suffix, x + 116, y + 26, "BMX.Small", COL_DIM)
 
+    -- THE GEAR (G09), on a bike that has them: "gear 4/8" at the right of the
+    -- speed, with the cadence under it in rpm so the shift is a decision the
+    -- rider can see (60-110 is where the legs want to be).
+    local gear = BMX.Gears.Label(bike)
+    if gear then
+        label(gear, x + w - 14, y + 12, "BMX.Small", COL_FG, TEXT_ALIGN_RIGHT)
+        label(string.format("%.0f rpm", bike:GetCadence() * 60 / (2 * math.pi)),
+            x + w - 14, y + 30, "BMX.Small", COL_DIM, TEXT_ALIGN_RIGHT)
+    end
+
     ----------------------------------------------------------------------
     -- Combo multiplier and airtime, in a strip under the box.
     ----------------------------------------------------------------------

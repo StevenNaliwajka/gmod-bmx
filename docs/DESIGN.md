@@ -429,6 +429,43 @@ What the board (G23) adds on top is a `board` balance module, a `push` drive, a
 `steer` function for truck lean, an input map and a pose set; none of it needs a
 change to the core.
 
+## 6d. Four bikes on the platform (G09-G12)
+
+The road bike, the fixie, passengers and the city bike are the first things written
+on the platform that are not the BMX, and each one took a change to the core of about
+a line or two; the rest is new files. What each taught:
+
+- **A gear is a different answer to one question** (G09). The drive asked
+  `Drive.gearRatio` for how the legs turn for a wheel speed; it asks
+  `BMX.GearRatio(ent, cfg)`, which is that constant for a bike with no gears and the
+  current gear's ratio for one with (`sh_gears.lua`). The torque curve, the cadence on
+  the HUD and the drawn cranks all follow with nothing else changed. What keeps a gear
+  box honest is a checkable property, not a feel: some gear puts the legs at 60-110 rpm
+  at every speed from a jog to the top, so neighbouring bands overlap
+  (`BMX.Gears.Covers`).
+- **A key that is not a usercmd bit** (G09). The wheel and `[` / `]` are seen by the
+  client, not carried in the usercmd, so an input-map action may carry `buttons` instead
+  of a `key`: the client sends one net message, the server decides who may shift and how
+  often. The map stays the one table the keybind panel is generated from.
+- **A drive may speak for the brake** (G10). The fixed gear's legs push back on the wheel
+  whenever the bike slows, so "the drive's torque is negative" stopped meaning "the rider is
+  pedalling backwards, release the brake". A drive now returns its torque and optionally a
+  verdict on the rear brake, and the old rule is what nil means.
+- **A stiff spring is solved implicitly** (G10). Cranks locked to a wheel through a
+  spring much stiffer than anything it joins is a 150 rad/s oscillator at a 66 Hz step; a
+  forward Euler step rings itself apart. Backward Euler on the relative velocity is stable
+  at any step (it is tested down to a stalled server's 0.2 s) and costs one division.
+- **A passenger is a different config, not a different bike** (G11). The bike runs on
+  `ENT:Cfg()`, so a second rider is the same config with more mass over it by reference
+  (`BMX.WithMass`), and everything that reads the mass or the inertia reads the heavier
+  bike. VPhysics cannot move a mass centre, so the passenger's weight is applied where they
+  sit as a couple: no net force, the torque a person on the back of a bike puts on it.
+- **A basket is a volume, not an entity** (G12). "Welded to the frame" is a box in the
+  bike's own space: nothing to constrain, nothing to break, nothing for the duplicator to
+  copy. A prop in it is placed where it sits every tick with the bike's velocity, and the
+  whole load is released when the bike's acceleration, measured over a window, passes a
+  number. Which number is the one thing the plant cannot tell us; it is a registry field.
+
 ## 7. Roadmap
 
 | Phase | Deliverable | Status |

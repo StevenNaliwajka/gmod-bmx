@@ -103,7 +103,8 @@ local function drivetrain(ent, cfg, dt, inp, st, rear)
     local cad = D.maxCadence  * (sprinting and D.sprintCadence or 1)
 
     -- Crank speed implied by the rear wheel through the gear.
-    local crankOmega = rear.omega / D.gearRatio
+    local gearRatio = BMX.GearRatio(ent, cfg)       -- the bike's, or the current gear's (sh_gears.lua)
+    local crankOmega = rear.omega / gearRatio
     st.cadence = crankOmega
 
     -- Falling torque curve. At maxCadence the rider is spinning out and
@@ -160,7 +161,7 @@ local function drivetrain(ent, cfg, dt, inp, st, rear)
     end
 
     st.sprinting = sprinting
-    return crank / D.gearRatio
+    return crank / gearRatio
 end
 
 --------------------------------------------------------------------------
@@ -187,6 +188,11 @@ BMX.Drives.throttle = function(ent, cfg, dt, inp, st, wheel, vdef)
     st.cadence = wheel and wheel.omega or 0
     return d.torque * inp.throttle * fall
 end
+
+-- A COASTER BRAKE (G12): the bike's legs, freewheeling. What makes it a coaster is
+-- not in the drive but around it: its input map (bike_rearonly) gives it no front
+-- brake, and S is the rear brake, which is how a coaster is braked.
+BMX.Drives.coaster = BMX.Drives.pedal
 
 BMX.Drives.none = function() return 0 end
 
@@ -337,12 +343,19 @@ function BMX.PhysicsStep(ent, phys, dt)
             nDrive = nDrive + 1
         end
     end
-    local driveTorque = hasDriver and drive(ent, C, dt, inp, st, driveWheel, vdef) or 0
+    -- A drive returns its torque and, optionally, a say in the rear brake: nil
+    -- leaves the rule below, true KEEPS the brake whatever the sign of the torque,
+    -- false DROPS it. The fixed gear (sv_fixie.lua) needs both: its legs' torque on
+    -- the wheel is negative whenever it is slowing down, and a skid stop must not
+    -- be mistaken for pedalling backwards -- but S at a standstill is exactly that.
+    local driveTorque, brakeSay = 0, nil
+    if hasDriver then driveTorque, brakeSay = drive(ent, C, dt, inp, st, driveWheel, vdef) end
+    driveTorque = driveTorque or 0
     local brakeRear   = inp.brakeRear  * C.Drive.rearBrake
     local brakeFront  = inp.brakeFront * C.Drive.frontBrake
 
     -- Paddling backwards is a drive, not a brake, so do not do both at once.
-    if driveTorque < 0 then brakeRear = 0 end
+    if brakeSay == false or (driveTorque < 0 and brakeSay == nil) then brakeRear = 0 end
 
     ----------------------------------------------------------------------
     -- 4. Wheels
@@ -377,6 +390,12 @@ function BMX.PhysicsStep(ent, phys, dt)
     for _, w in ipairs(wheels) do
         w:Simulate(ent, phys, C, dt, w.drive and share or 0,
             w.isFront and brakeFront or brakeRear, filter, snap)
+    end
+
+    -- A PASSENGER'S WEIGHT, where they sit rather than at the mass centre
+    -- (sv_passenger.lua): a couple, no net force.
+    if ent.paxMass and ent.paxMass > 0 and BMX.Passenger and BMX.Passenger.ApplyWeight then
+        BMX.Passenger.ApplyWeight(ent, phys, dt)
     end
 
     -- The climbing push (see drivetrain): at the mass centre, along the slope.

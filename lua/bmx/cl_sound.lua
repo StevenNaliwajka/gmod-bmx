@@ -105,7 +105,7 @@ local function update(ent, state, dt)
     -- Terminal speed is the natural scale for "how fast is fast": it is what
     -- the drivetrain tops out at, so the mapping stays right if someone retunes
     -- the gearing.
-    local topSpeed = cfg.Drive.maxCadence * cfg.Drive.gearRatio * cfg.Wheel.radius
+    local topSpeed = BMX.Gears.TopCeiling(ent, cfg)
     local frac     = math.Clamp(speed / math.max(topSpeed, 1), 0, 1)
 
     -- Muted by the server: stop what is playing and make nothing.
@@ -163,7 +163,10 @@ local function update(ent, state, dt)
     -- cadence networked for the HUD, so it can tell without being told.
     ----------------------------------------------------------------------
     S = BMX.Sounds.tick
-    local coasting = grounded and speed > 20
+    -- A FIXED GEAR HAS NO FREEWHEEL (G10): the cranks are on the wheel, so a
+    -- coasting fixie is silent where a BMX ticks.
+    local fixed = ent:Bike().drive.kind == "fixed"
+    local coasting = grounded and speed > 20 and not fixed
         and ent:GetCadence() < cfg.Drive.maxCadence * 0.06
 
     if coasting and vRide > 0 then

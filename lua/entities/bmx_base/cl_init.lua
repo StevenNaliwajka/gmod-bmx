@@ -728,6 +728,29 @@ function ENT:Draw()
     tube(barL, gripL, 1.5 * k, COL_TYRE)            -- grips
     tube(barR, gripR, 1.5 * k, COL_TYRE)
 
+    -- THE BAR SHAPE (`barStyle`, G09/G12): the BMX's flat riser is the default.
+    -- DROP bars carry on forward and curl down and back from each outer end, the
+    -- road bike's hoods and drops; SWEPT bars run back toward the rider, the city
+    -- bike's. Both are drawn from the same bar points the hands are aimed at, so
+    -- they turn, spin and fold with the bars exactly as the flat bar does.
+    local style = bike.barStyle
+    if style == "drop" or style == "swept" then
+        local f = bars.fwd
+        for _, g in ipairs({ gripL, gripR }) do
+            if style == "drop" then
+                local a = g + f * (4.5 * k) - up * (1.2 * k)
+                local b = a + f * (2.0 * k) - up * (6.5 * k)
+                local c = b - f * (5.5 * k) - up * (1.0 * k)
+                tube(g, a, 1.2 * k, COL_TYRE)
+                tube(a, b, 1.2 * k, COL_TYRE)
+                tube(b, c, 1.2 * k, COL_TYRE)
+            else
+                local a = g - f * (6.5 * k) + up * (1.5 * k)
+                tube(g, a, 1.4 * k, COL_TYRE)
+            end
+        end
+    end
+
     -- The brake cable, from the right lever through the gyro to the rear brake
     -- (BMX.BrakeCable). Not at the far LOD, where it is under a pixel wide.
     if lod < 2 then
@@ -774,7 +797,7 @@ function ENT:Draw()
     -- pedals still; rolling forward (or back), pedals forward (or back). They
     -- used to follow the rider's networked cadence, which was only loosely the
     -- same thing and read as pedals with a mind of their own.
-    self.crankAngle = rSpin / C.Drive.gearRatio
+    self.crankAngle = rSpin / BMX.GearRatio(self, C)     -- the current gear's on a bike with gears
 
     local cr = rightW * (-CHAINY * k)            -- -Y local is +right world
     local ringC = bb + cr
@@ -819,6 +842,60 @@ function ENT:Draw()
     -- a bike spawned parked). Drawn from the bottom bracket to the ground on
     -- the LEFT, the side a parked bike leans on (Stand.standLean).
     ----------------------------------------------------------------------
+    ----------------------------------------------------------------------
+    -- THE BASKET (G12), if the vehicle has one: a wire box over the front wheel,
+    -- drawn from the same corners the server catches props in (sv_basket.lua), with
+    -- struts down to the head tube so it is a carrier and not a floating cage.
+    ----------------------------------------------------------------------
+    if bike.basket then
+        local bk = bike.basket
+        local function pt(x, y, z)
+            return self:LocalToWorld(Vector(x and bk.maxs.x or bk.mins.x, y and bk.maxs.y or bk.mins.y,
+                z and bk.maxs.z or bk.mins.z))
+        end
+        local w = 0.7
+        -- The twelve edges.
+        for _, a in ipairs({ false, true }) do
+            for _, b in ipairs({ false, true }) do
+                tube(pt(false, a, b), pt(true, a, b), w, COL_PART)      -- along x
+                tube(pt(a, false, b), pt(a, true, b), w, COL_PART)      -- along y
+                tube(pt(a, b, false), pt(a, b, true), w, COL_PART)      -- up z
+            end
+        end
+        -- The slats of the floor and the struts to the head tube.
+        if lod < 2 then
+            for i = 1, 3 do
+                local f = i / 4
+                local x = bk.mins.x + (bk.maxs.x - bk.mins.x) * f
+                tube(self:LocalToWorld(Vector(x, bk.mins.y, bk.mins.z)),
+                     self:LocalToWorld(Vector(x, bk.maxs.y, bk.mins.z)), w * 0.8, COL_PART)
+            end
+            for _, side in ipairs({ -1, 1 }) do
+                tube(self:LocalToWorld(Vector(bk.mins.x, bk.maxs.y * side, bk.mins.z)),
+                     headB + rightW * (2.5 * side), w, COL_CHROME)
+            end
+        end
+    end
+
+    ----------------------------------------------------------------------
+    -- THE CHILD SEAT (G11), when it is switched on and the bike has one: a pan, a
+    -- back and two rails to the rear dropouts, over the rear wheel, where the pod
+    -- (sv_passenger.lua) puts the child. Drawn from the seat registration's own
+    -- offset so it sits under whoever is in it.
+    ----------------------------------------------------------------------
+    if self.GetChildSeat and self:GetChildSeat() and BMX.HasSeat(bike, "child") then
+        local sd = BMX.SeatFor(bike, C, "child")
+        local pan = self:LocalToWorld(sd.offset - Vector(0, 0, 3))
+        solid("box", pan, bodyAng, Vector(9, 9, 2) * 1, COL_PART, MAT.matte)
+        local back = pan - fwdW * 4.5
+        tube(back - rightW * 4, back - rightW * 4 + upW * 9, 1.0, COL_PART)
+        tube(back + rightW * 4, back + rightW * 4 + upW * 9, 1.0, COL_PART)
+        tube(back - rightW * 4 + upW * 9, back + rightW * 4 + upW * 9, 1.0, COL_PART)
+        for _, side in ipairs({ 1, -1 }) do
+            tube(pan - fwdW * 3 + rightW * (4 * side) - upW * 1, rPosD + rightW * (2.5 * side), 0.8, COL_CHROME)
+        end
+    end
+
     if self:GetStandDown() then
         local from = bb - rightW * (2 * k)
         local want = from - upW * (16 * k) - rightW * (7 * k)

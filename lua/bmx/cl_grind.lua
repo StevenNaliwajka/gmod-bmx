@@ -83,7 +83,7 @@ hook.Add("Think", "BMX.Grind", function()
             local s = live[ent]
             local S = BMX.Sounds.grind
             local cfg = ent:Cfg()
-            local top = cfg.Drive.maxCadence * cfg.Drive.gearRatio * cfg.Wheel.radius
+            local top = BMX.Gears.TopCeiling(ent, cfg)
             local frac = math.Clamp(ent:GetVelocity():Length() / math.max(top, 1), 0, 1)
             if not s.patch then
                 s.patch = CreateSound(ent, S.path)

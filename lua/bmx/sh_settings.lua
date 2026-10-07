@@ -247,6 +247,9 @@ client{ name = "bmx_rider_anim", kind = "bool", default = true, category = "ride
 client{ name = "bmx_rider_ik", kind = "bool", default = true, category = "rider",
     label = "Hands on the bars",
     help = "Put riders' hands on the grips and feet on the pedals. Off uses a simpler swing, which looks worse but costs less." }
+client{ name = "bmx_shift_wheel", kind = "bool", default = true, category = "rider",
+    label = "Shift gears with the mouse wheel",
+    help = "On a bike with gears (the road bike), the mouse wheel changes gear as well as [ and ]. Off leaves the wheel to the weapon switch." }
 client{ name = "bmx_rider_pose", kind = "choice", default = "seated", choices = { "seated", "standing", "attack" },
     category = "rider", label = "Riding position",
     help = "How you sit on the bike: seated, standing on the pedals, or the low attack position. Other players see it too." }
@@ -311,6 +314,12 @@ server{ name = "bmx_air_assist", kind = "bool", default = true, category = "feel
 server{ name = "bmx_nose_manual", kind = "bool", default = false, category = "feel",
     label = "Nose manual",
     help = "Lean forward (left mouse with Ctrl) and let go of the brake to keep rolling on the front wheel, W and S trimming the balance. Off by default until it has been ridden on your server: with it off, a stoppie ends when the brake does." }
+server{ name = "bmx_passengers", kind = "bool", default = true, category = "vehicles",
+    label = "Allow passengers",
+    help = "A second player may ride on a bike's rear pegs or in a child seat (E on the back of a ridden bike). Off: nobody can get on, and anyone already aboard is put off." }
+server{ name = "bmx_fixie_frontbrake", kind = "bool", default = false, category = "vehicles",
+    label = "Front brake on the fixie",
+    help = "A fixed gear's only brake is its legs, and LMB does nothing on one. On, LMB brakes the front wheel of a fixie as it does on a BMX." }
 
 server{ name = "bmx_crash_ragdoll", kind = "bool", default = true, category = "rules",
     label = "Crashes throw the rider",

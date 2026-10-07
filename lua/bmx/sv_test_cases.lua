@@ -1675,7 +1675,7 @@ end)
 -- written against was measuring the stock bike's numbers rather than the
 -- behaviour, and these are what find out.
 --------------------------------------------------------------------------
-for _, bike in ipairs({ "cruiser", "mini" }) do
+for _, bike in ipairs({ "cruiser", "mini", "road", "fixie", "city" }) do
     for _, name in ipairs({ "rest", "parked_on_stand", "fallen_is_picked_up",
                             "accelerate", "brake_locks", "lean_steers",
                             "lean_tracks_target", "bunny_hop", "wheelie",
@@ -1846,6 +1846,175 @@ function(ctx)
             ctx:ok(w.steer == 0, "the rear wheels do not steer")
         end
     end
+    ctx:input({})
+end)
+
+--------------------------------------------------------------------------
+-- THE FIXED GEAR (G10): the one bike whose brake is its legs.
+--
+-- "fixie_skid_stop": from 15 mph, S locks the legs and the rear tyre skids it to a
+-- stop in under 8 m, with the skid networked (the bike's `Skidding` flag, which is
+-- what the client's tyre sound listens to). It rides `vehicle = "fixie"` (like the test
+-- cart, so the suite's "every other case is a stock case" check holds); the riding cases
+-- above are run on it too (the variants), against the same bands.
+--
+-- Written against the plant and not yet run on a server (no server was to hand): the
+-- bands are the goal's own (8 m, a networked skid), not tuned numbers.
+--------------------------------------------------------------------------
+T.Case("fixie_skid_stop", { vehicle = "fixie", timeout = 30,
+    desc = "a fixie from 15 mph: S stops it in under 8 m, the tyre skids and the skid is networked" },
+function(ctx)
+    local b = ctx.bike
+    ctx:ok(b:Bike().drive.kind == "fixed", "it is on the fixed drive")
+    ctx:ok(ctx:accelerateTo(15 * 17.6, 14), "got up to 15 mph")
+    ctx:input({})
+    local start = b:GetPos()
+    local skid = false
+    local grounded = ctx:runUntil(6, function()
+        skid = skid or b:GetSkidding()
+        return ctx:st().speed < 5
+    end, { brakeRear = 1 })
+    local dist = (b:GetPos() - start):Length()
+    ctx:log(string.format("stopped from 15 mph in %.1f m (%.0f u), skid networked: %s",
+        dist / 39.37, dist, tostring(skid)))
+    ctx:ok(grounded, "stayed on the ground")
+    ctx:ok(ctx:st().speed < 5, "it stopped: " .. string.format("%.1f u/s", ctx:st().speed))
+    ctx:between(dist / 39.37, 0, 8, "stopping distance", "m")
+    ctx:ok(skid, "the skid was networked (b:GetSkidding())")
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+end)
+
+--------------------------------------------------------------------------
+-- A SECOND RIDER (G11): the pegs, boarded and crashed with two bots.
+--
+-- THE HARNESS CAN SEAT A SECOND BOT: a bot is a player, player.CreateNextBot makes
+-- another by name, and EnterVehicle takes any pod. So this case makes "BMXTestPax"
+-- (once, kept for the rest of the run like the rider bot) and has it board the way a
+-- person does, minus the aiming: BMX.Passenger.TryBoard, which is what E calls. If the server has no free player
+-- slot the case says so and passes nothing it did not check, rather than failing for
+-- a reason that is the server's.
+--
+-- It checks the three things the goal asks: both are seated, the mass changed, and a
+-- forced crash puts both off the bike with a BMX_RiderCrashed for each and no error
+-- (the harness's own universal check, NaN and a vanished bike, runs after it).
+--
+-- Written against the offline plant (tests/test_passenger.lua); not yet run on a
+-- server, where the second bot's seating is the one thing the plant cannot show.
+--------------------------------------------------------------------------
+local PAX_NAME = "BMXTestPax"
+
+local function ensurePaxBot()
+    for _, p in ipairs(player.GetAll()) do
+        if p:IsBot() and p:Nick() == PAX_NAME then return p end
+    end
+    if #player.GetAll() >= game.MaxPlayers() then return nil, "no free player slot" end
+    local b = player.CreateNextBot(PAX_NAME)
+    if not IsValid(b) then return nil, "player.CreateNextBot returned nothing" end
+    return b
+end
+
+T.Case("passenger_mount_and_crash", { timeout = 40,
+    desc = "a second bot boards the rear pegs (E), the bike gets heavier, and a forced crash puts both off with BMX_RiderCrashed for each" },
+function(ctx)
+    local b = ctx.bike
+    local pax, why = ensurePaxBot()
+    if not pax then
+        ctx:log("SKIPPED the boarding: " .. tostring(why))
+        return
+    end
+    pax.BMXScripted = true
+    pax:SetPos(ctx.ground + Vector(-40, 0, 8))
+    if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+
+    local base = b:Cfg().Chassis.mass
+    local m0 = b:GetPhysicsObject():GetMass()
+    ctx:wait(0.3)
+    BMX.Passenger.TryBoard(b, pax, true)        -- E on the rear, without a trace to point with
+    ctx:wait(0.3)
+    ctx:ok(pax:InVehicle(), "the passenger is seated")
+    ctx:ok(b:GetPaxPegs() == pax, "on the pegs, and the bike knows")
+    ctx:ok(b:GetDriver() == ctx.bot, "the rider is undisturbed")
+    ctx:between(b:GetPhysicsObject():GetMass() / m0, 1.5, 1.7, "mass with the passenger over without", "x")
+    ctx:ok(ctx:st().grounded, "still on its wheels")
+
+    -- Ride a little with the two of them, then crash it.
+    ctx:accelerateTo(120, 12)
+    local took = {}
+    hook.Add("BMX_RiderCrashed", "BMX.TestPaxCrash", function(ply, vel, bike)
+        if bike == b then took[#took + 1] = ply end
+        return true            -- ours: no ragdoll to clean up after the case
+    end)
+    b:Crash("angle", 0.6)
+    ctx:wait(0.4)
+    hook.Remove("BMX_RiderCrashed", "BMX.TestPaxCrash")
+    ctx:ok(#took == 2, "BMX_RiderCrashed fired for each: " .. #took)
+    ctx:ok(not pax:InVehicle(), "the passenger is off the bike")
+    ctx:ok(not IsValid(b:GetDriver()), "and so is the rider")
+    ctx:ok(not IsValid(b:GetPaxPegs()), "the pegs are empty")
+    ctx:between(b:GetPhysicsObject():GetMass() / m0, 0.99, 1.01, "mass is back", "x")
+    if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+end)
+
+--------------------------------------------------------------------------
+-- THE BASKET (G12), on the real engine: a small prop in a city bike's basket is
+-- still in it after riding gently, and is thrown out by a full-speed hop.
+--
+-- The prop is a pop can (a base-game model; one kilogram or so) put in the middle
+-- of the box. The gentle ride is 20 m at 10 mph where the test ground allows it, or
+-- as far as it does: the ground is finite, and the claim is "gentle riding does not
+-- shake it out", not a length. The hop is the bike's own (ctx:hop()).
+--
+-- Written against the offline plant (tests/test_citybike.lua); not yet run on
+-- VPhysics. What can differ there is the noise in the bike's acceleration, which the
+-- basket reads over a 50 ms window against a four-g threshold (sv_basket.lua): a hold
+-- that is too tight shows up here as the prop coming out on the ride.
+--------------------------------------------------------------------------
+T.Case("basket_keeps_prop", { vehicle = "city", timeout = 45,
+    desc = "a prop in a city bike's basket stays in for 20 m at 10 mph and is thrown out by a hop at speed" },
+function(ctx)
+    local b = ctx.bike
+    local bk = BMX.Basket.Of(b)
+    ctx:ok(bk ~= nil, "the city bike has a basket")
+    if not bk then return end
+
+    local prop = ents.Create("prop_physics")
+    if not IsValid(prop) then ctx:ok(false, "could not make a prop") return end
+    prop:SetModel("models/props_junk/PopCan01a.mdl")
+    prop:SetPos(b:LocalToWorld((bk.mins + bk.maxs) * 0.5))
+    prop:Spawn()
+    prop:Activate()
+    ctx.solids = ctx.solids or {}
+    ctx.solids[#ctx.solids + 1] = prop            -- removed with the case
+
+    ctx:wait(0.4)
+    ctx:ok(prop.BMXBasket == b, "the prop in the box was caught")
+    local at = b:WorldToLocal(prop:GetPos())
+
+    -- Gently: up to 10 mph, then hold it for as far as the ground allows, 20 m at most.
+    ctx:ok(ctx:accelerateTo(150, 14), "got up to a gentle speed")
+    local start = b:GetPos()
+    local want = math.min(20 * 39.37, math.max(ctx.runway - 200, 200))
+    local peak = 0
+    ctx:runUntil(12, function()
+        peak = math.max(peak, b.basketAccel or 0)
+        return (b:GetPos() - start):Length() >= want
+    end, { throttle = 0.45 })
+    ctx:log(string.format("rode %.1f m, the bike's peak acceleration %.0f u/s^2 (hold %d)",
+        (b:GetPos() - start):Length() / 39.37, peak, select(3, BMX.Basket.Of(b))))
+    ctx:ok(prop.BMXBasket == b, "the prop is still in the basket after the ride")
+    ctx:ok((b:WorldToLocal(prop:GetPos()) - at):Length() < 4, "and where it was put")
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
+
+    -- A hop at speed: out, and flying.
+    local v = ctx:st().speed
+    ctx:input({ throttle = 0.45 })
+    ctx:hop()
+    local out = ctx:waitUntil(function() return prop.BMXBasket == nil end, 1.2, "the hop to throw the prop out")
+    ctx:log(string.format("hopped at %.0f u/s", v))
+    ctx:ok(out, "the hop threw it out")
+    ctx:wait(1.5)
+    ctx:ok(not BMX.Basket.Contains(b, bk, prop:GetPos()), "and it is not in the basket any more")
+    ctx:ok(prop.BMXBasket == nil, "nor taken back")
     ctx:input({})
 end)
 

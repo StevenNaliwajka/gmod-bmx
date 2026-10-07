@@ -144,6 +144,19 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     inp.sprint     = down("sprint")
     inp.tuck       = down("tuck")
     inp.wheelieMod = down("weightBack")
+    -- THE FRONT BRAKE is the map's `brakeFront` on the GROUND, which a fixie's and
+    -- a city bike's map does not list (bike_rearonly: LMB is only a tailwhip,
+    -- in the air). A fixie rider can ask for a front brake back with
+    -- bmx_fixie_frontbrake 1; the city bike's coaster brake is S and that is all.
+    local ba = map.actions.brakeFront
+    local frontBrake = ba ~= nil and down("brakeFront")
+    if frontBrake then
+        local onGround = false
+        for _, c in ipairs(ba.ctx) do if c == "ground" then onGround = true end end
+        if not onGround and not (BMX.FrontBrakeConVar and BMX.FrontBrakeConVar(bike)) then
+            frontBrake = false
+        end
+    end
 
     ----------------------------------------------------------------------
     -- LMB: THE FRONT BRAKE, AND WEIGHT FORWARD (G02).
@@ -164,7 +177,7 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     -- brake mode the latch needs LMB down with it. On the ground only (in the
     -- air LMB is the tailwhip, read below from the raw key).
     ----------------------------------------------------------------------
-    local lmb, ctrl = down("brakeFront"), inp.tuck
+    local lmb, ctrl = frontBrake, inp.tuck
     local leanMode = ply:GetInfo("bmx_lmb_mode") == "lean"
     local leanFwd
     if leanMode then

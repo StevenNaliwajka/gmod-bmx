@@ -39,11 +39,11 @@ end
 -- The registry
 --------------------------------------------------------------------------
 
-T.test("bikes: all three are registered, with their own classes", function()
+T.test("bikes: the BMXs and the road bike are registered, with their own classes", function()
     local sv = F.server()
     local B = sv.env.BMX
     local ids = B.BikeIDs()
-    T.eq(table.concat(ids, ","), "cruiser,mini,stock", "the shipped bikes, sorted")
+    T.eq(table.concat(ids, ","), "city,cruiser,fixie,mini,road,stock", "the shipped bikes, sorted")
     T.eq(B.ClassFor("cruiser"), "bmx_cruiser", "cruiser class")
     T.eq(B.ClassFor("mini"), "bmx_mini", "mini class")
     T.eq(B.ClassFor("CRUISER"), "bmx_cruiser", "ids are case-insensitive")
@@ -382,12 +382,12 @@ T.test("bikes: a fresh bike starts in its own colour when its spawner has no pre
     end
 end)
 
-T.test("bikes: an unknown bike name lists all three", function()
+T.test("bikes: an unknown bike name lists them all", function()
     local sv = F.server()
     local ply = looker(sv)
     sv:command("bmx_spawn", ply, "tandem")
     local said = table.concat(ply._chat, "\n")
-    T.ok(said:find("cruiser, mini, stock", 1, true), "lists them: " .. said)
+    T.ok(said:find("city, cruiser, fixie, mini, road, stock", 1, true), "lists them: " .. said)
 end)
 
 --------------------------------------------------------------------------

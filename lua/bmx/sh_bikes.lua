@@ -144,8 +144,12 @@ end
 --                 axle's brake it takes (default: pos.x > 0).
 --   balance       "singletrack" | "board" | "none": sv_balance.lua.
 --   drive         { kind = "pedal" | "throttle" | "push" | "none", ... }
---   seats         { { model, offset, angles } }: the rider's seat. Omitted, it
---                 is the config's Chassis.seatOffset / seatAngles.
+--   seats         { rider = {...}, pegs = {...}, child = {...} }: the seats. Each is
+--                 { model, offset, angles, massFactor }, every key optional (an empty
+--                 table is all defaults, sh_passenger.lua). `rider` is always there;
+--                 omitted, it is the config's Chassis.seatOffset / seatAngles. `pegs` is
+--                 a second rider on the rear pegs, `child` a child seat. The older list
+--                 form, { { model, offset, angles } }, is still the rider's seat.
 --   input         an id in BMX.InputMaps (sh_vehicles.lua).
 --   pose          an id in BMX.PoseSets (cl_rider.lua fills each in).
 --   tricks        "all", or a list of trick ids this vehicle can do.
@@ -375,6 +379,8 @@ BMX.RegisterBike("stock", {
     printName   = "BMX",
     description = "Street BMX with lean-driven handling.",
     colorIndex  = 1,            -- red; see BMX.Palette in sh_color.lua
+    -- A second rider can stand on the rear pegs (G11): E on the back of a ridden bike.
+    seats       = { pegs = {} },
 })
 
 -- THE OTHER TWO are the stock bike with other geometry, and nothing else: no
@@ -399,6 +405,7 @@ BMX.RegisterBike("cruiser", {
     printName   = "BMX Cruiser",
     description = "24-inch cruiser: longer, heavier and faster at the top end, slower off the line.",
     colorIndex  = 8,            -- blue
+    seats       = { pegs = {} },
     physics = {
         Chassis = { mass = 94, seatOffset = Vector(-11.6, 0, 19.8) },  -- x 43/39
         -- restLength 10 rather than 8: more travel for a bigger wheel, and
@@ -420,6 +427,130 @@ BMX.RegisterBike("mini", {
     physics = {
         Chassis = { mass = 82, seatOffset = Vector(-9.2, 0, 15.7) },   -- x 34/39
         Wheel   = { radius = 8, wheelbase = 34 },
+    },
+})
+
+--------------------------------------------------------------------------
+-- 700c ROAD BIKE (G09). The first bike with GEARS, and the first that is not a
+-- BMX in different clothes: a long, light frame on big narrow tyres, drop bars, a
+-- tucked rider, built to be fast on the flat and poor over a jump.
+--
+-- WHAT IS DIFFERENT, and why each number is where it is:
+--   wheel 13.8 / wheelbase 48   a 700c wheel (~27 in across) and a bike a fifth
+--                               longer than the BMX. Long means steady and slow to
+--                               turn in, which is the road bike's character.
+--   restLength 11.8            more travel for a bigger wheel, and the wheel boxes'
+--                               floor -(radius - restLength) back at the stock -2,
+--                               under the chainring by no more than a BMX's is (the
+--                               cruiser's note, above, is why it matters to a grind).
+--   mass 78                     the rider and a bike half the weight of a BMX's.
+--   grip 1.5, rolling 0.007     narrow, hard, high-pressure tyres: more grip per
+--                               contact patch and much less rolling loss.
+--   dragArea 0.0037             a rider tucked over drops presents well under the
+--                               BMX rider's frontal area.
+--   gears                       eight ratios, 1.2 to 3.5. The bottom one (1.2) is a
+--                               standing start in a low gear, the top one at the
+--                               legs' ceiling is 12.6 * 3.5 * 13.8 = 608 u/s and
+--                               terminal speed there is ~1.6x the BMX's (measured on
+--                               the plant, tests/test_road.lua) with the legs at
+--                               ~100 rpm. Neighbouring gears' 60-110 rpm bands
+--                               overlap all the way up from a jog (BMX.Gears.Covers).
+--   crankTorque 310000          a touch over the BMX's: the gears do the rest. A low
+--                               gear multiplies the push at the wheel, which the
+--                               tyre has grip for (1.5 * the rear's share of 78 kg).
+--   Hop.popSpeed 190           a road bike does not bunny hop like a BMX does.
+--   Balance leanKp/Kd, fadeInHigh   the lean (and so the steer that comes from it)
+--                               is answered faster once the bike is moving: the
+--                               assist is whole by 95 u/s, not 110. Quicker at
+--                               speed, which is where a road bike lives.
+--
+-- THE SCORE IS x1.5, "the road bike tax": tricks are allowed and still pay, and
+-- paying more is what makes a road bike backflip a thing a server remembers.
+BMX.RegisterBike("road", {
+    printName   = "Road Bike",
+    description = "700c road bike: long, light and fast, with gears ([ ] or the mouse wheel), drop bars and a tucked rider. Tricks score x1.5.",
+    colorIndex  = 13,           -- white
+    gears       = { ratios = { 1.2, 1.5, 1.8, 2.15, 2.5, 2.85, 3.15, 3.5 }, start = 4 },
+    input       = "road",
+    pose        = "road",
+    barStyle    = "drop",
+    scoreMult   = 1.5,
+    physics = {
+        Chassis = { mass = 78, seatOffset = Vector(-12.9, 0, 22.2) },  -- x 48/39
+        Wheel   = { radius = 13.8, wheelbase = 48, restLength = 11.8,
+                    grip = 1.5, rollingResistance = 0.007 },
+        Drive   = { crankTorque = 310000, dragArea = 0.0037 },
+        Hop     = { popSpeed = 190 },
+        Balance = { leanKp = 300, leanKd = 70, fadeInHigh = 95 },
+    },
+})
+
+--------------------------------------------------------------------------
+-- THE FIXIE (G10): a track bike with ONE gear and no freewheel. The cranks are
+-- locked to the rear wheel (drive kind "fixed", sv_fixie.lua), so coasting turns the
+-- legs and drags the bike down a little, S is a skid stop, S at a standstill pedals
+-- backwards (fakie, scored) and A or D at a standstill is a trackstand (scored).
+-- Its only brake is its legs, so LMB does nothing unless the server turns
+-- bmx_fixie_frontbrake on: the `bike_rearonly` input map.
+--
+-- 700c wheels and a short, light frame (the numbers a road bike's, without the
+-- gears): gearRatio 2.6, which is a 46t ring on a 17t cog (2.7) near enough, puts the
+-- legs' ceiling at 12.6 * 2.6 * 13.8 = 452 u/s and the top speed under it. `fixedGear`
+-- is the config's own switch for "the wheel has no freewheel floor" (sv_wheel.lua):
+-- without it the wheel could not turn slower than the ground and the legs' drag
+-- would be a number nothing read. `rearBrake` is twice a BMX's: the brake is the
+-- rider's LEGS, which are a good deal stronger than a caliper, so S really does lock
+-- the wheel and skid it (a skid stop from 15 mph is ~3.7 m on the plant; at the BMX's
+-- 95,000 it was 7.6 m, which is a brake, not a skid).
+BMX.RegisterBike("fixie", {
+    printName   = "Fixie",
+    description = "Fixed-gear track bike: the cranks are locked to the rear wheel. Coasting turns the legs, S skids, S at a standstill rolls it backwards (fakie), A/D at a standstill is a trackstand. No front brake.",
+    colorIndex  = 2,            -- orange
+    drive       = { kind = "fixed" },
+    input       = "bike_rearonly",
+    physics = {
+        Chassis = { mass = 80, seatOffset = Vector(-11.85, 0, 20.3) },  -- x 44/39
+        Wheel   = { radius = 13.8, wheelbase = 44, restLength = 11.8, grip = 1.6, rollingResistance = 0.008 },
+        Drive   = { gearRatio = 2.6, fixedGear = true, dragArea = 0.0045, rearBrake = 200000 },
+    },
+})
+
+--------------------------------------------------------------------------
+-- THE CITY BIKE (G12): a Dutch bike. Upright, heavy and unhurried, with swept-back
+-- bars, a coaster brake, a front basket, a kickstand (every bike has one), the bell
+-- (sv_bell.lua, R) and a child seat that is on a context-menu switch.
+--
+--   wheel 14 / wheelbase 52     a 28-inch wheel and a long frame; the seat scales
+--                               with it, x 52/39
+--   mass 112                    heavy: the rider, a steel frame, a rack and a basket
+--   Drive maxCadence 9.5        a rider in no hurry: the legs' ceiling is 91 rpm.
+--                               With gearRatio 2.0 on the 28-inch wheel the top speed
+--                               is ~235 u/s (21 km/h on the plant), three quarters of
+--                               the BMX's, and a standing start takes a second longer
+--   dragArea 0.0065             sat up straight, a sail
+--   Hop.popSpeed 150            it is not a bike for hopping
+--   Balance maxLean 34 deg      a Dutch bike does not lean into a corner like a BMX
+--   coaster, bike_rearonly      S is the brake (a coaster brake); LMB does nothing
+--   basket                      a box in front of the bars: 20 deep, 20 wide, 16 tall,
+--                               its floor a hand over the wheel. Props up to 12 kg ride
+--                               in it (sv_basket.lua)
+--   seats = { child = {} }      no pegs: a Dutch bike carries a child on the back
+BMX.RegisterBike("city", {
+    printName   = "City Bike",
+    description = "Dutch-style city bike: upright, heavy and slow, with a coaster brake (S), swept-back bars, a front basket (props stay in while you ride gently), a kickstand and a bell. A child seat is on the context menu. LMB does nothing.",
+    colorIndex  = 14,           -- black
+    drive       = { kind = "coaster" },
+    input       = "bike_rearonly",
+    pose        = "upright",
+    barStyle    = "swept",
+    seats       = { child = {} },
+    basket      = { mins = Vector(23, -10, 21), maxs = Vector(43, 10, 37), maxMass = 12 },
+    physics = {
+        Chassis = { mass = 112, seatOffset = Vector(-14, 0, 24) },     -- x 52/39
+        Wheel   = { radius = 14, wheelbase = 52, restLength = 12, grip = 1.35 },
+        Drive   = { maxCadence = 9.5, gearRatio = 2.0, crankTorque = 360000, dragArea = 0.0065 },
+        Hop     = { popSpeed = 150 },
+        Balance = { maxLean = math.rad(34) },
     },
 })
 

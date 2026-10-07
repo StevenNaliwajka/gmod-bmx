@@ -41,6 +41,8 @@ local SHARED = {
     "bmx/sh_util.lua",
     "bmx/sh_tricks.lua",    -- the trick registry; the scoring and the overlay read it
     "bmx/sh_vehicles.lua",  -- what a vehicle is: families, input maps, pose sets, the checks
+    "bmx/sh_gears.lua",     -- the gear model: ratios, cadence, which gear a bike is in (G09)
+    "bmx/sh_passenger.lua", -- seats, the passenger's mass, the child seat's switch (G11)
     "bmx/sh_bikes.lua",
     "bmx/sh_sound.lua",
     "bmx/sh_color.lua",     -- the palette and the ways to choose from it
@@ -58,9 +60,13 @@ local SERVER_FILES = {
     "bmx/sv_combo.lua",     -- chained tricks: before sv_physics too
     "bmx/sv_tricks.lua",    -- frame/bar spins and style poses: before sv_physics too
     "bmx/sv_physics.lua",
+    "bmx/sv_fixie.lua",     -- the fixed-gear drive, its two tricks, its front-brake switch (G10)
     "bmx/sv_seat.lua",
+    "bmx/sv_passenger.lua", -- a second rider: boarding, mass, the crash (G11)
+    "bmx/sv_basket.lua",    -- a city bike's basket: props ride in it until the ride is not gentle (G12)
     "bmx/sv_compat_ragmod.lua", -- RagMod, if installed: before the crash path asks
     "bmx/sv_bell.lua",      -- R on the ground rings the bell
+    "bmx/sv_gears.lua",     -- [ ] and the wheel change gear (G09)
     "bmx/sv_water.lua",     -- drag, splash and ejection in water (sv_physics checks for it)
     "bmx/sv_stance.lua",    -- copies each rider's bmx_rider_pose onto the player
     "bmx/sv_rules.lua",     -- server-owner settings: bike limit, scoring on/off
@@ -82,6 +88,8 @@ local CLIENT_FILES = {
     "bmx/cl_hud.lua",
     "bmx/cl_sound.lua",
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
+    "bmx/cl_gears.lua",     -- the shift keys, sent to the server (G09)
+    "bmx/cl_passenger.lua", -- who is a passenger, how they sit, where their hands go (G11)
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
     "bmx/cl_filmer.lua",    -- views through a bmx_filmer_cam (bmx_filmer_view)
     "bmx/cl_replay.lua",    -- the last 30 s, played back (bmx_replay)

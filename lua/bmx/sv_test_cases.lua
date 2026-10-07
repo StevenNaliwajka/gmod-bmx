@@ -1624,18 +1624,20 @@ function(ctx)
     local xa = g.x + 500
     T.Solid(ctx, { boxHull(xa, xa + 300, g.z - 8, g.z + h) })
     ctx:wait(0.3)
-    -- 7 s, not 4.5: at 3 mph (53 u/s) from 200 u back a long bike (cruiser,
-    -- road, fixie, city, wheelbase 45-52) had its rear wheel still short of
-    -- the curb when the clock ended (x = -8 against a curb edge at 0, CI
-    -- a326eb6) while the stock bike, a few units shorter, made it. The case is
-    -- about climbing, not about the last second.
-    -- THROTTLE 0.5, NOT 0.2: the light stock bike climbs on 0.2, but the mini,
-    -- the fixie and the 112 kg city bike were found stalled against the edge
-    -- with the front on top and the rear wheel not (x = -1, 1; CI 2649522): a
-    -- wheel that has to climb needs the drive torque to do it. The approach is
-    -- still the 53 u/s the case is named for; this is only what the rear
-    -- wheel pushes with once it meets the step.
-    rideAt(ctx, xa - 200, 53, 0.5, 7)
+    -- MEASURED WHEN THE REAR WHEEL IS UP, NOT AT A FIXED TIME. At 3 mph (53 u/s)
+    -- from 200 u back the bikes arrive at the curb at different moments (a
+    -- 4.5 s clock left the long ones short of it, x = -8, CI a326eb6; a 7 s clock
+    -- left the stock bike off the far end of the 300 u curb, ride height 7.1 =
+    -- the floor again, CI a0ad944). So it rides until the rear wheel is 10 u
+    -- onto the curb, and reads the height a quarter second later. And at
+    -- THROTTLE 0.5, not 0.2: the mini, the fixie and the 112 kg city bike
+    -- stalled against the edge on 0.2 with the front up and the rear not
+    -- (x = -1, 1; CI 2649522): the wheel that climbs needs drive torque. The
+    -- approach is still the 53 u/s the case is named for.
+    rideAt(ctx, xa - 200, 53, 0.5, 0)
+    ctx:waitUntil(function() return ctx.bike:GetPos().x - WC.wheelbase * 0.5 > xa + 10 end, 9,
+        "the rear wheel to get onto the curb")
+    ctx:wait(0.25)
     local pos = ctx.bike:GetPos()
     local f, r = ctx:wheels()
     ctx:ok(pos.x - WC.wheelbase * 0.5 > xa + 4, "the REAR wheel is over the edge too: x = " .. math.floor(pos.x))

@@ -310,13 +310,24 @@ end
 -- bushes and hedges are not here: they are leaf cards in the city's meshes.
 --------------------------------------------------------------------------
 City._plantEnts = City._plantEnts or {}
+City._plantRetry = City._plantRetry or {}
+-- Is the model there? util.IsValidModel alone is no answer on the client: it
+-- says false for any model nobody has precached yet, which at InitPostEntity
+-- is every tree -- and once cached as missing, not one tree or lamp was drawn.
+local function haveModel(path)
+    if util.IsValidModel and util.IsValidModel(path) then return true end
+    return file and file.Exists and file.Exists(path, "GAME") or false
+end
 local function plantModel(kind, existing)
     local m = City._plantEnts[kind]
-    if m == false then return nil end
-    if IsValid(m) or existing then return IsValid(m) and m or nil end
+    if IsValid(m) then return m end
+    if m == false and CurTime() < (City._plantRetry[kind] or 0) then return nil end
+    if existing and m == nil then return nil end
     local P = City.Plants[kind]
-    if not P or (util.IsValidModel and not util.IsValidModel(P.model)) then
+    if not P or not haveModel(P.model) then
+        -- try again in a few seconds, not never
         City._plantEnts[kind] = false
+        City._plantRetry[kind] = CurTime() + 3
         return nil
     end
     m = ClientsideModel(P.model, RENDERGROUP_OPAQUE)
@@ -326,6 +337,75 @@ local function plantModel(kind, existing)
     -- past ~800 units, and from across the park every tree went leafless
     m:SetLOD(0)
     City._plantEnts[kind] = m
+    return m
+end
+
+-- Autumn crowns. HL2's tree leaves are a sparse, dark sheet made to be lit;
+-- they cannot be turned into a full red-and-gold crown. So each tree wears a
+-- crown of leaf cards -- the hedges' own leaves and colours, so trees and
+-- bushes match -- built once per kind in the tree's own space and drawn
+-- through the same transform as the tree, so they sway together.
+City.CROWN_MATS = { "leaves_red", "leaves_orange", "leaves_gold", "leaves_rust" }
+City._crowns = City._crowns or {}
+function City.CrownQuads(kind)
+    local P = City.Plants[kind]
+    local rng = City.Rng(#kind * 7919 + P.h)
+    local out = {}
+    local h, r = P.h, P.r
+    -- an egg of clusters round the upper part of the tree
+    local cz, rz, rr = h * 0.66, h * 0.24, r * 0.62
+    if kind == "poplar" then cz, rz, rr = h * 0.58, h * 0.36, r * 0.32 end
+    local n = math.floor(22 + h / 12)
+    for _ = 1, n do
+        local a = rng.float() * math.pi * 2
+        local d = math.sqrt(rng.float())
+        local x, y = math.cos(a) * rr * d, math.sin(a) * rr * d
+        local z = cz + (rng.float() * 2 - 1) * rz * math.sqrt(1 - d * d * 0.7)
+        local w = (0.62 + rng.float() * 0.3) * math.max(rr, 80)
+        -- darker underneath and inside, bright on top
+        local shade = math.min(1, 0.62 + 0.38 * ((z - (cz - rz)) / (2 * rz)) + 0.1 * d)
+        local rot = rng.float() * math.pi
+        for k = 0, 2 do
+            local t = rot + k * math.pi / 3
+            local ux, uy = math.cos(t), math.sin(t)
+            local u0 = (k * 0.37) % 1
+            -- the leaf art is ragged at the top and cut off square at the
+            -- bottom: each card is two halves, the top one the art's ragged
+            -- crown, the bottom one the same mirrored, so no edge is straight
+            out[#out + 1] = { x - ux * w / 2, y - uy * w / 2, z + w / 2,
+                              x + ux * w / 2, y + uy * w / 2, z + w / 2,
+                              x + ux * w / 2, y + uy * w / 2, z,
+                              x - ux * w / 2, y - uy * w / 2, z, shade, u0, 0, 0.62 }
+            out[#out + 1] = { x - ux * w / 2, y - uy * w / 2, z,
+                              x + ux * w / 2, y + uy * w / 2, z,
+                              x + ux * w / 2, y + uy * w / 2, z - w / 2,
+                              x - ux * w / 2, y - uy * w / 2, z - w / 2, shade * 0.9, u0, 0.62, 0 }
+        end
+    end
+    return out
+end
+
+local function crownMesh(kind, mood)
+    local c = City._crowns[kind]
+    if c ~= nil then return c or nil end
+    if not Mesh then City._crowns[kind] = false return nil end
+    local quads = City.CrownQuads(kind)
+    local m = Mesh()
+    mesh.Begin(m, MATERIAL_QUADS, #quads)
+    for _, q in ipairs(quads) do
+        local s = q[13]
+        local r, g, b = clamp255(s * mood[1]), clamp255(s * mood[2]), clamp255(s * mood[3])
+        local u0, v0, v1 = q[14], q[15], q[16]
+        local uv = { u0, v0, u0 + 1, v0, u0 + 1, v1, u0, v1 }
+        for v = 0, 3 do
+            mesh.Position(Vector(q[v * 3 + 1], q[v * 3 + 2], q[v * 3 + 3]))
+            mesh.TexCoord(0, uv[v * 2 + 1], uv[v * 2 + 2])
+            mesh.Color(r, g, b, 255)
+            mesh.AdvanceVertex()
+        end
+    end
+    mesh.End()
+    City._crowns[kind] = m
     return m
 end
 
@@ -342,7 +422,9 @@ function City.BuildPlants(layout)
         out[#out + 1] = {
             kind = p.kind, pos = Vector(p.x, p.y, p.z), ang = Angle(0, p.yaw, 0), matrix = mx,
             center = Vector(p.x, p.y, p.z + P.h * p.scale / 2), radius = math.max(P.r, P.h / 2) * p.scale,
+            scale = p.scale,
             still = P.still, phase = (p.x * 0.0123 + p.y * 0.0171) % (math.pi * 2),
+            fall = 1 + math.floor(math.abs(p.x * 0.37 + p.y * 0.61)) % #City.CROWN_MATS,
             -- tall thin trees sway further at the top than squat ones
             sway = math.min(1.6, 0.6 + P.h * p.scale / 600),
         }
@@ -350,8 +432,12 @@ function City.BuildPlants(layout)
     -- grouped by kind: one model swap per kind per frame
     table.sort(out, function(a, b) return a.kind < b.kind end)
     City.plants = out
-    -- the models are made here, once, not in the middle of a frame
-    for _, p in ipairs(out) do plantModel(p.kind) end
+    -- the models and crowns are made here, once, not in the middle of a frame
+    local mood = layout.mood and layout.mood.light or { 1, 1, 1 }
+    for _, p in ipairs(out) do
+        plantModel(p.kind)
+        if not p.still then crownMesh(p.kind, mood) end
+    end
     return out
 end
 
@@ -389,6 +475,17 @@ local function drawPlants(eye, fwd, cosH, sinH)
                 m:SetupBones()
                 m:DrawModel()
                 drawn = drawn + 1
+                local crown = not p.still and City._crowns[p.kind]
+                if crown then
+                    local mx = Matrix()
+                    mx:SetTranslation(p.pos)
+                    mx:SetAngles(ang)
+                    if p.scale ~= 1 then mx:Scale(Vector(p.scale, p.scale, p.scale)) end
+                    cam.PushModelMatrix(mx)
+                        render.SetMaterial(City.Material(City.CROWN_MATS[p.fall]))
+                        crown:Draw()
+                    cam.PopModelMatrix()
+                end
             end
         end
     end
@@ -947,6 +1044,55 @@ local LOOKS = { ad = adSign, transit = transitSign, street = streetSign }
 -- the panel's height in 3D2D pixels for each look (its width follows)
 local PANEL_PX = { ad = 360, transit = 180, street = 170 }
 
+-- Signs are painted boards, not screens: lit by the light that falls on
+-- them, not glowing on their own. Over the board, a shade down to the
+-- afternoon's light where it stands (brighter under a street lamp), and on a
+-- billboard the warm pools its own lamps throw down its face. Only the board
+-- is shaded; the lamp heads over it stay bright. Off with bmx_city_mood 0,
+-- or on a map with no mood.
+local GRAD_DOWN
+function City.SignLight(s, layout)
+    local m = layout and layout.mood
+    if not m or not m.signLight then return 1 end
+    local light = m.signLight
+    local pool = m.signLampRadius or 520
+    for _, l in ipairs(layout.lamps or {}) do
+        local dx, dy, dz = s.pos[1] - l.head[1], s.pos[2] - l.head[2], s.pos[3] - l.head[3]
+        local d2 = (dx * dx + dy * dy + dz * dz) / (pool * pool)
+        if d2 < 1 then light = light + (m.signLampLight or 0.35) * (1 - d2) end
+    end
+    return math.min(light, 1)
+end
+
+function City.LightSign(s, pw, ph, layout)
+    local m = layout and layout.mood
+    local cv = GetConVar("bmx_city_mood")
+    if not m or not m.signLight or (cv and not cv:GetBool()) then return end
+    local shade = 1 - City.SignLight(s, layout)
+    local dusk = m.signShadow or { 24, 14, 10 }
+    draw.NoTexture()
+    -- the board takes the light of where it is
+    surface.SetDrawColor(dusk[1], dusk[2], dusk[3], 255 * shade)
+    surface.DrawRect(-pw / 2, -ph / 2, pw, ph)
+    -- and is darker at its foot, furthest from the light above it
+    GRAD_DOWN = GRAD_DOWN or Material("vgui/gradient-u")
+    surface.SetMaterial(GRAD_DOWN)
+    surface.SetDrawColor(dusk[1], dusk[2], dusk[3], 110 * shade)
+    surface.DrawTexturedRect(-pw / 2, -ph / 2, pw, ph)
+    if (s.look or "ad") == "ad" then
+        -- the billboard's four lamps shine down onto it: warm pools from
+        -- the top edge, fading down the face
+        local warm = m.lampColor or { 255, 186, 112 }
+        City._gradDown = City._gradDown or Material("vgui/gradient-d")
+        surface.SetMaterial(City._gradDown)
+        for i = 1, 4 do
+            local lx = -pw / 2 + pw * (i - 0.5) / 4
+            surface.SetDrawColor(warm[1], warm[2], warm[3], 70)
+            surface.DrawTexturedRect(lx - pw * 0.13, -ph / 2, pw * 0.26, ph * 0.7)
+        end
+    end
+end
+
 local function drawSigns(layout)
     makeFonts()
     local eye = EyePos()
@@ -967,6 +1113,7 @@ local function drawSigns(layout)
                 -- breaks the rest of the frame): report it once, carry on
                 local ok, err = pcall(look, s, pw, ph)
                 if not ok and not s._err then s._err = true ErrorNoHalt("[BMX] city sign " .. tostring(s.text) .. ": " .. tostring(err) .. "\n") end
+                if ok then City.LightSign(s, pw, ph, layout) end
             cam.End3D2D()
         end
     end
@@ -995,6 +1142,7 @@ function City.ClientClear()
     for name in pairs(City._sounds) do lineSound(name, nil, false) end
     for i, m in pairs(City._cars) do if IsValid(m) then m:Remove() end City._cars[i] = nil end
     for k, m in pairs(City._plantEnts) do if m and IsValid(m) then m:Remove() end City._plantEnts[k] = nil end
+    for k, c in pairs(City._crowns) do if c and c.Destroy then c:Destroy() end City._crowns[k] = nil end
     City.plants = nil
 end
 

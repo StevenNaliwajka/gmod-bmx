@@ -261,6 +261,15 @@ client{ name = "bmx_city_trains", kind = "bool", default = true, category = "wor
 client{ name = "bmx_city_signs", kind = "bool", default = true, category = "world",
     label = "Draw the city's signs",
     help = "Neon and shop signs on the buildings." }
+client{ name = "bmx_city_plants", kind = "bool", default = true, category = "world",
+    label = "Draw the trees and street lamps",
+    help = "The trees in the park and on the roof gardens, and the lamps along the beds." }
+client{ name = "bmx_city_mood", kind = "bool", default = true, category = "world",
+    label = "Late-autumn sky and lamplight",
+    help = "The golden afternoon sky, the haze over the city, the warm colour grade and the lamps' light." }
+client{ name = "bmx_city_leaves", kind = "bool", default = true, category = "world",
+    label = "Falling leaves",
+    help = "Leaves letting go of the trees and drifting down on the wind." }
 
 client{ name = "bmx_lod_scale", kind = "float", default = 1, min = 0, max = 4, decimals = 1,
     category = "advanced", label = "Bike detail distance",

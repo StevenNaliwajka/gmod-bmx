@@ -30,10 +30,63 @@ is a render hook and not entities.
 | `bmx_city_draw` | client | 1 | draw it |
 | `bmx_city_trains` | client | 1 | run the trains and their sound |
 | `bmx_city_signs` | client | 1 | draw the signs |
+| `bmx_city_plants` | client | 1 | draw the trees and street lamps |
+| `bmx_city_mood` | client | 1 | the late-autumn sky, haze, colour grade and lamplight |
+| `bmx_city_leaves` | client | 1 | leaves falling from the trees |
 
 Commands: `bmx_city_info` (what this map's city has), `bmx_city_rebuild`
 (admin; respawn the colliders after changing `bmx_city`), and
 `bmx_city_rebuild_client`.
+
+## Late autumn: greenery, floor, lamps and the hour
+
+The park is dressed for a late fall afternoon (the map's `greenery`, `floor`
+and `mood` tables).
+
+- **Planting beds** stand against the walls in lanes measured clear of every
+  ramp. Each has a concrete kerb, grass, a hedge, trees, ivy climbing the wall
+  behind and street lamps. The bed and the tree trunks and lamp poles are
+  solid (`bmx_city_solid`), so a bike stops at the kerb.
+- **Trees** are HL2 models (`hl2_misc`/`garrysmod` VPKs only, so nobody needs
+  HL2 mounted) wearing a crown of leaf cards in red, orange, gold and rust, the
+  same leaves the hedges are made of. They sway in a west wind with gusts.
+- **The frontage** has roof gardens (planters, trees over the cornice, ivy
+  hanging down), planted terraces in front of setback towers, and balconies
+  with planters on the upper floors.
+- **The floor** is laid over the map's single concrete slab, a hair above it:
+  slab concrete to ride on, brick paving along the walls, cobbles round the
+  piers, a kerb line, and drifts of fallen leaves. The afternoon light and a
+  warm pool under every lamp are baked into its vertices.
+- **The mood** (`cl_city_mood.lua`) swaps the noon sky for HL2's golden
+  `sky_day01_08` (turned so the glow sits in the west, where the map's sun
+  is), adds a thin warm haze and a slight warm grade, glows at the lamp
+  heads, dynamic lights from the nearest lamps (models only), and the odd leaf
+  falling and settling.
+- **Signs are lit, not glowing**: each board is shaded to the light where it
+  stands (`signLight`, brighter near a lamp), and a billboard's own lamps
+  throw warm pools down its face.
+
+Nothing here is an entity a player can touch: plants are drawn by the client
+from the render hook (never faded or culled by distance, always at full
+LOD), and the solid parts are `bmx_city_solid`, which the physgun, gravity
+gun, toolgun and context menu all refuse.
+
+## The map: petopia_bmx_fall
+
+The test server runs the park as **petopia_bmx_fall**: a copy of
+gm_skatepark's BSP under that name, with its own map icon (Peter on his BMX
+against a fall sunset, `maps/thumb/petopia_bmx_fall.png` in this repo). The
+city table is shared (`Maps.petopia_bmx_fall = Maps.gm_skatepark`). On the
+server:
+
+    cp addons/gm_skatepark/maps/gm_skatepark.bsp maps/petopia_bmx_fall.bsp
+    cp <repo>/maps/thumb/petopia_bmx_fall.png maps/thumb/
+    # systemd drop-in: Environment=GMOD_MAP=petopia_bmx_fall
+
+`sv_city.lua` sends the thumbnail to everyone who joins (`resource.AddFile`).
+Clients download the 3 MB map from the server. gm_skatepark is somebody
+else's Workshop map, so the renamed copy is for this server only. Do not
+publish it.
 
 ## Changing the city
 

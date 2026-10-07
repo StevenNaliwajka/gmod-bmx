@@ -125,10 +125,12 @@ City.Materials = {
     -- the bushes and hedges: the same leaves on crossed cards, in four colours
     leaves_red = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 2.4, 0.62, 0.38 } },
     leaves_orange = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 2.3, 1.1, 0.34 } },
-    leaves_gold = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 2.0, 1.55, 0.36 } },
+    leaves_gold = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 2.2, 1.38, 0.3 } },
     leaves_rust = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 1.55, 0.78, 0.36 } },
-    -- fallen leaves on the ground: HL2's scattered autumn-leaf sheet
-    litter = { tex = "models/props_foliage/tree_deciduous_01a_leaves", w = 160, h = 160, alpha = true, mul = { 1.3, 1.15, 1.0 } },
+    -- fallen leaves on the ground: the leaf art again, flat, in drifts
+    litter_red = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 2.0, 0.6, 0.35 } },
+    litter_orange = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 2.1, 1.05, 0.35 } },
+    litter_brown = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 1.4, 0.85, 0.45 } },
     -- the park floor, laid over the map's one concrete slab
     slab = { tex = "concrete/concretefloor016a", w = 256, h = 256 },
     pave_brick = { tex = "brick/brickfloor001a", w = 128, h = 128 },
@@ -155,6 +157,7 @@ City.Plants = {
 -- lamppost03a: 450 tall, its arm reaching ~95 along the model's +y to the
 -- lamp head (measured on the server)
 City.LAMP = { reach = 92, height = 420 }
+City.LITTER = { "litter_red", "litter_orange", "litter_brown", "litter_orange" }
 City.LEAF_COLOURS = { "leaves_red", "leaves_orange", "leaves_gold", "leaves_rust", "leaves_orange" }
 
 --------------------------------------------------------------------------
@@ -936,7 +939,9 @@ function B:bed(S, bd, g, rng, keep, name)
             local at
             for _, off in ipairs({ 0, 160, -160, 280, -280 }) do
                 local b = a + off
-                if not at and b > bd.from + 32 and b < bd.to - 32 and not keptOff(keep, S.name, b - 24, b + 24, soil, soil + 460) then
+                local crowded = false
+                for _, la in ipairs(lampAt) do if math.abs(b - la) < 320 then crowded = true end end
+                if not at and not crowded and b > bd.from + 32 and b < bd.to - 32 and not keptOff(keep, S.name, b - 24, b + 24, soil, soil + 460) then
                     at = b
                 end
             end
@@ -1199,7 +1204,6 @@ function B:floor(fl, rng)
         end
     end
     local z3 = z + 0.4
-    local M = City.Materials.litter
     for i = 1, fl.litter or 160 do
         local x, y, spread
         if #seeds > 0 and rng.chance(0.75) then
@@ -1209,20 +1213,22 @@ function B:floor(fl, rng)
         else
             x, y = p[1] + rng.float() * (p[4] - p[1]), p[2] + rng.float() * (p[5] - p[2])
         end
-        local size = rng.int(80, 176)
+        local size = rng.int(48, 112)
+        local key = rng.pick(City.LITTER)
+        local M = City.Materials[key]
         local h = size / 2
         if x - h > p[1] and x + h < p[4] and y - h > p[2] and y + h < p[5] then
             local a = rng.float() * math.pi * 2
             local u = { math.cos(a), math.sin(a), 0 }
             local w = { math.sin(a), -math.cos(a), 0 }
             local o = { x - u[1] * h - w[1] * h, y - u[2] * h - w[2] * h, z3 }
-            local list = self.faces.litter
-            if not list then list = {} self.faces.litter = list end
+            local list = self.faces[key]
+            if not list then list = {} self.faces[key] = list end
             local q = { o[1], o[2], z3,
                 o[1] + u[1] * size, o[2] + u[2] * size, z3,
                 o[1] + (u[1] + w[1]) * size, o[2] + (u[2] + w[2]) * size, z3,
                 o[1] + w[1] * size, o[2] + w[2] * size, z3,
-                0, 0, size / M.w, size / M.h, 1, self.group }
+                0, 0, 1, 1, 1, self.group }
             local c = 19
             for k = 0, 3 do
                 local r, g, b = self:lightAt(q[k * 3 + 1], q[k * 3 + 2], fl)

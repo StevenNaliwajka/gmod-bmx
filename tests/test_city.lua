@@ -316,8 +316,12 @@ T.test("the client builds its meshes: four vertices a quad, every one finite", f
     env.SysTime = function() return 0 end
     T.ok(env.BMX.City.ClientBuild(), "built")
     local L = env.BMX.City.Layout()
-    T.eq(quadsIn, L.quads, "every quad went into a mesh")
-    T.eq(verts, L.quads * 4, "four vertices each")
+    -- the city's quads, and one crown per kind of tree
+    local crowns = 0
+    for kind in pairs(env.BMX.City._crowns) do crowns = crowns + #env.BMX.City.CrownQuads(kind) end
+    T.ok(crowns > 0, "tree crowns built")
+    T.eq(quadsIn, L.quads + crowns, "every quad went into a mesh")
+    T.eq(verts, (L.quads + crowns) * 4, "four vertices each")
     T.eq(bad, 0, "no NaN, no runaway coordinates, colours in range")
     for _, m in ipairs(env.BMX.City.meshes) do
         T.ok(m.quads <= 4000, "mesh under the per-mesh cap")
@@ -650,4 +654,143 @@ T.test("ads come in many styles: each one exists, and no two on a wall share one
     local n = 0
     for _ in pairs(used) do n = n + 1 end
     T.ok(n >= 6, "styles in use: " .. n)
+end)
+
+T.test("the floor: laid over the whole park, a hair above it, paving by the walls, lit under the lamps", function()
+    local City, L = city()
+    local def = City.Maps.gm_skatepark
+    local p, fl = def.park, def.floor
+    local area, n = 0, 0
+    for _, key in ipairs({ "slab", "pave_brick", "pave_cobble" }) do
+        for _, q in ipairs(L.faces[key] or {}) do
+            n = n + 1
+            area = area + math.abs(q[4] - q[1]) * math.abs(q[2] - q[8])
+            for c = 0, 3 do
+                local z = q[c * 3 + 3]
+                T.ok(z > def.ground and z < def.ground + 1.5, key .. " just above the floor: " .. z)
+            end
+        end
+    end
+    T.near(area, (p[4] - p[1]) * (p[5] - p[2]), 1, "the floor covers the park, once")
+    T.ok(#(L.faces.pave_brick or {}) > 100 and #(L.faces.slab or {}) > 500 and #(L.faces.pave_cobble or {}) > 20, "three kinds of floor")
+    local litter = 0
+    for _, k in ipairs(City.LITTER) do litter = litter + #(L.faces[k] or {}) end
+    T.ok(litter >= 100, "fallen leaves: " .. litter)
+    -- no two lamps crowd each other
+    for i, a in ipairs(L.lamps) do
+        for j = i + 1, #L.lamps do
+            local b = L.lamps[j]
+            T.ok((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 >= 300 ^ 2, "lamps " .. i .. " and " .. j .. " apart")
+        end
+    end
+    -- a lamp's pool is warmer and brighter than the open floor
+    T.ok(#L.lamps >= 8, "lamps: " .. #L.lamps)
+    local amb = fl.ambient
+    local brightest = 0
+    for _, q in ipairs(L.faces.pave_brick) do
+        for c = 0, 3 do
+            local r = q[19 + c * 3]
+            T.ok(r >= amb[1] - 1e-9 and r <= 2, "vertex light in range")
+            brightest = math.max(brightest, r)
+        end
+    end
+    T.ok(brightest > amb[1] + 0.4, "pools of lamplight on the paving: " .. brightest)
+end)
+
+T.test("the lamps stand in the beds with their arms over the park, clear of the signs", function()
+    local City, L = city()
+    local def = City.Maps.gm_skatepark
+    local p = def.park
+    for _, l in ipairs(L.lamps) do
+        local inBed = false
+        for _, s in ipairs(L.solids) do
+            if s.name:find("^bed") then
+                local b = s.boxes[1]
+                if l.x >= b[1] and l.x <= b[4] and l.y >= b[2] and l.y <= b[5] then inBed = true end
+            end
+        end
+        T.ok(inBed, "lamp at " .. l.x .. "," .. l.y .. " in a bed")
+        -- the head is further into the park than the pole
+        -- measured from the lamp's own wall, the one its pole is nearest
+        local d = { l.x - p[1], p[4] - l.x, l.y - p[2], p[5] - l.y }
+        local w = 1
+        for k = 2, 4 do if d[k] < d[w] then w = k end end
+        local h = { l.head[1] - p[1], p[4] - l.head[1], l.head[2] - p[2], p[5] - l.head[2] }
+        T.ok(h[w] > d[w] + 60, "arm reaches over the park")
+    end
+end)
+
+T.test("falling leaves: drift east and down, lie a while, then go", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local City = cl.env.BMX.City
+    local V = cl.env.Vector
+    local seq, i = { 0.5, 0.2, 0.7, 0.3, 0.9, 0.1, 0.6, 0.4 }, 0
+    local function rnd() i = i % #seq + 1 return seq[i] end
+    local tree = { kind = "tree2", pos = V(1000, 0, 84), radius = 218 }
+    local f = City.SpawnLeaf(tree, rnd, 65.5)
+    T.ok(f.pos.z > 84 + 150 and f.pos.z < 84 + 436, "starts in the crown: " .. f.pos.z)
+    local leaves, t = { f }, 0
+    local x0 = f.pos.x
+    while not f.rest and t < 60 do t = t + 0.05 City.StepLeaves(leaves, 0.05, t) end
+    T.ok(f.rest, "lands")
+    T.near(f.pos.z, 65.5, 1e-6, "on the floor it was given")
+    T.ok(f.pos.x > x0, "carried east by the west wind")
+    City.StepLeaves(leaves, 0.05, f.rest + 1)
+    T.eq(#leaves, 0, "gone after lying a while")
+end)
+
+T.test("petopia_bmx_fall is gm_skatepark's city under the autumn map's name", function()
+    local City = city()
+    T.ok(City.Maps.petopia_bmx_fall == City.Maps.gm_skatepark, "same definition")
+    T.ok(City.Maps.petopia_bmx_fall.mood and City.Maps.petopia_bmx_fall.mood.sky, "with its late-autumn mood")
+end)
+
+T.test("trees and lamps are made even when util.IsValidModel says no (it does, client-side, before a precache)", function()
+    local env = drawnClient()
+    local City = env.BMX.City
+    City.ClientClear()
+    env.util.IsValidModel = function() return false end
+    env.file = env.file or {}
+    env.file.Exists = function(path, where) return path:find("^models/") ~= nil end
+    City.ClientBuild()
+    for _, kind in ipairs({ "tree", "tree2", "lamp" }) do
+        local m = City._plantEnts[kind]
+        T.ok(m and m.IsValid and m:IsValid(), kind .. " made")
+    end
+end)
+
+T.test("signs are lit by the scene, not glowing: dimmer in the open, brighter under a lamp", function()
+    local sv, world = F.server()
+    local City = F.client(world).env.BMX.City
+    local L = City.Build(City.Maps.gm_skatepark)
+    local m = L.mood
+    T.ok(m and m.signLight and m.signLight < 0.9, "a sign in the open is shaded")
+    local open = City.SignLight({ pos = { 1600, -700, 2000 } }, L)
+    T.near(open, m.signLight, 1e-9, "far from every lamp: the afternoon's light")
+    local l = L.lamps[1]
+    local near = City.SignLight({ pos = { l.head[1], l.head[2], l.head[3] - 40 } }, L)
+    T.ok(near > open + 0.15 and near <= 1, "under a lamp: " .. near)
+end)
+
+T.test("every tree wears an autumn crown inside its own reach, in the hedges' colours", function()
+    local sv, world = F.server()
+    local City = F.client(world).env.BMX.City
+    for kind, P in pairs(City.Plants) do
+        if not P.still then
+            local q = City.CrownQuads(kind)
+            T.ok(#q >= 30, kind .. " crown cards: " .. #q)
+            for _, c in ipairs(q) do
+                for v = 0, 3 do
+                    local x, y, z = c[v * 3 + 1], c[v * 3 + 2], c[v * 3 + 3]
+                    T.ok(math.sqrt(x * x + y * y) <= P.r * 1.2 and z > P.h * 0.15 and z < P.h * 1.1,
+                        kind .. " leaf card within the tree")
+                end
+            end
+        end
+    end
+    for _, k in ipairs(City.CROWN_MATS) do
+        local M = City.Materials[k]
+        T.ok(M and M.mul and M.mul[1] > M.mul[2], k .. " is an autumn colour")
+    end
 end)

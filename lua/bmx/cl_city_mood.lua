@@ -132,7 +132,11 @@ end)
 -- are baked, these light the ramps, the bikes and the riders).
 --------------------------------------------------------------------------
 local GLOW
-local DLIGHTS = 6
+-- Few, and models only: a dlight on the world re-lights its lightmaps every
+-- frame, which on this map's one huge floor face cost two-thirds of the frame
+-- rate. The floor's light pools are baked into the overlay instead, which
+-- covers the world floor anyway.
+local DLIGHTS = 4
 
 hook.Add("PostDrawTranslucentRenderables", "BMXCityMoodLamps", function(depth, sky)
     if depth or sky then return end
@@ -177,6 +181,7 @@ hook.Add("Think", "BMXCityMoodLamps", function()
             d.decay = 1000
             d.size = m.lampSize or 560
             d.dietime = CurTime() + 0.5
+            d.noworld = true
         end
     end
 end)

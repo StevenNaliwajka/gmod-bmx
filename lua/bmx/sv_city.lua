@@ -39,6 +39,11 @@ function City.SpawnSolids()
     return n
 end
 
+-- The map's thumbnail (maps/thumb/<map>.png, put on the server beside the
+-- map), so the map list of everyone who joins shows it.
+local thumb = "maps/thumb/" .. game.GetMap() .. ".png"
+if City.Def() and file.Exists(thumb, "GAME") then resource.AddFile(thumb) end
+
 -- Precache every model an ad photographs, so clients load them up front.
 function City.PrecacheAdModels()
     local L = City.Layout()

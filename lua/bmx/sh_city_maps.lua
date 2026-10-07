@@ -246,7 +246,7 @@ BMX.City.Maps.gm_skatepark = {
     -- leaves. Lit per vertex: ambient afternoon light and the lamps' pools.
     floor = {
         cell = 64, walk = 176, lift = 0.6, plaza = 288,
-        litter = 170,
+        litter = 240,
         ambient = { 0.74, 0.65, 0.56 },
         lampRadius = 440, lampColor = { 0.6, 0.4, 0.18 },
     },
@@ -256,11 +256,14 @@ BMX.City.Maps.gm_skatepark = {
     -- HL2's golden-hour sky, dimmed; the haze is thin and far.
     mood = {
         light = { 1.0, 0.86, 0.72 },
-        sky = "skybox/sky_day01_08", skyTint = { 0.8, 0.72, 0.66 }, skyYaw = 0,
+        sky = "skybox/sky_day01_08", skyTint = { 0.8, 0.72, 0.66 }, skyYaw = 180,
         fog = { start = 3000, finish = 15000, density = 0.5, color = { 120, 92, 74 } },
         grade = { brightness = -0.04, contrast = 1.06, colour = 0.88, mulr = 0.1, mulg = 0.03, addr = 0.015, addg = 0.004 },
         lampColor = { 255, 186, 112 }, lampBrightness = 1.3, lampSize = 560,
         leafEvery = 0.22,
+        -- the signs are lit, not glowing: this much of full brightness in
+        -- the open, more within reach of a street lamp
+        signLight = 0.66, signLampLight = 0.3, signLampRadius = 560, signShadow = { 26, 15, 10 },
     },
 }
 

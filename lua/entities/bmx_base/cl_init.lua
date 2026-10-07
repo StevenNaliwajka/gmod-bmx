@@ -369,6 +369,86 @@ local FRAME = {
     bars   = Vector(10.5, 0, 26.0),    -- bar centre (BMX bars are tall and swept back)
 }
 --------------------------------------------------------------------------
+-- THE BARS AND THE BRAKE CABLE (G01).
+--
+-- The competitor's addon shipped a bug where the right brake cable stayed
+-- behind on the frame while the bars turned: a vertex weighted to the wrong
+-- bone. Drawn from the steer angle there is no bone to get wrong, but the same
+-- failure is still possible in a subtler form -- a cable computed from the
+-- wrong transform -- so the geometry is pure functions of the steer angle and
+-- tests/test_cable.lua checks, at +-90 degrees and through a full barspin, that
+-- the cable's bar end is still on the bar and its frame ends have not moved.
+--
+-- The bars turn about the head tube: their offset from it is re-expressed
+-- along the STEERED forward. `d` is the bar centre's offset from the head tube
+-- top in the bike's frame (already scaled by k).
+--------------------------------------------------------------------------
+function BMX.SteeredBars(headT, fwd, right, up, steer, d, k)
+    local c, s = math.cos(steer), math.sin(steer)
+    local sf   = fwd * c + right * s
+    local axle = sf:Cross(up)
+    axle:Normalize()
+    local barsC = headT + sf * d:Dot(fwd) + up * d:Dot(up)
+    return {
+        fwd = sf, axle = axle, barsC = barsC,
+        barL = barsC - axle * (11 * k), barR = barsC + axle * (11 * k),
+        stemTop = headT + up * (3 * k),
+    }
+end
+
+-- A quadratic Bezier through three points, as `n + 1` points.
+local function bezier(a, c, b, n)
+    local pts = {}
+    for i = 0, n do
+        local t = i / n
+        local u = 1 - t
+        pts[#pts + 1] = a * (u * u) + c * (2 * u * t) + b * (t * t)
+    end
+    return pts
+end
+
+-- THE BRAKE CABLE, with a gyro detangler. A BMX with a rear brake and bars that
+-- spin all the way round needs one: the cable runs from the lever to a plate
+-- under the stem that is part of the FRAME and does not turn, and on from there
+-- along the top tube to the brake. The lever end follows the bars; the gyro and
+-- the brake end are fixed to the frame; the span between the lever and the gyro
+-- is a loop with slack. Because the lever turns about the head tube axis and
+-- the gyro sits ON it, their distance is the same at every steer angle, so the
+-- slack is the same too: nothing stretches and nothing winds up, at +-90 or
+-- through any number of barspins.
+--
+-- `bars` is BMX.SteeredBars; `brake` is the frame-side stop. Returns the lever,
+-- gyro and brake points and the two polylines (`bar`: lever to gyro, `frame`:
+-- gyro to brake).
+function BMX.BrakeCable(bars, headT, up, brake, k, segments)
+    segments = segments or 8
+    local lever = bars.barR + bars.axle * (0.6 * k) + bars.fwd * (1.6 * k)
+    local gyro  = headT + up * (2.2 * k)
+
+    -- The loop hangs: its control point sags below the straight line in
+    -- proportion to how far the ends are apart, which is constant (above).
+    local slack = 0.25 * lever:Distance(gyro)
+    local c1 = (lever + gyro) * 0.5 - up * slack
+    -- Along the top tube, bowed a little up and out of the frame's way.
+    local c2 = (gyro + brake) * 0.5 + up * (1.2 * k)
+
+    return {
+        lever = lever, gyro = gyro, brake = brake,
+        bar   = bezier(lever, c1, gyro, segments),
+        frame = bezier(gyro, c2, brake, segments),
+    }
+end
+
+-- Three short lines: a part's own forward (red), right (green) and up (blue).
+-- bmx_debug 2: a mis-weighted or mis-parented part has the wrong axes, and that
+-- is visible in one screenshot.
+local function axes(pos, f, r, u, len)
+    render.DrawLine(pos, pos + f * len, Color(255, 60, 60), true)
+    render.DrawLine(pos, pos + r * len, Color(60, 255, 60), true)
+    render.DrawLine(pos, pos + u * len, Color(80, 120, 255), true)
+end
+
+--------------------------------------------------------------------------
 -- LEVEL OF DETAIL. A bike is ~55 model draws and 2 ground traces a frame,
 -- every frame, at any distance -- eight riders in view is ~440 draws for
 -- bikes that past a street's width are a few pixels across. So by distance
@@ -413,6 +493,7 @@ function ENT:Draw()
     local dt   = FrameTime()
     local debug = GetConVar("bmx_debug") and GetConVar("bmx_debug"):GetInt() > 0
     local lod = debug and 0 or BMX.BikeLOD(self)
+    local debug2 = GetConVar("bmx_debug") and GetConVar("bmx_debug"):GetInt() >= 2
 
     ----------------------------------------------------------------------
     -- A bike that ships a real model draws it, through a pushed matrix so
@@ -481,6 +562,17 @@ function ENT:Draw()
         drawWheel(self, "rear",  rPos, rearAxle,  rSpin, WC.radius, rHit, debug, lod)
     end
 
+    -- A model's own bones (the `bones` table in its registry entry), axes drawn
+    -- at each, when bmx_debug is 2.
+    if debug2 and bike.bones then
+        for _, name in pairs(bike.bones) do
+            local i = self:LookupBone(name)
+            local bp, ba = nil, nil
+            if i then bp, ba = self:GetBonePosition(i) end
+            if bp then axes(bp, ba:Forward(), ba:Right(), ba:Up(), 5) end
+        end
+    end
+
     if bike.hasModel then return end
 
     ----------------------------------------------------------------------
@@ -534,16 +626,33 @@ function ENT:Draw()
 
     -- The bars turn about the head tube with the steer angle: the bar centre's
     -- offset from the head tube is re-expressed along the STEERED forward.
-    local d = P(FRAME.bars) - headT
-    local barsC = headT + steeredFwd * d:Dot(fwd) + up * d:Dot(up)
-    local stemTop = headT + up * (3 * k)
+    local bars = BMX.SteeredBars(headT, fwd, right, up, steer, P(FRAME.bars) - headT, k)
+    local barsC, stemTop, barL, barR = bars.barsC, bars.stemTop, bars.barL, bars.barR
     tube(headT, stemTop, 1.4 * k, COL_PART)
-    local barL = barsC - frontAxle * (11 * k)
-    local barR = barsC + frontAxle * (11 * k)
     tube(stemTop, barsC, 1.0 * k, COL_PART)         -- the rise of the bar
     tube(barL, barR, 0.95 * k, COL_PART)
     tube(barL, barL - frontAxle * (3.5 * k), 1.5 * k, COL_TYRE)    -- grips
     tube(barR, barR + frontAxle * (3.5 * k), 1.5 * k, COL_TYRE)
+
+    -- The brake cable, from the right lever through the gyro to the rear brake
+    -- (BMX.BrakeCable). Not at the far LOD, where it is under a pixel wide.
+    if lod < 2 then
+        local brake = seatJ + (rPos - seatJ) * 0.8
+        local cab = BMX.BrakeCable(bars, headT, up, brake, k, lod == 0 and 5 or 2)
+        for _, line in ipairs({ cab.bar, cab.frame }) do
+            for i = 1, #line - 1 do tube(line[i], line[i + 1], 0.35 * k, COL_PART) end
+        end
+        tube(barR, cab.lever, 0.5 * k, COL_CHROME)         -- the brake lever
+        if lod == 0 then joint(cab.gyro, 1.8 * k, COL_CHROME) end   -- the detangler
+    end
+
+    -- bmx_debug 2: each moving part's own axes.
+    if debug2 then
+        axes(headT, steeredFwd, frontAxle, up, 5 * k)          -- fork and bars
+        axes(fPos, steeredFwd, frontAxle, up, 5 * k)           -- front wheel
+        axes(rPos, fwd, right, up, 5 * k)                      -- rear wheel
+        axes(bb, fwd, right, up, 5 * k)                        -- cranks
+    end
 
     -- Where the rider's hands and feet belong, for the IK in cl_rider.lua.
     -- Recorded every frame the bike is drawn: the rider is drawn in the same

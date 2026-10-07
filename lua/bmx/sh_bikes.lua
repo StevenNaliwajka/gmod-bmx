@@ -66,6 +66,56 @@ end
 local deriveOne
 
 --------------------------------------------------------------------------
+-- THE RIG CHECK (G01). A bike with a real model may say which bone is which:
+--
+--     bones = { bars = "bars", fork = "fork", frontWheel = "wheel_f",
+--               rearWheel = "wheel_r", cranks = "cranks",
+--               pedalL = "pedal_l", pedalR = "pedal_r" }
+--
+-- The first five are REQUIRED once a `bones` table is given at all, and the
+-- last two optional; anything else is a typo. It is checked at registration, the
+-- way `physics` is and for the same reason: a part pointed at a bone that
+-- does not exist is a brake cable left behind on the frame when the bars turn,
+-- and that is a bug nobody notices until the model has shipped. A bike with no
+-- `bones` table is not checked (the procedural bike has no bones).
+--
+-- Whether each named bone EXISTS IN THE MODEL can only be asked on a client
+-- with the model loaded; bmx_debug 2 draws each one's axes (cl_init.lua), which
+-- is the visual half of the check.
+--------------------------------------------------------------------------
+local BONES_REQUIRED = { "bars", "fork", "frontWheel", "rearWheel", "cranks" }
+local BONES_OPTIONAL = { "pedalL", "pedalR" }
+
+function BMX.ValidateBones(id, bones)
+    if bones == nil then return true end
+    local bad = {}
+    if not istable(bones) then
+        bad[#bad + 1] = "bones is not a table"
+    else
+        local known = {}
+        for _, k in ipairs(BONES_REQUIRED) do known[k] = true end
+        for _, k in ipairs(BONES_OPTIONAL) do known[k] = true end
+        for k, v in pairs(bones) do
+            if not known[k] then
+                bad[#bad + 1] = string.format("unknown bone role %q", tostring(k))
+            elseif type(v) ~= "string" or v == "" then
+                bad[#bad + 1] = string.format("%s needs a bone name", k)
+            end
+        end
+        for _, k in ipairs(BONES_REQUIRED) do
+            if bones[k] == nil then bad[#bad + 1] = "missing required bone " .. k end
+        end
+    end
+    if #bad > 0 then
+        table.sort(bad)
+        ErrorNoHalt(string.format("[BMX] bike %q has a bad `bones` table: %s.\n",
+            tostring(id), table.concat(bad, ", ")))
+        return false
+    end
+    return true
+end
+
+--------------------------------------------------------------------------
 -- Register a bike.
 --
 --   id            unique, lowercase. Becomes entity class "bmx_<id>".
@@ -95,6 +145,9 @@ local deriveOne
 --                 Overriding a field that has a convar opts this bike out of
 --                 LIVE tuning for that one field, because an explicit override
 --                 is meant to win. See the note in sh_config.lua.
+--
+--   def.bones     optional rig map for a model, checked at registration: see
+--                 BMX.ValidateBones above. Unknown keys are a loud error.
 --------------------------------------------------------------------------
 function BMX.RegisterBike(id, def)
     id = string.lower(id)
@@ -114,6 +167,7 @@ function BMX.RegisterBike(id, def)
 
     -- Loudly, and before anything can ride it.
     BMX.ValidatePhysics(id, def.physics)
+    BMX.ValidateBones(id, def.bones)
 
     BMX.Bikes[id] = def
 

@@ -18,6 +18,8 @@ What it does, per item, the way gmpublish does and then some:
      tags, as gmpublish sets them), the icon (workshop/icon.jpg), the GALLERY
      (every image and GIF in workshop/gallery/, in file-name order, replacing
      what was there), visibility (public), and Required Items
+     (the icon is workshop/icon.gif when there is one -- Steam animates it --
+     else workshop/icon.jpg)
   4. waits for Steam to finish the upload and checks the result
 
 It talks to Steam through the Steamworks API (libsteam_api.so), so the Steam
@@ -83,7 +85,10 @@ def load(item, ref):
     wsid = open(idf).read().strip() if os.path.isfile(idf) else ""
     gdir = os.path.join(ws, "gallery")
     gallery = sorted(os.path.join(gdir, f) for f in os.listdir(gdir) if f.lower().endswith(GALLERY_TYPES)) if os.path.isdir(gdir) else []
-    icon = os.path.join(ws, "icon.jpg")
+    # the item's icon: an animated workshop/icon.gif if there is one, else icon.jpg
+    icon = os.path.join(ws, "icon.gif")
+    if not os.path.isfile(icon):
+        icon = os.path.join(ws, "icon.jpg")
     item.update(sha=sha, meta=meta, id=wsid, idfile=idf, gallery=gallery, icon=icon)
     item["tags"] = ["Addon", meta["type"].capitalize()] + [t.capitalize() for t in meta.get("tags", [])]
     return item
@@ -92,15 +97,18 @@ def load(item, ref):
 def check(item):
     """Everything Steam would refuse, found before anything is sent."""
     probs = []
+    name = os.path.basename(item["icon"])
     if not os.path.isfile(item["icon"]):
-        probs.append("no workshop/icon.jpg")
+        probs.append("no workshop/icon.gif or icon.jpg")
     else:
         with open(item["icon"], "rb") as f:
-            head = f.read(2)
-        if head != b"\xff\xd8":
+            head = f.read(4)
+        if name.endswith(".jpg") and head[:2] != b"\xff\xd8":
             probs.append("workshop/icon.jpg is not a JPEG")
+        if name.endswith(".gif") and head != b"GIF8":
+            probs.append("workshop/icon.gif is not a GIF")
         if os.path.getsize(item["icon"]) >= MAX_PREVIEW:
-            probs.append("workshop/icon.jpg is 1 MB or more")
+            probs.append("workshop/%s is 1 MB or more" % name)
     for g in item["gallery"]:
         if os.path.getsize(g) >= MAX_PREVIEW:
             probs.append("gallery %s is 1 MB or more" % os.path.basename(g))
@@ -314,9 +322,9 @@ def main():
             gma = pack(it, work)
             probs = check(it)
             what = ("update %s" % it["id"]) if it["id"] else "NEW item"
-            print("%-5s %-18s %s  %s @ %s  %.1f MB, %d gallery, tags %s" % (
+            print("%-5s %-18s %s  %s @ %s  %.1f MB, icon %s, %d gallery, tags %s" % (
                 it["key"], it["meta"]["title"], what, os.path.basename(it["repo"]), it["sha"][:7],
-                os.path.getsize(gma) / 1e6, len(it["gallery"]), ",".join(it["tags"])))
+                os.path.getsize(gma) / 1e6, os.path.basename(it["icon"]), len(it["gallery"]), ",".join(it["tags"])))
             for p in probs:
                 print("      PROBLEM: " + p)
                 bad = True
@@ -346,7 +354,11 @@ def main():
             print("  done: %s, %d gallery images (replaced %d)" % (it["sha"][:7], len(it["gallery"]), old))
             print("  https://steamcommunity.com/sharedfiles/filedetails/?id=%s" % it["id"])
         # Required Items
-        all_ids = {i["key"]: (load(dict(i), a.ref)["id"]) for i in ITEMS}
+        all_ids = {}
+        for i in ITEMS:
+            f = os.path.join(i["repo"], "workshop", "workshop-id.txt")
+            if os.path.isfile(f):
+                all_ids[i["key"]] = open(f).read().strip()
         for it in items:
             for req in it["requires"]:
                 if all_ids.get(req):

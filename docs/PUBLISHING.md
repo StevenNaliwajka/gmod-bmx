@@ -94,7 +94,7 @@ it once the upload is done):
 
 | Version | Kit built | From commit | Uploaded |
 |---|---|---|---|
-| 1.1.0 | 2026-10-07 | b67a0996e41c51cbbac1fc6b8e23bd538f54a45c | waiting on the upload from the owner's PC |
+| 1.1.0 | 2026-10-07 | 817644e (tools/workshop_sync.py, from Linux) | 2026-10-07 16:25, with the gallery; icon now workshop/icon.gif |
 
 The same number lives in `workshop/workshop-id.txt`, which the kit ships and
 both `update.bat` and `publish.sh update` read, so an update needs nothing
@@ -105,6 +105,26 @@ typed. `publish.bat` and `publish.sh create` refuse while that file exists
 **A Workshop update goes out only when the owner says so.** The addon is live
 and people are subscribed: `main` and the test server move as fast as the work
 does, Steam moves on a decision.
+
+## Syncing from Linux: tools/workshop_sync.py
+
+`tools/workshop_sync.py` publishes BMX, the petopia_bmx_fall map and the BMX
+(Mode) gamemode from this Linux box, everything the page shows included: the
+gmad-packed content, title, description, tags, icon (`workshop/icon.gif` when
+there is one, else `icon.jpg`), the gallery (`workshop/gallery/`, in file-name
+order -- gmpublish cannot set a gallery) and Required Items. It talks to the
+Steam client through the Steamworks API, so Steam must be running here and
+signed in as ConvexBurrito5, and **the account must not be in a game on
+another PC**: starting the upload starts a Garry's Mod session, and Steam
+signs this machine out ("Logged In Elsewhere") while a game runs elsewhere.
+
+    tools/workshop_sync.py --dry-run        pack and check all three
+    tools/workshop_sync.py                  sync all three
+    tools/workshop_sync.py bmx --ref <sha>  one item, from a given commit
+
+Items: BMX 3814420080, Petopia BMX Fall 3815469993, BMX (Mode) 3815470101
+(each repo's `workshop/workshop-id.txt`). Tools in `~/sdk/gmod-tools` (gmad,
+libsteam_api.so from a GMod dedicated server's bin/linux64).
 
 ## Releasing an update (when the owner says go)
 

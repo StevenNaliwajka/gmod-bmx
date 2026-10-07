@@ -89,7 +89,7 @@ ok '[ "${#TITLE}" -le 128 ]' "the title fits Steam's 128 characters"
 # its line in the description, so documentation that is already wrong cannot ship.
 declare -A KEYLINE=( [IN_FORWARD]="W / S" [IN_BACK]="W / S" [IN_MOVELEFT]="A / D" [IN_MOVERIGHT]="A / D"
                      [IN_ATTACK2]="Right mouse" [IN_ATTACK]="Left mouse" [IN_JUMP]="SPACE"
-                     [IN_SPEED]="SHIFT" [IN_DUCK]="CTRL" [IN_RELOAD]="R  " )
+                     [IN_SPEED]="SHIFT" [IN_DUCK]="CTRL" [IN_RELOAD]="R  " [IN_WALK]="ALT" )
 CONTROLS="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1]))["description"]; print(d.split("CONTROLS",1)[1].split("SERVER OWNERS",1)[0])' "$ROOT/addon.json")"
 for key in $(grep -o 'IN_[A-Z0-9]*' "$ROOT/lua/bmx/sv_input.lua" | sort -u); do
   line="${KEYLINE[$key]:-}"

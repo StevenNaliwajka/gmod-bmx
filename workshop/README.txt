@@ -4,8 +4,9 @@ BMX Bike, Steam Workshop upload kit
 What is in here
   bmx.gma              the addon, packed (checked with Valve's own gmad)
   icon.jpg             the Workshop thumbnail, 512x512
-  publish.bat          Windows: FIRST upload, creates the Workshop item
-  update.bat           Windows: every upload after that
+  update.bat           Windows: upload this version to the live item (the usual)
+  publish.bat          Windows: FIRST upload only; refuses while workshop-id.txt exists
+  workshop-id.txt      the live item's ID, 3814420080, read by the scripts
   find-gmpublish.ps1   used by the two .bat files to find Garry's Mod
   publish.sh           the same for a Linux PC
 
@@ -13,7 +14,11 @@ Before you start
   1. Steam is running and signed in as ConvexBurrito5.
   2. That account owns Garry's Mod (the uploader, gmpublish, ships with it).
 
-First upload (once)
+BMX Bike is already on the Workshop:
+  https://steamcommunity.com/sharedfiles/filedetails/?id=3814420080
+  For a new version skip straight to "Every later release".
+
+First upload (done 2026-10-05; kept for the record)
   Double-click publish.bat, press a key when it asks, and wait for the upload.
   It prints the new item's Workshop ID. WRITE IT DOWN: updates need it, and
   running publish.bat a second time makes a second, separate item.
@@ -27,15 +32,17 @@ First upload (once)
   description on that page afterwards (it takes BBCode there).
 
 Every later release
-  Double-click update.bat, give it the Workshop ID and a one-line note of what
-  changed.
+  Double-click update.bat. It reads the Workshop ID from workshop-id.txt and
+  asks only for a one-line note of what changed. (Linux: ./publish.sh update
+  "what changed".) Then check the item page's description against addon.json;
+  paste the new one in if the page still shows the old.
 
 If the .bat cannot find gmpublish.exe
   It asks you to paste the path. It is in your Garry's Mod folder:
   Steam > right-click Garry's Mod > Manage > Browse local files > bin\gmpublish.exe
   Or run it by hand from this folder:
     "<GarrysMod>\bin\gmpublish.exe" create -addon bmx.gma -icon icon.jpg
-    "<GarrysMod>\bin\gmpublish.exe" update -addon bmx.gma -id <ID> -changes "what changed"
+    "<GarrysMod>\bin\gmpublish.exe" update -addon bmx.gma -id 3814420080 -changes "what changed"
 
 Check it works
   Subscribe to the item, start Garry's Mod, sandbox, and type bmx_spawn in the

@@ -247,6 +247,18 @@ deliberately *not* attempted is local prediction, which in the absence of engine
 support means reconciling two divergent physics simulations and produces
 rubber-banding worse than the latency it hides.
 
+**G30 adds two opt-in things, neither of which is that.** `bmx_predict` (client,
+default 0) does not simulate a second bike: it draws the rider's own bike's lean
+and steer a moment *ahead* of the networked state, by replaying the rider's recent
+input through the shared lean/steer arithmetic (`sh_lean.lua`, `sh_predict.lua`),
+rooted in the networked state every frame so nothing accumulates to be snapped
+back. It is a picture and nothing else: the server never reads it, so the
+simulation stays authoritative. `bmx_lagcomp` (server, default 0) stamps each
+usercmd's input with its age and judges takeoff decisions (hop release, ollie
+pop, spine W) against the bike's recorded state at that moment; it changes which
+tick an input is attributed to and nothing it does. Measure with
+`bmx_latency_probe` (docs/TUNING.md).
+
 What actually crosses the wire:
 
 - **Usercmds** (free, already sent every tick, already ordered, already

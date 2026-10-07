@@ -44,3 +44,36 @@ own vehicle predicts.
 
 Prediction mismatch shows as rubber-banding, so ship it behind
 `bmx_predict 1` (default off) until riders say it's better.
+
+## Status (2026-10-07)
+
+Built on branch `g30-predict`, all of it behind switches that default OFF.
+
+- **Shared controller.** `lua/bmx/sh_lean.lua` holds the lean/steer arithmetic
+  (input smoothing, rate filter, topple, roll PD, derived steer, steer lag,
+  dead zone); `sv_balance.lua` and `sv_input.lua` call it. The server is
+  bit-identical: `tests/test_predict_server_unchanged.lua` compares a recorded
+  ride, written with `%.17g` BEFORE the move (`tests/data/golden_lean.lua`), and
+  keeps the old expressions to compare against.
+- **Prediction.** `bmx_predict` (client, default 0), `cl_predict.lua` +
+  `sh_predict.lua`: the rider's own single-track bike on the ground is drawn
+  with a roll offset and steer that lead the networked ones by ping + cl_interp
+  (capped 0.3 s); error under 4 u snaps, larger eases over 100 ms. Display only;
+  other riders stay interpolated.
+- **Latency probe.** `bmx_latency_probe [n]` and the method in docs/TUNING.md.
+  The table there is empty: it needs a live server.
+- **Lag comp.** `bmx_lagcomp` (default 0) + `bmx_lagcomp_max` (0.15 s),
+  `sv_lagcomp.lua`: usercmd age from `cmd:TickCount()`, clamped by ping; hop
+  release (`sv_physics.lua`), ollie coyote window (`sv_board.lua`) and spine W
+  (`sv_air.lua`) judge the press at its own time.
+- **Tests.** Offline: determinism across realms, server-unchanged, blend/snap,
+  the lead, probe math, lag comp, settings rows. Headless: a case asserting
+  bmx_predict leaves server state untouched.
+
+**Not done / needs a person on a live server:** the baseline and predicted
+numbers in the TUNING table; whether `cmd:TickCount()` gives the age assumed in
+`P.CmdAge` on a real srcds (the formula is the engine's own lag-comp, but it is
+unverified here); the "manual and grind at 150 ms within 10% of listen-server"
+done-when; the rider's body and IK are NOT predicted (the bike is), so at high
+ping the body trails the frame a little; prediction is lean and steer only (no
+pitch, no air).

@@ -565,6 +565,10 @@ function ENT:Draw()
     local whipAng, barAng = self.drawWhip, self.drawBar
     local W = BMX.UpdatePoseWeights(self, BMX.PoseNames[poseId], dt)
     local bodyRoll, barsTurn, barsSpin = BMX.PoseDrawAngles(W, BMX.PoseSetFor(self).poses)
+    -- G30 (bmx_predict): the rider's own bike leans a little AHEAD of the network
+    -- by the shared controller's reckoning; zero for every other bike and with the
+    -- switch off. Display only (cl_predict.lua).
+    bodyRoll = bodyRoll + (BMX.PredictRollOffset and BMX.PredictRollOffset(self) or 0)
 
     -- Tabletop: the whole bike laid over about its own long axis. Everything
     -- below is then built from the laid-over up and right.
@@ -580,7 +584,7 @@ function ENT:Draw()
     -- Steer is networked because it is an OUTPUT of the balance controller: it
     -- is derived from the lean that actually happened, so the client has no way
     -- to work it out from anything it already holds.
-    local steer = BMX.VisualSteer(self:GetSteer(), self:GetSpeedUPS(), C)
+    local steer = BMX.VisualSteer(BMX.PredictSteer and BMX.PredictSteer(self, self:GetSteer()) or self:GetSteer(), self:GetSpeedUPS(), C)
     local steeredFwd = fwd
     if steer ~= 0 then
         local c, s = math.cos(steer), math.sin(steer)

@@ -710,6 +710,44 @@ BMX.RegisterBike("tandem", {
 })
 
 --------------------------------------------------------------------------
+-- THE DOWNHILL BIKE (G13): long travel, big tyres, heavy, and stable at speed. It is the
+-- stock bike with other numbers and no new code (the platform's `physics` overrides,
+-- DESIGN 6c), which is the point: spring and damper are what a DH bike IS.
+--
+--   Wheel restLength 16, spring 8000, damper 900, bumpStop 90000   the travel is double a BMX's
+--                               (8) and the spring a bit softer, so it sags 4.4 units and has
+--                               11.6 left; the damper is heavy (about critical against the
+--                               effective mass) so a drop is soaked and does not bounce, and
+--                               the bump stop is the last resort. w * dt = 0.30 at 66 Hz
+--   stepMax 6.5                 THE SAG MUST BE UNDER stepMax. A wheel's compression may rise
+--                               at most stepMax in one substep (sv_wheel.lua, "a step is not
+--                               a spring"), and a spawned wheel starts from none: a sag of
+--                               more than stepMax is refused as a step, every substep, and the
+--                               bike sits on its hull. (The stock 5 against a sag of 5.06 did
+--                               exactly that: the spring never compressed.) Half the radius
+--                               is the tallest step a wheel rolls onto, which is 6.75
+--   radius 13.5, grip 1.7       27.5-inch wheels and knobbly tyres: grip, and more rolling loss
+--   mass 118, wheelbase 46      heavy and long: steady, slow to turn
+--   Crash soakSpeed 380, maxImpactSpeed 520   the landing soak and the hard-hit threshold,
+--                               raised for the travel: a 4 m drop is a Tuesday
+--   Balance leanKp 300, fadeInHigh 90   the lean answered a little faster and whole by
+--                               90 u/s, as the road bike's is: stable at speed is the brief
+BMX.RegisterBike("dh", {
+    printName   = "Downhill Bike",
+    description = "Long-travel downhill bike: big tyres, a soft heavy suspension that eats drops, heavy and very stable at speed. Built for the hill.",
+    colorIndex  = 9,
+    physics = {
+        Chassis = { mass = 118, seatOffset = Vector(-12.4, 0, 21.2) },     -- x 46/39
+        Wheel   = { radius = 13.5, wheelbase = 46, restLength = 16, spring = 8000, damper = 900,
+                    bumpStop = 90000, stepMax = 6.5, grip = 1.7, rollingResistance = 0.016 },
+        Drive   = { gearRatio = 2.2, crankTorque = 380000, maxCadence = 11, dragArea = 0.0062 },
+        Hop     = { popSpeed = 160 },
+        Crash   = { soakSpeed = 380, maxImpactSpeed = 520 },
+        Balance = { leanKp = 300, fadeInHigh = 90 },
+    },
+})
+
+--------------------------------------------------------------------------
 -- THE TEST CART: the platform's proof that it is not a bicycle.
 --
 -- Four wheels in a rectangle, no balance mode at all (`none`: it stands on its

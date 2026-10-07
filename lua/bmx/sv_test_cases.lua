@@ -2358,3 +2358,43 @@ function(ctx)
     if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
 end)
 
+--------------------------------------------------------------------------
+-- dh_lands_drop: a 4 m drop onto flat ground is soaked by the long travel: no crash, the
+-- rider aboard, the bike on its wheels, and well short of bottoming out (peak compression
+-- under 90% of the travel, where a BMX uses all of its).
+--
+-- The drop is the way crash_ejects makes its fall: through the physics object, from 160
+-- units up, with a little forward speed. What can differ on VPhysics is the spring's
+-- w * dt at the soak (the damper is clamped to the effective mass, so it is stable at any
+-- setting) and so how much of the travel the drop takes; the band is wide.
+--------------------------------------------------------------------------
+T.Case("dh_lands_drop", { vehicle = "dh", timeout = 40,
+    desc = "the downhill bike lands a 4 m drop: no crash, rider aboard, the suspension does not bottom out" },
+function(ctx)
+    local b = ctx.bike
+    local travel = ctx.cfg.Wheel.restLength
+    ctx:ok(travel >= 14, "long travel: " .. travel)
+    ctx:wait(ctx.cfg.Crash.grace + 0.3)
+    local crashed
+    hook.Add("BMX_Crashed", "BMX.TestDhDrop", function(bike, ply, reason) if bike == b then crashed = reason end end)
+    local phys = b:GetPhysicsObject()
+    phys:SetPos(b:GetPos() + Vector(0, 0, 160), true)
+    phys:SetAngles(Angle(0, b:GetAngles().y, 0))
+    phys:SetVelocity(Vector(100, 0, 0))
+    phys:Wake()
+    local peak = 0
+    local landed = false
+    ctx:waitUntil(function()
+        for _, w in ipairs(b.wheels) do peak = math.max(peak, w.compression or 0) end
+        if not ctx:st().grounded then landed = false elseif not landed then landed = CurTime() end
+        return landed and CurTime() - landed > 1
+    end, 6, "the landing")
+    hook.Remove("BMX_Crashed", "BMX.TestDhDrop")
+    ctx:log(string.format("peak compression %.1f of %.0f", peak, travel))
+    ctx:ok(landed, "it landed")
+    ctx:ok(crashed == nil, "no crash: " .. tostring(crashed))
+    ctx:ok(IsValid(b:GetDriver()), "the rider is aboard")
+    ctx:ok(ctx:st().grounded, "on its wheels")
+    ctx:between(peak, 4, travel * 0.9, "peak compression", "u")
+    ctx:input({})
+end)

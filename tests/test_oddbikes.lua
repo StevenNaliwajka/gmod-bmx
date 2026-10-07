@@ -413,3 +413,95 @@ T.test("tandem: it is drawn: both bottom brackets, both saddles, and the stoker 
     T.ok(t2 ~= s, "(a child seat does not)")
 end)
 
+--------------------------------------------------------------------------
+-- The downhill bike
+--------------------------------------------------------------------------
+
+T.test("dh: it registers clean, with more travel, bigger tyres and more weight than the BMX", function()
+    local sv = F.server()
+    local B = sv.env.BMX
+    T.ok(B.Bikes.dh, "registered")
+    T.eq(#sv.errors, 0, "nothing rejected: " .. table.concat(sv.errors, " | "))
+    local dh, st = B.ConfigFor(B.Bikes.dh), B.ConfigFor(B.Bikes.stock)
+    T.ok(dh.Wheel.restLength >= 2 * st.Wheel.restLength, "twice the travel: " .. dh.Wheel.restLength)
+    T.ok(dh.Wheel.radius > st.Wheel.radius, "bigger wheels")
+    T.ok(dh.Wheel.grip > st.Wheel.grip, "more grip")
+    T.ok(dh.Chassis.mass >= 1.3 * st.Chassis.mass, "heavy: " .. dh.Chassis.mass)
+    T.ok(dh.Wheel.damper > st.Wheel.damper, "a stiffer damper")
+    T.eq(B.Bikes.dh.family, "bike", "a bike")
+    T.eq(sv.lists.SpawnableEntities.bmx_dh.Subcategory, "Bikes", "in the spawn menu under Bikes")
+    -- THE SAG MUST BE UNDER stepMax, or the spring never compresses (see the registry's note).
+    local sag = dh.Chassis.mass * 600 * 0.5 / dh.Wheel.spring
+    T.ok(sag < dh.Wheel.stepMax, "the sag " .. sag .. " is under the step limit " .. dh.Wheel.stepMax)
+    T.ok(sag < dh.Wheel.restLength * 0.4, "and a good deal of the travel is left")
+end)
+
+T.test("dh: it rests ON ITS SPRINGS, not on its hull (the bug the step limit would have been)", function()
+    local sv, e = ridden("dh")
+    local C = e:Cfg()
+    sv:run(1)
+    for i, w in ipairs(e.wheels) do
+        T.ok(w.compression > 2 and w.compression < C.Wheel.restLength * 0.5, "wheel " .. i .. " is sprung: " .. w.compression)
+        T.ok(w.load > 10000, "and carries weight: " .. w.load)
+    end
+    T.ok(e:GetPos().z > 6, "up off its hull: " .. e:GetPos().z)
+end)
+
+T.test("dh_lands_drop: a 4 m drop at speed is soaked: more of the travel left than a BMX's, no crash, still aboard", function()
+    local peak = {}
+    for _, id in ipairs({ "stock", "dh" }) do
+        local sv, e = ridden(id)
+        local E = sv.env
+        local crashed = {}
+        E.hook.Add("BMX_Crashed", "t", function(b, ply, why) crashed[#crashed + 1] = why end)
+        F.input(e, { throttle = 0.5 })
+        sv:run(3)
+        local p = e:GetPhysicsObject()
+        p:SetPos(e:GetPos() + E.Vector(0, 0, 160))
+        p:SetVelocity(E.Vector(150, 0, 0))
+        local pc = 0
+        for i = 1, 4 * 66 do
+            sv:run(1 / 66)
+            pc = math.max(pc, e.wheels[1].compression, e.wheels[2].compression)
+        end
+        T.ok(E.IsValid(e:GetDriver()), id .. ": aboard after the drop")
+        T.eq(#crashed, 0, id .. ": no crash: " .. table.concat(crashed, ","))
+        peak[id] = pc / e:Cfg().Wheel.restLength
+    end
+    T.ok(peak.stock > 0.95, "the BMX bottoms out on it: " .. peak.stock)
+    T.ok(peak.dh < 0.9, "the DH does not: " .. peak.dh)
+end)
+
+T.test("dh: it gets up to speed, and is steadier at speed than the BMX when knocked", function()
+    local out = {}
+    for _, id in ipairs({ "stock", "dh" }) do
+        local sv, e = ridden(id)
+        F.input(e, { throttle = 1 })
+        sv:run(30, function() return e.st.speed > 200 end)
+        T.ok(e.st.speed > 200, id .. " gets to 200: " .. e.st.speed)
+        F.input(e, { throttle = 0.5 })
+        e:GetPhysicsObject():SetAngleVelocity(sv.env.Vector(80, 0, 0))
+        local peak = 0
+        for i = 1, 3 * 66 do
+            sv:run(1 / 66)
+            peak = math.max(peak, math.abs(e.st.roll))
+        end
+        T.ok(sv.env.IsValid(e:GetDriver()), id .. " aboard")
+        out[id] = peak
+    end
+    T.ok(out.dh <= out.stock, string.format("a knock moves the DH no more than the BMX: %.2f vs %.2f deg",
+        math.deg(out.dh), math.deg(out.stock)))
+end)
+
+T.test("dh: bmx_spawn dh spawns it, built, and respects bmx_allow_bikes", function()
+    local sv = F.server()
+    local ply = sv:player("Spawner")
+    ply:SetPos(sv.env.Vector(0, 0, 0))
+    ply._eyeTrace = { Hit = true, HitPos = sv.env.Vector(100, 0, 0), HitNormal = sv.env.Vector(0, 0, 1) }
+    sv:command("bmx_spawn", ply, "dh")
+    T.eq(#sv.env.ents.FindByClass("bmx_dh"), 1, "one")
+    sv.env.GetConVar("bmx_allow_bikes"):SetString("0")
+    sv.world.time = sv.world.time + 2
+    sv:command("bmx_spawn", ply, "dh")
+    T.eq(#sv.env.ents.FindByClass("bmx_dh"), 1, "switched off: no second")
+end)

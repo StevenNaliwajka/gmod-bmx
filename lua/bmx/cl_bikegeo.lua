@@ -513,7 +513,9 @@ end
 
 G.prim = { sweep = sweep, lathe = lathe, plate = plate, ringPlate = ringPlate,
            box = box, roundRect = roundRect, circle = circle, bez3 = bez3,
-           spline = spline, tri = tri, quad = quad, grid = grid, cap = cap }
+           spline = spline, tri = tri, quad = quad, grid = grid, cap = cap,
+           bead = bead, earclip = earclip, area2 = area2, newModel = newModel }
+G.vec.madd, G.vec.perp = madd, perp
 
 --------------------------------------------------------------------------
 -- THE DESIGN. Stock dimensions in inches. cl_init.lua's FRAME points are the
@@ -577,7 +579,8 @@ end
 --   decal   the down tube's graphic (a texture drawn at runtime, alpha-tested)
 --   tyretext the sidewall lettering (likewise)
 --------------------------------------------------------------------------
-G.ROLES = { "paint", "black", "chrome", "alloy", "steel", "rubber", "gum", "seat", "plastic", "decal", "tyretext" }
+G.ROLES = { "paint", "black", "chrome", "alloy", "steel", "rubber", "gum", "seat", "plastic", "decal", "tyretext",
+            "white", "wood", "leather", "lens", "redlens", "amber" }
 
 --------------------------------------------------------------------------
 -- FRAME
@@ -967,19 +970,27 @@ end
 --------------------------------------------------------------------------
 -- WHEELS (built about their own axle: x fwd, y left = axle, z up)
 --------------------------------------------------------------------------
-function G.WheelDims(radius)
+-- `o` (optional) sizes a wheel that is not a BMX's: width = the tyre's width,
+-- height = its section height (bead to tread), rimDepth = the rim's depth below
+-- the bead (a deep-V), rimW = the rim's width. Absent, a 20 x 2.3 at this radius.
+function G.WheelDims(radius, o)
+    o = o or {}
     local s = radius / 10
+    local w = o.width or 2.3 * s
+    local h = o.height or 0.874 * w
+    local bead = radius - h
     return {
         outer = radius,
-        tyreW = 2.3 * s,                 -- 20 x 2.3
-        bead  = 7.99 * s,                -- ISO 406 bead seat
-        rimOut = 8.4 * s,                -- rim flange top
-        rimIn  = 7.35 * s,               -- spoke bed
-        rimW   = 1.25 * s,
-        flangeR = 1.15 * s,              -- hub flange hole circle
+        tyreW = w,                       -- 20 x 2.3
+        bead  = bead,                    -- ISO 406 bead seat (7.99 on the BMX)
+        rimOut = bead + 0.178 * w,       -- rim flange top
+        rimIn  = bead - (o.rimDepth or 0.64 * s),   -- spoke bed
+        rimW   = o.rimW or 0.543 * w,
+        flangeR = o.flangeR or 1.15 * s, -- hub flange hole circle
         s = s,
     }
 end
+G.tyreProfile = function(R) return tyreProfile(R) end
 
 local function tyreProfile(R)
     -- the casing as an ellipse from bead to bead; returns points (r, y)
@@ -1061,9 +1072,36 @@ local function buildWheel(M, group, R, opt)
             if s > 0 then prof = { prof[3], prof[2], prof[1] } end
             lathe(M:bucket(group, "rubber"), prof, o, Y, segs)
         end
-        -- tread: four staggered rows of low file blocks
+        -- tread: four staggered rows of low file blocks (opt.tread: "file", the
+        -- default; "knobby", tall square blocks for dirt; "slick" or "road", none)
         local K = M:bucket(group, "rubber", true)
-        local rows = { -0.62, -0.21, 0.21, 0.62 }
+        local tread = opt.tread or "file"
+        if tread == "knobby" then
+            local rowsK = { -0.78, -0.42, 0, 0.42, 0.78 }
+            local bw = opt.knob or 0.2 * R.tyreW
+            local nK = floor(TAU * R.outer / (bw * 2.6))
+            for ri, yf in ipairs(rowsK) do
+                local y = yf * b
+                local tt = math.asin(max(-1, min(1, y / b)))
+                local rr = c + cos(tt) * a
+                local nr, ny = cos(tt) / a, sin(tt) / b
+                local nl = sqrt(nr * nr + ny * ny)
+                nr, ny = nr / nl, ny / nl
+                for i = 0, nK - 1 do
+                    if (i + ri) % 2 == 0 or abs(yf) < 0.1 then
+                        local ang = (i + (ri % 2) * 0.5) / nK * TAU
+                        local rad = V(cos(ang), 0, sin(ang))
+                        local tang = V(-sin(ang), 0, cos(ang))
+                        local nrm = norm(add(mul(rad, nr), V(0, ny, 0)))
+                        local side = norm(cross(nrm, tang))
+                        local hk = bw * 0.62
+                        local ctr = add(add(mul(rad, rr - 0.03), V(0, y, 0)), mul(nrm, hk * 0.5))
+                        box(K, ctr, mul(tang, bw * 0.5), mul(side, bw * (abs(yf) > 0.6 and 0.42 or 0.5)), mul(nrm, hk * 0.5))
+                    end
+                end
+            end
+        end
+        local rows = (tread == "file") and { -0.62, -0.21, 0.21, 0.62 } or {}
         local n = floor(TAU * R.outer / 0.62)
         for ri, yf in ipairs(rows) do
             local y = yf * b
@@ -1111,10 +1149,13 @@ local function buildWheel(M, group, R, opt)
               V(0, 0, R.rimIn), V(0, 0, -1), 10)
     end
     -- HUB: shell with two flanges; the cog on the rear's drive side.
-    local flY = opt.rear and { 1.05, -1.25 } or { 1.15, -1.15 }
+    -- opt.hubHalf widens it (a moto's, a 135 mm rear), opt.hubShell makes the
+    -- shell a drum of that radius (a hub motor, a coaster brake).
+    local hh = opt.hubHalf or 1.55
+    local flY = opt.rear and { hh - 0.5, -(hh - 0.3) } or { hh - 0.4, -(hh - 0.4) }
     do
-        local Al = M:bucket(group, "alloy")
-        local h0, h1 = -1.55, 1.55
+        local Al = M:bucket(group, opt.hubRole or "alloy")
+        local h0, h1 = -hh, hh
         local prof = {
             { 0.0, h0, true }, { 0.55, h0, true }, { 0.6, h0 + 0.1 },
             { 0.6, flY[2] - 0.12 }, { R.flangeR + 0.22, flY[2] - 0.08, true }, { R.flangeR + 0.25, flY[2] }, { R.flangeR + 0.22, flY[2] + 0.08, true },
@@ -1123,7 +1164,30 @@ local function buildWheel(M, group, R, opt)
             { 0.6, flY[1] + 0.12 }, { 0.6, h1 - 0.1 }, { 0.55, h1, true }, { 0.0, h1, true },
         }
         lathe(Al, prof, o, Y, 28)
-        if opt.rear then
+        if opt.hubShell then
+            local r, w = opt.hubShell, (flY[1] - flY[2]) * 0.5 - 0.2
+            lathe(Al, { { 0.6, -w - 0.1, true }, { r - 0.25, -w, true }, { r, -w + 0.25 }, { r, w - 0.25 },
+                        { r - 0.25, w, true }, { 0.6, w + 0.1, true } }, V(0, (flY[1] + flY[2]) * 0.5, 0), Y, 36)
+        end
+        if opt.disc then
+            -- a six-bolt rotor on the left of the hub, and its carrier
+            local St = M:bucket(group, "steel")
+            local dy = h1 - 0.12
+            local rr = opt.disc
+            ringPlate(St, circle(rr, 48), circle(rr - 0.75, 48), V(0, dy, 0), V(1, 0, 0), V(0, 0, 1), 0.08)
+            for i = 0, 5 do
+                local an = i / 6 * TAU
+                local d = V(cos(an), 0, sin(an))
+                local t = V(-sin(an), 0, cos(an))
+                local inner = add(V(0, dy, 0), mul(d, 0.85))
+                local outer = add(V(0, dy, 0), mul(d, rr - 0.6))
+                local mid = mul(add(inner, outer), 0.5)
+                box(St, add(mid, mul(t, 0.25)), add(mul(d, (rr - 1.45) * 0.5), mul(t, 0.3)), V(0, 0.04, 0), mul(t, 0.16))
+            end
+            lathe(M:bucket(group, "black"), { { 0.6, dy - 0.25, true }, { 1.0, dy - 0.25, true }, { 1.0, dy + 0.05, true }, { 0.6, dy + 0.05, true } },
+                  o, Y, 6, { flat = true })
+        end
+        if opt.rear and opt.cog ~= false then
             -- the driver and a 9-tooth cog on the chainline
             local Stl = M:bucket(group, "steel")
             local cy = G.CHAINY
@@ -1145,11 +1209,27 @@ local function buildWheel(M, group, R, opt)
             sweep(Stl, { V(0, -1.5, 0), V(0, cy - 0.1, 0) }, 0.5, 18)
         end
     end
-    -- SPOKES: 36, three-cross, with nipples at the rim.
-    do
+    -- SPOKES: 36, three-cross, with nipples at the rim (opt.spokes, opt.cross:
+    -- 0 is radial; opt.spokeR the gauge). opt.mag = n casts the wheel instead:
+    -- n flat arms from the hub to the rim, as on a scooter or a motorbike.
+    if opt.mag then
+        local Mg = M:bucket(group, opt.rim or "black")
+        local n = opt.mag
+        for i = 0, n - 1 do
+            local an = i / n * TAU
+            local d = V(cos(an), 0, sin(an))
+            local t = V(-sin(an), 0, cos(an))
+            local a0 = mul(d, R.flangeR + 0.2)
+            local a1 = mul(d, R.rimIn + 0.1)
+            local pts = bez3(a0, add(lerp(a0, a1, 0.33), mul(t, 0.35)), add(lerp(a0, a1, 0.66), mul(t, 0.35)), a1, 8)
+            sweep(Mg, pts, function(tt) return 0.18 + 0.12 * (1 - tt), 0.42 - 0.12 * tt end, 10, { up = Y })
+        end
+    end
+    if not opt.mag then
         local C = M:bucket(group, "chrome", true)
-        local N = 36
-        local cross3 = 3 * 720 / N * pi / 180
+        local N = opt.spokes or 36
+        local cross3 = (opt.cross or 3) * 720 / N * pi / 180
+        local gauge = opt.spokeR or 0.042
         for i = 0, N - 1 do
             local ra = i / N * TAU
             local side = (i % 2 == 0) and 1 or -1
@@ -1158,9 +1238,9 @@ local function buildWheel(M, group, R, opt)
             local fy = side > 0 and flY[1] or flY[2]
             local hub = V(cos(ha) * R.flangeR, fy + 0.05 * dir * side, sin(ha) * R.flangeR)
             local rim = V(cos(ra) * (R.rimIn + 0.05), 0.18 * side, sin(ra) * (R.rimIn + 0.05))
-            sweep(C, { hub, rim }, 0.042, 5, { capStart = false, capEnd = false })
+            sweep(C, { hub, rim }, gauge, 5, { capStart = false, capEnd = false })
             local nd = norm(sub(rim, hub))
-            sweep(C, { sub(rim, mul(nd, 0.35)), add(rim, mul(nd, 0.05)) }, 0.075, 6, { capStart = false })
+            sweep(C, { sub(rim, mul(nd, 0.35)), add(rim, mul(nd, 0.05)) }, gauge * 1.8, 6, { capStart = false })
         end
     end
 end
@@ -1432,6 +1512,73 @@ local function buildDecals(M, L)
 end
 
 --------------------------------------------------------------------------
+-- PARTS a vehicle model can share (the BMX and the cl_geo_*.lua kinds).
+--------------------------------------------------------------------------
+G.parts = G.parts or {}
+G.parts.wheel = buildWheel           -- (M, group, G.WheelDims(r, o), opt)
+G.parts.pedal = function(M, group)   -- one platform pedal about its own centre
+    local Mx = newModel()
+    buildPedal(Mx)
+    for _, b in ipairs(Mx.groups.pedal) do
+        local dst = M:bucket(group, b.mat, b.detail)
+        for _, vt in ipairs(b.v) do dst.v[#dst.v + 1] = vt end
+        dst.tris = dst.tris + b.tris
+    end
+end
+G.parts.toothLoop = toothLoop
+G.parts.pitchRadius = pitchRadius
+
+-- THE BELL: a 55 mm steel dome on a clamp round the bar, and a thumb lever that
+-- flicks the hammer. `at` is the bar's centreline under the dome, `barDir` the
+-- bar's direction there (outward), `up` the dome's axis. The dome goes in
+-- `group` (it turns with the bars); the lever in `leverGroup`, so the drawing
+-- can swing it about the returned pivot and axis when the bell rings. Design
+-- inches, so a caller scales it with the rest.
+function G.parts.bell(M, group, leverGroup, at, barDir, up, toward)
+    barDir, up = norm(barDir), norm(up)
+    local back = norm(cross(barDir, up))
+    if toward and dot(back, toward) < 0 then back = mul(back, -1) end
+    local Ch = M:bucket(group, "chrome")
+    local Bk = M:bucket(group, "black")
+    -- the clamp band round the bar, and the post up to the dome
+    lathe(Bk, { { 0.0, -0.28, true }, { 0.52, -0.28, true }, { 0.56, -0.2 }, { 0.56, 0.2 }, { 0.52, 0.28, true }, { 0, 0.28, true } },
+          at, barDir, 18)
+    local base = add(at, mul(up, 0.55))
+    sweep(Bk, { add(at, mul(up, 0.3)), base }, 0.26, 10)
+    lathe(Bk, { { 0, 0, true }, { 0.92, 0, true }, { 0.92, 0.14, true }, { 0, 0.16, true } }, base, up, 28)
+    -- the dome: a bowl, polished outside, its rim rolled
+    local d0 = add(base, mul(up, 0.08))
+    lathe(Ch, { { 0, 1.02, true }, { 0.3, 1.0 }, { 0.62, 0.9 }, { 0.86, 0.68 }, { 1.0, 0.42 }, { 1.07, 0.16 },
+                { 1.09, 0.04, true }, { 1.04, 0.0, true } }, d0, mul(up, 1), 36)
+    lathe(Ch, { { 0.98, 0.02, true }, { 1.0, 0.18 }, { 0.92, 0.5 }, { 0.5, 0.84 }, { 0, 0.92, true } }, d0, up, 36, { inward = true })
+    -- the nut on top
+    lathe(Ch, { { 0, 0, true }, { 0.2, 0, true }, { 0.2, 0.16 }, { 0.12, 0.2, true }, { 0, 0.2, true } }, add(d0, mul(up, 1.0)), up, 6, { flat = true })
+    -- the lever: a pressed arm from under the dome back toward the rider's thumb,
+    -- with a round pad
+    local Lv = M:bucket(leverGroup, "chrome")
+    local pivot = add(base, add(mul(back, 0.45), mul(up, 0.05)))
+    local tip = add(pivot, add(mul(back, 1.35), add(mul(barDir, -0.45), mul(up, -0.1))))
+    sweep(Lv, { pivot, lerp(pivot, tip, 0.5), tip }, function() return 0.16, 0.06 end, 8, { up = up })
+    lathe(Lv, { { 0, -0.07, true }, { 0.34, -0.07, true }, { 0.36, 0 }, { 0.34, 0.07, true }, { 0, 0.07, true } }, tip, up, 16)
+    lathe(Lv, { { 0, -0.12, true }, { 0.14, -0.12, true }, { 0.14, 0.12, true }, { 0, 0.12, true } }, pivot, up, 8)
+    return pivot, up
+end
+
+--------------------------------------------------------------------------
+-- KINDS: a vehicle names the model it is drawn as with `look` in its registry
+-- entry. "bmx" is built below; every other kind lives in its own cl_geo_*.lua
+-- and registers a builder here. A builder is handed
+--
+--     opt = { kind, k, radius, rearRadius, wheelbase, seat = {x, y, z}, ... }
+--
+-- in REAL units (the vehicle's own wheelbase and wheel sizes, its rider's seat:
+-- the pod sits ~2 units under the top of the saddle), and returns a model whose
+-- `layout` says where its moving parts pivot (docs/MODELS.md has the contract).
+--------------------------------------------------------------------------
+G.Kinds = G.Kinds or {}
+function G.RegisterKind(name, fn) G.Kinds[name] = fn end
+
+--------------------------------------------------------------------------
 -- BUILD. `opt` = { k = scale, radius = wheel radius in units (scaled),
 -- wall = sidewall role }. Returns the model with groups and the layout the
 -- drawing code needs (pivots, the cable's frame end), scaled.
@@ -1447,6 +1594,11 @@ end
 
 function G.Build(opt)
     opt = opt or {}
+    if opt.kind and opt.kind ~= "bmx" then
+        local fn = G.Kinds[opt.kind]
+        if not fn then error("no bike model kind " .. tostring(opt.kind)) end
+        return fn(opt, G)
+    end
     local k = opt.k or 1
     -- wheels are built at their own radius in design inches (radius / k)
     local radius = (opt.radius or 10 * k) / k
@@ -1467,12 +1619,26 @@ function G.Build(opt)
     buildWheel(M, "wheelR", R, { rear = true, wall = opt.wall })
     buildCranks(M)
     buildPedal(M)
+    -- The bell, on the left of the bars just inboard of the grip.
+    local F = G.FRAME
+    local bellAt = V(F.bars[1], G.GRIP_IN - 1.0, F.bars[3])
+    local bellPivot, bellAxis = G.parts.bell(M, "bars", "bellLever", bellAt, V(0, 1, 0), V(0, 0, 1), V(-1, 0, 0))
     scaleModel(M, k)
-    -- Points the drawing code needs, in scaled design space.
+    -- Points the drawing code needs, in scaled design space (docs/MODELS.md).
+    local function grip(side)
+        return { A = mul(V(F.bars[1], -G.GRIP_IN * side, F.bars[3]), k),
+                 B = mul(V(F.bars[1], -G.GRIP_OUT * side, F.bars[3]), k) }
+    end
     M.layout = {
         k = k, steer = L.steer, gyro = mul(L.gyro, k), stemTop = mul(L.stemTop, k),
         clamp = mul(L.clamp, k), yoke = mul(yoke, k),
         lever = mul(V(G.FRAME.bars[1] + 0.75 + 0.35, -(G.GRIP_IN - 0.55), G.FRAME.bars[3] + 0.05), k),
+        headT = mul(F.headT, k), headB = mul(F.headB, k), bb = mul(F.bb, k),
+        rear = mul(F.rear, k), front = mul(F.front, k),
+        crank = G.CRANK * k, pedalY = (G.Q + 1.8) * k,
+        gripR = grip(1), gripL = grip(-1),
+        bellPivot = mul(bellPivot, k), bellAxis = bellAxis,
+        cable = true,                 -- the lever-to-gyro loop is drawn live
     }
     return M
 end

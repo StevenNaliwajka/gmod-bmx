@@ -505,6 +505,7 @@ BMX.RegisterBike("mini", {
 -- THE SCORE IS x1.5, "the road bike tax": tricks are allowed and still pay, and
 -- paying more is what makes a road bike backflip a thing a server remembers.
 BMX.RegisterBike("road", {
+    look        = "road",          -- its model (docs/MODELS.md)
     printName   = "Road Bike",
     description = "700c road bike: long, light and fast, with gears ([ ] or the mouse wheel), drop bars and a tucked rider. Tricks score x1.5.",
     colorIndex  = 13,           -- white
@@ -541,6 +542,7 @@ BMX.RegisterBike("road", {
 -- the wheel and skid it (a skid stop from 15 mph is ~3.7 m on the plant; at the BMX's
 -- 95,000 it was 7.6 m, which is a brake, not a skid).
 BMX.RegisterBike("fixie", {
+    look        = "fixie",         -- its model (docs/MODELS.md)
     printName   = "Fixie",
     description = "Fixed-gear track bike: the cranks are locked to the rear wheel. Coasting turns the legs, S skids, S at a standstill rolls it backwards (fakie), A/D at a standstill is a trackstand. No front brake.",
     colorIndex  = 2,            -- orange
@@ -574,6 +576,7 @@ BMX.RegisterBike("fixie", {
 --                               in it (sv_basket.lua)
 --   seats = { child = {} }      no pegs: a Dutch bike carries a child on the back
 BMX.RegisterBike("city", {
+    look        = "city",          -- its model (docs/MODELS.md)
     printName   = "City Bike",
     description = "Dutch-style city bike: upright, heavy and slow, with a coaster brake (S), swept-back bars, a front basket (props stay in while you ride gently), a kickstand and a bell. A child seat is on the context menu. LMB does nothing.",
     colorIndex  = 14,           -- black
@@ -619,6 +622,7 @@ BMX.RegisterBike("city", {
 --                               air is not what this vehicle is for
 BMX.RegisterVehicle({
     id          = "unicycle",
+    look        = "unicycle",      -- its model (docs/MODELS.md)
     family      = "bike",
     printName   = "Unicycle",
     description = "One wheel, a fixed gear and no brake. W / S pedal forward and back to stay under yourself, A / D lean, the mouse twists you round. bmx_unicycle_assist sets how much is done for you. Tricks: idle (rock in place) and hop. Falls are ragdolls.",
@@ -674,6 +678,7 @@ BMX.RegisterVehicle({
 --   tricks none                 the header is the trick
 BMX.RegisterVehicle({
     id          = "penny",
+    look        = "penny",         -- its model (docs/MODELS.md)
     family      = "bike",
     printName   = "Penny-Farthing",
     description = "A 26-unit front wheel with the pedals on its hub, a tiny one behind, the rider a long way up. It leans and steers like a bike, and a hard front brake at speed takes you over the bars: a header.",
@@ -725,6 +730,7 @@ BMX.RegisterVehicle({
 --                               quicker to GET there
 --   tricks none                 it is a long bike with two people on it
 BMX.RegisterBike("tandem", {
+    look        = "tandem",        -- its model (docs/MODELS.md)
     printName   = "Tandem",
     description = "A long two-seat bike. The captain (E) steers and brakes; get on behind them with E at the back for the second seat: the stoker's W adds their pedalling to the captain's, and the torques sum.",
     colorIndex  = 8,
@@ -771,6 +777,7 @@ BMX.RegisterBike("tandem", {
 --   Balance leanKp 300, fadeInHigh 90   the lean answered a little faster and whole by
 --                               90 u/s, as the road bike's is: stable at speed is the brief
 BMX.RegisterBike("dh", {
+    look        = "dh",            -- its model (docs/MODELS.md)
     printName   = "Downhill Bike",
     description = "Long-travel downhill bike: big tyres, a soft heavy suspension that eats drops, heavy and very stable at speed. Built for the hill.",
     colorIndex  = 9,

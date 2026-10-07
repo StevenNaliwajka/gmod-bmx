@@ -281,6 +281,7 @@ SC.GrindPoints = {
 }
 
 BMX.RegisterBike("scooter", {
+    look        = "scooter",       -- its model (docs/MODELS.md)
     printName   = "Scooter",
     description = "A pro stunt scooter: kick (W), steer by leaning, rear fender brake (S), hop, tailwhip, barspin, bri flip and grind.",
     author      = "naliwajka",

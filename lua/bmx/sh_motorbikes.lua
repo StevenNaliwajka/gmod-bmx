@@ -43,6 +43,7 @@ BMX = BMX or {}
 --                       is the MOTOR'S fade and not the rider spinning out
 --   assist = 1          it spawns in level 1: a gentle help, not a surprise
 BMX.RegisterBike("ebike", {
+    look        = "ebike",         -- its model (docs/MODELS.md)
     printName   = "E-Bike",
     description = "Pedal-assist e-bike: the motor adds 0-3 times your pedalling (mouse wheel or [ ]) up to 25 km/h, then you pedal on alone. The battery drains with the motor's work and recharges while parked.",
     family      = "moto",
@@ -77,6 +78,7 @@ BMX.RegisterBike("ebike", {
 --                       leaves the hull's floor under the pegs; spring 13600 and damper
 --                       850 are the BMX's scaled by mass (see the file header)
 BMX.RegisterBike("emoto", {
+    look        = "emoto",         -- its model (docs/MODELS.md)
     printName   = "E-Moto",
     description = "Electric motorbike: throttle on W, no pedalling, regen braking on S, about 2.5x a BMX's top speed. Heavy, with long-travel suspension.",
     family      = "moto",
@@ -115,6 +117,7 @@ BMX.RegisterBike("emoto", {
 --     BMX's COM offset and comes on faster: a Trials rider throws their weight around
 --   Hop.popSpeed 130   the legs do not hop a 118 kg bike; the suspension and the throttle do
 BMX.RegisterBike("dirtbike", {
+    look        = "dirtbike",      -- its model (docs/MODELS.md)
     printName   = "Dirt Bike",
     description = "Trials and freestyle motocross: an engine with a torque curve, five gears ([ ] or the wheel), a clutch on SHIFT (let go with the throttle open to pop a wheelie), long-travel suspension and FMX poses (Alt in the air: superman, heel clicker, cliffhanger).",
     family      = "moto",
@@ -151,6 +154,7 @@ BMX.RegisterBike("dirtbike", {
 --                  11-radius wheel
 --   torque 9000    a 50 cc: just enough, and the legs are what gets it off the line
 BMX.RegisterBike("moped", {
+    look        = "moped",         -- its model (docs/MODELS.md)
     printName   = "Moped",
     description = "Piaggio-style moped: pedal it off for the first few metres and the engine takes over. One speed, about 45 km/h.",
     family      = "moto",

@@ -109,6 +109,12 @@ local SERVER_FILES = {
 
 local CLIENT_FILES = {
     "bmx/cl_bikegeo.lua",   -- the bike model, built as triangles (pure Lua)
+    "bmx/cl_geo_road.lua",   -- the road bike and the fixie, built the same way (docs/MODELS.md)
+    "bmx/cl_geo_city.lua",   -- the city bike, built the same way (docs/MODELS.md)
+    "bmx/cl_geo_mtb.lua",    -- the downhill bike and the e-bike, built the same way (docs/MODELS.md)
+    "bmx/cl_geo_moto.lua",   -- the e-moto, the dirt bike and the moped, built the same way (docs/MODELS.md)
+    "bmx/cl_geo_odd.lua",    -- the unicycle, the penny-farthing and the tandem, built the same way (docs/MODELS.md)
+    "bmx/cl_geo_board.lua",  -- the skateboard, the kick scooter and the inline skates, built the same way (docs/MODELS.md)
     "bmx/cl_bikemesh.lua",  -- ...as IMeshes: materials, lighting, drawing
     "bmx/cl_view.lua",
     "bmx/cl_hud.lua",

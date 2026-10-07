@@ -81,6 +81,7 @@ B.GrindPoints = {
 
 BMX.RegisterVehicle({
     id          = "skateboard",
+    look        = "skateboard",    -- its model (docs/MODELS.md)
     printName   = "Skateboard",
     description = "A skateboard: push, carve, ollie and flip it, grind rails and ledges.",
     author      = "naliwajka",

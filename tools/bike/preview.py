@@ -24,6 +24,7 @@ SS = 2  # supersampling
 buckets = []
 steerAxis = None
 kscale = 1.0
+ANCH, NUM = {}, {}
 with open(src) as f:
     lines = f.read().split('\n')
 i = 0
@@ -33,6 +34,14 @@ while i < len(lines):
         p = l.split()
         steerAxis = np.array([float(p[2]), float(p[3]), float(p[4])])
         kscale = float(p[1])
+        i += 1
+    elif l.startswith('A '):
+        p = l.split()
+        ANCH[p[1]] = np.array([float(p[2]), float(p[3]), float(p[4])])
+        i += 1
+    elif l.startswith('N '):
+        p = l.split()
+        NUM[p[1]] = float(p[2])
         i += 1
     elif l.startswith('B '):
         _, g, mat, det, n = l.split()
@@ -46,6 +55,18 @@ while i < len(lines):
 FR = dict(bb=np.array([-4.5, 0, 2.5]), headB=np.array([14.5, 0, 10.5]),
           rear=np.array([-19.5, 0, 0]), front=np.array([19.5, 0, 0]))
 FR = {k: v * kscale for k, v in FR.items()}    # pivots scale with the bike
+for key in ('bb', 'headB', 'rear', 'front'):    # a kind's own anchors win
+    if key in ANCH:
+        FR[key] = ANCH[key]
+CRANK = NUM.get('crank', 6.8 * kscale)
+PEDALY = NUM.get('pedalY', (3.4 + 1.8) * kscale)
+# Groups a kind places by translation (layout.at.<group>.<n>): wheels and the like
+# built about their own origin.
+AT = {}
+for key, v in ANCH.items():
+    if key.startswith('at.'):
+        g = key.split('.')[1]
+        AT.setdefault(g, []).append(v)
 
 def rotm(axis, ang):
     a = axis / np.linalg.norm(axis)
@@ -60,9 +81,11 @@ Ry = lambda a: rotm(np.array([0, 1.0, 0]), a)
 
 def xf(g):
     # returns list of (R, t): world = R @ p + t
+    if g in AT:
+        return [(np.eye(3), t) for t in AT[g]]
     if g == 'frame':
         return [(np.eye(3), np.zeros(3))]
-    if g in ('fork', 'bars'):
+    if g in ('fork', 'bars', 'bellLever', 'forkLower'):
         return [(Rsteer, FR['headB'] - Rsteer @ FR['headB'])]
     if g == 'wheelF':
         R = Rsteer @ Ry(0.4)
@@ -71,12 +94,16 @@ def xf(g):
         return [(Ry(0.9), FR['rear'])]
     if g == 'cranks':
         R = Ry(crank)
-        return [(R, FR['bb'] - R @ FR['bb'])]
+        out = [(R, FR['bb'] - R @ FR['bb'])]
+        if 'bb2' in ANCH:
+            out.append((R, ANCH['bb2'] - R @ FR['bb']))
+        return out
     if g == 'pedal':
         out = []
-        for s, d in ((-1, 1), (1, -1)):
-            tip = FR['bb'] + Ry(crank) @ np.array([6.8 * d * kscale, 0, 0])
-            out.append((np.eye(3), tip + np.array([0, (3.4 + 1.8) * s * kscale, 0])))
+        for c in [FR['bb']] + ([ANCH['bb2']] if 'bb2' in ANCH else []):
+            for s, d in ((-1, 1), (1, -1)):
+                tip = c + Ry(crank) @ np.array([CRANK * d, 0, 0])
+                out.append((np.eye(3), tip + np.array([0, PEDALY * s, 0])))
         return out
     return [(np.eye(3), np.zeros(3))]
 
@@ -90,10 +117,20 @@ MAT = {  # base colour, spec strength, spec exponent, reflectivity
     'gum':     ((0.55, 0.38, 0.22), 0.08, 10, 0.0),
     'seat':    ((0.04, 0.04, 0.045), 0.25, 18, 0.02),
     'plastic': ((0.06, 0.06, 0.065), 0.2, 16, 0.02),
+    'white':   ((0.85, 0.85, 0.83), 0.3, 20, 0.04),
+    'wood':    ((0.78, 0.6, 0.38), 0.1, 10, 0.0),
+    'leather': ((0.4, 0.22, 0.1), 0.2, 14, 0.01),
+    'lens':    ((0.8, 0.8, 0.78), 1.0, 90, 0.6),
+    'redlens': ((0.75, 0.05, 0.04), 0.8, 70, 0.3),
+    'amber':   ((0.9, 0.5, 0.05), 0.8, 70, 0.3),
     # textured in the game; a flat stand-in here
     'decal':    ((0.9, 0.9, 0.9), 0.5, 60, 0.1),
     'tyretext': ((0.3, 0.22, 0.14), 0.05, 10, 0.0),
 }
+import os as _os
+if _os.environ.get('BMX_PAINT'):      # BMX_PAINT=r,g,b (0..1): the frame's colour
+    _c = tuple(float(x) for x in _os.environ['BMX_PAINT'].split(','))
+    MAT['paint'] = (_c,) + MAT['paint'][1:]
 names = list(MAT.keys())
 
 P, N, M = [], [], []
@@ -122,6 +159,12 @@ views = {
 d, dist, tgt = views[view]
 d = np.array(d, float); d /= np.linalg.norm(d)
 tgt = np.array(tgt, float)
+if not view.startswith('close'):
+    # fit the model: the views were framed on a BMX, ~33 units from its middle out
+    lo, hi = P.min(axis=0), P.max(axis=0)
+    rad = np.linalg.norm(hi - lo) / 2
+    tgt = (lo + hi) / 2
+    dist = dist * rad / 33
 eye = tgt + d * dist * 1.6
 fwd = (tgt - eye); fwd /= np.linalg.norm(fwd)
 right = np.cross(fwd, [0, 0, 1.0]); right /= np.linalg.norm(right)

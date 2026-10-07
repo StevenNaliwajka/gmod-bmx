@@ -546,33 +546,73 @@ local function wheelMat(map, centre, spin)
     return BMX.BikeMesh.Matrix(o, rotVec(ex, ey, spin), ey, rotVec(ez, ey, spin))
 end
 
+-- The bell's lever, flicked when it rings (cl_sound.lua sets bellRungAt): out and
+-- back in a tenth of a second, twice, for the ring-ring.
+local function bellFlick(t)
+    local function one(x) return (x >= 0 and x < 0.11) and math.sin(math.pi * x / 0.11) or 0 end
+    return math.max(one(t), 0.85 * one(t - 0.15))
+end
+BMX.BellFlick = bellFlick
+
+-- The anchors a model's layout gives (docs/MODELS.md), in model space:
+--   headT headB          the steer axis (the fork and the bars turn about it)
+--   rear front           the axles, as the model was built
+--   bb crank pedalY      the cranks: centre, arm length, the pedal's offset out
+--   pegs = { r, l }      instead of pedals: where the feet go (a motorbike)
+--   gripR gripL = {A,B}  each grip, inner and outer end, in the bars' space
+--   stemTop              the turndown's pivot (default headT)
+--   swingPivot           a swingarm: group "swingarm" (and the rear wheel) turns
+--                        about this, about the left-right axis, to meet the rear
+--                        wheel where the simulation has it
+--   forkSlide            a telescopic fork: group "forkLower" (and the front
+--                        wheel) slides along the steer axis, up to this far
+--   shock = { frame, swing, r }  a rear shock drawn between those two points
+--   bb2 gripS = { r, l }  a second crankset and the stoker's grips (a tandem)
+--   bellPivot bellAxis   the bell lever's hinge (group "bellLever")
+--   stand                where the kickstand hangs from
+--   cable lever gyro     the BMX's brake-cable loop
 function ENT:DrawDetailed(model, S)
     local BM = BMX.BikeMesh
     local k, fwd, up, right = S.k, S.fwd, S.up, S.right
     local half = S.C.Wheel.wheelbase * 0.5
     local lay = model.layout
+    local rearA = lay.rear or Vector(-half, 0, 0)
+    local frontA = lay.front or Vector(half, 0, 0)
 
     -- Chassis space, as the simple bike has it (rolled for a tabletop).
     local function P0(m)
         local p = self:LocalToWorld(m + S.lift0)
         return S.bodyRoll ~= 0 and rotAbout(p, S.bodyC, self:GetForward(), S.bodyRoll) or p
     end
-    -- Pitched to sit on both axles.
-    local rA0, fA0 = P0(Vector(-half, 0, 0)), P0(Vector(half, 0, 0))
-    local a, b = fA0 - rA0, S.fPos - S.rPos
-    a = a - right * a:Dot(right)
-    b = b - right * b:Dot(right)
-    local phi = math.atan2(right:Dot(a:Cross(b)), a:Dot(b))
-    local rPos = S.rPos
-    local function Pf(m) return rPos + rotVec(P0(m) - rA0, right, phi) end
-    local upF = rotVec(up, right, phi)
+    local function toModel(w)
+        if S.bodyRoll ~= 0 then w = rotAbout(w, S.bodyC, self:GetForward(), -S.bodyRoll) end
+        return self:WorldToLocal(w) - S.lift0
+    end
 
-    local headB = Pf(FRAME.headB * k)
-    local steerAxis = (Pf(FRAME.headT * k) - headB):GetNormalized()
+    -- A RIGID FRAME is pitched to sit on both axles. A SUSPENDED one rides the
+    -- chassis and its swingarm and fork take up the difference, as they do.
+    local suspended = lay.swingPivot ~= nil or lay.forkSlide ~= nil
+    local Pf, upF
+    if suspended then
+        Pf, upF = P0, up
+    else
+        local rA0, fA0 = P0(rearA), P0(frontA)
+        local a, b = fA0 - rA0, S.fPos - S.rPos
+        a = a - right * a:Dot(right)
+        b = b - right * b:Dot(right)
+        local phi = math.atan2(right:Dot(a:Cross(b)), a:Dot(b))
+        local rPos = S.rPos
+        Pf = function(m) return rPos + rotVec(P0(m) - rA0, right, phi) end
+        upF = rotVec(up, right, phi)
+    end
+
+    local headB = Pf(lay.headB)
+    local steerAxis = (Pf(lay.headT) - headB):GetNormalized()
+    local stemTop = lay.stemTop or lay.headT
     local function frameMap(m) return rotAbout(Pf(m), headB, steerAxis, S.whipAng) end
     local function forkMap(m) return rotAbout(Pf(m), headB, steerAxis, S.barAng - S.steer) end
     local function barsMap(spin)
-        local stem = rotAbout(Pf(lay.stemTop), headB, steerAxis, spin - S.steer)
+        local stem = rotAbout(Pf(stemTop), headB, steerAxis, spin - S.steer)
         local axis = rotVec(right, steerAxis, spin - S.steer)
         return function(m)
             local p = rotAbout(Pf(m), headB, steerAxis, spin - S.steer)
@@ -581,30 +621,108 @@ function ENT:DrawDetailed(model, S)
     end
     local barsDraw = barsMap(S.barAng + S.barsSpin)
 
-    local crank = self.crankAngle
-    local bbM = FRAME.bb * k
-    local function crankMap(m) return frameMap(bbM + rotVec(m - bbM, Y_AXIS, crank)) end
-    local function tip(side)            -- side 1 = right (forward at angle 0)
-        local arm = rotVec(Vector(CRANK * k * side, 0, 0), Y_AXIS, crank)
-        return bbM + arm + Vector(0, -(Q + 1.8) * k * side, 0)
+    -- The swingarm, turned about its pivot until the rear axle is at the height the
+    -- simulation has the rear wheel.
+    local swingMap = frameMap
+    if lay.swingPivot then
+        local piv = lay.swingPivot
+        local rT = toModel(S.rPos)
+        local rx, rz = rearA.x - piv.x, rearA.z - piv.z
+        local rl = math.sqrt(rx * rx + rz * rz)
+        local a0 = math.atan2(rz, rx)
+        local v = math.Clamp((rT.z - piv.z) / math.max(rl, 1e-3), -1, 1)
+        local a1 = math.asin(v)
+        if rx < 0 then a1 = math.pi - a1 end
+        local da = math.NormalizeAngle(math.deg(a1 - a0))
+        da = math.rad(math.Clamp(da, -35, 35))
+        local c, sn = math.cos(da), math.sin(da)
+        swingMap = function(m)
+            local dx, dz = m.x - piv.x, m.z - piv.z
+            return frameMap(Vector(piv.x + dx * c - dz * sn, m.y, piv.z + dx * sn + dz * c))
+        end
+    end
+    -- The fork's lower legs, slid up the stanchions to the front wheel.
+    local lowerMap = forkMap
+    if lay.forkSlide then
+        local fT = toModel(S.fPos)
+        local st = (lay.headT - lay.headB):GetNormalized()
+        local d = (fT.z - frontA.z) / math.max(st.z, 0.3)
+        d = math.Clamp(d, -lay.forkSlide * 0.25, lay.forkSlide)
+        lowerMap = function(m) return forkMap(m + st * d) end
+    end
+
+    local crank = self.crankAngle or 0
+    local bbM = lay.bb
+    local function crankMapAt(c0)
+        return function(m) return frameMap(c0 + rotVec(m - bbM, Y_AXIS, crank)) end
+    end
+    local function tip(side, c0)        -- side 1 = right (forward at angle 0)
+        local arm = rotVec(Vector(lay.crank * side, 0, 0), Y_AXIS, crank)
+        return (c0 or bbM) + arm + Vector(0, -lay.pedalY * side, 0)
     end
 
     local paint = BMX.PaletteColor(self:GetColorIndex())
     local lod = S.lod
+    local groups = model.groups
     BM.BeginLighting(self:LocalToWorld(Vector(0, 0, 14 * k)), self)
         BM.DrawGroup(model, "frame", matFromMap(frameMap), paint, lod)
+        if groups.swingarm then BM.DrawGroup(model, "swingarm", matFromMap(swingMap), paint, lod) end
         BM.DrawGroup(model, "fork", matFromMap(forkMap), paint, lod)
+        if groups.forkLower then BM.DrawGroup(model, "forkLower", matFromMap(lowerMap), paint, lod) end
         BM.DrawGroup(model, "bars", matFromMap(barsDraw), paint, lod)
-        BM.DrawGroup(model, "wheelR", wheelMat(frameMap, Vector(-half, 0, 0), S.rSpin), paint, lod)
-        BM.DrawGroup(model, "wheelF", wheelMat(forkMap, Vector(half, 0, 0), S.fSpin), paint, lod)
-        BM.DrawGroup(model, "cranks", matFromMap(crankMap), paint, lod)
-        for _, side in ipairs({ 1, -1 }) do
-            local t = tip(side)
-            BM.DrawGroup(model, "pedal", matFromMap(function(m) return frameMap(t + m) end), paint, lod)
+        BM.DrawGroup(model, "wheelR", wheelMat(swingMap, rearA, S.rSpin), paint, lod)
+        BM.DrawGroup(model, "wheelF", wheelMat(lowerMap, frontA, S.fSpin), paint, lod)
+        if bbM and groups.cranks then
+            BM.DrawGroup(model, "cranks", matFromMap(crankMapAt(bbM)), paint, lod)
+            if lay.bb2 then BM.DrawGroup(model, "cranks", matFromMap(crankMapAt(lay.bb2)), paint, lod) end
+            for _, c0 in ipairs(lay.bb2 and { bbM, lay.bb2 } or { bbM }) do
+                for _, side in ipairs({ 1, -1 }) do
+                    local t = tip(side, c0)
+                    BM.DrawGroup(model, "pedal", matFromMap(function(m) return frameMap(t + m) end), paint, lod)
+                end
+            end
+        end
+        if groups.childSeat and self.GetChildSeat and self:GetChildSeat() then
+            BM.DrawGroup(model, "childSeat", matFromMap(frameMap), paint, lod)
         end
 
-        -- The brake cable's loop from the lever to the gyro, hanging slack.
-        if lod < 2 then
+        -- The bell's lever, flicked when it rang.
+        if groups.bellLever and lay.bellPivot then
+            local ang = math.rad(38) * bellFlick(CurTime() - (self.bellRungAt or -10))
+            local pv, ax = lay.bellPivot, lay.bellAxis or Vector(0, 0, 1)
+            BM.DrawGroup(model, "bellLever", matFromMap(function(m)
+                return barsDraw(pv + rotVec(m - pv, ax, ang))
+            end), paint, lod)
+        end
+
+        -- A rear shock, between the frame and the swingarm, as long as they make it.
+        if lay.shock and lod < 2 then
+            local a, b = frameMap(lay.shock.frame), swingMap(lay.shock.swing)
+            local d = b - a
+            local L = d:Length()
+            if L > 1 then
+                local dir = d / L
+                local r = (lay.shock.r or 1) * 1
+                BM.DrawTube({ a, a + dir * (L * 0.55) }, r, "black", 12)
+                BM.DrawTube({ a + dir * (L * 0.5), b }, r * 0.45, "chrome", 10)
+                -- the spring, a coil round the body and the shaft
+                if lod == 0 then
+                    local e1 = dir:Cross(up):GetNormalized()
+                    local e2 = dir:Cross(e1)
+                    local pts = {}
+                    local turns, n = 7, 70
+                    for i = 0, n do
+                        local t = i / n
+                        local an = t * turns * math.pi * 2
+                        pts[#pts + 1] = a + dir * (L * (0.12 + 0.8 * t)) + (e1 * math.cos(an) + e2 * math.sin(an)) * (r * 1.45)
+                    end
+                    BM.DrawTube(pts, r * 0.22, "paint", 5, lay.shock.springPaint and paint or Color(230, 120, 20))
+                end
+            end
+        end
+
+        -- The brake cable's loop from the lever to the gyro, hanging slack (the BMX's).
+        if lay.cable and lod < 2 then
             local lever = barsDraw(lay.lever)
             local gyro = frameMap(lay.gyro + Vector(-0.9, 0, -0.25) * k)
             local sag = 0.3 * lever:Distance(gyro)
@@ -617,7 +735,7 @@ function ENT:DrawDetailed(model, S)
             local o = frameMap(Vector(0, 0, 0))
             local leftW = frameMap(Vector(0, 1, 0)) - o
             local upW = frameMap(Vector(0, 0, 1)) - o
-            local from = frameMap(bbM + Vector(-1.2, 2.0, -0.2) * k)
+            local from = frameMap(lay.stand or (bbM or Vector(0, 0, 2.5 * k)) + Vector(-1.2, 2.0, -0.2) * k)
             local want = from - upW * (16 * k) + leftW * (7 * k)
             local to = want
             if lod < 2 then
@@ -633,20 +751,29 @@ function ENT:DrawDetailed(model, S)
     -- Where the rider's hands and feet go (cl_rider.lua): the same maps, with
     -- the barspin left out (the hands let go of spinning bars).
     local hands = barsMap(S.barsSpin)
-    local B = FRAME.bars
     local ik = {}
-    local function grip(side)
-        local A = hands(Vector(B.x, -GRIP_IN * side, B.z) * k)
-        local Z = hands(Vector(B.x, -GRIP_OUT * side, B.z) * k)
-        return A, Z
+    local function grip(g)
+        local A, Z = hands(g.A), hands(g.B)
+        local d = Z - A
+        local hold = A + d:GetNormalized() * math.min(1.75 * k, d:Length() * 0.5)
+        return hold, A, Z
     end
-    ik.rHandA, ik.rHandB = grip(1)
-    ik.lHandA, ik.lHandB = grip(-1)
-    ik.rHand = ik.rHandA + (ik.rHandB - ik.rHandA):GetNormalized() * (1.75 * k)
-    ik.lHand = ik.lHandA + (ik.lHandB - ik.lHandA):GetNormalized() * (1.75 * k)
-    ik.rFoot = Pf(tip(1)) + upF * (0.9 * k)
-    ik.lFoot = Pf(tip(-1)) + upF * (0.9 * k)
+    ik.rHand, ik.rHandA, ik.rHandB = grip(lay.gripR)
+    ik.lHand, ik.lHandA, ik.lHandB = grip(lay.gripL)
+    if lay.pegs then
+        ik.rFoot = Pf(lay.pegs.r) + upF * (0.9 * k)
+        ik.lFoot = Pf(lay.pegs.l) + upF * (0.9 * k)
+    elseif bbM then
+        ik.rFoot = Pf(tip(1)) + upF * (0.9 * k)
+        ik.lFoot = Pf(tip(-1)) + upF * (0.9 * k)
+    end
     self.ikTargets = ik
+    -- A tandem's stoker: their own pedals, and bars fixed to the frame.
+    if lay.bb2 then
+        local ikS = { rFoot = Pf(tip(1, lay.bb2)) + upF * (0.9 * k), lFoot = Pf(tip(-1, lay.bb2)) + upF * (0.9 * k) }
+        if lay.gripS then ikS.rHand, ikS.lHand = Pf(lay.gripS.r), Pf(lay.gripS.l) end
+        self.ikTargetsStoker = ikS
+    end
     BMX.ApplyPoseTargets(ik, S.W, function(v)
         local p = self:LocalToWorld(v * k + S.lift0)
         return S.bodyRoll ~= 0 and rotAbout(p, S.bodyC, self:GetForward(), S.bodyRoll) or p
@@ -809,11 +936,21 @@ function ENT:Draw()
     -- and the mini; a road bike drawn as a BMX would be wrong). bmx_debug draws
     -- the simple bike instead: its red no-ground tyres and part axes are the
     -- debugging aid.
+    -- Every other kind is its own builder (cl_geo_*.lua: `look = "road"`, ...), handed
+    -- the vehicle's own sizes so the saddle is under its rider and the wheels on
+    -- its axles.
     local model = not debug and not bike.hasModel and not bike.wheelModel
-        and bike.look == "bmx"
-        and BMX.BikeMesh and BMX.BikeMesh.Get(k, WC.radius)
+        and bike.look and BMX.BikeMesh
+        and BMX.BikeMesh.Get(k, WC.radius, bike.look, bike.look ~= "bmx" and {
+            wheelbase = WC.wheelbase, rearRadius = WC.rearRadius, restLength = WC.restLength,
+            seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
+            extra = BMX.ModelExtra and BMX.ModelExtra(bike, C) or nil,
+        } or nil)
     if model then
         self.crankAngle = rSpin / BMX.GearRatio(self, C)
+        -- A motorbike has pegs where the pedals are, and an engine's ratio would spin
+        -- the cranks at 20x the wheel (cl_motor.lua FixedCranks): hold them still.
+        if BMX.Motor and BMX.Motor.FixedCranks and BMX.Motor.FixedCranks(self) then self.crankAngle = 0 end
         self:DrawDetailed(model, {
             k = k, lift0 = lift0, fwd = fwd, up = up, right = right,
             bodyRoll = bodyRoll, bodyC = bodyC, fPos = fPos, rPos = rPos,
@@ -821,6 +958,7 @@ function ENT:Draw()
             whipAng = whipAng, barAng = barAng, barsSpin = barsSpin, barsTurn = barsTurn,
             W = W, lod = lod, C = C,
         })
+        if BMX.DrawLock and self:GetLocked() then BMX.DrawLock(self) end
         return
     end
 

@@ -57,6 +57,13 @@ local ROLE = {
     gum     = { Vector(0.50, 0.33, 0.18),   6,  0.2,  0 },
     seat    = { Vector(0.035, 0.035, 0.04), 12, 0.6,  0.01 },
     plastic = { Vector(0.05, 0.05, 0.055),  10, 0.5,  0.02 },
+    -- for the vehicles that are not a BMX (cl_geo_*.lua)
+    white   = { Vector(0.78, 0.78, 0.76),   14, 0.7,  0.04 },  -- white plastic: number plates, panels
+    wood    = { Vector(0.62, 0.42, 0.22),   8,  0.3,  0 },     -- maple: a deck's veneer
+    leather = { Vector(0.24, 0.12, 0.05),   10, 0.45, 0.01 },  -- a brown saddle, grips
+    lens    = { Vector(0.75, 0.75, 0.72),   80, 3.0,  0.6 },   -- a lamp's glass
+    redlens = { Vector(0.6, 0.02, 0.02),    60, 2.0,  0.3 },   -- a tail light, a reflector
+    amber   = { Vector(0.8, 0.35, 0.02),    60, 2.0,  0.3 },   -- an indicator, a side reflector
 }
 local PAINT = { 30, 1.6, 0.12 }       -- exponent, boost, envmap: a metallic clear coat
 
@@ -259,15 +266,28 @@ local function tangentOf(n)
     return t
 end
 
-local function buildJob(key, k, radius)
+-- A layout's points as Vectors, nested tables (gripR = { A, B }) and all.
+local function toVectors(t)
+    local out = {}
+    for key, v in pairs(t) do
+        if type(v) == "table" and type(v[1]) == "number" and #v == 3 then
+            out[key] = Vector(v[1], v[2], v[3])
+        elseif type(v) == "table" then
+            out[key] = toVectors(v)
+        else
+            out[key] = v
+        end
+    end
+    return out
+end
+BM.LayoutVectors = toVectors
+
+local function buildJob(key, opt)
     return coroutine.create(function()
         local G = BMX.BikeGeo
-        local M = G.Build({ k = k, radius = radius })
+        local M = G.Build(opt)
         coroutine.yield()
-        local layout = {}
-        for key, v in pairs(M.layout) do
-            layout[key] = type(v) == "table" and Vector(v[1], v[2], v[3]) or v
-        end
+        local layout = toVectors(M.layout or {})
         local out = { groups = {}, layout = layout, stats = G.Stats(M) }
         local fmt = BM.Material("black")
         local work = 0
@@ -316,14 +336,28 @@ end
 -- draws the simple bike meanwhile). Building advances here, a few ms a
 -- frame, from whichever bike asks first.
 local lastStep = 0
-function BM.Get(k, radius)
+-- `kind` (optional): a model kind other than the BMX's (cl_bikegeo.lua G.Kinds),
+-- with `opt` its builder's size: { wheelbase, radius, rearRadius, seat, ... }.
+function BM.Get(k, radius, kind, opt)
     if not BM.Enabled() then return nil end
     local key = string.format("%.3f/%.3f", k, radius)
+    if kind and kind ~= "bmx" then
+        if not BMX.BikeGeo.Kinds[kind] then return nil end
+        local seat = opt and opt.seat
+        key = string.format("%s/%s/%.2f/%.2f/%s", kind, key, opt and opt.wheelbase or 0,
+            opt and opt.rearRadius or 0, seat and string.format("%.2f,%.2f,%.2f", seat[1], seat[2], seat[3]) or "")
+    end
     local m = models[key]
     if m and m.ready then return m end
     if m and m.failed then return nil end
     if not m then
-        m = { job = buildJob(key, k, radius) }
+        local build = { k = k, radius = radius }
+        if kind and kind ~= "bmx" then
+            build = {}
+            for kk, v in pairs(opt or {}) do build[kk] = v end
+            build.kind, build.k, build.radius = kind, k, radius
+        end
+        m = { job = buildJob(key, build) }
         models[key] = m
     end
     local frame = FrameNumber()
@@ -456,11 +490,11 @@ end
 
 -- A tube through `pts` (world space), drawn immediately: the parts that bend
 -- every frame (the brake cable's loop, the kickstand).
-function BM.DrawTube(pts, radius, role, sides)
+function BM.DrawTube(pts, radius, role, sides, paint)
     sides = sides or 6
     local n = #pts
     if n < 2 then return end
-    render.SetMaterial(BM.Material(role))
+    render.SetMaterial(BM.Material(role, paint))
     -- frames by parallel transport
     local T, N = {}, {}
     for i = 1, n do

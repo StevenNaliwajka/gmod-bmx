@@ -56,7 +56,24 @@ UNIT="${GMOD_UNIT:-gmod}"
 OWNER="${GMOD_USER:-gmod}"
 
 BOOT_TIMEOUT="${BMX_BOOT_TIMEOUT:-240}"   # server up, addon loaded, RCON answering
-RUN_TIMEOUT="${BMX_RUN_TIMEOUT:-900}"     # suite start to results file
+# THE RUN BUDGET SCALES WITH THE SUITE. It used to be a flat 900 s, which was
+# right for 17 cases and wrong the day the suite became ~100 (slopes, curbs,
+# parks, tricks, games, three bikes): pipeline 980 died at "case 85/99" with the
+# suite healthy and merely not finished. So the budget is RUN_PER_CASE seconds
+# for each case the suite says it will run (the "case n/M" progress line gives
+# M), never below RUN_TIMEOUT (the floor, for a suite that has not reported M
+# yet) and never above RUN_MAX (so a runaway still ends; keep the .gitlab-ci.yml
+# job timeout comfortably above RUN_MAX + boot). The measured average is 6-11 s
+# a case, so 20 s is generous without being unbounded.
+#
+# A WEDGED SUITE IS CAUGHT SOONER THAN THE BUDGET by RUN_STALL: the harness
+# enforces every case's own timeout (at most 300 s), so a progress line that
+# has not changed for longer than that means the Think hook stopped, not that
+# the suite is slow.
+RUN_TIMEOUT="${BMX_RUN_TIMEOUT:-900}"     # budget floor, suite start to results file
+RUN_PER_CASE="${BMX_RUN_PER_CASE:-20}"    # seconds budgeted per case
+RUN_MAX="${BMX_RUN_MAX:-2700}"            # budget ceiling
+RUN_STALL="${BMX_RUN_STALL:-420}"         # no progress change for this long = wedged
 REF=""
 CASE=""
 
@@ -209,13 +226,28 @@ esac
 
 waited=0
 last=""
+budget="$RUN_TIMEOUT"
+since_change=0
 until [ -f "$RESULTS" ]; do
   sleep 5; waited=$((waited + 5))
   systemctl is-active --quiet "$UNIT" || die "$UNIT died mid-run -- journalctl -u $UNIT"
   now="$(head -1 "$PROGRESS" 2>/dev/null || true)"
-  if [ -n "$now" ] && [ "$now" != "$last" ]; then say "$now"; last="$now"; fi
-  if [ "$waited" -ge "$RUN_TIMEOUT" ]; then
-    die "no results after ${RUN_TIMEOUT}s (last progress: ${last:-none}).
+  since_change=$((since_change + 5))
+  if [ -n "$now" ] && [ "$now" != "$last" ]; then
+    say "$now"; last="$now"; since_change=0
+    total="$(echo "$now" | sed -n 's/.*case [0-9]*\/\([0-9][0-9]*\).*/\1/p')"
+    if [ -n "$total" ]; then
+      budget=$((total * RUN_PER_CASE))
+      [ "$budget" -ge "$RUN_TIMEOUT" ] || budget="$RUN_TIMEOUT"
+      [ "$budget" -le "$RUN_MAX" ] || budget="$RUN_MAX"
+    fi
+  fi
+  if [ "$since_change" -ge "$RUN_STALL" ]; then
+    die "no progress for ${RUN_STALL}s (last progress: ${last:-none}); the suite is wedged.
+       journalctl -u $UNIT."
+  fi
+  if [ "$waited" -ge "$budget" ]; then
+    die "no results after ${budget}s (last progress: ${last:-none}).
        The suite was started but did not finish. journalctl -u $UNIT."
   fi
 done

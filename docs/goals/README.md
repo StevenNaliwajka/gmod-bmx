@@ -50,7 +50,7 @@ were left for the release.
 
 The repo was split during this work (another session, commit 3474ba1). The bot,
 games (SKATE, Trick Attack, Combo Mambo), scores and leaderboard now live in
-`root/gmod-bmx-mode`. The city lives in `root/petopia_bmx_fall`. The G26 work
+`gmod/gmod-bmx-mode`. The city lives in `gmod/petopia_bmx_fall`. The G26 work
 and every bot routine went with them.
 
 **Default off until someone has ridden it on a real server:**
@@ -82,8 +82,8 @@ the test server.
 **Where assets live (owner, 2026-10-07):** every BMX *vehicle* asset (vehicle
 code, models, materials, sounds, and anything a bike, board, scooter, skate or
 motor vehicle needs to be drawn or heard) goes in **this addon**,
-`root/gmod-bmx`. The gamemode (`root/gmod-bmx-mode`) holds only game rules,
-scores and the bot; the map (`root/petopia_bmx_fall`) holds only the map and
+`gmod/gmod-bmx`. The gamemode (`gmod/gmod-bmx-mode`) holds only game rules,
+scores and the bot; the map (`gmod/petopia_bmx_fall`) holds only the map and
 city. A vehicle that only works with the mode or the map installed is a bug.
 
 **Waiting on the owner:**

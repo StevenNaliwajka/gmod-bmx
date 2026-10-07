@@ -649,7 +649,7 @@ bailed. Use `BMX_ComboBanked` / `BMX_ComboBailed`.
 
 Personal bests, the leaderboard, SKATE / Trick Attack / Combo Mambo and the
 trick bot are not part of this addon: they are the **BMX (Mode)** gamemode
-(root/gmod-bmx-mode, `gamemodes/bmx`), built on the hooks above. Its own
+(gmod/gmod-bmx-mode, `gamemodes/bmx`), built on the hooks above. Its own
 `docs/MODDING.md` documents `BMX_NewBest`, `BMX_GameStarted`, `BMX_GameEnded`,
 `BMX_GameLetter` and `BMX_ScoresUpdated`.
 

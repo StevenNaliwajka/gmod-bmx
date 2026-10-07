@@ -37,9 +37,9 @@ own repositories:
 
 | Piece | Repository | What it is |
 |---|---|---|
-| **BMX** | root/gmod-bmx (this) | The vehicle mod. Workshop item 3814420080. |
-| **BMX (Mode)** | root/gmod-bmx-mode | The gamemode (`gamemodes/bmx`, derives sandbox): SKATE, Trick Attack, Combo Mambo, personal bests and the leaderboard, the trick bot. |
-| **petopia_bmx_fall** | root/petopia_bmx_fall | The map: an original compiled BSP of the park, plus its city (buildings, trains, ads, the autumn mood). |
+| **BMX** | gmod/gmod-bmx (this) | The vehicle mod. Workshop item 3814420080. |
+| **BMX (Mode)** | gmod/gmod-bmx-mode | The gamemode (`gamemodes/bmx`, derives sandbox): SKATE, Trick Attack, Combo Mambo, personal bests and the leaderboard, the trick bot. |
+| **petopia_bmx_fall** | gmod/petopia_bmx_fall | The map: an original compiled BSP of the park, plus its city (buildings, trains, ads, the autumn mood). |
 
 The mode and the map use only this addon's public API: the `BMX_*` hooks,
 `BMX.Settings`, `BMX.AddPrivilege`, `BMX.Launch` and `BMX.Test`

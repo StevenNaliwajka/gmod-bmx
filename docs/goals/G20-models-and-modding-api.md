@@ -64,9 +64,9 @@ freeze: from then on, a breaking change needs a major version.
 
 ## Where the assets go (owner, 2026-10-07)
 
-All BMX vehicle assets go in the BMX addon (`root/gmod-bmx`): every vehicle's
+All BMX vehicle assets go in the BMX addon (`gmod/gmod-bmx`): every vehicle's
 models, materials and sounds, as well as its code. They never go in the gamemode
-(`root/gmod-bmx-mode`) or the map (`root/petopia_bmx_fall`), so a server running
+(`gmod/gmod-bmx-mode`) or the map (`gmod/petopia_bmx_fall`), so a server running
 only the addon has every vehicle complete.
 
 ## Status (2026-10-07, later): the BMX has a real model

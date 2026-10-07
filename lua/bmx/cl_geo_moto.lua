@@ -79,6 +79,21 @@ local function loft(B, R, opt)
     if opt.capEnd ~= false then cap(B, R[#R], norm(sub(C[#R], C[#R - 1]))) end
 end
 
+-- Round off a loft's first rings into a dome `depth` deep (a pressed nose).
+local function domeStart(R, depth)
+    local c1, c2 = centroid(R[1]), centroid(R[2])
+    local dir = norm(sub(c1, c2))
+    local out = {}
+    for _, deg in ipairs({ 80, 62, 42, 20 }) do
+        local a = math.rad(deg)
+        local r = {}
+        for j, p in ipairs(R[1]) do r[j] = add(add(c1, mul(sub(p, c1), cos(a))), mul(dir, depth * sin(a))) end
+        out[#out + 1] = r
+    end
+    for _, r in ipairs(R) do out[#out + 1] = r end
+    return out
+end
+
 -- A THICK SHEET: a pressed or moulded panel (a fender, a shroud, a number plate).
 -- f(u, v) gives the outer surface for u, v in 0..1; `out` (a vector, or a function
 -- of the point) says which way the outer face looks; the sheet is `t` thick, its
@@ -639,11 +654,11 @@ local function buildDirt(opt)
         local hz = norm(cross(Z, nrm))
         local vz = norm(cross(nrm, hz))
         if vz[3] < 0 then vz = mul(vz, -1) end
-        local c = V(11.0, 3.95 * sd, 14.4)
-        box(Bk, c, mul(hz, 2.1), mul(vz, 5.1), mul(nrm, 0.62))
+        local c = V(11.0, 3.6 * sd, 14.4)
+        box(Bk, c, mul(hz, 1.9), mul(vz, 5.1), mul(nrm, 0.62))
         for _, e in ipairs({ 1, -1 }) do
             local tc = madd(c, vz, e * 5.35)
-            loft(Al, { ring(madd(tc, hz, -2.2), nrm, vz, 0.62, 0.32, 12, 3), ring(madd(tc, hz, 2.2), nrm, vz, 0.62, 0.32, 12, 3) })
+            loft(Al, { ring(madd(tc, hz, -2.0), nrm, vz, 0.62, 0.32, 12, 3), ring(madd(tc, hz, 2.0), nrm, vz, 0.62, 0.32, 12, 3) })
         end
         -- the filler neck on the right one
         if sd < 0 then
@@ -654,10 +669,10 @@ local function buildDirt(opt)
         local face = madd(c, nrm, 0.85)
         for i = -4, 4 do
             local sc = madd(face, vz, i * 1.1)
-            box(Pl, sc, mul(hz, 2.15), mul(norm(add(vz, mul(nrm, -0.9))), 0.42), mul(nrm, 0.05))
+            box(Pl, sc, mul(hz, 1.95), mul(norm(add(vz, mul(nrm, -0.9))), 0.42), mul(nrm, 0.05))
         end
         for _, e in ipairs({ 1, -1 }) do
-            box(Pl, madd(face, hz, 2.2 * e), mul(hz, 0.12), mul(vz, 5.3), mul(nrm, 0.35))
+            box(Pl, madd(face, hz, 2.0 * e), mul(hz, 0.12), mul(vz, 5.3), mul(nrm, 0.35))
         end
     end
 
@@ -700,8 +715,9 @@ local function buildDirt(opt)
             local z = zb + (zt - zb) * v
             -- out from the tank at the back and the top to over the radiator, the
             -- front edge turned in
-            local yy = 4.7 + 1.7 * sin(pi * min(1, u * 1.25)) * (0.55 + 0.45 * sin(pi * v)) - 0.5 * v * v
-            if u > 0.85 then yy = yy - (u - 0.85) * 4.5 end
+            local bulge = min(1, u / 0.45) ^ 0.7
+            local yy = 4.7 + 1.9 * bulge * (0.6 + 0.4 * sin(pi * v)) - 0.5 * v * v
+            if u > 0.85 then yy = yy - (u - 0.85) * 6 end
             return V(x, yy * sd, z)
         end
         sheet(Pf, 22, 14, shroud, 0.14, V(0, sd, 0))
@@ -773,7 +789,7 @@ local function buildDirt(opt)
     sheet(Wh, 24, 10, function(u, v)
         local x = -8.5 - u * 36.0
         local zc = 24.35 + ((u > 0.6) and (u - 0.6) ^ 1.5 * 9 or 0)
-        local w = 3.6 + 0.8 * sin(pi * min(1, u * 1.3)) - (u > 0.85 and (u - 0.85) * 6 or 0)
+        local w = 3.5 + 0.6 * sin(pi * min(1, u * 1.3)) - (u > 0.85 and (u - 0.85) * 6 or 0)
         local yy = (v * 2 - 1) * w
         local drop = 1.2 * (v * 2 - 1) ^ 2
         return V(x, yy, zc - drop)
@@ -1621,7 +1637,7 @@ local function buildMoped(opt)
             local c = madd(p, up, 0.6 * tank)
             R[i] = ring(c, Y, up, w, h, 26, 2.7)
         end
-        loft(Pf, R)
+        loft(Pf, domeStart(R, 1.4))
         -- the weld flange along the underside
         local fl = {}
         for i = 1, n, 2 do
@@ -1641,7 +1657,7 @@ local function buildMoped(opt)
     lathe(Ch, { { 0, 0, true }, { 0.95, 0, true }, { 0.95, 0.3, true }, { 0, 0.3, true } }, madd(ht, st, -0.1), st, 22)
     lathe(Ch, { { 0, 0, true }, { 0.95, 0, true }, { 0.95, 0.3, true }, { 0, 0.3, true } }, madd(hb, st, -0.25), st, 22)
     -- a badge on the nose
-    slab(Al, roundRect(2.4, 1.0, 0.45, 4), add(SP(21.0), V(0.0, 0, 0)), Y, st, 3.65, 0.15)
+    slab(Al, roundRect(1.8, 2.6, 0.7, 4), madd(SP(20.4), fw, 0.95), Y, st, 0.2, 0.06)
     -- the fuel cap on the tank behind the saddle
     lathe(Ch, { { 0, 0, true }, { 1.05, 0, true }, { 1.1, 0.12 }, { 1.05, 0.35, true }, { 0.5, 0.45 }, { 0, 0.48, true } }, V(-20.6, 0, 20.4), Z, 22)
     -- rear stays: a seat stay each side from the tank to the dropouts, and on the
@@ -1775,11 +1791,15 @@ local function buildMoped(opt)
         -- the saddle: a broad pan, padded, its nose narrow
         local R = {}
         local x0, x1 = xs - 5.0, xs + 5.4
+        local function sw(t)
+            local w = (t < 0.1) and (3.9 * sqrt(t / 0.1) * 0.7 + 1.2) or (4.1 - 2.6 * ((t - 0.1) / 0.9) ^ 1.4)
+            if t > 0.95 then w = w * (0.55 + 0.45 * (1 - t) / 0.05) end
+            return w
+        end
         for i = 0, 16 do
             local t = i / 16
             local x = x0 + (x1 - x0) * t
-            local w = (t < 0.1) and (3.9 * sqrt(t / 0.1) * 0.7 + 1.2) or (4.1 - 2.6 * ((t - 0.1) / 0.9) ^ 1.4)
-            if t > 0.95 then w = w * (0.55 + 0.45 * (1 - t) / 0.05) end
+            local w = sw(t)
             local zt = topAt - 0.25 * ((x - xs) / 5) ^ 2 + ((x > xs + 3) and (x - xs - 3) * 0.1 or 0)
             local zb = topAt - 2.3 + 0.2 * t
             if t < 0.04 or t > 0.97 then zt = zt - 0.5 end
@@ -1787,9 +1807,10 @@ local function buildMoped(opt)
         end
         loft(M:bucket("frame", "seat"), R)
         -- the pan's chrome edge
-        local edge = {}
-        for _, r in ipairs(R) do edge[#edge + 1] = r end
-        sheet(Ch, 12, 2, function(u, v) return V(x0 + 0.3 + (x1 - x0 - 1.2) * u, (v * 2 - 1) * (3.6 - 2.4 * u ^ 1.4), topAt - 2.35) end, 0.12, mul(Z, -1))
+        sheet(Ch, 12, 2, function(u, v)
+            local t = 0.06 + u * 0.82
+            return V(x0 + (x1 - x0) * t, (v * 2 - 1) * sw(t) * 0.92, topAt - 2.3 + 0.2 * t)
+        end, 0.12, mul(Z, -1))
     end
     -- the rack over the tank and the rear wheel, its legs to the dropouts
     local rackZ = 20.6

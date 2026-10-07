@@ -645,6 +645,9 @@ end
 hook.Add("CalcMainActivity", "BMX.RiderPose", function(ply)
     local bike = BMX.LocalBike(ply)
     if not bike then return end
+    -- A pose set may bring its own base pose (the board's: standing, not seated).
+    local set = BMX.PoseSetFor(bike)
+    if set.activity then return set.activity(ply, bike) end
     local seq = ply:LookupSequence("drive_airboat")
     if not seq or seq < 0 then return end       -- a model without it keeps its own
     return ACT_DRIVE_AIRBOAT, seq
@@ -668,6 +671,11 @@ local function clear(ply)
     end
     for b in pairs(ply.bmxIK or {}) do ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
     ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
+    -- The board's crouch lowers the pelvis (cl_board.lua); put it back.
+    if ply.bmxPelvis then
+        ply:ManipulateBonePosition(ply.bmxPelvis, Vector(0, 0, 0))
+        ply.bmxPelvis = nil
+    end
     animated[ply] = nil
 end
 BMX.ClearRiderPose = clear
@@ -713,6 +721,10 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
         pitch    = select(2, BMX.Attitude(bike, vector_up)),
         steer    = bike:GetSteer(),
         leanFwd  = bike:GetLeanFwd(),
+        -- For a pose set that needs more than the bike's own numbers (the
+        -- board's crouch and stance live on the entity and the player).
+        bike     = bike,
+        ply      = ply,
     })
     if useIK and (ply.bmxSpineTwist or ply.bmxSpineLean) then
         pose.spine = Angle(pose.spine.p, pose.spine.y + (ply.bmxSpineLean or 0),
@@ -736,8 +748,12 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     -- the riders near you and waste for one across the map, so a rider far
     -- from the view keeps the pose they last had (manipulations persist).
     if useIK and EyePos():Distance(ply:GetPos()) < IK_RANGE then
-        BMX.SolveRiderIK(ply, BMX.StanceTargets and BMX.StanceTargets(ply, bike, bike.ikTargets)
-            or bike.ikTargets, bike)
+        if set.solveIK then
+            set.solveIK(ply, bike)      -- the board's: feet on the bolts, facing sideways
+        else
+            BMX.SolveRiderIK(ply, BMX.StanceTargets and BMX.StanceTargets(ply, bike, bike.ikTargets)
+                or bike.ikTargets, bike)
+        end
     end
     animated[ply] = true
 end)

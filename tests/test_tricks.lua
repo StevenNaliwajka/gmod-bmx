@@ -117,7 +117,12 @@ T.test("registry: every pose has a wire id, a rider pose and a trick", function(
     end
     local cl = F.client(sv.world)
     for _, name in ipairs(cl.env.BMX.PoseNames) do
-        T.ok(cl.env.BMX.RiderPoses[name], name .. " has an IK pose on the client")
+        -- The bike's rows, or those of another pose set (the skateboard's grabs).
+        local found = cl.env.BMX.RiderPoses[name] ~= nil
+        for _, set in pairs(cl.env.BMX.PoseSets) do
+            if set.poses and set.poses[name] then found = true end
+        end
+        T.ok(found, name .. " has an IK pose on the client")
     end
 end)
 
@@ -833,9 +838,9 @@ end)
 T.test("overlay: a trick registered later is listed with no change to the overlay", function()
     local s = scene()
     local E = s.cl.env
-    E.BMX.RegisterTrick{ id = "kickflip", name = "Kickflip", input = "KICK", points = 10, kind = "custom" }
+    E.BMX.RegisterTrick{ id = "bunnyslide", name = "Bunnyslide", input = "KICK", points = 10, kind = "custom" }
     local found
-    for _, l in ipairs(E.BMX.TrickOverlayLines()) do if l.text == "Kickflip" then found = l end end
+    for _, l in ipairs(E.BMX.TrickOverlayLines()) do if l.text == "Bunnyslide" then found = l end end
     T.ok(found, "listed")
     T.eq(found.input, "KICK", "with its input")
 end)

@@ -253,6 +253,15 @@ client{ name = "bmx_shift_wheel", kind = "bool", default = true, category = "rid
 client{ name = "bmx_rider_pose", kind = "choice", default = "seated", choices = { "seated", "standing", "attack" },
     category = "rider", label = "Riding position",
     help = "How you sit on the bike: seated, standing on the pedals, or the low attack position. Other players see it too." }
+client{ name = "bmx_stance", kind = "choice", default = "regular", choices = { "regular", "goofy" },
+    category = "rider", label = "Skateboard stance",
+    help = "Which foot goes forward on a skateboard: regular (the left) or goofy (the right). Other riders see it." }
+client{ name = "bmx_board_flick", kind = "bool", default = false, category = "rider",
+    label = "Flick flips (skateboard)",
+    help = "Pick a flip trick by flicking the mouse in the air, as in Skate, instead of pressing W, A, S or D after the pop." }
+client{ name = "bmx_board_autogrind", kind = "bool", default = false, category = "rider",
+    label = "Grind on contact (skateboard)",
+    help = "A skateboard locks onto a rail or ledge the moment it meets one. Off: hold SPACE in the air to grind." }
 client{ name = "bmx_color_default", kind = "string", default = "red", maxLen = 24, category = "rider",
     label = "Colour of new bikes",
     help = "The paint on bikes you spawn: a colour name (red, blue, pink ...) or a number from the palette." }

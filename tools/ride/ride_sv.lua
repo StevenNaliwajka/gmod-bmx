@@ -15,6 +15,7 @@ util.AddNetworkString("ridestudio_code")
 util.AddNetworkString("ridestudio_cap")
 util.AddNetworkString("ridestudio_img")
 util.AddNetworkString("ridestudio_done")
+util.AddNetworkString("ridestudio_end")
 
 RIDESTUDIO = RIDESTUDIO or {}
 local S = RIDESTUDIO
@@ -74,7 +75,17 @@ end
 function S.Next()
     cleanup()
     local id = table.remove(S.queue or {}, 1)
-    if not id then print("[ride] done") file.Write("ridestudio/_done.txt", "ok") return end
+    if not id then
+        print("[ride] done")
+        local o = owner()
+        if IsValid(o) and not S.ended then
+            S.ended = true
+            net.Start("ridestudio_end") net.Send(o)
+            return
+        end
+        file.Write("ridestudio/_done.txt", "ok " .. (S.restored or ""))
+        return
+    end
     if not owner() then
         S.queue = {}
         file.Write("ridestudio/_done.txt", "owner " .. tostring(S.ownerName) .. " is not connected")
@@ -168,6 +179,7 @@ end)
 net.Receive("ridestudio_done", function()
     local msg = net.ReadString()
     if msg ~= "" then print("[ride] client: " .. msg) end
+    if msg:find("^settings restored") then S.restored = msg end
     timer.Simple(0.3, S.Next)
 end)
 
@@ -195,6 +207,7 @@ concommand.Add("ridestudio_run", function(p, _, a)
         end
     end
     S.queue = q
+    S.ended, S.restored = nil, nil
     print("[ride] " .. #q .. " jobs")
     S.Next()
 end)

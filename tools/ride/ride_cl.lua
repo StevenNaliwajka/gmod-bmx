@@ -26,9 +26,37 @@ local function send(name, data, after)
     timer.Simple(n * GAP + 0.1, after)
 end
 
+-- The client's own settings that would hide the built model (bmx_debug draws the
+-- simple bike, bmx_bike_model 0 turns the model off) are set for the shoot and put
+-- back exactly as they were when it ends; what they were is reported, so a surprise
+-- setting is visible in the server log.
+local saved
+local function studioSettings()
+    if saved then return end
+    saved = {}
+    for name, want in pairs({ bmx_debug = "0", bmx_bike_model = "1", bmx_lod_scale = "0" }) do
+        local cv = GetConVar(name)
+        if cv then
+            saved[name] = cv:GetString()
+            if saved[name] ~= want then RunConsoleCommand(name, want) end
+        end
+    end
+end
+local function restoreSettings()
+    if not saved then return "" end
+    local notes = {}
+    for name, v in pairs(saved) do
+        notes[#notes + 1] = name .. "=" .. v
+        RunConsoleCommand(name, v)
+    end
+    saved = nil
+    return table.concat(notes, " ")
+end
+
 local function done(msg)
     net.Start("ridestudio_done") net.WriteString(msg or "") net.SendToServer()
 end
+RIDESTUDIO_RESTORE = restoreSettings
 
 -- Cameras in the vehicle's own space (x forward, y left, z up), in multiples of a
 -- size that follows the vehicle, aimed at a point `at` up from its origin.
@@ -142,6 +170,7 @@ local function whenBuilt(ent, fn)
 end
 
 net.Receive("ridestudio_cap", function()
+    studioSettings()
     local id = net.ReadString()
     local ent, rider = net.ReadEntity(), net.ReadEntity()
     local mode = net.ReadString()
@@ -158,3 +187,9 @@ net.Receive("ridestudio_cap", function()
     attempt()
 end)
 print("[ride] client ready")
+
+-- The server says the run is over: the client's settings go back.
+net.Receive("ridestudio_end", function()
+    local was = restoreSettings()
+    net.Start("ridestudio_done") net.WriteString("settings restored: " .. was) net.SendToServer()
+end)

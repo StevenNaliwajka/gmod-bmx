@@ -41,6 +41,7 @@ local SHARED = {
     "bmx/sh_bikes.lua",
     "bmx/sh_sound.lua",
     "bmx/sh_color.lua",     -- the palette and the ways to choose from it
+    "bmx/sh_stance.lua",    -- seated / standing / attack: IK offsets (G21)
     "bmx/sh_city.lua",      -- the city around the park: layout builder
     "bmx/sh_city_maps.lua", -- ...and which maps have one
 }
@@ -58,6 +59,7 @@ local SERVER_FILES = {
     "bmx/sv_compat_ragmod.lua", -- RagMod, if installed: before the crash path asks
     "bmx/sv_bell.lua",      -- R on the ground rings the bell
     "bmx/sv_water.lua",     -- drag, splash and ejection in water (sv_physics checks for it)
+    "bmx/sv_stance.lua",    -- copies each rider's bmx_rider_pose onto the player
     "bmx/sv_rules.lua",     -- server-owner settings: bike limit, scoring on/off
     "bmx/sv_settings.lua",  -- changing and saving them: net message, server.json
     "bmx/sv_scores.lua",    -- personal bests + leaderboard; listens to the public hooks
@@ -82,6 +84,7 @@ local CLIENT_FILES = {
     "bmx/cl_sound.lua",
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
+    "bmx/cl_filmer.lua",    -- views through a bmx_filmer_cam (bmx_filmer_view)
     "bmx/cl_grind.lua",     -- sparks and the scrape while a bike grinds
     "bmx/cl_tricks.lua",    -- the trick list overlay (bmx_tricks)
     "bmx/cl_report.lua",    -- bmx_report: a paste-able block for a bug report

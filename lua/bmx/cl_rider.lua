@@ -643,6 +643,8 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     end
     -- A style pose folds and twists the torso too (BMX.RiderPoses).
     local poseLean, poseTwist = BMX.PoseBody(bike.poseW)
+    -- ...and so does the rider's chosen stance (sh_stance.lua, G21).
+    poseLean = poseLean + (BMX.StanceLean and BMX.StanceLean(ply) or 0)
     if poseLean ~= 0 or poseTwist ~= 0 then
         pose.spine = Angle(pose.spine.p, pose.spine.y + poseLean, pose.spine.r + poseTwist)
     end
@@ -657,7 +659,8 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     -- the riders near you and waste for one across the map, so a rider far
     -- from the view keeps the pose they last had (manipulations persist).
     if useIK and EyePos():Distance(ply:GetPos()) < IK_RANGE then
-        BMX.SolveRiderIK(ply, bike.ikTargets, bike)
+        BMX.SolveRiderIK(ply, BMX.StanceTargets and BMX.StanceTargets(ply, bike, bike.ikTargets)
+            or bike.ikTargets, bike)
     end
     animated[ply] = true
 end)

@@ -33,6 +33,49 @@ local cv_fp    = CreateClientConVar("bmx_cam_first", "0", true, false,
 local cv_smooth = CreateClientConVar("bmx_cam_smooth", "1", true, false,
     "1: the chase camera eases after the bike's turns and ramps. 0: it is bolted to the bike.")
 
+local cv_air = CreateClientConVar("bmx_cam_air", "0.6", true, false,
+    "Trick camera: how far the chase camera pulls back and widens in the air. 0 disables.")
+
+--------------------------------------------------------------------------
+-- THE TRICK CAMERA (G21). In the air the chase camera pulls back and widens
+-- its field of view a little, then eases back on landing: it is what makes a
+-- Skate or THPS air read, because the whole trick fits in frame.
+--
+-- CONTINUOUS BY CONSTRUCTION. Nothing here is a switch on "grounded": that
+-- flag flickers on a lip or a bump and a camera that jumped with it would
+-- shake. Instead an AIRBORNE TIMER decides what the camera WANTS (a short
+-- hang time first, so a bump is not an air), and a PHASE moves toward that at
+-- a fixed rate, through a smoothstep. The phase can only change by rate*dt a
+-- frame, and the smoothstep has zero slope at both ends, so neither the
+-- distance nor the field of view has a step at takeoff or landing, at any
+-- frame time. tests/test_stance.lua steps it frame by frame and checks.
+--------------------------------------------------------------------------
+BMX.AirCam = { hang = 0.12, secondsIn = 0.35, secondsOut = 0.6,
+               dist = 0.40, fov = 14 }
+
+-- `st` is { t = seconds airborne, phase = 0..1 }; call once a frame.
+-- Returns the eased 0..1 blend.
+function BMX.AirCamStep(st, grounded, dt)
+    local A = BMX.AirCam
+    st.t = grounded and 0 or ((st.t or 0) + dt)
+    local want = (not grounded and st.t >= A.hang) and 1 or 0
+    local ph = st.phase or 0
+    local step = dt / (want == 1 and A.secondsIn or A.secondsOut)
+    if ph < want then ph = math.min(want, ph + step)
+    elseif ph > want then ph = math.max(want, ph - step) end
+    st.phase = ph
+    return ph * ph * (3 - 2 * ph)
+end
+
+-- What the blend adds: a multiplier for the camera distance and degrees of FOV.
+-- `amount` is the player's bmx_cam_air (0 = off).
+function BMX.AirCamExtras(blend, amount)
+    local A = BMX.AirCam
+    amount = math.max(0, amount or 0)
+    return 1 + A.dist * amount * blend, A.fov * amount * blend
+end
+local airState = { t = 0, phase = 0 }
+
 -- Smoothed state, so the camera does not snap when speed or geometry changes.
 --
 -- SEEDED ON MOUNT, not left at zero. The smoothers ease toward their targets,
@@ -141,6 +184,10 @@ function BMX.LocalBike(ply)
 end
 
 hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
+    -- A replay (cl_replay.lua) or a filmer camera (cl_filmer.lua) owns the view.
+    if BMX.ReplayActive and BMX.ReplayActive() then return end
+    if BMX.FilmerViewing and BMX.FilmerViewing() then return end
+
     -- Thrown off in cinematic mode: keep filming, now the crash ragdoll.
     local rag = BMX.CinematicTumbling and BMX.CinematicTumbling(ply)
     if rag and BMX.CinematicActive(ply) then
@@ -168,7 +215,9 @@ hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
         sFov  = fov + frac * 16
         sRoll = math.deg(roll) * cv_roll:GetFloat()
         sYaw, sYawV, sTilt = nil, 0, 0
+        airState.t, airState.phase = 0, 0
     end
+    local airBlend = BMX.AirCamStep(airState, bike:GetGrounded(), FrameTime())
 
     if cv_smooth:GetBool() then angles = easedAngles(bike, angles, FrameTime()) end
 
@@ -203,7 +252,9 @@ hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
     sDist = approach(sDist, cv_dist:GetFloat() * (1 + frac * 0.35), 4)
     sFov  = approach(sFov,  fov + frac * 16, 4)
 
-    local wanted = target - angles:Forward() * sDist
+    -- The trick camera's share, on top of the smoothed speed pull-back.
+    local airDist, airFov = BMX.AirCamExtras(airBlend, cv_air:GetFloat())
+    local wanted = target - angles:Forward() * (sDist * airDist)
 
     -- Keep the camera out of the world. A hull trace rather than a line, so it
     -- does not squeeze through a doorframe and end up inside a wall.
@@ -219,7 +270,7 @@ hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
     return {
         origin = tr.HitPos,
         angles = Angle(angles.p, angles.y, sRoll),
-        fov    = sFov,
+        fov    = sFov + airFov,
         drawviewer = true,
     }
 end)

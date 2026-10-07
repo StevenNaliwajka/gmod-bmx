@@ -98,6 +98,40 @@ local function label(txt, x, y, font, col, align)
 end
 
 --------------------------------------------------------------------------
+-- THE SPEEDOMETER'S EXTRA LINE (G21): the combo multiplier and the airtime,
+-- under the speed box. The combo HUD already says all of this in the middle
+-- of the screen; this is the same two numbers where the eye is already
+-- looking at the speed. Pure, so tests/test_stance.lua can read it.
+--------------------------------------------------------------------------
+-- Airtime in seconds: running while the bike is off the ground, then held for
+-- 2.5 s after landing so there is time to read it. Air shorter than a quarter
+-- of a second is a bump, not an air, and is never shown.
+function BMX.AirClock(st, grounded, now)
+    if grounded then
+        if st.start then st.last, st.lastAt, st.start = now - st.start, now, nil end
+    else
+        st.start = st.start or now
+    end
+    if st.start then
+        local t = now - st.start
+        return t >= 0.25 and t or 0, true
+    end
+    if st.last and st.last >= 0.25 and now - st.lastAt < 2.5 then return st.last, false end
+    return 0, false
+end
+
+-- "combo x3   air 1.20s", or nil when neither is worth showing.
+function BMX.HudStatsLine(comboN, airSeconds)
+    local parts = {}
+    if (comboN or 0) >= 1 then parts[#parts + 1] = "combo x" .. comboN end
+    if (airSeconds or 0) > 0 then parts[#parts + 1] = string.format("air %.2fs", airSeconds) end
+    if #parts == 0 then return nil end
+    return table.concat(parts, "   ")
+end
+
+local airClock = {}
+
+--------------------------------------------------------------------------
 -- Rider HUD
 --------------------------------------------------------------------------
 local function drawRiderHUD(bike)
@@ -127,6 +161,17 @@ local function drawRiderHUD(bike)
     -- behind), and an unset font measures against whatever ran last.
     label(string.format("%.0f", shown), x + 108, y + 10, "BMX.Big", COL_FG, TEXT_ALIGN_RIGHT)
     label(suffix, x + 116, y + 26, "BMX.Small", COL_DIM)
+
+    ----------------------------------------------------------------------
+    -- Combo multiplier and airtime, in a strip under the box.
+    ----------------------------------------------------------------------
+    local c = BMX.ComboHUD and BMX.ComboHUD()
+    local comboN = (c and c.state == 0 and CurTime() - c.at < 6) and c.n or 0
+    local air = BMX.AirClock(airClock, bike:GetGrounded(), CurTime())
+    local line = BMX.HudStatsLine(comboN, air)
+    if line then
+        label(line, x + w - 14, y + h + 6, "BMX.Small", COL_FG, TEXT_ALIGN_RIGHT)
+    end
 
     ----------------------------------------------------------------------
     -- Cadence: how close the rider is to spinning out. This is what actually
@@ -267,7 +312,8 @@ hook.Add("HUDPaint", "BMX.HUD", function()
     BMX.ApplyConVars()
 
     -- The cinematic camera hides the rider HUD, as GTA's does.
-    local cinematic = BMX.CinematicActive and BMX.CinematicActive(ply)
+    local cinematic = (BMX.CinematicActive and BMX.CinematicActive(ply))
+        or (BMX.ReplayActive and BMX.ReplayActive())
     if cv_hud:GetBool() and not cinematic then drawRiderHUD(bike) end
     if GetConVar("bmx_debug"):GetInt() > 0 then drawDebug(bike) end
 end)
@@ -300,6 +346,7 @@ net.Receive("bmx_tricks", function()
 end)
 
 hook.Add("HUDPaint", "BMX.CalloutPaint", function()
+    if BMX.ReplayActive and BMX.ReplayActive() then return end   -- the replay draws its own
     local sw, sh = ScrW(), ScrH()
     local y = sh * 0.34
 
@@ -341,6 +388,7 @@ local function commas(n)
 end
 
 hook.Add("HUDPaint", "BMX.ComboPaint", function()
+    if BMX.ReplayActive and BMX.ReplayActive() then return end
     local c = combo
     if not c then return end
     local age = CurTime() - c.at

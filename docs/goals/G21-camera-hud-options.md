@@ -43,8 +43,23 @@ None.
 - **Everything is in G19's Rider panel:** done. Every `bmx_cam_*`, `bmx_units`,
   `bmx_hud`, `bmx_stick_deadzone` and `bmx_cinematic`, with help text and reset
   (see `lua/bmx/sh_settings.lua`; the panel is unverified in a live client).
-- Trick camera (`bmx_cam_air`): not done (later wave).
-- Filmer camera entity: not done (later wave).
-- Rider pose options: not done (later wave).
-- Speedometer combo and airtime line: not done.
-- Skateboard parity: not applicable yet (G23).
+- **Trick camera** (`bmx_cam_air`, 0..1, default 0.6): done, `cl_view.lua`.
+  In the air the chase camera pulls back (up to +40% distance) and widens
+  (+14 degrees FOV); a 0.12 s hang time means a bump is not an air; the
+  blend is a rate-limited smoothstep, so nothing jumps at takeoff or landing
+  (tested frame by frame at 20, 60 and 144 fps). Unverified in a live client.
+- **Filmer camera:** done. `lua/entities/bmx_filmer_cam` (Q menu > BMX,
+  admin-only) turns to follow the nearest rider; `bmx_filmer_view` looks
+  through the nearest one (`cl_filmer.lua`). The aim, zoom and operator lag
+  are tested; how the tripod model looks is not. G28's fixed replay camera
+  uses the same maths.
+- **Rider pose options** (`bmx_rider_pose`: seated, standing, attack): done.
+  `sh_stance.lua` is a table of IK-target offsets plus a torso lean; the
+  server copies the userinfo convar onto the player as an NWInt
+  (`sv_stance.lua`) so others see it; `cl_rider.lua` has two small additive
+  calls (`BMX.StanceTargets`, `BMX.StanceLean`). The offsets are numbers
+  nobody has watched on a real model.
+- **Speedometer line:** done. `combo xN   air 1.23s` under the speed box;
+  airtime is held 2.5 s after landing and never shown for a bump.
+- Skateboard parity: nothing to do yet (G23). Every option reads
+  `BMX.LocalBike`, so it applies to whatever vehicle that returns.

@@ -211,6 +211,9 @@ client{ name = "bmx_cam_smooth", kind = "bool", default = true, category = "came
 client{ name = "bmx_cinematic", kind = "bool", default = false, category = "camera",
     label = "Cinematic camera",
     help = "Cut between film-style shots of your ride. You can also toggle it with L while riding. It is not remembered between sessions." }
+client{ name = "bmx_cam_air", kind = "float", default = 0.6, min = 0, max = 1, decimals = 2,
+    category = "camera", label = "Trick camera",
+    help = "In the air the camera pulls back and widens a little so the whole trick is in frame, then eases back on landing. 0 turns it off." }
 
 client{ name = "bmx_hud", kind = "bool", default = true, category = "hud",
     label = "Show the rider HUD",
@@ -231,6 +234,9 @@ client{ name = "bmx_rider_anim", kind = "bool", default = true, category = "ride
 client{ name = "bmx_rider_ik", kind = "bool", default = true, category = "rider",
     label = "Hands on the bars",
     help = "Put riders' hands on the grips and feet on the pedals. Off uses a simpler swing, which looks worse but costs less." }
+client{ name = "bmx_rider_pose", kind = "choice", default = "seated", choices = { "seated", "standing", "attack" },
+    category = "rider", label = "Riding position",
+    help = "How you sit on the bike: seated, standing on the pedals, or the low attack position. Other players see it too." }
 client{ name = "bmx_color_default", kind = "string", default = "red", maxLen = 24, category = "rider",
     label = "Colour of new bikes",
     help = "The paint on bikes you spawn: a colour name (red, blue, pink ...) or a number from the palette." }

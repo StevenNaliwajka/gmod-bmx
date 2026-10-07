@@ -714,6 +714,8 @@ function M.Realm(world, which)
     function Ent:GetColor() return self._color or { r = 255, g = 255, b = 255, a = 255 } end
     function Ent:SetNWVector(k, v) self._nw["nw_" .. k] = v end
     function Ent:GetNWVector(k, d) local v = self._nw["nw_" .. k]; if v == nil then return d end return v end
+    function Ent:SetNWInt(k, v) self._nw["nw_" .. k] = v end
+    function Ent:GetNWInt(k, d) local v = self._nw["nw_" .. k]; if v == nil then return d end return v end
     function Ent:SetNWEntity(k, v) self._nw["nw_" .. k] = v end
     function Ent:GetNWEntity(k, d)
         local v = self._nw["nw_" .. k]
@@ -1579,6 +1581,7 @@ function M.Realm(world, which)
         self:loadEntity("bmx_base")
         self:loadEntity("bmx_city_solid")
         self:loadEntity("bmx_leaderboard")
+        self:loadEntity("bmx_filmer_cam")
         env.hook.Run("InitPostEntity")
         self:runTimers()
         return self

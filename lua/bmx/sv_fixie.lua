@@ -73,7 +73,10 @@ BMX.Drives.fixed = function(ent, cfg, dt, inp, st, wheel, vdef)
 
     -- THE RIDER'S PUSH AT THE WHEEL, as the pedal drive makes it: torque, with the
     -- stamina, the sprint, the climb and the paddle backwards all in it.
-    local tau = BMX.Drives.pedal(ent, cfg, dt, inp, st, wheel, vdef) or 0
+    -- (A unicycle's, G13: S pedals BACKWARDS at any speed, which is its only brake --
+    -- sv_unicycle.lua. `reverse` is in its drive table.)
+    local reverse = vdef and vdef.drive and vdef.drive.reverse
+    local tau = (reverse and BMX.Unicycle.PedalTorque or BMX.Drives.pedal)(ent, cfg, dt, inp, st, wheel, vdef) or 0
 
     local WC = wheel:WheelConfig(cfg)
     local Iw = WC.inertia
@@ -110,7 +113,7 @@ BMX.Drives.fixed = function(ent, cfg, dt, inp, st, wheel, vdef)
     -- on the wheel is negative whenever the bike is slowing) except in the one
     -- place S means "pedal backwards", at a standstill (the pedal drive's own
     -- condition), where it is dropped so the bike can roll back.
-    local paddling = inp.brakeRear > 0 and st.speed < 40 and wheel.omega < 1
+    local paddling = reverse or (inp.brakeRear > 0 and st.speed < 40 and wheel.omega < 1)
     return ts, not paddling
 end
 

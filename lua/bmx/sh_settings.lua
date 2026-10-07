@@ -249,7 +249,7 @@ client{ name = "bmx_rider_ik", kind = "bool", default = true, category = "rider"
     help = "Put riders' hands on the grips and feet on the pedals. Off uses a simpler swing, which looks worse but costs less." }
 client{ name = "bmx_shift_wheel", kind = "bool", default = true, category = "rider",
     label = "Shift gears with the mouse wheel",
-    help = "On a bike with gears (the road bike), the mouse wheel changes gear as well as [ and ]. Off leaves the wheel to the weapon switch." }
+    help = "On a bike with gears (the road bike, the dirt bike) or an assist level (the e-bike), the mouse wheel changes it as well as [ and ]. Off leaves the wheel to the weapon switch." }
 client{ name = "bmx_rider_pose", kind = "choice", default = "seated", choices = { "seated", "standing", "attack" },
     category = "rider", label = "Riding position",
     help = "How you sit on the bike: seated, standing on the pedals, or the low attack position. Other players see it too." }
@@ -267,6 +267,15 @@ client{ name = "bmx_color_default", kind = "string", default = "red", maxLen = 2
     help = "The paint on bikes you spawn: a colour name (red, blue, pink ...) or a number from the palette." }
 
 
+client{ name = "bmx_bike_model", kind = "bool", default = true, category = "advanced",
+    label = "Detailed bike model",
+    help = "Draw bikes as the detailed model. Off draws the simple bike made of shapes, which is lighter on an old PC." }
+client{ name = "bmx_bike_build_ms", kind = "float", default = 4, min = 0.5, max = 50, decimals = 1,
+    category = "advanced", label = "Bike model build time",
+    help = "Milliseconds a frame spent building the detailed bike the first time one is seen. Higher builds it sooner, with a bigger hitch." }
+client{ name = "bmx_predict", kind = "bool", default = false, category = "advanced",
+    label = "Predict my own bike's lean",
+    help = "On a server with ping, your bike's lean and steering are drawn a moment ahead of what the network has told you, so it answers your keys sooner. Only your own bike, only the picture: the server still decides. Off draws exactly what the server sent." }
 client{ name = "bmx_lod_scale", kind = "float", default = 1, min = 0, max = 4, decimals = 1,
     category = "advanced", label = "Bike detail distance",
     help = "How far away bikes keep full detail. 1 is normal, 2 is twice as far, 0 always draws every part." }
@@ -314,7 +323,17 @@ server{ name = "bmx_allow_scooters", kind = "bool", default = true, category = "
     help = "Players may spawn scooters, when there are any. Off stops new ones being spawned." }
 server{ name = "bmx_allow_motor", kind = "bool", default = true, category = "vehicles",
     label = "Allow motor vehicles",
-    help = "Players may spawn motorbikes and e-bikes, when there are any. Off stops new ones being spawned." }
+    help = "Players may spawn the e-bike, e-moto, dirt bike and moped. Off stops new ones being spawned. (They also need the CAMI privilege \"BMX - Spawn Motor Vehicles\", an admin by default.)" }
+
+-- Motor vehicles (G14): the e-bike's cut-off and its battery. Created in sv_motor.lua;
+-- sh_motor.lua reads them. The privilege "BMX - Spawn Motor Vehicles" (an admin by
+-- default) says who may spawn them at all.
+server{ name = "bmx_ebike_limit", kind = "float", default = 25, min = 5, max = 100, decimals = 0,
+    category = "vehicles", label = "E-bike assist limit (km/h)",
+    help = "The speed an e-bike's motor stops helping at. Above it the rider pedals on alone. 25 is the legal limit in much of Europe." }
+server{ name = "bmx_ebike_battery", kind = "int", default = 500, min = 0, max = 5000,
+    category = "vehicles", label = "E-bike battery (Wh)",
+    help = "An e-bike's battery in watt-hours; an e-moto carries three times as much. It drains with the motor's work and recharges while the bike is parked. 0 means it never runs down." }
 
 server{ name = "bmx_air_assist", kind = "bool", default = true, category = "feel",
     label = "Air assist on vert ramps",
@@ -330,6 +349,10 @@ server{ name = "bmx_fixie_frontbrake", kind = "bool", default = false, category 
     label = "Front brake on the fixie",
     help = "A fixed gear's only brake is its legs, and LMB does nothing on one. On, LMB brakes the front wheel of a fixie as it does on a BMX." }
 
+server{ name = "bmx_unicycle_assist", kind = "float", default = 0.6, min = 0, max = 1, decimals = 2, category = "feel",
+    label = "Unicycle balance assist",
+    help = "How much of the unicycle's balance is done for the rider. 0 is as hard as the real thing (it falls over the moment the rider stops correcting it), 1 is a unicycle that cannot fall. 0.6 is a wobble you can ride out." }
+
 server{ name = "bmx_crash_ragdoll", kind = "bool", default = true, category = "rules",
     label = "Crashes throw the rider",
     help = "A rider who crashes is thrown off as a ragdoll for a moment. Off just shoves them off the bike." }
@@ -338,6 +361,9 @@ server{ name = "bmx_crash_ragdoll", kind = "bool", default = true, category = "r
 server{ name = "bmx_park_max", kind = "int", default = 120, min = 1, max = 500, category = "world",
     label = "Park piece limit",
     help = "The most park pieces (ramps, rails, quarter pipes) that can stand at once, however they were placed or loaded. Each is a physics object, so a very large park costs the server." }
+server{ name = "bmx_park_ground", kind = "bool", default = true, category = "world",
+    label = "Park pieces sit on the ground",
+    help = "A park piece settles onto the ground under it when it is placed, spawned or let go of with the physgun. Off, it stays exactly where it is put, in mid-air if need be." }
 
 
 server{ name = "bmx_ragmod", kind = "bool", default = true, category = "rules",
@@ -360,6 +386,13 @@ server{ name = "bmx_water", kind = "bool", default = true, category = "world",
 server{ name = "bmx_water_eject", kind = "bool", default = true, category = "world",
     label = "Deep water throws riders",
     help = "A rider is thrown off when the water reaches their chest. Off keeps them aboard." }
+
+server{ name = "bmx_lagcomp", kind = "bool", default = false, category = "feel",
+    label = "Tricks count where they were pressed",
+    help = "A hop, ollie or spine transfer pressed at the lip counts at the lip even if it reaches the server a moment late. Only changes when a press is judged, not what the bike does. Off judges a press when it arrives." }
+server{ name = "bmx_lagcomp_max", kind = "float", default = 0.15, min = 0, max = 0.5, decimals = 2,
+    category = "feel", label = "Most a press may be back-dated (seconds)",
+    help = "The longest the server will back-date a trick press for lag. Higher forgives a worse connection and a later, easier takeoff for everyone." }
 
 server{ name = "bmx_wheel_stiction", kind = "bool", default = true, category = "feel",
     label = "Parked wheels stick",

@@ -52,10 +52,11 @@ Then, in game:
 ```
 /bike (in chat)      a window to spawn any bike or park piece (also bmx_menu)
 bmx_spawn            spawn a bike where you are looking
-bmx_spawn cruiser    the 24-inch cruiser (or: mini, road, fixie, city, stock)
+bmx_spawn cruiser    the 24-inch cruiser (or: mini, road, fixie, city, unicycle, penny, tandem, dh, stock)
+bmx_spawn dirtbike   a motor vehicle (or: ebike, emoto, moped); needs the privilege below
 ```
 
-or find **BMX** in the spawn menu's Entities tab. There are six bikes: the
+or find **BMX** in the spawn menu's Entities tab. There are ten bikes: the
 20-inch **BMX**, the 24-inch **BMX Cruiser** (longer, heavier, faster at the
 top end, slower off the line), the 16-inch **Mini BMX** (short, light and
 quick, with a low top speed), a 700c **Road Bike** (eight gears, shifted with
@@ -64,7 +65,25 @@ a **Fixie** (the cranks are locked to the rear wheel: S skids, S at a standstill
 rolls it backwards, A/D at a standstill is a trackstand; no front brake unless
 `bmx_fixie_frontbrake 1`) and a **City Bike** (upright, heavy, coaster brake, a
 basket that keeps small props in while you ride gently and throws them out on a
-hop or a crash, and a child seat on the context menu). Press `E` on the bike to
+hop or a crash, and a child seat on the context menu), a **Unicycle** (one wheel,
+a fixed gear and no brake: W / S pedal forward and back to stay under yourself, A / D
+lean, the mouse twists you round, and `bmx_unicycle_assist` says how much of the balance
+is done for you; idle and hop score), a **Penny-Farthing** (a 26-unit front wheel with the
+pedals on its hub, the rider up high, and a hard front brake at speed takes you over the
+bars), a **Tandem** (E on the back takes the second seat; both pedalling, and the torques
+add) and a long-travel **Downhill Bike**. A **Bike Rack** (BMX > Bikes in the spawn menu)
+welds to a car and holds two bikes, and the **Bike Lock** weapon locks a parked bike to the
+ground: only its owner, or an admin, can unlock it. There are also four
+**motor vehicles**, under Motor in the spawn menu (an admin by default: the CAMI
+privilege "BMX - Spawn Motor Vehicles"; `bmx_allow_motor 0` switches them off): an
+**E-Bike** (pedal assist: the mouse wheel or `[` `]` set a level 0-3, the motor adds that
+many times your pedalling up to `bmx_ebike_limit` km/h, 25 by default; the battery,
+`bmx_ebike_battery` Wh, drains with the motor and recharges while parked, 0 = never runs
+down), an **E-Moto** (throttle on `W`, regen on `S`, about 2.5x a BMX's top speed), a
+**Dirt Bike** (an engine with a torque curve, five gears on `]` `[` or the wheel, a clutch on
+`SHIFT`: let go with the throttle open to pop a wheelie; Alt in the air for superman, heel
+clicker and cliffhanger) and a **Moped** (pedal it off and the engine takes over).
+Press `E` on the bike to
 get on, or `E` on the back of a ridden BMX or cruiser to stand on its pegs behind
 the rider (`bmx_passengers 0` turns that off); `E` again to get off, beside it.
 Get off at a slow stop and the kickstand
@@ -353,10 +372,18 @@ the bike is fun. See [docs/TESTING.md](docs/TESTING.md).
 
 Code is MIT, see [LICENSE](LICENSE).
 
-The bike ships **no model**: it is drawn in code from tubes and boxes (frame,
-fork, bars, seat, cranks that turn as you pedal, chain, pegs), sized from its
-own geometry. So the addon has zero content dependencies and can be cloned and
-ridden immediately. A bike def can supply a real `model` instead.
+The bike ships **no model file**: its detailed model is built in code
+(`lua/bmx/cl_bikegeo.lua`) -- a mid-school street BMX at real dimensions,
+~75k triangles, with welds, gussets, a laced 36-spoke wheel, a link chain,
+pinned pedals, skinwall tyres with tread and lettering, and a down-tube
+graphic drawn at runtime -- and lit and drawn as meshes by
+`lua/bmx/cl_bikemesh.lua`. It is original work under the same MIT licence as
+the code, so the addon still has zero content dependencies and can be cloned
+and ridden immediately. `bmx_bike_model 0` draws the simple bike made of
+shapes instead, and `bmx_debug` shows that one too, because it draws exactly
+where the simulation has its wheels. A bike def can supply a real `model`.
+To look at the model without the game: `tools/bike/export.lua` and
+`tools/bike/preview.py`.
 
 **Do not add ripped assets.** A GTA 5 BMX model, or anything extracted from
 another game, in a public repository is the fastest way to get it taken down.

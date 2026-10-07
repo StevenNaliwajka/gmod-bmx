@@ -62,6 +62,19 @@ list, and no editor.
 Model work needs a person with Blender time, or a commission. The API needs a
 freeze: from then on, a breaking change needs a major version.
 
+## Status (2026-10-07, later): the BMX has a real model
+
+The stock bike (and the cruiser and mini, scaled) now draws as a detailed
+model built in code (`lua/bmx/cl_bikegeo.lua`, `cl_bikemesh.lua`,
+`DrawDetailed` in `entities/bmx_base/cl_init.lua`): original work under the
+code's MIT licence, so the licence question does not arise for it. It is
+rigged by construction -- each moving part is its own mesh group placed by
+the same maths the simple bike uses -- so G01's rig check has nothing to
+check on it. The procedural bike stays as `bmx_bike_model 0` and as the
+`bmx_debug` view. Tests: `tests/test_bikemodel.lua`. Offline look:
+`tools/bike/export.lua` + `tools/bike/preview.py`. Still open: the
+skateboard's model (G23), the example addon and `bmx_editor`.
+
 ## Status (2026-10-07)
 
 The public hooks and the guide are done; models, the licence change, the

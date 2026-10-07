@@ -39,12 +39,16 @@ local SHARED = {
     "bmx/sh_settings.lua",    -- every player and admin setting, in one list (after sh_config: reads its defaults)
     "bmx/sh_permissions.lua", -- CAMI privileges and BMX.Can
     "bmx/sh_util.lua",
+    "bmx/sh_lean.lua",      -- the lean/steer controller's arithmetic, shared with the client's prediction (G30)
+    "bmx/sh_predict.lua",   -- G30: the pure parts of prediction, the latency probe and lag comp
     "bmx/sh_tricks.lua",    -- the trick registry; the scoring and the overlay read it
     "bmx/sh_vehicles.lua",  -- what a vehicle is: families, input maps, pose sets, the checks
     "bmx/sh_gears.lua",     -- the gear model: ratios, cadence, which gear a bike is in (G09)
+    "bmx/sh_motor.lua",     -- the motor model: assist, battery, engine and clutch (G14, G15)
     "bmx/sh_passenger.lua", -- seats, the passenger's mass, the child seat's switch (G11)
     "bmx/sh_board.lua",     -- the skateboard's vocabulary (G23): numbers, input map, pose set; before the registry
     "bmx/sh_bikes.lua",
+    "bmx/sh_motorbikes.lua", -- the e-bike, e-moto, dirt bike and moped (G14, G15)
     "bmx/sh_boards.lua",    -- ...and the boards, registered once RegisterVehicle exists
     "bmx/sh_sound.lua",
     "bmx/sh_color.lua",     -- the palette and the ways to choose from it
@@ -58,11 +62,17 @@ local SERVER_FILES = {
     "bmx/sv_balance.lua",
     "bmx/sv_air.lua",
     "bmx/sv_input.lua",
+    "bmx/sv_lagcomp.lua",   -- G30: bmx_lagcomp: takeoff decisions judged at the tick the input was made
     "bmx/sv_grind.lua",     -- before sv_physics, which calls it
     "bmx/sv_combo.lua",     -- chained tricks: before sv_physics too
     "bmx/sv_tricks.lua",    -- frame/bar spins and style poses: before sv_physics too
     "bmx/sv_physics.lua",
     "bmx/sv_fixie.lua",     -- the fixed-gear drive, its two tricks, its front-brake switch (G10)
+    "bmx/sv_unicycle.lua",  -- one wheel on two axes: the unicycle balance mode, its pedals, its tricks (G13)
+    "bmx/sv_penny.lua",     -- the penny-farthing's front drive and its header (G13)
+    "bmx/sv_tandem.lua",    -- a second pair of legs: the stoker's pedalling adds to the driver's (G13)
+    "bmx/sv_rack.lua",      -- the bike rack: welds to a car, holds two bikes (G13)
+    "bmx/sv_lock.lua",      -- the bike lock: a parked bike welded to the world, owner-only (G13)
     "bmx/sv_board.lua",     -- the skateboard (G23): the board balance, the push drive, the decoder
     "bmx/sv_board_tricks.lua", -- ...its flips and what a landing pays (wraps BMX.ScoreExtras: after sv_tricks)
     "bmx/sv_board_carry.lua",  -- ...and carrying one (weapon_bmx_board)
@@ -73,6 +83,7 @@ local SERVER_FILES = {
     "bmx/sv_compat_ragmod.lua", -- RagMod, if installed: before the crash path asks
     "bmx/sv_bell.lua",      -- R on the ground rings the bell
     "bmx/sv_gears.lua",     -- [ ] and the wheel change gear (G09)
+    "bmx/sv_motor.lua",     -- the motor drives, the battery and the spawn gate (G14, G15)
     "bmx/sv_water.lua",     -- drag, splash and ejection in water (sv_physics checks for it)
     "bmx/sv_stance.lua",    -- copies each rider's bmx_rider_pose onto the player
     "bmx/sv_rules.lua",     -- server-owner settings: bike limit, scoring on/off
@@ -80,6 +91,7 @@ local SERVER_FILES = {
     "bmx/sv_launch.lua",    -- finding a ramp to get air off, or putting one down
     "bmx/sv_debug.lua",
     "bmx/sv_park.lua",      -- park pieces: placing, the cap, save/load, presets
+    "bmx/sv_nav.lua",       -- a navmesh a bike can use, and the trick spots on it
     "bmx/sv_menu.lua",      -- /bike in chat, and park pieces placed from the window
 
     -- The headless harness loads last: its cases reference BMX.Config, the
@@ -90,11 +102,16 @@ local SERVER_FILES = {
 }
 
 local CLIENT_FILES = {
+    "bmx/cl_bikegeo.lua",   -- the bike model, built as triangles (pure Lua)
+    "bmx/cl_bikemesh.lua",  -- ...as IMeshes: materials, lighting, drawing
     "bmx/cl_view.lua",
     "bmx/cl_hud.lua",
     "bmx/cl_sound.lua",
+    "bmx/cl_predict.lua",   -- G30: bmx_predict (display-only lead of the rider's own bike), bmx_latency_probe
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
     "bmx/cl_gears.lua",     -- the shift keys, sent to the server (G09)
+    "bmx/cl_oddbikes.lua",  -- the unicycle, the penny-farthing and the tandem, drawn in code (G13)
+    "bmx/cl_motor.lua",     -- motor HUD lines, the whine and the engine note, the moto pose (G14, G15)
     "bmx/cl_passenger.lua", -- who is a passenger, how they sit, where their hands go (G11)
     "bmx/cl_board.lua",     -- the skateboard's drawing, rider pose and HUD (G23): after cl_rider
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it

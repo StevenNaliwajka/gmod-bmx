@@ -69,11 +69,7 @@ end
 -- it is zero, and outside it the rest of the travel is stretched back to 0..1,
 -- so there is no jump at its edge and a full stick is still a full command. A
 -- keyboard sends 0 or full scale, which it leaves exactly as it was.
-local function deadzone(v, d)
-    local a = math.abs(v)
-    if a <= d then return 0 end
-    return (v > 0 and 1 or -1) * math.min((a - d) / (1 - d), 1)
-end
+local deadzone = BMX.Lean.Deadzone      -- sh_lean.lua: the client's prediction reads its stick the same way
 BMX.StickDeadzone = deadzone
 
 -- A fresh, all-neutral input table. Kept as a constructor rather than a shared
@@ -91,6 +87,7 @@ function BMX.BlankInput()
         pose        = nil, -- a pose name (sh_tricks.lua), or nil
         tuck        = false,
         sprint      = false,
+        clutch      = false, -- the clutch lever pulled in (a motorcycle's SHIFT, G15)
         wheelieMod  = false,
         leanFwd     = false, -- weight forward over the bars (LMB + Ctrl, G02)
         noseTrim    = 0,     -- -1..1, W / S: trims a nose manual
@@ -141,11 +138,19 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
         if down("right") then side = 1 elseif down("left") then side = -1 end
     end
 
+    -- G30: THE AGE OF THIS INPUT, for the takeoff decisions (sv_lagcomp.lua). 0
+    -- unless bmx_lagcomp is on. Set before the vehicle's own decoder, which
+    -- returns below, so the skateboard's ollie sees it too.
+    inp.cmdAge = BMX.LagComp and BMX.LagComp.Age(ply, cmd) or 0
+
     -- A VEHICLE WITH ITS OWN DECODER (the skateboard's: sv_board.lua) reads the keys
     -- itself: a board's W, S, SPACE and the rest mean other things than a bike's.
     if map.decode then return map.decode(ply, bike, cmd, down, fwd, side) end
 
     inp.sprint     = down("sprint")
+    -- THE CLUTCH LEVER (G15), on SHIFT in a motorcycle's map, which has no sprint:
+    -- a map without the action is never down, so no other vehicle has a clutch.
+    inp.clutch     = down("clutch")
     inp.tuck       = down("tuck")
     inp.wheelieMod = down("weightBack")
     -- THE FRONT BRAKE is the map's `brakeFront` on the GROUND, which a fixie's and
@@ -257,7 +262,8 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
         local wKey = fwd > 0.1  or (down("forward") and inp.airLatch ~= 1)
         local sKey = fwd < -0.1 or (down("back")    and inp.airLatch ~= -1)
         inp.pose = BMX.DecodePose({ alt = alt, rmb = inp.wheelieMod, fwd = wKey, back = sKey,
-            side = sdir, jump = down("hop"), air = airborne, manual = manual })
+            side = sdir, jump = down("hop"), air = airborne, manual = manual,
+            moto = bike:Bike().family == "moto" })
         if inp.pose and airborne then
             -- Hands are busy: no flip, no roll, no 360 under a pose.
             fwd, side = 0, 0
@@ -381,6 +387,7 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
         bike.hopHeld   = true
     elseif not jump and inp.hop then
         bike.hopRelease = true
+        bike.hopReleaseAge = inp.cmdAge     -- G30: how old the release is (0 off)
     end
     inp.hop = jump
 
@@ -402,22 +409,9 @@ end)
 -- Ramping the target (not the output) keeps the PD controller honest while
 -- giving the rider a continuous input.
 --------------------------------------------------------------------------
--- CALM, not crisp. Returning to centre used to be faster (6.5) for "crisper
--- corner exits", and on a keyboard, where A and D are all or nothing, that
--- made every release a snap that the bike overshot. Both are a glide now.
-local LEAN_RATE   = 3.0    -- units of target per second
-local LEAN_RETURN = 3.0    -- the same on the way back: a glide, not a snap
-local PITCH_RATE  = 6.0
-
-local function approach(cur, target, rate, dt)
-    local d = target - cur
-    local step = rate * dt
-    if math.abs(d) <= step then return target end
-    return cur + step * (d > 0 and 1 or -1)
-end
-
+-- The arithmetic (rates, approach) lives in sh_lean.lua so the client's prediction
+-- shares it (G30); this is the same function it always was.
 function BMX.SmoothInput(inp, dt)
-    local rate = (math.abs(inp.leanTarget) < math.abs(inp.lean)) and LEAN_RETURN or LEAN_RATE
-    inp.lean  = approach(inp.lean,  inp.leanTarget,  rate,       dt)
-    inp.pitch = approach(inp.pitch, inp.pitchTarget, PITCH_RATE, dt)
+    inp.lean  = BMX.Lean.StepLean(inp.lean, inp.leanTarget, dt)
+    inp.pitch = BMX.Lean.Approach(inp.pitch, inp.pitchTarget, BMX.Lean.PITCH_RATE, dt)
 end

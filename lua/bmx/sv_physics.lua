@@ -99,6 +99,11 @@ local function drivetrain(ent, cfg, dt, inp, st, rear)
         st.stamina = min(D.staminaMax, st.stamina + D.staminaRegen * dt)
     end
 
+    -- THE PUSH OF EVERYONE PEDALLING (G13, sv_tandem.lua): the driver's throttle plus a
+    -- stoker's, each 0..1, so a tandem's torque is the sum of its two riders'. For every
+    -- other vehicle it is the driver's alone, the number it always was.
+    local thr = inp.throttle + (BMX.Tandem and BMX.Tandem.Push(ent, inp) or 0)
+
     local tq  = D.crankTorque * (sprinting and D.sprintTorque  or 1)
     local cad = D.maxCadence  * (sprinting and D.sprintCadence or 1)
 
@@ -132,7 +137,7 @@ local function drivetrain(ent, cfg, dt, inp, st, rear)
     -- weight is says the same thing. Applied in PhysicsStep, only while the
     -- rear tyre is on the ground.
     st.climbAccel, st.climbDir = 0, nil
-    if D.climbAssist and D.climbAssist > 0 and rear.onGround and inp.throttle > 0 then
+    if D.climbAssist and D.climbAssist > 0 and rear.onGround and thr > 0 then
         local n = st.groundNormal or vector_up
         local f = ent:GetForward()
         f = f - n * f:Dot(n)
@@ -146,12 +151,12 @@ local function drivetrain(ent, cfg, dt, inp, st, rear)
                 local wall = 1 - BMX.Ramp(math.asin(math.min(f.z, 1)),
                     D.climbMax or math.rad(40), D.climbWall or math.rad(55))
                 st.climbAccel = D.climbAssist * physenv.GetGravity():Length()
-                    * f.z * (1 - spin) * inp.throttle * wall
+                    * f.z * (1 - spin) * thr * wall
             end
         end
     end
 
-    local crank = tq * (1 - spin) * inp.throttle
+    local crank = tq * (1 - spin) * thr
 
     -- Paddling backwards. A rider at a standstill holding the "brake" key
     -- expects to be able to walk the bike back, not to stand there. Only
@@ -258,6 +263,11 @@ function BMX.PhysicsStep(ent, phys, dt)
     local inp = ent.input
     local wheels = ent.wheels
     if not st or not inp or not wheels then return end
+
+    -- A BIKE ON A RACK OR LOCKED (G13) is a prop on the car or on the world: it welds
+    -- to its carrier through the constraint system, and running the tyre model against
+    -- a car body it is bolted to would only shake the pair of them.
+    if ent.BMXRack then phys:Wake() return end
 
     local hasDriver = IsValid(ent:GetDriver())
 
@@ -711,7 +721,12 @@ function BMX.PhysicsStep(ent, phys, dt)
         ent.hopRelease = false
         ent.hopHeld    = false
 
-        if grounded and hasDriver and CurTime() >= (ent.hopReady or 0) then
+        -- G30 (bmx_lagcomp): a release pressed while the bike was still on the
+        -- ground counts, though it has left it by the time the command arrived.
+        local pressedGrounded = grounded
+            or (BMX.LagCompGrace and BMX.LagCompGrace(ent, ent.hopReleaseAge))
+        ent.hopReleaseAge = nil
+        if pressedGrounded and hasDriver and CurTime() >= (ent.hopReady or 0) then
             local charge = max(H.minCharge, (ent.hopCharge or 0) / H.chargeTime)
 
             -- Pop along the surface normal, not along world up, so hopping off

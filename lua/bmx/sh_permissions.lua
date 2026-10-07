@@ -13,14 +13,15 @@
 
         BMX - Change Server Settings   superadmin   the Server panel, bmx_reset_server
         BMX - Physgun Ridden           admin        pick up a bike with a rider on it
-        BMX - Spawn Motor Vehicles     admin        engines (nothing uses it yet)
+        BMX - Spawn Motor Vehicles     admin        the e-bike, e-moto, dirt bike and moped (sv_motor.lua)
         BMX - Remove Any Bike          admin        remove other people's bikes (nothing uses it yet)
-        BMX - Unlock Any Lock          admin        bike locks (nothing uses it yet)
+        BMX - Unlock Any Lock          admin        unlock a bike someone else locked (weapon_bmx_lock)
         BMX - Build Parks              admin        bmx_park_save / _load / _preset / _clear
 
-    The three marked "nothing uses it yet" belong to goals that have not been
+    The two marked "nothing uses it yet" belong to goals that have not been
     built. They are registered now so a server owner's permission setup does
     not change when those land, and so those goals only have to call BMX.Can.
+    (The bike lock, G13, is the first to: BMX.Lock.CanUnlock, sv_lock.lua.)
 
     BMX.Can(ply, name) IS THE ONE QUESTION. Everything that gates on a
     privilege asks it, so no caller knows about CAMI. A player of NULL or nil is

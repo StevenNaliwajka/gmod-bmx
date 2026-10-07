@@ -166,6 +166,9 @@ local function update(ent, state, dt)
     -- A FIXED GEAR HAS NO FREEWHEEL (G10): the cranks are on the wheel, so a
     -- coasting fixie is silent where a BMX ticks.
     local fixed = ent:Bike().drive.kind == "fixed"
+        -- A motor has no freewheel to tick (cl_motor.lua has its own sound): an engine or an
+        -- e-moto is never "coasting with the cranks still".
+        or (BMX.Motor and BMX.Motor.IsMotor(ent) and not BMX.Motor.IsAssist(ent))
     local coasting = grounded and speed > 20 and not fixed
         and ent:GetCadence() < cfg.Drive.maxCadence * 0.06
 

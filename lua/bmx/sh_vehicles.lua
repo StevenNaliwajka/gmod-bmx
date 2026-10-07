@@ -78,7 +78,11 @@ BMX.SpawnCategories = {
 --   none          nothing holds the vehicle up. It stands on its wheels
 --                 (a motor vehicle with a low centre of mass, a cart).
 --------------------------------------------------------------------------
-BMX.BalanceModeNames = { singletrack = true, board = true, none = true }
+-- G13: `unicycle` balances one wheel on two axes at once (sv_unicycle.lua);
+-- `pennyfarthing` is the single-track balance with the header rule on its pitch
+-- (sv_penny.lua): two wheels in line, the front one steered by the fork.
+BMX.BalanceModeNames = { singletrack = true, board = true, none = true,
+                         unicycle = true, pennyfarthing = true }
 
 --------------------------------------------------------------------------
 -- DRIVES: what turns the rider's keys into wheel torque (sv_physics.lua).
@@ -88,17 +92,28 @@ BMX.BalanceModeNames = { singletrack = true, board = true, none = true }
 --              it read from the config's Drive group
 --   fixed      a fixed gear (G10): the pedal drive with the cranks LOCKED to the
 --              rear wheel through a stiff spring. No freewheel: coasting turns the
---              legs, S is a skid stop, S at a standstill pedals backwards
+--              legs, S is a skid stop, S at a standstill pedals backwards.
+--              `reverse = true` (the unicycle, G13) makes S pedal backwards at any
+--              speed instead: a unicycle has no brake, only its legs
+--   front-direct  a penny-farthing's (G13): the pedal drive with the cranks on the
+--              FRONT wheel, which is the vehicle's drive wheel; no gearing to speak
+--              of (the config's gearRatio is the one number for it)
 --   coaster    a coaster brake (G12): the pedal drive, freewheeling; its brake is S
 --              (the rear brake) and the vehicle has no front brake to speak of
 --   throttle   a motor: torque, falling to nothing at maxSpeed
 --   push       reserved for the skateboard (G23): a kick every kickInterval
+--   assist     an e-bike (G14): the pedal drive plus a motor of LEVEL x the rider's
+--              torque, fading out at bmx_ebike_limit; sh_motor.lua adds this kind
+--   engine     a petrol engine (G15): a torque curve, a clutch, the road bike's gears
+--              or one ratio; sh_motor.lua adds this kind
+--   (throttle also takes `battery`, `regen`, `motorRatio` for the e-moto, G14)
 --   none       coasts
 --------------------------------------------------------------------------
 BMX.DriveKinds = {
     pedal    = {},
-    fixed    = {},
+    fixed    = { reverse = "boolean" },
     coaster  = {},
+    ["front-direct"] = {},
     throttle = { torque = "number", maxSpeed = "number" },
     push     = { torque = "number", maxSpeed = "number", kickInterval = "number" },
     none     = {},
@@ -234,6 +249,37 @@ do
     BMX.RegisterInputMap{ id = "bike_rearonly", label = "Bike, rear brake only", actions = actions }
 end
 
+-- THE PENNY-FARTHING'S MAP (G13): steer, pedal, the front brake (the spoon brake, the
+-- one that takes the rider over the bars) and S, which back-pedals the direct drive
+-- (the pedal drive's own reverse at a walk). No trick keys: it is not that kind of bike.
+BMX.RegisterInputMap{
+    id = "penny", label = "Penny-farthing",
+    actions = {
+        forward    = { key = IN_FORWARD,   ctx = { G, A }, label = "Pedal" },
+        back       = { key = IN_BACK,      ctx = { G, A }, label = "Back-pedal / rear brake" },
+        left       = { key = IN_MOVELEFT,  ctx = { G, A }, label = "Lean left" },
+        right      = { key = IN_MOVERIGHT, ctx = { G, A }, label = "Lean right" },
+        sprint     = { key = IN_SPEED,     ctx = { G },    label = "Sprint" },
+        brakeFront = { key = IN_ATTACK,    ctx = { G, A }, label = "Front (spoon) brake: hard at speed and you go over the bars" },
+        hop        = { key = IN_JUMP,      ctx = { G, A }, label = "Hop" },
+    },
+}
+
+-- THE UNICYCLE'S MAP (G13): pedal forward and BACK (there is no brake, S pedals
+-- backwards), lean, hop, sprint. No trick keys: the mouse's yaw, which twists it
+-- round, is not a key and is read from the usercmd (sv_unicycle.lua).
+BMX.RegisterInputMap{
+    id = "unicycle", label = "Unicycle",
+    actions = {
+        forward = { key = IN_FORWARD,   ctx = { G, A }, label = "Pedal forward" },
+        back    = { key = IN_BACK,      ctx = { G, A }, label = "Pedal backwards (the brake)" },
+        left    = { key = IN_MOVELEFT,  ctx = { G, A }, label = "Lean left" },
+        right   = { key = IN_MOVERIGHT, ctx = { G, A }, label = "Lean right" },
+        sprint  = { key = IN_SPEED,     ctx = { G },    label = "Sprint" },
+        hop     = { key = IN_JUMP,      ctx = { G, A }, label = "Hop" },
+    },
+}
+
 --------------------------------------------------------------------------
 -- RIDER POSE SETS. The ids are declared here, shared, so a registration can be
 -- checked; cl_rider.lua fills in the `rider` function (the bone offsets) and
@@ -252,6 +298,7 @@ BMX.RegisterPoseSet("bike",   { label = "Bike: hands on the bars, feet on the pe
 BMX.RegisterPoseSet("seated", { label = "Seated: the stock pose, no limbs animated" })
 BMX.RegisterPoseSet("road",   { label = "Road: tucked over the bars, hands on the drops" })
 BMX.RegisterPoseSet("upright", { label = "Upright: sat up, hands on swept-back bars" })
+BMX.RegisterPoseSet("unicycle", { label = "Unicycle: upright on the saddle, arms out for balance" })
 
 -- The pose set a vehicle entity's rider uses (client).
 function BMX.PoseSetFor(ent)
@@ -270,6 +317,8 @@ local TOP_LEVEL = {
     physics = true,
     -- the bikes' extras: gears (G09), a score multiplier (G09), the bar shape (G09)
     gears = true, scoreMult = true, barStyle = true,
+    -- the built-in detailed model to draw: "bmx" (cl_bikegeo.lua), or nil for the simple bike
+    look = true,
     -- a box small props ride in (G12, sv_basket.lua)
     basket = true,
     -- appearance and mount points (as RegisterBike always took them)
@@ -277,13 +326,18 @@ local TOP_LEVEL = {
     colorIndex = true, seatModel = true, wheelModel = true, forkModel = true,
     frameOffset = true, frameAngles = true, scale = true, bones = true,
     -- spawn menu behaviour
+    -- the procedural drawing a vehicle that is not the stock bike's shape asks for
+    -- (G13, BMX.Drawers in cl_oddbikes.lua): a unicycle, a penny-farthing, a tandem
+    drawer = true,
     hidden = true,      -- not in the spawn menu
     debugOnly = true,   -- bmx_spawn needs bmx_debug >= 1
 }
 BMX.VehicleKeys = TOP_LEVEL
 
 local WHEEL_KEYS = { pos = true, radius = true, steer = true, drive = true, front = true, name = true }
-local SEAT_KEYS  = { model = true, offset = true, angles = true, massFactor = true }
+-- `pedals` (G13): the seat's rider pedals too, and their legs' torque adds to the
+-- driver's (a tandem's stoker; sv_tandem.lua).
+local SEAT_KEYS  = { model = true, offset = true, angles = true, massFactor = true, pedals = true }
 
 -- The kinds of seat a vehicle may have (sh_passenger.lua says what each is).
 BMX.SeatKinds = { "rider", "pegs", "child" }
@@ -436,18 +490,21 @@ function BMX.ValidateVehicle(def)
     -- Balance.
     local balance = def.balance
     if not BMX.BalanceModeNames[balance] then
-        bad[#bad + 1] = string.format("balance %q is not one of singletrack, board, none", tostring(balance))
-    elseif balance == "singletrack" and nWheels > 0 and not (nWheels == 2 and nFront == 1 and nRear == 1) then
-        bad[#bad + 1] = "balance singletrack needs exactly one front and one rear wheel"
+        bad[#bad + 1] = string.format("balance %q is not one of singletrack, board, none, unicycle, pennyfarthing", tostring(balance))
+    elseif (balance == "singletrack" or balance == "pennyfarthing") and nWheels > 0
+        and not (nWheels == 2 and nFront == 1 and nRear == 1) then
+        bad[#bad + 1] = "balance " .. balance .. " needs exactly one front and one rear wheel"
+    elseif balance == "unicycle" and nWheels > 0 and nWheels ~= 1 then
+        bad[#bad + 1] = "balance unicycle needs exactly one wheel"
     end
-    if steerFork and balance ~= "singletrack" then
+    if steerFork and balance ~= "singletrack" and balance ~= "pennyfarthing" then
         bad[#bad + 1] = "steer = \"fork\" is the single-track balance's; use a function"
     end
 
     -- Drive.
     local drive = def.drive
     if not istable(drive) or not BMX.DriveKinds[drive.kind] then
-        bad[#bad + 1] = "drive.kind must be one of pedal, fixed, coaster, throttle, push, none"
+        bad[#bad + 1] = "drive.kind must be one of pedal, fixed, coaster, front-direct, throttle, push, assist, engine, none"
     else
         local allowed = BMX.DriveKinds[drive.kind]
         for k, v in pairs(drive) do
@@ -459,13 +516,18 @@ function BMX.ValidateVehicle(def)
                 end
             end
         end
-        if (drive.kind == "pedal" or drive.kind == "fixed" or drive.kind == "coaster" or drive.kind == "throttle")
+        if (drive.kind == "pedal" or drive.kind == "fixed" or drive.kind == "coaster" or drive.kind == "throttle"
+            or drive.kind == "front-direct" or drive.kind == "assist" or drive.kind == "engine")
             and nWheels > 0 and nDrive == 0 then
             bad[#bad + 1] = "a " .. drive.kind .. " drive needs at least one wheel with drive = true"
         end
         if drive.kind == "throttle" and not (isnumber(drive.torque) and drive.torque > 0) then
             bad[#bad + 1] = "a throttle drive needs a torque"
         end
+        -- The motor kinds (sh_motor.lua) check their own fields: a torque curve, a
+        -- redline, an assist level. Loaded after this file, so it is looked up here.
+        local dc = BMX.DriveChecks and BMX.DriveChecks[drive.kind]
+        if dc then dc(drive, bad, def) end
     end
 
     -- Seats (G11): the old list (the rider's seat, at most one), or a map by kind,
@@ -483,6 +545,9 @@ function BMX.ValidateVehicle(def)
             if sd.model ~= nil and not isstring(sd.model) then bad[#bad + 1] = label .. ".model must be a string" end
             if sd.massFactor ~= nil and not (isnumber(sd.massFactor) and sd.massFactor >= 0 and sd.massFactor <= 2) then
                 bad[#bad + 1] = label .. ".massFactor must be a number from 0 to 2 (a fraction of the bike's mass)"
+            end
+            if sd.pedals ~= nil and not isbool(sd.pedals) then
+                bad[#bad + 1] = label .. ".pedals must be a boolean"
             end
         end
         if not istable(def.seats) then
@@ -513,6 +578,9 @@ function BMX.ValidateVehicle(def)
     end
 
     BMX.CheckBasket(def.basket, bad)
+    if def.drawer ~= nil and not (isstring(def.drawer) and def.drawer ~= "") then
+        bad[#bad + 1] = "drawer must be the id of a procedural drawer (BMX.Drawers, cl_oddbikes.lua)"
+    end
 
     -- Input map and pose set: by id.
     if not BMX.InputMaps[def.input] then

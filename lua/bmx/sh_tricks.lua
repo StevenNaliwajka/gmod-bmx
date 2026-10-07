@@ -148,6 +148,14 @@ function BMX.TrickForPose(pose) return BMX.PoseTricks[pose] end
 -- every powered wheelie would change what a wheelie is worth.
 --------------------------------------------------------------------------
 function BMX.DecodePose(k)
+    -- A MOTORCYCLE'S POSES (G15, FMX): Alt + W + S is the superman as ever, Alt + A / D
+    -- a heel clicker and Alt + S a cliffhanger. Only for a vehicle that says so (`moto`),
+    -- so a BMX rider's Alt + A is still a can-can and nothing there moved.
+    if k.moto and k.air and k.alt and not k.rmb and not k.jump then
+        if k.fwd and k.back then return "superman" end
+        if (k.side or 0) ~= 0 then return "heelclicker" end
+        if k.back then return "cliffhanger" end
+    end
     if k.air then
         if k.alt then
             if k.rmb then
@@ -263,3 +271,16 @@ BMX.RegisterTrick{ id = "trackstand", name = "Trackstand", kind = "custom", poin
     input = "A or D held at a standstill on a fixie, nothing else (paid per second)",
     canStart = function(st, inp) return fixedGear(st) end,
     onTick = function(ent, st, inp, dt) BMX.Fixie.Tick("trackstand", ent, st, inp, dt) end }
+
+-- THE UNICYCLE'S TWO (G13): paid as they happen by BMX.Unicycle.Tick (sv_unicycle.lua),
+-- only on a vehicle with the unicycle balance (canStart), like the fixie's. Idle is
+-- rocking in place; the hop is the ordinary hop key, paid when it leaves the ground.
+local function unicycle(st) return BMX.Unicycle ~= nil and BMX.Unicycle.IsUnicycle(st) end
+BMX.RegisterTrick{ id = "uni_idle", name = "Idle", kind = "custom", points = 20,
+    input = "W and S in turn at a standstill on a unicycle: rock in place (paid per second)",
+    canStart = function(st, inp) return unicycle(st) end,
+    onTick = function(ent, st, inp, dt) BMX.Unicycle.Tick("idle", ent, st, inp, dt) end }
+BMX.RegisterTrick{ id = "uni_hop", name = "Unicycle Hop", kind = "custom", points = 30,
+    input = "SPACE on a unicycle: hop the wheel off the ground",
+    canStart = function(st, inp) return unicycle(st) end,
+    onTick = function(ent, st, inp, dt) BMX.Unicycle.Tick("hop", ent, st, inp, dt) end }

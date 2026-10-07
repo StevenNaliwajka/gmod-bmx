@@ -19,7 +19,8 @@ local cv_wheel = CreateClientConVar("bmx_shift_wheel", "1", true, false,
 -- Which way does this button shift this bike, or nil. Pure, so the suite can
 -- ask it without a keyboard: reads the bike's own input map.
 function BMX.ShiftForButton(bike, button, wheelOn)
-    if not bike or BMX.Gears.Count(bike) == 0 then return nil end
+    -- An e-bike's shift keys are its assist level (sv_motor.lua), so it is "geared" here too.
+    if not bike or (BMX.Gears.Count(bike) == 0 and not (BMX.Motor and BMX.Motor.IsAssist(bike))) then return nil end
     local map = BMX.InputMapFor(bike)
     for dir, action in pairs({ [true] = "shiftUp", [false] = "shiftDown" }) do
         local a = map.actions[action]

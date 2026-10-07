@@ -1461,6 +1461,8 @@ function M.Realm(world, which)
             function m:SetPos(p) self.pos = p end
             function m:SetAngles(a) self.ang = a end
             function m:EnableMatrix(k, mat) self.matrix = mat end
+            function m:DisableMatrix(k) self.matrix = nil end
+            function m:SetLOD(l) self.lod = l end
             function m:SetupBones() end
             function m:SetMaterial(mat) self.material = mat end
             function m:DrawModel()

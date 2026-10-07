@@ -24,6 +24,7 @@
         bmx_city_draw     1  draw the city at all
         bmx_city_trains   1  run the trains (and their sound)
         bmx_city_signs    1  draw the signs
+        bmx_city_plants   1  draw the trees, shrubs and roof gardens
 ----------------------------------------------------------------------------]]
 
 local City = BMX.City
@@ -31,6 +32,7 @@ local City = BMX.City
 local cvDraw = CreateClientConVar("bmx_city_draw", "1", true, false, "BMX: draw the city around the park (1/0)")
 local cvTrains = CreateClientConVar("bmx_city_trains", "1", true, false, "BMX: run the subway trains (1/0)")
 local cvSigns = CreateClientConVar("bmx_city_signs", "1", true, false, "BMX: draw the city's signs (1/0)")
+local cvPlants = CreateClientConVar("bmx_city_plants", "1", true, false, "BMX: draw the city's trees, shrubs and roof gardens (1/0)")
 
 City.TrainModel = "models/props_trainstation/train_outro_car01.mdl"
 City.TrainCar = { length = 650, gap = 14, lift = 104 }   -- lift: the model's floor is 104 below its origin
@@ -58,6 +60,8 @@ function City.Material(key)
         params["$alphatest"] = "1"
         params["$alphatestreference"] = "0.5"
     end
+    -- a tint that may go past 1 (a vertex colour cannot): the autumn leaves
+    if M.mul then params["$color"] = string.format("[%g %g %g]", M.mul[1], M.mul[2], M.mul[3]) end
     m = CreateMaterial("bmxcity_" .. key, "UnlitGeneric", params)
     City._mats[key] = m
     return m
@@ -111,10 +115,14 @@ function City.BuildMeshes(layout)
         return a.key < b.key
     end)
 
+    -- the hour of the day: every surface takes the light's colour (a late
+    -- autumn afternoon is warm and low); the floor's own light is baked in
+    local mood = layout.mood and layout.mood.light or { 1, 1, 1 }
     local out = {}
     for _, b in ipairs(order) do
         local M = City.Materials[b.key]
-        local col = M.color or { 1, 1, 1 }
+        local base = M.color or { 1, 1, 1 }
+        local col = { base[1] * mood[1], base[2] * mood[2], base[3] * mood[3] }
         local mat = City.Material(b.key)
         local list = b.quads
         local i = 1
@@ -125,11 +133,21 @@ function City.BuildMeshes(layout)
             for j = i, i + n - 1 do
                 local q = list[j]
                 local s = q[17]
-                local r, g, bl = clamp255(s * col[1]), clamp255(s * col[2]), clamp255(s * col[3])
-                mesh.Position(Vector(q[1], q[2], q[3])) mesh.TexCoord(0, q[13], q[14]) mesh.Color(r, g, bl, 255) mesh.AdvanceVertex()
-                mesh.Position(Vector(q[4], q[5], q[6])) mesh.TexCoord(0, q[15], q[14]) mesh.Color(r, g, bl, 255) mesh.AdvanceVertex()
-                mesh.Position(Vector(q[7], q[8], q[9])) mesh.TexCoord(0, q[15], q[16]) mesh.Color(r, g, bl, 255) mesh.AdvanceVertex()
-                mesh.Position(Vector(q[10], q[11], q[12])) mesh.TexCoord(0, q[13], q[16]) mesh.Color(r, g, bl, 255) mesh.AdvanceVertex()
+                local uv = { q[13], q[14], q[15], q[14], q[15], q[16], q[13], q[16] }
+                for c = 0, 3 do
+                    local r, g, bl
+                    if q[19] then
+                        -- lit per vertex (the floor): its own colours
+                        local k = 19 + c * 3
+                        r, g, bl = clamp255(q[k] * base[1]), clamp255(q[k + 1] * base[2]), clamp255(q[k + 2] * base[3])
+                    else
+                        r, g, bl = clamp255(s * col[1]), clamp255(s * col[2]), clamp255(s * col[3])
+                    end
+                    mesh.Position(Vector(q[c * 3 + 1], q[c * 3 + 2], q[c * 3 + 3]))
+                    mesh.TexCoord(0, uv[c * 2 + 1], uv[c * 2 + 2])
+                    mesh.Color(r, g, bl, 255)
+                    mesh.AdvanceVertex()
+                end
             end
             mesh.End()
             local cx, cy, cz = (b.mins[1] + b.maxs[1]) / 2, (b.mins[2] + b.maxs[2]) / 2, (b.mins[3] + b.maxs[3]) / 2
@@ -191,8 +209,11 @@ function City.CarPos(l, st, i)
     local d = st.head - back                             -- distance from the start end
     local a = st.dir > 0 and (l.from + d) or (l.to - d)
     local z = l.deck + City.Viaduct.rail + C.lift
-    if l.axis == "y" then return l.at, a, z, 90 end
-    return a, l.at, z, 0
+    -- train_outro_car01 is long along its own y axis (-322..327, measured on
+    -- the server): yaw 0 lays it along world y, yaw 90 along world x. It
+    -- faces the way it is going.
+    if l.axis == "y" then return l.at, a, z, st.dir > 0 and 0 or 180 end
+    return a, l.at, z, st.dir > 0 and -90 or 90
 end
 
 City._cars = City._cars or {}
@@ -274,6 +295,105 @@ local function drawTrains(layout, t)
         end
     end
     render.SuppressEngineLighting(false)
+end
+
+--------------------------------------------------------------------------
+-- Plants
+--
+-- One ClientsideModel per kind of plant, moved to each plant and drawn there
+-- from this hook, the way the trains are. Not one entity per plant: they are
+-- never in the engine's hands, so nothing fades them out with distance or
+-- drops them when they leave the PVS (most of the roof gardens are out in the
+-- void, which has no visleaf at all), and there is nothing on the server for
+-- a physgun, toolgun or cleanup to grab. A plant is skipped only when it is
+-- wholly out of the camera's view, and always drawn at its full LOD. The
+-- bushes and hedges are not here: they are leaf cards in the city's meshes.
+--------------------------------------------------------------------------
+City._plantEnts = City._plantEnts or {}
+local function plantModel(kind, existing)
+    local m = City._plantEnts[kind]
+    if m == false then return nil end
+    if IsValid(m) or existing then return IsValid(m) and m or nil end
+    local P = City.Plants[kind]
+    if not P or (util.IsValidModel and not util.IsValidModel(P.model)) then
+        City._plantEnts[kind] = false
+        return nil
+    end
+    m = ClientsideModel(P.model, RENDERGROUP_OPAQUE)
+    if not IsValid(m) then return nil end
+    m:SetNoDraw(true)
+    -- full detail at every distance: HL2's trees drop to a bare-branch LOD
+    -- past ~800 units, and from across the park every tree went leafless
+    m:SetLOD(0)
+    City._plantEnts[kind] = m
+    return m
+end
+
+-- Each plant as the numbers the draw loop needs, built once.
+function City.BuildPlants(layout)
+    local out = {}
+    for _, p in ipairs(layout.props or {}) do
+        local P = City.Plants[p.kind]
+        local mx
+        if p.scale ~= 1 then
+            mx = Matrix()
+            mx:Scale(Vector(p.scale, p.scale, p.scale))
+        end
+        out[#out + 1] = {
+            kind = p.kind, pos = Vector(p.x, p.y, p.z), ang = Angle(0, p.yaw, 0), matrix = mx,
+            center = Vector(p.x, p.y, p.z + P.h * p.scale / 2), radius = math.max(P.r, P.h / 2) * p.scale,
+            still = P.still, phase = (p.x * 0.0123 + p.y * 0.0171) % (math.pi * 2),
+            -- tall thin trees sway further at the top than squat ones
+            sway = math.min(1.6, 0.6 + P.h * p.scale / 600),
+        }
+    end
+    -- grouped by kind: one model swap per kind per frame
+    table.sort(out, function(a, b) return a.kind < b.kind end)
+    City.plants = out
+    -- the models are made here, once, not in the middle of a frame
+    for _, p in ipairs(out) do plantModel(p.kind) end
+    return out
+end
+
+local function drawPlants(eye, fwd, cosH, sinH)
+    local list = City.plants
+    if not list or #list == 0 then return 0 end
+    render.SuppressEngineLighting(true)
+    -- daylight from the west, as the map's sun: a bright top, a soft fill
+    render.ResetModelLighting(0.36, 0.38, 0.34)
+    render.SetModelLighting(BOX_TOP, 0.95, 0.95, 0.85)
+    render.SetModelLighting(BOX_BACK, 0.75, 0.72, 0.62)
+    render.SetModelLighting(BOX_BOTTOM, 0.18, 0.2, 0.16)
+    local drawn, kind, m = 0, nil, nil
+    -- the wind: a slow sway, every tree on its own phase, and a gust now
+    -- and then that leans them all a little further (from the west, as
+    -- the weather comes)
+    local t = CurTime()
+    local gust = 1 + 0.8 * math.max(0, math.sin(t * 0.21)) ^ 3
+    local ang = Angle(0, 0, 0)
+    for _, p in ipairs(list) do
+        if City.InView(p.center, p.radius, eye, fwd, cosH, sinH) then
+            if p.kind ~= kind then kind = p.kind m = plantModel(kind, true) end
+            if m then
+                m:SetPos(p.pos)
+                if p.still then
+                    m:SetAngles(p.ang)
+                else
+                    local ph = p.phase
+                    ang.p = p.ang.p + (math.sin(t * 0.9 + ph) * 0.9 + 0.5) * gust * p.sway
+                    ang.y = p.ang.y
+                    ang.r = p.ang.r + math.sin(t * 0.67 + ph * 1.7) * 0.6 * gust * p.sway
+                    m:SetAngles(ang)
+                end
+                if p.matrix then m:EnableMatrix("RenderMultiply", p.matrix) else m:DisableMatrix("RenderMultiply") end
+                m:SetupBones()
+                m:DrawModel()
+                drawn = drawn + 1
+            end
+        end
+    end
+    render.SuppressEngineLighting(false)
+    return drawn
 end
 
 --------------------------------------------------------------------------
@@ -479,9 +599,10 @@ function City.ClientBuild()
     if not L then return false end
     local t0 = SysTime and SysTime() or 0
     City.BuildMeshes(L)
+    City.BuildPlants(L)
     local ms = ((SysTime and SysTime() or 0) - t0) * 1000
-    MsgN(string.format("[BMX] city: %d buildings, %d quads in %d meshes, %d subway lines (%.0f ms)",
-        #L.buildings, L.quads, #City.meshes, #L.lines, ms))
+    MsgN(string.format("[BMX] city: %d buildings, %d quads in %d meshes, %d plants, %d subway lines (%.0f ms)",
+        #L.buildings, L.quads, #City.meshes, #City.plants, #L.lines, ms))
     return true
 end
 
@@ -489,6 +610,8 @@ function City.ClientClear()
     City.FreeMeshes()
     for name in pairs(City._sounds) do lineSound(name, nil, false) end
     for i, m in pairs(City._cars) do if IsValid(m) then m:Remove() end City._cars[i] = nil end
+    for k, m in pairs(City._plantEnts) do if m and IsValid(m) then m:Remove() end City._plantEnts[k] = nil end
+    City.plants = nil
 end
 
 hook.Add("InitPostEntity", "BMXCity", function() City.ClientBuild() end)
@@ -528,6 +651,7 @@ function City.Draw(bDepth, bSkybox, b3DSky)
     City.Stats.drawn, City.Stats.culled = drawn, culled
     local L = City._layout
     if not L then return end
+    if cvPlants:GetBool() then City.Stats.plants = drawPlants(eye, fwd, cosH, sinH) end
     if cvTrains:GetBool() then
         drawTrains(L, CurTime())
     else

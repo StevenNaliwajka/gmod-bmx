@@ -97,6 +97,7 @@ local CLIENT_FILES = {
     "bmx/cl_tricks.lua",    -- the trick list overlay (bmx_tricks)
     "bmx/cl_report.lua",    -- bmx_report: a paste-able block for a bug report
     "bmx/cl_city.lua",      -- draws the city, runs the subway trains
+    "bmx/cl_city_mood.lua", -- ...its late-autumn sky, haze, lamp light, falling leaves
     "bmx/cl_park.lua",      -- draws the park pieces
     "bmx/cl_options.lua",   -- spawn menu > Options > BMX, built from BMX.Settings
     "bmx/cl_menu.lua",      -- the /bike window (bmx_menu)

@@ -34,17 +34,26 @@ function City.SpawnSolids()
             n = n + 1
         end
     end
-    MsgN(string.format("[BMX] city: %d buildings, %d subway lines, %d solids on %s",
-        #L.buildings, #L.lines, n, game.GetMap()))
+    MsgN(string.format("[BMX] city: %d buildings, %d plants, %d subway lines, %d solids on %s",
+        #L.buildings, #(L.props or {}), #L.lines, n, game.GetMap()))
     return n
 end
 
 hook.Add("InitPostEntity", "BMXCity", function() City.SpawnSolids() end)
 hook.Add("PostCleanupMap", "BMXCity", function() City.SpawnSolids() end)
 
--- Nobody picks up a viaduct.
+-- Nobody picks up a viaduct, a planting bed or a tree trunk: physgun,
+-- gravity gun (pick up or punt), toolgun and the context menu all refuse them.
+-- (The plants themselves are drawn by the client and are not entities.)
+local function isCity(ent) return IsValid(ent) and ent:GetClass() == "bmx_city_solid" end
 hook.Add("PhysgunPickup", "BMXCity", function(_, ent)
-    if IsValid(ent) and ent:GetClass() == "bmx_city_solid" then return false end
+    if isCity(ent) then return false end
+end)
+hook.Add("GravGunPickupAllowed", "BMXCity", function(_, ent)
+    if isCity(ent) then return false end
+end)
+hook.Add("GravGunPunt", "BMXCity", function(_, ent)
+    if isCity(ent) then return false end
 end)
 hook.Add("CanTool", "BMXCity", function(_, tr)
     if tr and IsValid(tr.Entity) and tr.Entity:GetClass() == "bmx_city_solid" then return false end

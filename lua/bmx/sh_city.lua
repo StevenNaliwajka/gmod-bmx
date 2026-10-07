@@ -111,7 +111,51 @@ City.Materials = {
     grate = { tex = "metal/metalgrate016a", w = 128, h = 128, alpha = true },
     black = { tex = "vgui/white", w = 128, h = 128, color = { 0.02, 0.02, 0.025 } },
     signpanel = { tex = "vgui/white", w = 128, h = 128, color = { 0.07, 0.08, 0.1 } },
+
+    -- greenery: planting beds, roof gardens, ivy. It is late autumn: the
+    -- ivy art is green, so `mul` (the material's $color, which may go past 1
+    -- where a vertex colour cannot) turns it to the reds and golds of a New
+    -- England fall. 01 and 02 hang from their top edge, 03 climbs from its
+    -- bottom edge; 512 px each, alpha in the texture.
+    grass = { tex = "nature/grassfloor002a", w = 128, h = 128, mul = { 1.25, 1.0, 0.55 } },
+    soil = { tex = "nature/dirtfloor006a", w = 128, h = 128 },
+    ivy_hang = { tex = "decals/ivy01", w = 128, h = 128, alpha = true, mul = { 2.1, 0.75, 0.4 } },
+    ivy_hang2 = { tex = "decals/ivy02", w = 128, h = 128, alpha = true, mul = { 1.9, 1.15, 0.4 } },
+    ivy_climb = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 2.2, 0.8, 0.4 } },
+    -- the bushes and hedges: the same leaves on crossed cards, in four colours
+    leaves_red = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 2.4, 0.62, 0.38 } },
+    leaves_orange = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 2.3, 1.1, 0.34 } },
+    leaves_gold = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 2.0, 1.55, 0.36 } },
+    leaves_rust = { tex = "decals/ivy03", w = 128, h = 128, alpha = true, mul = { 1.55, 0.78, 0.36 } },
+    -- fallen leaves on the ground: HL2's scattered autumn-leaf sheet
+    litter = { tex = "models/props_foliage/tree_deciduous_01a_leaves", w = 160, h = 160, alpha = true, mul = { 1.3, 1.15, 1.0 } },
+    -- the park floor, laid over the map's one concrete slab
+    slab = { tex = "concrete/concretefloor016a", w = 256, h = 256 },
+    pave_brick = { tex = "brick/brickfloor001a", w = 128, h = 128 },
+    pave_cobble = { tex = "stone/stonefloor011a", w = 192, h = 192 },
+    kerbline = { tex = "concrete/concretewall010a", w = 64, h = 64 },
+    rail = { tex = "metal/metalgrate016a", w = 64, h = 64, alpha = true },
 }
+
+--------------------------------------------------------------------------
+-- Plants: the models the greenery is made of. Only models that ship in
+-- GMod's own VPKs (hl2_misc, garrysmod), never content_hl2: a player without
+-- HL2 mounted would see ERROR signs. r and h are the model's reach and
+-- height in units, measured on the server (OBBMins/OBBMaxs), for culling.
+--------------------------------------------------------------------------
+City.Plants = {
+    tree       = { model = "models/props_foliage/tree_deciduous_01a.mdl", r = 215, h = 436 },
+    tree2      = { model = "models/props_foliage/tree_springers_01a.mdl", r = 215, h = 436 },
+    tree_small = { model = "models/props_foliage/tree_deciduous_03a.mdl", r = 130, h = 250 },
+    sapling    = { model = "models/props_foliage/tree_deciduous_03b.mdl", r = 85, h = 137 },
+    poplar     = { model = "models/props_foliage/tree_poplar_01.mdl", r = 185, h = 1120 },
+    -- not a plant, but drawn the same way; `still`: no swaying in the wind
+    lamp       = { model = "models/props_c17/lamppost03a_on.mdl", r = 110, h = 450, still = true },
+}
+-- lamppost03a: 450 tall, its arm reaching ~95 along the model's +y to the
+-- lamp head (measured on the server)
+City.LAMP = { reach = 92, height = 420 }
+City.LEAF_COLOURS = { "leaves_red", "leaves_orange", "leaves_gold", "leaves_rust", "leaves_orange" }
 
 --------------------------------------------------------------------------
 -- Building styles: what goes on the street floor, the floors above, and the
@@ -171,7 +215,7 @@ B.__index = B
 
 local function newBuilder(def)
     local b = setmetatable({ def = def, faces = {}, solids = {}, lines = {}, signs = {},
-                             buildings = {}, quads = 0 }, B)
+                             buildings = {}, props = {}, lamps = {}, quads = 0 }, B)
     local v = def.view or def.park
     b.view = { v[1], v[2], v[3], v[4], v[5], v[6] }
     -- The sun, from the map's light_environment: shading is baked into vertex
@@ -719,6 +763,480 @@ function B:billboard(bb)
 end
 
 --------------------------------------------------------------------------
+-- Greenery: planting beds along the park's walls, roof gardens and terraces
+-- on the frontage, balconies with planters, and ivy.
+--
+--   beds       { side, from, to, depth }: a kerbed bed of grass against the
+--              wall, from `from` to `to` along it, `depth` into the park.
+--              Shrubs along it, trees in it. SOLID (kerb and trunks), so a
+--              bike stops at the kerb instead of riding through the leaves;
+--              tests/test_city.lua keeps every one 40 units off every ramp.
+--   roofs      chance a frontage roof gets a garden: a planter along its
+--              front edge, shrubs in it, trees behind
+--   terraces   true: the strip in front of a setback tower gets planted
+--   balconies  chance a frontage building gets balconies on its upper floors
+--   ivy        chance a facade bay over a bed gets climbing ivy, and a roof
+--              garden hangs ivy over its cornice
+--
+-- Plants are MODELS, laid out here as plain numbers (layout.props) and drawn
+-- by cl_city.lua from its render hook like the rest of the city: not
+-- entities, so the physgun, the toolgun and cleanup cannot touch them, and the
+-- engine never fades or culls them by distance. Its own generator (the map's
+-- seed plus one), so adding greenery leaves every building where it was.
+--------------------------------------------------------------------------
+function B:plant(kind, x, y, z, yaw, scale)
+    local P = City.Plants[kind]
+    if not P then error("BMX city: no plant " .. tostring(kind), 2) end
+    self.props[#self.props + 1] = { kind = kind, x = x, y = y, z = z, yaw = yaw or 0, scale = scale or 1,
+                                    group = self.group or "misc" }
+end
+
+-- Things greenery must keep off: the signs on the walls and roofs, and the
+-- portals the trains run through. { side, a0, a1, z0, z1 } in wall terms.
+function B:keepOffs()
+    local p, out = self.def.park, {}
+    local function sideOf(n, pos)
+        if n[2] < -0.5 and math.abs(pos[2] - p[5]) < 200 then return "north", pos[1] end
+        if n[2] > 0.5 and math.abs(pos[2] - p[2]) < 200 then return "south", pos[1] end
+        if n[1] > 0.5 and math.abs(pos[1] - p[1]) < 200 then return "west", pos[2] end
+        if n[1] < -0.5 and math.abs(pos[1] - p[4]) < 200 then return "east", pos[2] end
+    end
+    for _, s in ipairs(self.signs) do
+        local side, a = sideOf(s.normal, s.pos)
+        if s.roof then
+            -- a rooftop billboard: keep its roof clear in front of the board
+            side = nil
+            for name, S in pairs(self.sidesByName) do
+                local n = S.axis == "x" and { 0, -S.out, 0 } or { -S.out, 0, 0 }
+                if math.abs(n[1] - s.normal[1]) < 0.01 and math.abs(n[2] - s.normal[2]) < 0.01 then
+                    side, a = name, S.axis == "x" and s.pos[1] or s.pos[2]
+                end
+            end
+            if side then out[#out + 1] = { side = side, a0 = a - s.w / 2 - 96, a1 = a + s.w / 2 + 96, z0 = s.roof - 1, z1 = s.pos[3] + s.h / 2 } end
+        elseif side then
+            out[#out + 1] = { side = side, a0 = a - s.w / 2 - 48, a1 = a + s.w / 2 + 48,
+                              z0 = s.pos[3] - s.h / 2 - 48, z1 = s.pos[3] + s.h / 2 + 64 }
+        end
+    end
+    local V = City.Viaduct
+    for _, v in ipairs(self.def.viaducts or {}) do
+        local ends = v.axis == "y" and { "south", "north" } or { "west", "east" }
+        for _, side in ipairs(ends) do
+            out[#out + 1] = { side = side, a0 = v.at - V.width - 64, a1 = v.at + V.width + 64,
+                              z0 = v.deck - V.slab - V.girder - 96, z1 = v.deck + V.truss + 128 }
+        end
+    end
+    return out
+end
+
+local function keptOff(list, side, a0, a1, z0, z1)
+    for _, k in ipairs(list) do
+        if k.side == side and a0 < k.a1 and a1 > k.a0 and z0 < k.z1 and z1 > k.z0 then return true end
+    end
+    return false
+end
+
+-- Wall frame for a side: (a, d) -> x, y, where a runs along the wall and d is
+-- the distance OUT from the wall line (negative: into the park).
+local function wallXY(S, a, d)
+    if S.axis == "x" then return a, S.at + S.out * d end
+    return S.at + S.out * d, a
+end
+-- The normal of a side's facades, pointing into the park.
+local function inward(S)
+    if S.axis == "x" then return { 0, -S.out, 0 } end
+    return { -S.out, 0, 0 }
+end
+-- A quad standing on the wall frame: its top-left corner at (a, d, z), facing
+-- the park, running `len` to the viewer's right.
+function B:wallQuad(S, mat, a, d, z, len, hgt, tint)
+    local n = inward(S)
+    -- the viewer's right, looking at the wall from the park
+    local u = { -n[2], n[1], 0 }
+    local ua = S.axis == "x" and u[1] or u[2]      -- +1 if right is +a
+    local x, y = wallXY(S, ua > 0 and a or a + len, d)
+    self:quad(mat, { x, y, z }, u, DOWN, len, hgt, n, tint, 0, 0, false)
+end
+
+-- An axis-aligned box from wall-frame extents.
+function B:wallBox(S, a0, a1, d0, d1, z0, z1, mats, tint)
+    local x0, y0 = wallXY(S, a0, d0)
+    local x1, y1 = wallXY(S, a1, d1)
+    self:box(math.min(x0, x1), math.min(y0, y1), z0, math.max(x0, x1), math.max(y0, y1), z1, mats, tint)
+    return math.min(x0, x1), math.min(y0, y1), z0, math.max(x0, x1), math.max(y0, y1), z1
+end
+
+-- A bush: three crossed cards of leaves, `w` across and `h` tall, standing
+-- on (x, y, z). Mesh, not a model: hundreds cost nothing, and a card of the
+-- ivy art reads as a full, leafy shrub from any side.
+function B:bush(x, y, z, w, h, rot, tint, mat)
+    mat = mat or City.LEAF_COLOURS[1 + math.floor((x * 7 + y * 13) / 64) % #City.LEAF_COLOURS]
+    for i = 0, 2 do
+        local a = rot + i * math.pi / 3
+        local u = { math.cos(a), math.sin(a), 0 }
+        local n = { -u[2], u[1], 0 }
+        self:quad(mat, { x - u[1] * w / 2, y - u[2] * w / 2, z + h }, u, DOWN, w, h, n, tint or 0.95,
+            (i * 37) % 128, 0, false)
+    end
+end
+
+-- A clipped hedge from a0 to a1, centred `d` out from the wall: two long
+-- leafy faces and bushes all along it, so it is full from any angle.
+function B:hedge(S, rng, a0, a1, d, z, h, w)
+    h, w = h or 56, w or 36
+    if a1 - a0 < 24 then return end
+    -- one colour per stretch of hedge, the way one shrub turns all at once
+    local mat = rng.pick(City.LEAF_COLOURS)
+    for _, off in ipairs({ -w / 2, w / 2 }) do
+        self:wallQuad(S, mat, a0, d + off, z + h, a1 - a0, h, 0.92)
+    end
+    local a = a0 + 20
+    while a < a1 - 16 do
+        local x, y = wallXY(S, a, d + rng.int(-4, 4))
+        if rng.chance(0.3) then mat = rng.pick(City.LEAF_COLOURS) end
+        self:bush(x, y, z - 2, w + rng.int(8, 24), h + rng.int(0, 20), rng.float() * math.pi, 0.85 + rng.float() * 0.15, mat)
+        a = a + rng.int(28, 44)
+    end
+end
+
+-- A planting bed on the park floor, against the wall.
+function B:bed(S, bd, g, rng, keep, name)
+    local z0 = self.def.ground
+    local kerb = g.kerb or 20
+    local depth = bd.depth
+    local inset = self.def.frontage and self.def.frontage.inset or 4
+    local dIn, dOut = -depth, -inset
+    -- kerb: a concrete ring, and the bed's soil and grass inside it
+    local t = 8
+    self:wallBox(S, bd.from, bd.to, dIn, dIn + t, z0, z0 + kerb, { side = "concrete2", top = "concrete2" }, 0.95)
+    self:wallBox(S, bd.from, bd.from + t, dIn + t, dOut, z0, z0 + kerb, { side = "concrete2", top = "concrete2" }, 0.95)
+    self:wallBox(S, bd.to - t, bd.to, dIn + t, dOut, z0, z0 + kerb, { side = "concrete2", top = "concrete2" }, 0.95)
+    local x0, y0 = wallXY(S, bd.from + t, dIn + t)
+    local x1, y1 = wallXY(S, bd.to - t, dOut)
+    self:quad("grass", { math.min(x0, x1), math.max(y0, y1), z0 + kerb - 4 }, { 1, 0, 0 }, { 0, -1, 0 },
+        math.abs(x1 - x0), math.abs(y1 - y0), { 0, 0, 1 }, 0.9)
+    -- the whole bed is solid to the kerb's height: ride up to it, not into it
+    local b0x, b0y = wallXY(S, bd.from, dIn)
+    local b1x, b1y = wallXY(S, bd.to, dOut)
+    self:solid(name, math.min(b0x, b1x), math.min(b0y, b1y), z0, math.max(b0x, b1x), math.max(b0y, b1y), z0 + kerb)
+
+    local soil = z0 + kerb - 4
+    local mid = (dIn + dOut) / 2
+    -- street lamps, evenly along the bed, their arms reaching over the park
+    local lampAt = {}
+    if g.lampEvery then
+        local n = math.max(1, math.floor((bd.to - bd.from) / g.lampEvery + 0.5))
+        local step = (bd.to - bd.from) / n
+        local nrm = inward(S)
+        local yaw = math.deg(math.atan2(nrm[2], nrm[1])) - 90
+        for i = 1, n do
+            local a = bd.from + step * (i - 0.5)
+            -- never a pole in front of a sign: slide along the bed to clear
+            -- it, or leave that lamp out
+            local at
+            for _, off in ipairs({ 0, 160, -160, 280, -280 }) do
+                local b = a + off
+                if not at and b > bd.from + 32 and b < bd.to - 32 and not keptOff(keep, S.name, b - 24, b + 24, soil, soil + 460) then
+                    at = b
+                end
+            end
+            if at then
+                a = at
+                local x, y = wallXY(S, a, mid)
+                self:plant("lamp", x, y, soil, yaw, 1)
+                self:solid(name, x - 10, y - 10, z0 + kerb, x + 10, y + 10, z0 + 440)
+                local L = City.LAMP
+                self.lamps[#self.lamps + 1] = { x = x, y = y, z = soil,
+                    head = { x + nrm[1] * L.reach, y + nrm[2] * L.reach, soil + L.height } }
+                lampAt[#lampAt + 1] = a
+            end
+        end
+    end
+    local function nearLamp(a)
+        for _, la in ipairs(lampAt) do if math.abs(a - la) < 128 then return true end end
+        return false
+    end
+    -- the hedge along the front, the trees along the back
+    self:hedge(S, rng, bd.from + t + 4, bd.to - t - 4, dIn + 30, soil, 52, 32)
+    local treeMin, treeMax = g.treeEvery and g.treeEvery[1] or 288, g.treeEvery and g.treeEvery[2] or 448
+    local a = bd.from + rng.int(80, 160)
+    local kinds = bd.trees or { "tree", "tree_small", "tree2", "tree_small", "poplar" }
+    local k = rng.int(1, #kinds)
+    while a < bd.to - 64 do
+        local kind = kinds[k] k = k % #kinds + 1
+        local P = City.Plants[kind]
+        local sc = (kind == "poplar") and 0.55 + rng.float() * 0.1 or 0.75 + rng.float() * 0.25
+        local h = P.h * sc
+        if not keptOff(keep, S.name, a - P.r * sc * 0.6, a + P.r * sc * 0.6, soil, soil + h) and not nearLamp(a) then
+            local x, y = wallXY(S, a, mid + 8)
+            self:plant(kind, x, y, soil, rng.int(0, 359), sc)
+            -- the trunk is solid too
+            self:solid(name, x - 12, y - 12, z0 + kerb, x + 12, y + 12, z0 + kerb + math.min(160, h * 0.4))
+        else
+            -- something to see past: a low bush instead
+            local x, y = wallXY(S, a, mid + 8)
+            self:bush(x, y, soil, 72, 64, rng.float() * math.pi)
+        end
+        a = a + rng.int(treeMin / 16, treeMax / 16) * 16
+    end
+    -- ivy climbing the wall behind the bed
+    local F = City.FLOOR
+    a = bd.from
+    while a + F <= bd.to do
+        local h = F * rng.int(1, 3)
+        if rng.chance(g.ivy or 0.5) and not keptOff(keep, S.name, a, a + F, z0, z0 + h) then
+            self:wallQuad(S, "ivy_climb", a, -inset - 1.5, z0 + h, F, h, 0.95)
+        end
+        a = a + F
+    end
+end
+
+-- A roof garden: a planter along the front edge of a roof (shrubs, ivy hanging
+-- over the cornice), and trees behind it. `front` is how far out from the wall
+-- the roof's front edge is; `room` how deep the planted strip may go.
+function B:roofGarden(S, a0, a1, front, room, z, g, rng, keep, small)
+    if a1 - a0 < 192 then return end
+    if keptOff(keep, S.name, a0, a1, z, z + 560) then
+        -- a sign stands here: plant only the low planter, on the clear part
+        return
+    end
+    local d0 = front + 16
+    -- the planter: a low concrete trough, grass on top
+    self:wallBox(S, a0 + 32, a1 - 32, d0, d0 + 48, z, z + 24, { side = "concrete2", top = "grass" }, 0.9)
+    self:hedge(S, rng, a0 + 40, a1 - 40, d0 + 24, z + 22, 60, 36)
+    -- trees behind it
+    if room >= 96 then
+        local kinds = small and { "sapling", "tree_small" } or { "tree2", "tree", "poplar", "tree_small", "tree2" }
+        local a = a0 + rng.int(96, 192)
+        while a < a1 - 96 do
+            local kind = rng.pick(kinds)
+            local P = City.Plants[kind]
+            local sc = kind == "poplar" and 0.5 + rng.float() * 0.12 or 0.7 + rng.float() * 0.3
+            -- close behind the planter, so the crowns show over the cornice
+            local x, y = wallXY(S, a, d0 + math.min(room - 32, 80 + rng.int(0, 48)))
+            self:plant(kind, x, y, z, rng.int(0, 359), sc)
+            a = a + rng.int(10, 16) * 16
+        end
+    end
+end
+
+-- Hanging ivy over a cornice at z, from a0 to a1, in bays.
+function B:ivyDrape(S, a0, a1, z, g, rng, keep)
+    local F = City.FLOOR
+    local inset = self.def.frontage and self.def.frontage.inset or 4
+    local a = a0 + ((a1 - a0) % F) / 2
+    while a + F <= a1 + 0.5 do
+        local h = F * (rng.chance(0.4) and 2 or 1)
+        if rng.chance(g.ivy or 0.5) and not keptOff(keep, S.name, a, a + F, z - 32 - h, z) then
+            self:wallQuad(S, rng.chance(0.5) and "ivy_hang" or "ivy_hang2", a, -inset - 1.5, z - 32, F, h, 0.9)
+        end
+        a = a + F
+    end
+end
+
+-- Balconies on the upper floors of a frontage building's park face: a slab,
+-- a railing, and a planter with a shrub, ivy trailing over the edge.
+function B:balconies(S, bd, g, rng, keep)
+    local F = City.FLOOR
+    local inset = self.def.frontage and self.def.frontage.inset or 4
+    local ax = S.axis == "x" and 1 or 2
+    local a0, a1 = bd[ax], bd[ax + 3]
+    local len = a1 - a0
+    local bays = math.floor(len / F)
+    local margin = (len - bays * F) / 2
+    local floors = math.floor((bd[6] - bd[3]) / F + 0.001)
+    local every = rng.int(2, 3)
+    local first = rng.int(4, 5)          -- floor 4 is z 576: over the wall top
+    local proud = 32
+    local d0, d1 = -inset - proud, -inset
+    local phase = rng.int(0, every - 1)
+    for f = first, floors - 2, 2 do
+        local zb = bd[3] + f * F
+        for i = 0, bays - 1 do
+            if (i + phase) % every == 0 then
+                local b0, b1 = a0 + margin + i * F + 12, a0 + margin + (i + 1) * F - 12
+                if not keptOff(keep, S.name, b0, b1, zb - 64, zb + 96) then
+                    -- slab
+                    self:wallBox(S, b0, b1, d0, d1, zb - 8, zb, { side = "concrete2", top = "concrete2", bottom = "concrete2" }, 0.85)
+                    -- railing: front and the two ends, see-through
+                    self:wallQuad(S, "rail", b0, d0, zb + 36, b1 - b0, 36, 0.8)
+                    -- planter along the railing, a shrub in it, ivy over the edge
+                    self:wallBox(S, b0 + 6, b1 - 6, d0 + 2, d0 + 14, zb, zb + 14, { side = "concrete", top = "soil" }, 0.8)
+                    self:hedge(S, rng, b0 + 10, b1 - 10, d0 + 8, zb + 12, 26 + rng.int(0, 12), 10)
+                    if rng.chance(0.6) then
+                        self:wallQuad(S, rng.chance(0.5) and "ivy_hang" or "ivy_hang2", b0 + 4, d0 - 0.5, zb, b1 - b0 - 8, 64 + rng.int(0, 2) * 32, 0.9)
+                    end
+                end
+            end
+        end
+    end
+end
+
+function B:greenery(g)
+    local rng = Rng((g.seed or self.def.seed or 1) + 1)
+    local keep = self:keepOffs()
+    local inset = self.def.frontage and self.def.frontage.inset or 4
+    -- the beds on the park floor
+    for i, bd in ipairs(g.beds or {}) do
+        local S = self.sidesByName[bd.side]
+        self.group = "green:bed:" .. bd.side .. i
+        self:bed(S, bd, g, rng, keep, "bed" .. i)
+    end
+    -- the frontage: roof gardens, terraces, balconies, ivy over cornices
+    for _, key in ipairs({ "north", "south", "west", "east" }) do
+        local S = self.sidesByName[key]
+        local row = self.rows and self.rows[key] or {}
+        local ax = S.axis == "x" and 1 or 2
+        self.group = "green:front:" .. key
+        for _, bd in ipairs(row) do
+            local a0, a1 = bd[ax], bd[ax + 3]
+            -- trim the corner lots to the part over the park's wall
+            local w0, w1 = S.axis == "x" and self.def.park[1] or self.def.park[2], S.axis == "x" and self.def.park[4] or self.def.park[5]
+            local c0, c1 = math.max(a0, w0), math.min(a1, w1)
+            if c1 - c0 > 128 then
+                local tower = bd.tower
+                if tower and g.terraces then
+                    -- the strip in front of the tower is a terrace garden
+                    local back = math.abs((S.axis == "x" and (S.out > 0 and tower[2] or tower[5]) or (S.out > 0 and tower[1] or tower[4])) - S.at) - (-inset)
+                    self:roofGarden(S, c0, c1, -inset, back - 24, bd[6], g, rng, keep, back < 200)
+                    self:ivyDrape(S, c0, c1, bd[6], g, rng, keep)
+                    if rng.chance(g.roofs or 0.5) then
+                        local tback = math.abs((S.axis == "x" and (S.out > 0 and tower[2] or tower[5]) or (S.out > 0 and tower[1] or tower[4])) - S.at)
+                        local t0, t1 = math.max(tower[ax], w0), math.min(tower[ax + 3], w1)
+                        self:roofGarden(S, t0, t1, tback, 320, tower[6], g, rng, keep, false)
+                    end
+                elseif rng.chance(g.roofs or 0.5) then
+                    self:roofGarden(S, c0, c1, -inset, 320, bd[6], g, rng, keep, false)
+                    self:ivyDrape(S, c0, c1, bd[6], g, rng, keep)
+                end
+                if rng.chance(g.balconies or 0.3) then self:balconies(S, bd, g, rng, keep) end
+            end
+        end
+    end
+    self.group = nil
+end
+
+--------------------------------------------------------------------------
+-- The floor: the map's floor is one concrete slab from wall to wall. Laid
+-- over it, a hair above (it is drawn, never collided): slab concrete where
+-- riders ride, a band of brick paving along the walls, cobbled plazas round
+-- the piers, a kerb line between, and fallen leaves.
+--
+-- It is lit here, per vertex: the afternoon's ambient light and a warm pool
+-- under every street lamp. The overlay is an unlit mesh -- no engine light
+-- can reach it -- so the lamps' light is baked into it.
+--------------------------------------------------------------------------
+function B:lightAt(x, y, fl)
+    local a = fl.ambient or { 0.72, 0.64, 0.56 }
+    local r, g, b = a[1], a[2], a[3]
+    local pool, warm = fl.lampRadius or 420, fl.lampColor or { 0.62, 0.42, 0.2 }
+    for _, l in ipairs(self.lamps) do
+        local dx, dy = x - l.head[1], y - l.head[2]
+        local d2 = (dx * dx + dy * dy) / (pool * pool)
+        if d2 < 1 then
+            local k = (1 - d2) * (1 - d2)
+            r, g, b = r + warm[1] * k, g + warm[2] * k, b + warm[3] * k
+        end
+    end
+    return r, g, b
+end
+
+-- A floor quad, x0..x1 by y0..y1 at z, lit per vertex. Texture by world
+-- position, so neighbouring cells tile seamlessly.
+function B:floorQuad(mat, x0, y0, x1, y1, z, fl)
+    local M = City.Materials[mat]
+    local list = self.faces[mat]
+    if not list then list = {} self.faces[mat] = list end
+    local q = { x0, y1, z, x1, y1, z, x1, y0, z, x0, y0, z,
+        x0 / M.w, -y1 / M.h, x1 / M.w, -y0 / M.h, 1, self.group or "misc" }
+    local c = 19
+    for _, v in ipairs({ { x0, y1 }, { x1, y1 }, { x1, y0 }, { x0, y0 } }) do
+        local r, g, b = self:lightAt(v[1], v[2], fl)
+        q[c], q[c + 1], q[c + 2] = r, g, b
+        c = c + 3
+    end
+    list[#list + 1] = q
+    self.quads = self.quads + 1
+end
+
+function B:floor(fl, rng)
+    local p = self.def.park
+    local z = self.def.ground + (fl.lift or 0.6)
+    local C = fl.cell or 64
+    local walk = fl.walk or 176
+    local plazas = {}
+    for _, pr in ipairs(self.def.piers or {}) do plazas[#plazas + 1] = { pr.x, pr.y, fl.plaza or 288 } end
+    for _, pl in ipairs(fl.plazas or {}) do plazas[#plazas + 1] = pl end
+    self.group = "floor"
+    for x = p[1], p[4] - 1, C do
+        for y = p[2], p[5] - 1, C do
+            local x1, y1 = math.min(x + C, p[4]), math.min(y + C, p[5])
+            local cx, cy = (x + x1) / 2, (y + y1) / 2
+            local dWall = math.min(cx - p[1], p[4] - cx, cy - p[2], p[5] - cy)
+            local mat = "slab"
+            if dWall < walk then mat = "pave_brick" end
+            for _, pl in ipairs(plazas) do
+                local dx, dy = cx - pl[1], cy - pl[2]
+                if dx * dx + dy * dy < pl[3] * pl[3] then mat = "pave_cobble" end
+            end
+            self:floorQuad(mat, x, y, x1, y1, z, fl)
+        end
+    end
+    -- the kerb line round the riding area, where the paving meets the slabs
+    local k0, k1 = walk - 6, walk + 6
+    local z2 = z + 0.2
+    self:floorQuad("kerbline", p[1] + k0, p[5] - k1, p[4] - k0, p[5] - k0, z2, fl)
+    self:floorQuad("kerbline", p[1] + k0, p[2] + k0, p[4] - k0, p[2] + k1, z2, fl)
+    self:floorQuad("kerbline", p[1] + k0, p[2] + k1, p[1] + k1, p[5] - k1, z2, fl)
+    self:floorQuad("kerbline", p[4] - k1, p[2] + k1, p[4] - k0, p[5] - k1, z2, fl)
+
+    -- fallen leaves: drifts under the trees and along the beds, a few blown
+    -- out across the slabs
+    local seeds = {}
+    for _, pl in ipairs(self.props) do
+        if pl.kind ~= "lamp" and pl.x > p[1] and pl.x < p[4] and pl.y > p[2] and pl.y < p[5] and pl.z < 200 then
+            seeds[#seeds + 1] = pl
+        end
+    end
+    local z3 = z + 0.4
+    local M = City.Materials.litter
+    for i = 1, fl.litter or 160 do
+        local x, y, spread
+        if #seeds > 0 and rng.chance(0.75) then
+            local s = seeds[rng.int(1, #seeds)]
+            spread = 320
+            x, y = s.x + (rng.float() * 2 - 1) * spread, s.y + (rng.float() * 2 - 1) * spread
+        else
+            x, y = p[1] + rng.float() * (p[4] - p[1]), p[2] + rng.float() * (p[5] - p[2])
+        end
+        local size = rng.int(80, 176)
+        local h = size / 2
+        if x - h > p[1] and x + h < p[4] and y - h > p[2] and y + h < p[5] then
+            local a = rng.float() * math.pi * 2
+            local u = { math.cos(a), math.sin(a), 0 }
+            local w = { math.sin(a), -math.cos(a), 0 }
+            local o = { x - u[1] * h - w[1] * h, y - u[2] * h - w[2] * h, z3 }
+            local list = self.faces.litter
+            if not list then list = {} self.faces.litter = list end
+            local q = { o[1], o[2], z3,
+                o[1] + u[1] * size, o[2] + u[2] * size, z3,
+                o[1] + (u[1] + w[1]) * size, o[2] + (u[2] + w[2]) * size, z3,
+                o[1] + w[1] * size, o[2] + w[2] * size, z3,
+                0, 0, size / M.w, size / M.h, 1, self.group }
+            local c = 19
+            for k = 0, 3 do
+                local r, g, b = self:lightAt(q[k * 3 + 1], q[k * 3 + 2], fl)
+                q[c], q[c + 1], q[c + 2] = r, g, b
+                c = c + 3
+            end
+            list[#list + 1] = q
+            self.quads = self.quads + 1
+        end
+    end
+    self.group = nil
+end
+
+--------------------------------------------------------------------------
 -- Build a map definition into a layout.
 --------------------------------------------------------------------------
 function City.Build(def)
@@ -778,9 +1296,14 @@ function City.Build(def)
     b.group = "front:roof"
     for _, bb in ipairs(def.billboards or {}) do b:billboard(bb) end
 
+    -- last, so the rest of the city is laid out exactly as it was without it
+    if def.greenery then b:greenery(def.greenery) end
+    if def.floor then b:floor(def.floor, Rng((def.seed or 1) + 2)) end
+
     return {
         faces = b.faces, solids = b.solids, lines = b.lines, signs = b.signs,
-        buildings = b.buildings, quads = b.quads, rows = b.rows, def = def,
+        buildings = b.buildings, props = b.props, lamps = b.lamps, quads = b.quads, rows = b.rows, def = def,
+        mood = def.mood,
     }
 end
 

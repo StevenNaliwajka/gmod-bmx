@@ -144,13 +144,13 @@ T.test("every solid is inside the park box, clear of every ramp and spawn", func
     end
 end)
 
-T.test("only the piers come down to the floor; the viaducts fly 500 over the tallest coping", function()
+T.test("only the piers and the planting beds come down to the floor; the viaducts fly 500 over the tallest coping", function()
     local _, L = city()
     local top = 0
     for _, r in ipairs(RAMPS) do top = math.max(top, r[7]) end
     for _, s in ipairs(L.solids) do
         for _, b in ipairs(s.boxes) do
-            if not s.name:find("^pier") then
+            if not s.name:find("^pier") and not s.name:find("^bed") then
                 T.ok(b[3] >= top + 400, s.name .. " underside " .. b[3] .. " vs coping " .. top)
             end
         end
@@ -344,6 +344,9 @@ local function drawnClient()
     env.SysTime = function() return 0 end
     env.render.SetMaterial = function() end
     env.render.GetViewSetup = function() return { fov = 100, aspect = 16 / 9 } end
+    env.render.SuppressEngineLighting = function() end
+    env.render.ResetModelLighting = function() end
+    env.render.SetModelLighting = function() end
     env.GetConVar("bmx_city_trains"):SetInt(0)
     env.GetConVar("bmx_city_signs"):SetInt(0)
     T.ok(env.BMX.City.ClientBuild(), "built")
@@ -451,4 +454,155 @@ T.test("an ad's sunburst rays stop at the board's edge", function()
     end
     -- and one entirely outside is gone
     T.ok(#clip({ { x = 200, y = 0 }, { x = 300, y = 10 }, { x = 300, y = -10 } }, -100, -60, 100, 60) < 3, "outside dropped")
+end)
+
+T.test("greenery: beds hug the wall and stay low; the rest of the city is where it was", function()
+    local City, L = city()
+    local def = City.Maps.gm_skatepark
+    local p = def.park
+    local beds = 0
+    for _, s in ipairs(L.solids) do
+        if s.name:find("^bed") then
+            beds = beds + 1
+            for _, b in ipairs(s.boxes) do
+                -- within 96 of a wall, at most a kerb plus a trunk tall
+                local nearWall = b[1] <= p[1] + 96 or b[4] >= p[4] - 96 or b[2] <= p[2] + 96 or b[5] >= p[5] - 96
+                T.ok(nearWall, s.name .. " against a wall")
+                -- a lamp's pole is the one tall thing: thin, under 460
+                local pole = (b[4] - b[1]) <= 24 and (b[5] - b[2]) <= 24 and b[6] <= def.ground + 460
+                T.ok(pole or b[6] <= def.ground + def.greenery.kerb + 160, s.name .. " low: " .. b[6])
+            end
+        end
+    end
+    T.eq(beds, #def.greenery.beds, "one collider per bed")
+    -- greenery uses its own generator: without it, every building is identical
+    local bare = setmetatable({ greenery = false }, { __index = def })
+    local B2 = City.Build(bare)
+    T.eq(#B2.buildings, #L.buildings, "same buildings")
+    for i, b in ipairs(L.buildings) do
+        for k = 1, 6 do T.eq(B2.buildings[i][k], b[k], "building " .. i .. " unchanged") end
+    end
+end)
+
+T.test("greenery: plants are shipped models, a sane number, none on a ramp or a spawn", function()
+    local City, L = city()
+    local n, inPark = #L.props, 0
+    T.ok(n >= 40 and n <= 600, "trees: " .. n)
+    local kinds = {}
+    for _, pl in ipairs(L.props) do
+        local P = City.Plants[pl.kind]
+        T.ok(P, "known plant " .. tostring(pl.kind))
+        kinds[pl.kind] = true
+        T.ok(pl.x == pl.x and pl.y == pl.y and pl.z == pl.z and pl.scale > 0.2 and pl.scale < 2, "finite, sane scale")
+        if pl.x > -256 and pl.x < 3584 and pl.y > -1792 and pl.y < 768 and pl.z < 300 then
+            inPark = inPark + 1
+            -- the trunk, not the canopy: a canopy may lean over a ramp
+            local trunk = { pl.x - 16, pl.y - 16, pl.z, pl.x + 16, pl.y + 16, pl.z + 64 }
+            for _, r in ipairs(RAMPS) do
+                T.ok(not overlap(trunk, rampBox(r), 24), pl.kind .. " at " .. pl.x .. "," .. pl.y .. " clear of " .. r[1])
+            end
+            for _, sp in ipairs(SPAWNS) do
+                T.ok(not overlap(trunk, { sp[1] - 32, sp[2] - 32, 64, sp[1] + 32, sp[2] + 32, 136 }, 64), "clear of a spawn")
+            end
+        end
+    end
+    T.ok(inPark >= 15, "trees in the park itself: " .. inPark)
+    for _, k in ipairs({ "tree", "tree2", "tree_small" }) do T.ok(kinds[k], "has " .. k) end
+    local cards = 0
+    for _, k in ipairs({ "leaves_red", "leaves_orange", "leaves_gold", "leaves_rust" }) do cards = cards + #(L.faces[k] or {}) end
+    T.ok(cards >= 500, "bushes and hedges: " .. cards .. " leaf cards")
+    for k, P in pairs(City.Plants) do
+        T.ok(P.model:find("^models/props_foliage/") or P.model:find("^models/props_c17/"), k .. " is an HL2 model GMod ships")
+    end
+end)
+
+T.test("greenery: no tree stands in front of a sign on the wall", function()
+    local City, L = city()
+    for _, s in ipairs(L.signs) do
+        if not s.roof then
+            for _, pl in ipairs(L.props) do
+                local P = City.Plants[pl.kind]
+                local along = math.abs(s.normal[1]) > 0.5 and pl.y or pl.x
+                local sa = math.abs(s.normal[1]) > 0.5 and s.pos[2] or s.pos[1]
+                local off = math.abs(s.normal[1]) > 0.5 and math.abs(pl.x - s.pos[1]) or math.abs(pl.y - s.pos[2])
+                local top = pl.z + P.h * pl.scale
+                if off < 160 and math.abs(along - sa) < s.w / 2 and pl.z < s.pos[3] + s.h / 2 then
+                    T.ok(top < s.pos[3] - s.h / 2 + 16, pl.kind .. " tall " .. top .. " under the sign " .. tostring(s.text))
+                end
+            end
+        end
+    end
+end)
+
+T.test("a car lies along its line and faces the way it goes", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local City = cl.env.BMX.City
+    local L = City.Build(City.Maps.gm_skatepark)
+    for _, l in ipairs(L.lines) do
+        for _, dir in ipairs({ 1, -1 }) do
+            local _, _, _, yaw = City.CarPos(l, { head = 1000, dir = dir }, 1)
+            -- the model is long along its own y: yaw 0/180 along world y
+            local along = (l.axis == "y") and (yaw % 180 == 0) or (yaw % 180 == 90)
+            T.ok(along, l.name .. " dir " .. dir .. " yaw " .. yaw)
+        end
+        local _, _, _, a = City.CarPos(l, { head = 1000, dir = 1 }, 1)
+        local _, _, _, b = City.CarPos(l, { head = 1000, dir = -1 }, 1)
+        T.ok(a ~= b, l.name .. " turns round with the direction")
+    end
+end)
+
+T.test("trains come often enough to see: over the park 7+ seconds, every line under 40s apart", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local City = cl.env.BMX.City
+    local L = City.Build(City.Maps.gm_skatepark)
+    for _, l in ipairs(L.lines) do
+        local train = l.cars * City.TrainCar.length + (l.cars - 1) * City.TrainCar.gap
+        T.ok((l.to - l.from + train) / l.speed >= 7, l.name .. " in view " .. (l.to - l.from + train) / l.speed .. "s")
+        T.ok(l.period <= 40, l.name .. " every " .. l.period .. "s")
+    end
+end)
+
+T.test("the client draws the plants, and nothing on the server can grab the city", function()
+    local sv, world = F.server()
+    local env = sv.env
+    env.game.GetMap = function() return "gm_skatepark" end
+    env.BMX.City.SpawnSolids()
+    local any = env.ents.FindByClass("bmx_city_solid")[1]
+    T.ok(any, "a collider")
+    for _, h in ipairs({ "PhysgunPickup", "GravGunPickupAllowed", "GravGunPunt" }) do
+        T.eq(env.hook.Run(h, nil, any), false, h .. " refused")
+    end
+    local cl = F.client(world)
+    local cenv = cl.env
+    cenv.game.GetMap = function() return "gm_skatepark" end
+    cenv.Mesh = function(mat) return { mat = mat, Draw = function() end, Destroy = function() end } end
+    cenv.MATERIAL_QUADS = 4
+    cenv.CreateMaterial = function(name, shader, params) return { name = name, shader = shader, params = params } end
+    cenv.mesh = { Begin = function() end, Position = function() end, TexCoord = function() end,
+                  Color = function() end, AdvanceVertex = function() end, End = function() end }
+    cenv.SysTime = function() return 0 end
+    T.ok(cenv.BMX.City.ClientBuild(), "built")
+    T.eq(#cenv.BMX.City.plants, #cenv.BMX.City.Layout().props, "every plant ready to draw")
+end)
+
+T.test("plants are drawn every frame they are in view, whatever the distance", function()
+    local env = drawnClient()
+    local City = env.BMX.City
+    -- from the middle of the park looking north: the north beds and roofs
+    env.EyePos = function() return env.Vector(1600, -500, 128) end
+    env.EyeAngles = function() return env.Angle(0, 90, 0) end
+    env.hook.Run("PostDrawOpaqueRenderables", false, true, false)
+    local near = City.Stats.plants
+    T.ok(near and near > 8, "plants drawn looking north: " .. tostring(near))
+    -- from the far corner, 4000 units off: still drawn, no distance cut-off
+    env.EyePos = function() return env.Vector(-200, -1700, 128) end
+    env.EyeAngles = function() return env.Angle(0, 30, 0) end
+    env.hook.Run("PostDrawOpaqueRenderables", false, true, false)
+    T.ok(City.Stats.plants > 8, "plants drawn from across the park: " .. City.Stats.plants)
+    -- and never at a reduced LOD: HL2's trees lose their leaves at range
+    for kind, m in pairs(City._plantEnts) do
+        if m then T.eq(m.lod, 0, kind .. " pinned to LOD 0") end
+    end
 end)

@@ -80,12 +80,16 @@ BMX.City.Maps.gm_skatepark = {
     -- Truss tops 1224; the high line's girders bottom out at 1296; its truss
     -- top at 1624 stays under the sky ceiling at 1720.
     viaducts = {
+        -- Slow enough to watch: 600 units/s (about 30 mph) puts a train over
+        -- the park for 7-8 seconds, and one comes along on some line every
+        -- 10 seconds or so. Each run is shorter than its period, so a line
+        -- never has two trains on it.
         { name = "line1", axis = "y", at = 1685, from = -1792, to = 768, deck = 1000,
-          period = 41, offset = 0, cars = 3 },
+          period = 24, offset = 0, cars = 3, speed = 600, runout = 800 },
         { name = "line2", axis = "y", at = 2665, from = -1792, to = 768, deck = 1000,
-          period = 53, offset = 17, cars = 4 },
+          period = 29, offset = 9, cars = 4, speed = 600, runout = 800 },
         { name = "line3", axis = "x", at = -300, from = -256, to = 3584, deck = 1400,
-          period = 67, offset = 33, cars = 4, speed = 1300 },
+          period = 35, offset = 17, cars = 4, speed = 700, runout = 800 },
     },
 
     -- Piers under the crossings, in clear lanes (tests/test_city.lua proves
@@ -150,4 +154,59 @@ BMX.City.Maps.gm_skatepark = {
         { look = "ad", side = "south", at = 2900, w = 960, h = 360, back = 64,
           text = "JAMES WOODS HIGH", sub = "Home of the Fighting Clams. Go... Clams?", burst = "GO\nTEAM!", fine = "Mascot still missing. Last seen near the Drunken Clam.", bg = { 255, 90, 90 }, bg2 = { 150, 10, 40 }, fg = { 255, 255, 255 }, band = { 60, 0, 20 }, burstColor = { 255, 210, 0 } },
     },
+
+    -- Greenery (sh_city.lua, B:greenery). The beds stand on the park floor
+    -- against the wall, each in a lane measured clear of every ramp by 40+
+    -- units (tests/test_city.lua checks it against the live footprints):
+    --   north  x 1480..3584: east of the quarterpipes (x <= 1431)
+    --   south  four gaps between the spine, flat ramps, funbox and the
+    --          quarterpipe in the corner
+    --   west   y -1160..440: between the spine (y <= -1208) and the flat
+    --          ramp (y >= 481)
+    --   east   y -1020..672: north of the quarterpipe (y <= -1067)
+    greenery = {
+        kerb = 20,
+        treeEvery = { 224, 352 },
+        beds = {
+            { side = "north", from = 1480, to = 3584, depth = 88 },
+            { side = "south", from = 200, to = 515, depth = 88 },
+            { side = "south", from = 960, to = 1340, depth = 88 },
+            { side = "south", from = 2010, to = 2350, depth = 88 },
+            { side = "south", from = 2990, to = 3250, depth = 88 },
+            { side = "west", from = -1160, to = 440, depth = 88 },
+            { side = "east", from = -1020, to = 672, depth = 88 },
+        },
+        roofs = 0.8,
+        terraces = true,
+        balconies = 0.45,
+        ivy = 0.55,
+        -- a street lamp every ~560 along each bed, arm over the park
+        lampEvery = 560,
+    },
+
+    -- The park's floor, laid over the map's bare concrete: slabs to ride on,
+    -- brick paving along the walls, cobbles round the piers, a kerb line,
+    -- leaves. Lit per vertex: ambient afternoon light and the lamps' pools.
+    floor = {
+        cell = 64, walk = 176, lift = 0.6, plaza = 288,
+        litter = 170,
+        ambient = { 0.74, 0.65, 0.56 },
+        lampRadius = 440, lampColor = { 0.6, 0.4, 0.18 },
+    },
+
+    -- A late autumn afternoon (cl_city_mood.lua): the sun low in the west
+    -- behind heavy cloud. `light` warms every surface of the city; the sky is
+    -- HL2's golden-hour sky, dimmed; the haze is thin and far.
+    mood = {
+        light = { 1.0, 0.86, 0.72 },
+        sky = "skybox/sky_day01_08", skyTint = { 0.8, 0.72, 0.66 }, skyYaw = 0,
+        fog = { start = 3000, finish = 15000, density = 0.5, color = { 120, 92, 74 } },
+        grade = { brightness = -0.04, contrast = 1.06, colour = 0.88, mulr = 0.1, mulg = 0.03, addr = 0.015, addg = 0.004 },
+        lampColor = { 255, 186, 112 }, lampBrightness = 1.3, lampSize = 560,
+        leafEvery = 0.22,
+    },
 }
+
+-- The same park, renamed for its autumn edition: the server runs a copy of
+-- gm_skatepark's BSP as petopia_bmx_fall (docs/CITY.md, "The map").
+BMX.City.Maps.petopia_bmx_fall = BMX.City.Maps.gm_skatepark

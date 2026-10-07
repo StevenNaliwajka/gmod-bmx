@@ -9,6 +9,9 @@ a Workshop update goes out only when the owner says so.
 
 **New**
 
+- **/bike**: type it in chat (or `!bike`, `/bmx`, or `bmx_menu` in the
+  console) for a window listing every bike and park piece; a click spawns it
+  where you look. For servers whose gamemode has no Q menu.
 - **A trick bot**: `bmx_bot_spawn` puts a bot rider on a bike that rides
   around doing Bunny Hops, Wheelies, Stoppies, Combos, Backflips, Frontflips,
   Barrel Rolls, 360s, Crank Grinds and Double Peg Grinds -- finding ramps in

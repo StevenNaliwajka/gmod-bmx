@@ -33,6 +33,7 @@ which is all base-game paths rather than shipped files.
 Then, in game:
 
 ```
+/bike (in chat)      a window to spawn any bike or park piece (also bmx_menu)
 bmx_spawn            spawn a bike where you are looking
 bmx_spawn cruiser    the 24-inch cruiser (or: mini, stock)
 ```

@@ -8,6 +8,10 @@
                              Counted across every kind of bike.
       bmx_scoring 0|1        tricks score at all: points, callouts, combos.
       bmx_combos  0|1        tricks chain into combos for a bonus.
+      bmx_nose_manual 0|1    the nose manual: rolling on the front wheel (G02).
+                             Off by default until it has been ridden live.
+      bmx_air_assist 0|1     the air turn, landing aim and spine transfer off a
+                             vert ramp (G06).
 
     THE LIMIT IS A PlayerSpawnSENT HOOK, not a check in bmx_spawn, because that
     hook is the one door every spawn goes through: the spawn menu, bmx_spawn
@@ -35,6 +39,22 @@ local scoring = CreateConVar("bmx_scoring", "1", FLAGS,
     "BMX: 1 = tricks score points, callouts and combos; 0 = no scoring at all.")
 local combos  = CreateConVar("bmx_combos", "1", FLAGS,
     "BMX: 1 = chained tricks build a combo that pays a bonus when landed; 0 = off.")
+
+-- AIR ASSIST (G06): the turn off a vert ramp, the landing aim and the spine
+-- transfer (sv_air.lua, VertAir). Off leaves the air exactly as it was before
+-- them: A/D roll, nothing aims the landing.
+local airAssist = CreateConVar("bmx_air_assist", "1", FLAGS,
+    "BMX: 1 = A/D turn the bike round off a vert ramp, the landing aims back down it and a W press carries a spine transfer; 0 = off.")
+function BMX.AirAssistOn() return airAssist:GetBool() end
+
+-- THE NOSE MANUAL (G02): rolling on the front wheel after the brake comes off,
+-- weight still forward (sv_balance.lua, PitchControl). It touches the pitch
+-- controller every rider uses, so it stays OFF until it has been ridden on a real
+-- server: with it off, leaning forward only shifts the weight and a stoppie ends
+-- when the brake does, exactly as before.
+local noseManual = CreateConVar("bmx_nose_manual", "0", FLAGS,
+    "BMX: 1 = lean forward (LMB + Ctrl) and let go of the brake to hold a nose manual; 0 = no nose manual.")
+function BMX.NoseManualOn() return noseManual:GetBool() end
 
 -- VEHICLES SWITCHED ON AND OFF, per spawn menu heading (G22): bmx_allow_bikes,
 -- _boards, _scooters, _motor, one per BMX.SpawnCategories entry, described in

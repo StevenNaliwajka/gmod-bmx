@@ -487,6 +487,12 @@ function BMX.PhysicsStep(ent, phys, dt)
             ent:OnLanded(tricks, front, rear)
         end
         st.airSince = 0
+        -- THE SURFACE LEFT, remembered: air mode engages a little after the
+        -- wheels have gone and a wheel in the air reports no normal, so the
+        -- takeoff is classified against the last one that was on the ground
+        -- (BMX.Launch.Classify, G06). The raw mean, not the smoothed one: the
+        -- smoothing lags a quarter pipe's curve by its own time constant.
+        st.launchNormal = st.groundNormalRaw
 
         -- THE VEHICLE'S BALANCE MODE (sv_balance.lua): singletrack for a bike,
         -- none for something that stands on its own wheels.
@@ -511,6 +517,13 @@ function BMX.PhysicsStep(ent, phys, dt)
         if not st.airMode and st.airSince >= C.Air.engageDelay then
             st.airMode = true
             BMX.AirReset(st)
+            -- WHAT KIND OF TAKEOFF (G06): ramp, vert or flat, from the surface
+            -- just left and the velocity now. After AirReset, which clears
+            -- what the last air decided.
+            if BMX.Launch and BMX.Launch.Classify then
+                st.launchKind = BMX.Launch.Classify(st.launchNormal, vel, C)
+            end
+            st.launchZ = phys:LocalToWorld(phys:GetMassCenter()).z
         end
         if st.airMode then
             BMX.AirControl(ent, phys, C, dt, inp, st)

@@ -106,6 +106,24 @@ tricks working and tricks being an accident:
 - **The front brake shifts your weight forward on its own.** A rider grabbing
   the front brake comes over the bars whether they meant to or not. Modelling
   that is what makes a stoppie something you can hold.
+- **Lean over the bars with `Ctrl` + `LMB`.** Holding `Ctrl` as you press the
+  front brake shifts your weight forward and keeps it there until `Ctrl` is let
+  go. Brake hard and the rear comes up (a stoppie); let go of `LMB` with `Ctrl`
+  still down and the brake is off with your weight still forward: a **nose
+  manual**, rolling on the front wheel, `W` leaning further over and `S` sitting
+  up. It pays by the second and chains in a combo. If you would rather have
+  `LMB` lean forward (like other bike mods) set `bmx_lmb_mode lean`; then
+  `Ctrl` + `LMB` brakes as well. The nose manual itself is `bmx_nose_manual 1`,
+  off until it has been ridden on your server.
+- **Off a vertical ramp the air helps you turn round.** Go up a quarter pipe
+  (or a bowl wall) steeper than 60 degrees and tap `A` or `D` in the air: the
+  bike comes round about the vertical to a half turn, scored as **Air 180**
+  (worth more the higher you are), and a landing that is part way round is aimed
+  back down the ramp. Hold the key and it keeps turning. Over a spine or two
+  back-to-back quarter pipes, a fresh `W` press at the top carries you over onto
+  the far face: a **Spine Transfer**, and your combo stays alive. Anywhere that
+  is not vert, `A` and `D` are still the barrel roll. `bmx_air_assist 0` turns
+  it all off.
 
 ## Server settings
 
@@ -117,6 +135,8 @@ Server console or `server.cfg`; all three are saved.
 | `bmx_scoring 0` | `1` | No scoring at all: no points, callouts or combos, and the `BMX_TricksLanded` hook does not fire. |
 | `bmx_combos 0` | `1` | Tricks still score, but chaining them pays no combo bonus. |
 | `bmx_crash_ragdoll 0` | `1` | A crash shoves the rider off instead of ragdolling them. |
+| `bmx_nose_manual 1` | `0` | Lets a rider holding weight forward (`Ctrl` + `LMB`) keep rolling on the front wheel after the brake comes off. Off until it has been ridden live: with it off, a stoppie ends when the brake does. |
+| `bmx_air_assist 0` | `1` | No air turn, landing aim or spine transfer off vertical ramps: `A` / `D` stay the barrel roll everywhere. |
 
 ## The trick bot
 

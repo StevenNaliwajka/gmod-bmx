@@ -58,3 +58,31 @@ scored trick.
 Over-assisting removes the skill. Keep the assist on landings only, never on
 the turn itself, and score assisted landings at full points so no one is
 punished for turning it on.
+
+## Status (2026-10-07)
+
+**Built, offline-tested; the park-piece cases are written and not yet run on a
+real server.**
+
+| Done when | State |
+|---|---|
+| Quarter-pipe detect | **Done.** `BMX.Launch.Classify(normal, vel, cfg)` (`sv_launch.lua`): `vert` when the surface left is over `Air.vertAngle` (60 deg) from level and `vz / speed >= Air.vertUp` (0.5); `ramp` from `Air.rampAngle` (10 deg); else `flat`. `sv_physics.lua` remembers the last grounded normal (`st.launchNormal`) and sets `st.launchKind` when air mode engages. |
+| Vert turn | **Done.** `BMX.VertAir` (`sv_air.lua`): A/D (no RMB, not under a whip, bar or pose) turn about WORLD up at up to `Air.vertYawRate`; on release a PD settles on the nearest half turn (a tap under `Air.vertMin` settles back to nothing); held, it keeps turning. D is clockwise. The heading is `st.vertSpin`. Scored on landing as **Air 180**, `Air.vertBase + Air.vertPerUnit * height` per half turn. |
+| Landing aim | **Done**, on vert only: descending with no key held and within `Air.vertAimMax` (100 deg) of the fall line (the landing surface's, else the face left), a PD turns the bike to face down the ramp. Never during the turn; a bike left facing the wall is the rider's to turn. |
+| Spine transfer | **Done.** `BMX.Launch.FindSpine` near the apex (`|vz| < Air.spineApexVz`): the first ground within `Air.spineReach` (64 u) over the coping, below the bike, whose normal mirrors the launch face's (`Air.spineMirror`) becomes `st.spineTarget`. A fresh W press within `Air.spineWindow` blends the velocity down that face over `Air.spineBlend` (0.3 s, at least `Air.spineSpeed`); W also pitches the bike over. Scored as **Spine Transfer** (`Air.spinePoints`); it is an ordinary trick, so the combo stays open across it. |
+| Barrel roll off vert | **Unchanged**: A/D roll everywhere that is not vert, and with RMB held they are still the 360. |
+| `bmx_air_assist 0\|1` | **Done**: server row in `sh_settings.lua` (category "How the bike rides"), convar in `sv_rules.lua`, README, Workshop description, `bmx_report`. |
+| Bot | **Partly.** `Air 180` and `Spine Transfer` are in `Bot.Tricks` (`bmx_bot_trick Air 180`): the bot lays a tall park quarter pipe or a spine at the end of its clearest run and rides at it sprinting. The ramp FINDER is unchanged (it turns steep walls down on purpose; a vert wall is laid, not found). They are not in `Bot.TrickList`, so the show and SKATE do not pick them and no `bot_*` headless case was made. Not run live. |
+
+Tests: `tests/test_air_assist.lua` (19: classifier on synthetic normals, the
+turn settling at 180 either way, held, tap, barrel roll kept off vert, RMB 360
+kept, assist off, landing aim, spine finder on a synthetic profile, the
+transfer on the plant, combo, scoring, the setting). Headless, appended to
+`sv_test_cases.lua`: `vert_turnaround` (tall park quarter pipe, D tapped, lands
+facing down the ramp) and `spine_transfer` (park spine, W at the top, lands on
+the far side, "Spine Transfer" scored).
+
+Left: run the two headless cases and tune the entry speed (430 u/s from 380 u
+back is a guess at what clears an 84 u deck); ride it to set `vertYawRate` and
+the aim gains; the bot's two tricks live; a quarter pipe in a map that is not a
+park piece is classified the same way but has not been looked at.

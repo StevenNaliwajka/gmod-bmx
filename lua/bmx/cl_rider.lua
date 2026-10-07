@@ -48,6 +48,12 @@ local RIDER = {
     crouch       = 24,     -- hop preload: knees and hips fold
     pitchFollow  = 0.5,    -- how much of the bike's pitch the torso counters
     armSteer     = 0.6,    -- fraction of the steer angle the arms follow
+    -- WEIGHT FORWARD (G02): at full lean the torso folds this much further over
+    -- the bars and the hips drop back, the hands staying on the grips (the IK
+    -- reaches them from the new shoulder position), the head up to watch the
+    -- road, and the legs fold a little under the weight.
+    leanFwd      = 24,     -- degrees of extra spine lean
+    leanFwdHips  = 9,      -- degrees of extra thigh fold
 }
 BMX.RiderAmplitudes = RIDER
 
@@ -69,6 +75,7 @@ BMX.RiderBones = BONES
 --   s.hop       0..1 preload
 --   s.pitch     bike pitch, rad, nose up positive
 --   s.steer     rad
+--   s.leanFwd   0..1 weight forward over the bars (G02)
 --------------------------------------------------------------------------
 function BMX.RiderPose(s)
     local R = RIDER
@@ -89,8 +96,10 @@ function BMX.RiderPose(s)
     -- Tuck with speed, more on a sprint; counter the bike's pitch so the rider
     -- stays over the bike: back through a wheelie, forward in a stoppie.
     local frac  = math.Clamp((s.speed or 0) / math.max(s.topSpeed or 1, 1), 0, 1)
+    local lean  = BMX.Clamp(s.leanFwd or 0, 0, 1)
+    rT, lT = rT - lean * R.leanFwdHips, lT - lean * R.leanFwdHips
     local tuck  = frac * R.tuckMax + (s.sprint and R.sprintTuck or 0) + crouch * 0.6
-    local spine = tuck + math.deg(s.pitch or 0) * R.pitchFollow
+    local spine = tuck + lean * R.leanFwd + math.deg(s.pitch or 0) * R.pitchFollow
 
     local arm = math.deg(s.steer or 0) * R.armSteer
 
@@ -660,6 +669,7 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
         hop      = math.max(bike:GetHopCharge(), bike.bmxLand or 0),
         pitch    = select(2, BMX.Attitude(bike, vector_up)),
         steer    = bike:GetSteer(),
+        leanFwd  = bike:GetLeanFwd(),
     })
     if useIK and (ply.bmxSpineTwist or ply.bmxSpineLean) then
         pose.spine = Angle(pose.spine.p, pose.spine.y + (ply.bmxSpineLean or 0),

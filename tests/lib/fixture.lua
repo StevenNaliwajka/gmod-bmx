@@ -66,6 +66,8 @@ function F.input(bike, t)
     i.tuck        = t.tuck       or false
     i.sprint      = t.sprint     or false
     i.wheelieMod  = t.wheelieMod or false
+    i.leanFwd     = t.leanFwd    or false
+    i.noseTrim    = t.noseTrim   or 0
 end
 
 -- Move a SPAWNED bike, the way the engine requires: through its physics

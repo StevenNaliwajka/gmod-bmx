@@ -52,6 +52,140 @@ function BMX.LandingNormal(ent, phys, cfg)
 end
 
 --------------------------------------------------------------------------
+-- AIR CONTROL OFF VERT (G06): the turn, the landing aim and the spine transfer.
+-- Called from AirControl for a flight that was classified "vert" (sv_launch.lua)
+-- with bmx_air_assist on.
+--
+-- THE TURN. Riding a bowl or a vert ramp should flow: up, round, back down,
+-- without a perfect hand-timed 180 every time. A/D (no RMB) turn the bike about
+-- WORLD up at up to Air.vertYawRate; let go and a PD settles the heading on the
+-- nearest half turn (a tap under Air.vertMin settles back where it started).
+-- The heading is st.vertSpin, integrated from the angular velocity about world
+-- up, and scored as "Air 180" with points that grow with the height of the
+-- flight (BMX.ScoreAir). Held past a half turn it keeps turning: the assist
+-- completes a turn, it does not cap one.
+--
+-- WORLD UP, not the bike's: off a 70-degree wall the bike is nose-up, so
+-- turning about world up is mostly a ROLL of the frame about its long axis, and
+-- yaw about the bike's own up axis would swing the nose sideways instead.
+--
+-- THE LANDING AIM. Coming down, with no key held, a bike within vertAimMax of
+-- the fall line of the surface it is about to land on (BMX.LandingNormal) is
+-- turned the rest of the way to face down it, back into the ramp. On the landing
+-- only, never during the turn: how much of it the rider did stays the rider's.
+-- The points are the same with it on or off, so nobody is punished for it.
+--
+-- THE SPINE TRANSFER. Near the apex (|vz| under Air.spineApexVz) look for the far
+-- face (BMX.Launch.FindSpine) and keep it as st.spineTarget. A fresh W press
+-- (the key held at takeoff is already ignored until it is let go: sv_input.lua)
+-- inside Air.spineWindow of finding it blends the velocity down that face over
+-- Air.spineBlend; W is also the nose-down rotation, which pitches the bike over
+-- onto it. It is paid as "Spine Transfer" on landing, and being an ordinary
+-- trick the combo stays alive across it.
+--------------------------------------------------------------------------
+function BMX.VertAir(ent, phys, cfg, dt, inp, st, w)
+    local A = cfg.Air
+    local now = CurTime()
+    local vel = phys:GetVelocity()
+    local com = phys:LocalToWorld(phys:GetMassCenter())
+    st.airPeakZ = max(st.airPeakZ or com.z, com.z)
+
+    -- The heading, about world up. Integrated here (not read off the yaw spin)
+    -- because spinYaw is about the BIKE's up axis, which is the wrong one here.
+    local wUp = w:Dot(vector_up)
+    st.vertSpin = (st.vertSpin or 0) + wUp * dt
+
+    -- WORLD-UP INERTIA: the three principal inertias weighted by how much of
+    -- world up each axis carries, so a commanded angular acceleration costs what
+    -- it really does at this attitude.
+    local fwd, right, up = ent:GetForward(), ent:GetRight(), ent:GetUp()
+    local fx, fy, fz = fwd.z, right.z, up.z
+    local I = BMX.IRoll(ent) * fx * fx + BMX.IPitch(ent) * fy * fy + BMX.IYaw(ent) * fz * fz
+
+    local held = not inp.wheelieMod and abs(inp.lean) > 0.05
+    local alpha
+    if held then
+        -- Clockwise from above is D. A velocity servo onto the commanded rate.
+        st.vertTarget = nil
+        st.vertDir = inp.lean > 0 and -1 or 1
+        local want = -inp.lean * A.vertYawRate
+        alpha = A.vertKd * (want - wUp)
+        st.vertTurning = true
+    else
+        if st.vertTurning then
+            -- Let go: settle on a half turn, or back to nothing for a tap.
+            st.vertTurning = false
+            local spin = st.vertSpin
+            if abs(spin) < A.vertMin then
+                st.vertTarget = 0
+            else
+                local n = floor(abs(spin) / math.pi + 0.5)
+                if n < 1 then n = 1 end
+                st.vertTarget = (spin < 0 and -1 or 1) * n * math.pi
+            end
+        end
+        if st.vertTarget then
+            alpha = A.vertKp * (st.vertTarget - st.vertSpin) - A.vertKd * wUp
+        end
+    end
+
+    -- THE LANDING AIM, descending, with a surface in sight and no turn in
+    -- progress (none held, any settle finished).
+    local settled = not st.vertTarget or abs(st.vertTarget - st.vertSpin) < 0.25
+    -- The fall line of the surface in sight, or of the face the bike left when
+    -- that is too steep to count as a landing (LandingNormal wants 60 degrees
+    -- or less): coming back down a quarter pipe lands on its lower, flatter
+    -- part, but the line it falls along is the whole face's.
+    local ref = st.landRef or st.launchNormal
+    if not held and settled and vel.z < 0 and ref and not inp.wheelieMod then
+        local fall = Vector(ref.x, ref.y, 0)
+        local fl = fall:Length()
+        local fh = Vector(fwd.x, fwd.y, 0)
+        local hl = fh:Length()
+        if fl > 0.1 and hl > 0.3 then
+            local err = BMX.SignedAngle(fh / hl, fall / fl, vector_up)
+            if abs(err) <= A.vertAimMax then
+                alpha = A.vertAimKp * err - A.vertAimKd * wUp
+            end
+        end
+    end
+    if alpha then
+        BMX.ApplyTorque(phys, ent, vector_up, BMX.TorqueFor(I, alpha), dt)
+    end
+
+    ----------------------------------------------------------------------
+    -- Spine transfer.
+    ----------------------------------------------------------------------
+    local wDown = inp.pitchTarget < -0.1
+    if wDown and not st.spineW then st.spineWPress = now end
+    st.spineW = wDown
+
+    if not st.spineTarget and abs(vel.z) < A.spineApexVz and not st.spineDone then
+        st.spineTick = (st.spineTick or 0) + 1
+        if st.spineTick % 4 == 1 and BMX.Launch and st.launchNormal then
+            local sp = BMX.Launch.FindSpine(com, st.launchNormal, cfg, { filter = ent.traceFilter })
+            if sp then st.spineTarget, st.spineSeen = sp, now end
+        end
+    end
+
+    local sp = st.spineTarget
+    if sp and not st.spineBlend and not st.spineDone and st.spineWPress
+       and now - st.spineSeen <= A.spineWindow and st.spineWPress >= st.spineSeen - A.spineWindow then
+        st.spineBlend, st.spineDone = 0, true
+    end
+    if st.spineBlend and sp then
+        -- Toward the way down the far face, at least spineSpeed. The step is a
+        -- share of what is left of the blend, so it lands on the target at 0.3 s.
+        local want = sp.dir * max(vel:Length(), A.spineSpeed)
+        local k = min(1, dt / max(A.spineBlend - st.spineBlend, dt))
+        local dv = (want - vel) * k
+        if BMX.FiniteVec(dv) then phys:ApplyForceCenter(dv * phys:GetMass()) end
+        st.spineBlend = st.spineBlend + dt
+        if st.spineBlend >= A.spineBlend then st.spineBlend = nil end
+    end
+end
+
+--------------------------------------------------------------------------
 -- One physics substep of air control.
 --
 -- `st.angVel` is a WORLD-space angular velocity vector estimated in
@@ -85,6 +219,12 @@ function BMX.AirControl(ent, phys, cfg, dt, inp, st)
     -- so every 360 attempt was also a barrel roll and came down on its side.
     -- `rollIn` is what A/D mean for the roll axis right now.
     local rollIn = inp.wheelieMod and 0 or inp.lean
+
+    -- OFF A VERT RAMP A/D ARE A TURN, NOT A ROLL (G06, bmx_air_assist). See
+    -- VertTurn below. Anywhere else, and with RMB held (the 360), nothing here
+    -- changes: the barrel roll stays on A/D.
+    local vert = st.launchKind == "vert" and (not BMX.AirAssistOn or BMX.AirAssistOn())
+    if vert and not inp.wheelieMod then rollIn = 0 end
 
     -- A HELD POSE LETS THE SPIN COAST. In the air with Alt down the rotation
     -- keys are the pose keys (sv_input.lua), so a rider carrying a flip into
@@ -174,6 +314,8 @@ function BMX.AirControl(ent, phys, cfg, dt, inp, st)
         end
     end
 
+    if vert then BMX.VertAir(ent, phys, C, dt, inp, st, w) end
+
     ----------------------------------------------------------------------
     -- Apply
     ----------------------------------------------------------------------
@@ -201,6 +343,11 @@ function BMX.AirReset(st)
     st.spinRoll  = 0
     st.spinYaw   = 0
     st.airTime   = 0
+    -- Vert flights (VertAir): nothing carried over from the last air.
+    st.vertSpin, st.vertTarget, st.vertTurning, st.vertDir = 0, nil, false, nil
+    st.spineTarget, st.spineSeen, st.spineBlend, st.spineDone = nil, nil, nil, nil
+    st.spineW, st.spineWPress, st.spineTick = false, nil, 0
+    st.airPeakZ, st.launchKind = nil, nil
     if BMX.TricksReset then BMX.TricksReset(st) end     -- sv_tricks.lua
 end
 
@@ -225,6 +372,25 @@ function BMX.ScoreAir(st)
                 out[#out + 1] = { name = t.name, count = n, points = n * t.points }
             end
         end
+    end
+
+    -- THE VERT TRICKS (G06, VertAir above). Air 180: a half turn about world up
+    -- off a vert wall, per half turn, worth more the higher the flight. Spine
+    -- Transfer: the velocity was carried over onto the far face. Neither
+    -- is in the rotation table: the heading they count is about WORLD up, not an
+    -- axis of the bike.
+    if st.launchKind == "vert" and st.vertSpin and BMX.VehicleAllows(st.def, "air180") then
+        local A = BMX.Config.Air
+        local n = floor(abs(st.vertSpin) / math.pi + 0.25)
+        if n > 0 then
+            local height = max(0, (st.airPeakZ or 0) - (st.launchZ or 0))
+            out[#out + 1] = { name = BMX.Tricks.air180.name, count = n,
+                points = n * floor(A.vertBase + A.vertPerUnit * height) }
+        end
+    end
+    if st.spineDone and BMX.VehicleAllows(st.def, "spine_transfer") then
+        out[#out + 1] = { name = BMX.Tricks.spine_transfer.name, count = 1,
+            points = BMX.Config.Air.spinePoints }
     end
 
     -- Air time is worth something on its own, so a big gap with no rotation is
@@ -256,7 +422,8 @@ end
 -- wheel reporting no contact for a substep while the bike is plainly still on
 -- its back wheel, which is what `grace` is for.
 --------------------------------------------------------------------------
-local MANUAL_NAME = { wheelie = BMX.Tricks.wheelie.name, stoppie = BMX.Tricks.stoppie.name }
+local MANUAL_NAME = { wheelie = BMX.Tricks.wheelie.name, stoppie = BMX.Tricks.stoppie.name,
+    nosemanual = BMX.Tricks.nose_manual.name }
 
 function BMX.TrackManual(st, cfg, front, rear, speed, dt)
     local K = cfg.Tricks
@@ -266,6 +433,10 @@ function BMX.TrackManual(st, cfg, front, rear, speed, dt)
         shape = "wheelie"
     elseif front.onGround and not rear.onGround then
         shape = "stoppie"
+        -- A stoppie that carries on with the brake off and the weight forward is
+        -- a nose manual (PitchControl sets st.noseHold): its own trick, paid by
+        -- the second, which chains from the stoppie it grew out of.
+        if st.noseHold and BMX.VehicleAllows(st.def, "nose_manual") then shape = "nosemanual" end
     end
 
     local m = st.manual
@@ -298,10 +469,12 @@ function BMX.TrackManual(st, cfg, front, rear, speed, dt)
         st.manual = { kind = shape, held = dt, gone = 0 }
     end
 
-    local min = m.kind == "stoppie" and K.stoppieMin or K.manualMin
+    local min = m.kind == "stoppie" and K.stoppieMin
+        or (m.kind == "nosemanual" and K.noseManualMin or K.manualMin)
     if m.held < min then return nil end
 
-    local per = m.kind == "wheelie" and K.wheeliePerSec or K.stoppiePerSec
+    local per = m.kind == "wheelie" and K.wheeliePerSec
+        or (m.kind == "nosemanual" and K.noseManualPerSec or K.stoppiePerSec)
     return { {
         name   = MANUAL_NAME[m.kind],
         count  = 1,

@@ -173,6 +173,8 @@ Which file covers what, for the newer parts:
 | `test_grind.lua` | a bike placed over a pipe, a ledge, a bare ramp: what locks on and what does not |
 | `test_grind_jump.lua` | a HUMAN rider through the real keys (W, SPACE) hopping onto rails, with every run checked for being launched |
 | `test_landing.lua` | hands-off landings onto transitions and banks, and a barrel roll left alone |
+| `test_air_assist.lua` | air control off vert ramps (G06): the launch classifier on synthetic normals, the turn about world up settling on a half turn, the landing aim, the spine finder on a made-up profile and the transfer on the plant, scoring, `bmx_air_assist`. Headless twins: `vert_turnaround`, `spine_transfer` (park pieces) |
+| `test_nose_manual.lua` | weight forward and the nose manual (G02): the LMB / Ctrl / `bmx_lmb_mode` decode through the real `StartCommand`, the IK lean, a nose manual held over 2 s on the plant without flipping, W / S trim, the convar gate, pay by the second and chaining in a combo. Headless twin: `nose_manual_holds` |
 | `test_perf.lua` | the trace and draw budgets |
 | `test_platform.lua` | the vehicle platform (G22): `RegisterVehicle` validation (a 4-wheel board and a 1-wheel unicycle accepted, every bad field refused), input maps, the Vehicles settings and their spawn doors, and the hidden 4-wheel test cart driving forward with no balance mode. The headless twin is `test_cart_drives` |
 

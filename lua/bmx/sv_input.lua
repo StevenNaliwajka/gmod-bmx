@@ -25,6 +25,8 @@
         RMB (hold)       weight BACK: wheelie or manual, works under power
         LMB              front brake, and the weight shift forward that comes
                          with it, which is what makes a stoppie controllable
+        LMB + CTRL       the same, leaning forward until CTRL is let go: LMB off
+                         with CTRL held is a nose manual (G02, bmx_lmb_mode)
         SPACE            hold to preload, release to bunny hop
         SHIFT            sprint (drains stamina)
         CTRL             tuck (less drag, faster rotation in the air)
@@ -90,6 +92,8 @@ function BMX.BlankInput()
         tuck        = false,
         sprint      = false,
         wheelieMod  = false,
+        leanFwd     = false, -- weight forward over the bars (LMB + Ctrl, G02)
+        noseTrim    = 0,     -- -1..1, W / S: trims a nose manual
 
         -- smoothed, owned by the physics step
         lean        = 0,
@@ -140,7 +144,38 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     inp.sprint     = down("sprint")
     inp.tuck       = down("tuck")
     inp.wheelieMod = down("weightBack")
-    inp.brakeFront = down("brakeFront") and 1 or 0
+
+    ----------------------------------------------------------------------
+    -- LMB: THE FRONT BRAKE, AND WEIGHT FORWARD (G02).
+    --
+    -- bmx_lmb_mode, a userinfo convar of the rider's own (cl_tricks.lua):
+    --
+    --   brake (default)  LMB brakes the front wheel, as it always did. LMB with
+    --                    Ctrl also leans the rider forward over the bars, and
+    --                    the lean STAYS while Ctrl is held: let go of LMB and
+    --                    the brake is off with the weight still forward, which
+    --                    is what holds a nose manual.
+    --   lean             LMB leans the rider forward, the way the competitor's
+    --                    does, and brakes nothing; LMB with Ctrl brakes as well
+    --                    (a stoppie). Let go of Ctrl with LMB held and the
+    --                    brake comes off while the lean stays.
+    --
+    -- Ctrl alone is still the tuck, and on its own never starts a lean: in
+    -- brake mode the latch needs LMB down with it. On the ground only (in the
+    -- air LMB is the tailwhip, read below from the raw key).
+    ----------------------------------------------------------------------
+    local lmb, ctrl = down("brakeFront"), inp.tuck
+    local leanMode = ply:GetInfo("bmx_lmb_mode") == "lean"
+    local leanFwd
+    if leanMode then
+        inp.brakeFront = (lmb and ctrl) and 1 or 0
+        leanFwd = lmb
+    else
+        inp.brakeFront = lmb and 1 or 0
+        if lmb and ctrl then inp.leanLatch = true end
+        if not ctrl then inp.leanLatch = false end
+        leanFwd = inp.leanLatch
+    end
 
     -- Follow the DEBOUNCED air mode, not raw ground contact. Two reasons: the
     -- networked Grounded flag is a 20 Hz copy of something that changes at
@@ -262,6 +297,10 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     end
 
     inp.leanTarget = side
+    -- Weight forward is a ground thing, and RMB (weight back) wins over it.
+    inp.leanFwd = (leanFwd and not airborne and not inp.wheelieMod) and true or false
+    -- W / S trim a nose manual (PitchControl): W leans further over, S sits up.
+    inp.noseTrim = airborne and 0 or fwd
 
     -- THE BELL: R (IN_RELOAD), a fresh press, on the ground and out of a
     -- manual. R is also the barspin key in the air and in a manual (G03), so
@@ -303,10 +342,15 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
         --                mean to or not, and modelling that is what makes a
         --                stoppie controllable rather than an accident.
         ------------------------------------------------------------------
+        --   lean forward with the brake off holds the weight over the bars
+        --                (-0.35, a lean: the pitch controller's nose manual,
+        --                bmx_nose_manual) and does nothing at all when that is off.
         if inp.wheelieMod then
             inp.pitchTarget = 1
         elseif inp.brakeFront > 0.5 then
             inp.pitchTarget = -0.6
+        elseif inp.leanFwd and BMX.NoseManualOn and BMX.NoseManualOn() then
+            inp.pitchTarget = -0.35
         else
             inp.pitchTarget = 0
         end

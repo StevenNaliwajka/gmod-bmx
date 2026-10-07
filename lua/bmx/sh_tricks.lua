@@ -229,11 +229,22 @@ pose("xup",       "X-Up",       10, "RMB + W in the air; Alt + RMB + W in a manu
 pose("turndown",  "Turndown",   12, "Alt + RMB + A / D in the air")
 pose("tabletop",  "Tabletop",   14, "Alt + RMB in the air")
 
+-- Vert tricks (G06). No onTick: sv_air.lua's VertAir flies them and
+-- BMX.ScoreAir pays them on landing, from the config's Air.vert* / Air.spine*.
+-- Registered so the trick list shows them and a vehicle's `tricks` can name them.
+local AIR = BMX.Config.Air
+BMX.RegisterTrick{ id = "air180", name = "Air 180", kind = "custom", points = AIR.vertBase,
+    input = "A / D off a vert ramp (no RMB): turns you round to ride back down; higher is worth more" }
+BMX.RegisterTrick{ id = "spine_transfer", name = "Spine Transfer", kind = "custom", points = AIR.spinePoints,
+    input = "W (a fresh press) over the coping of a back-to-back ramp" }
+
 -- Ground tricks and grinds: names for the scoring; the config pays.
 BMX.RegisterTrick{ id = "wheelie", name = "Wheelie", kind = "ground",
     points = K.wheeliePerSec, input = "RMB (weight back), with W for power" }
 BMX.RegisterTrick{ id = "stoppie", name = "Stoppie", kind = "ground",
     points = K.stoppiePerSec, input = "LMB (front brake) at speed" }
+BMX.RegisterTrick{ id = "nose_manual", name = "Nose Manual", kind = "ground",
+    points = K.noseManualPerSec, input = "lean forward (LMB + CTRL), let go of the brake, W / S trim (bmx_nose_manual)" }
 BMX.RegisterTrick{ id = "crank_grind", name = "Crank Grind", kind = "grind",
     points = G.pointsPerSec, input = "bunny hop onto a pipe, along it" }
 BMX.RegisterTrick{ id = "peg_grind", name = "Double Peg Grind", kind = "grind",

@@ -25,6 +25,12 @@ BMX = BMX or {}
 CreateClientConVar("bmx_flip_doubletap", "0", true, true,
     "BMX: 1 = a double-tap of W or S in the air is a flip (stops itself near a full turn); 0 = hold to rotate.")
 
+-- What LMB does (G02): "brake" (the front brake; with Ctrl, brake and lean
+-- forward) or "lean" (lean forward; with Ctrl, lean and brake). Userinfo, like
+-- the one above: sv_input.lua reads each rider's own.
+CreateClientConVar("bmx_lmb_mode", "brake", true, true,
+    "BMX: what left mouse does on the ground: brake = the front brake (with Ctrl, also lean forward); lean = lean forward (with Ctrl, also brake).")
+
 local shown = false     -- toggled by bmx_tricks
 local held  = false     -- +bmx_tricks
 
@@ -40,6 +46,7 @@ local RIDING = {
     { "Lean (steers)", "A / D" },
     { "Wheelie / manual", "RMB (weight back)" },
     { "Front brake", "LMB" },
+    { "Lean forward / nose manual", "LMB + CTRL (hold CTRL, let go of LMB); bmx_lmb_mode lean: LMB" },
     { "Bunny hop", "hold SPACE, release" },
     { "Sprint / tuck", "SHIFT / CTRL (tuck spins faster in the air)" },
 }

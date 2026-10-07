@@ -120,6 +120,13 @@ usually needs more lean, not more Kp.
 
 ### 5. Pitch: `bmx_pitch`
 
+Weight forward and the nose manual (`bmx_nose_manual`, off by default):
+`Pitch.leanShift` (units the mass centre moves forward, a gravity torque of
+m*g*shift), `noseAim` / `noseTrim` (where it aims, and W / S's share), `noseYank`
+(the yank that carries it, as a share of `torque`), `noseMinPitch` and
+`noseMinSpeed` (when it starts and lets go). Like the wheelie's, the hold settles
+short of its aim, so tune by the pitch it reaches, not the number written.
+
 Wheelies and stoppies. `Pitch.torque` is the rider's weight shift;
 `Pitch.holdKp`/`holdKd` are the hold assist that makes a wheelie last longer
 than 0.4 seconds.
@@ -133,6 +140,11 @@ toward 90 degrees makes wheelies unloseable.
 Terminal rotation rate is `accel / Air.damping`. Default is 15/1.5 = 10 rad/s,
 about 1.6 revolutions per second, so a backflip takes roughly 0.6 seconds. Tune
 against a jump you can actually reach on your test map.
+
+Off a vert wall (`Air.vertAngle`, 60 degrees, left going mostly up) A/D turn
+the bike about world up instead: `Air.vertYawRate` is how fast, `vertKp` and
+`vertKd` the PD that settles it on a half turn, `vertAimKp`/`vertAimMax` the
+landing aim, `spine*` the spine transfer. `bmx_air_assist 0` removes all of it.
 
 `bmx_autolevel 0` removes the descending-only roll assist. Do this once to feel
 how much of the forgiveness is coming from it, then set it where you want the

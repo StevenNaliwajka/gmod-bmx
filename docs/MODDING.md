@@ -371,6 +371,16 @@ it. The return value is ignored.
 *Server, notification* (G13). A bike was let down off a rack. `ply` is who did it by using
 it, or nil (the rack was removed, or a script released it).
 
+### `BMX_BikeLocked` (bike, ply)
+
+*Server, notification* (G13). A parked bike was locked to the world by the bike lock.
+
+### `BMX_BikeUnlocked` (bike, ply)
+
+*Server, notification* (G13). A lock was let go: by the owner getting on or physgunning
+it, a player with "BMX - Unlock Any Lock", the weapon's right click or a script (`ply` may
+be nil for a script).
+
 ### Scoring
 
 ### `BMX_TrickLanded` (ply, trick, points, bike)

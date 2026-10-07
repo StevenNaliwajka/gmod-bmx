@@ -282,3 +282,25 @@ BMX.Drawers.tandem = function(ent, H, lod, debug)
     ent.crankAngle = angle
 end
 
+--------------------------------------------------------------------------
+-- THE BIKE LOCK, drawn (G13, sv_lock.lua): a chain looped round the rear wheel and down to
+-- the ground, and a padlock where it closes. For every vehicle, whoever draws it: the
+-- bike's own Draw and the drawers above both call it when the bike's `Locked` is set.
+--------------------------------------------------------------------------
+function BMX.DrawLock(ent)
+    local H = BMX.Draw
+    if not H then return end
+    local C = ent:Cfg()
+    local fwd, up, right = ent:GetForward(), ent:GetUp(), ent:GetRight()
+    local half = C.Wheel.wheelbase * 0.5
+    local r = C.Wheel.radius
+    local hub = ent:LocalToWorld(Vector(-half, 0, 0))
+    local col = H.COL.chrome
+    -- The links: a ring in the wheel's plane, a little inside the tyre, not turning.
+    H.ring(hub + right * 3, fwd, up, r * 0.78, 0.9, col, 14)
+    -- ...and the chain from the ring to the ground, and a padlock at the join.
+    local foot = hub - up * (r + 1) + fwd * 2
+    local at = hub - up * (r * 0.78) + right * 3
+    H.tube(at, foot + right * 3, 0.9, col)
+    H.solid("box", at - up * 2, ent:GetAngles(), Vector(3.2, 2.2, 4), H.COL.part, H.MAT.satin)
+end

@@ -94,6 +94,9 @@ function ENT:SetupDataTables()
     self:NetworkVar("Bool",  3, "StandDown")
     -- The child seat, on or off (G11): the context-menu toggle on a bike that has one.
     self:NetworkVar("Bool",  4, "ChildSeat")
+    -- Locked to the world by a bike lock (G13, sv_lock.lua): a chain and a padlock are drawn.
+    -- Slot 12, not the next free one: the other vehicle work takes the low ones.
+    self:NetworkVar("Bool", 12, "Locked")
 
     -- Steer is networked because the fork and bars have to point somewhere the
     -- client cannot derive: it is an OUTPUT of the balance controller, not a

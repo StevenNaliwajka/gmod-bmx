@@ -466,6 +466,49 @@ a line or two; the rest is new files. What each taught:
   whole load is released when the bike's acceleration, measured over a window, passes a
   number. Which number is the one thing the plant cannot tell us; it is a registry field.
 
+## 6e. The oddballs (G13)
+
+The unicycle, penny-farthing, tandem and downhill bike, then a rack and a lock. Each
+took a small change to shared code (an optional field, one guard) and the rest is new
+files. What they taught the platform:
+
+- **A balance mode is allowed to be two inverted pendulums.** The single-track mode's
+  trick is that the front wheel's angle is derived from the lean. A unicycle has no front
+  wheel to derive and no second wheel to hold it fore and aft, so `sv_unicycle.lua`
+  balances roll and pitch each as `-assist * topple + Kp (target - angle) - Kd (rate)`, and
+  the fore-and-aft actuator is not faked at all: the fixed drive's torque at the tyre
+  patch pitches the body, which is what pedalling a unicycle is.
+- **Write a spring as a fraction of the plant's own gradient, not as a number.** The
+  engine measures the inertia; the offline plant approximates it (the unicycle's roll
+  inertia is 10,900 there and ~7,500 by hand). A spring of `hold * m g h / I` makes the
+  break-even assist `1 - hold` whatever the inertia is, so the same tuning stands on both,
+  and a test scales the inertia 30% either way to say so.
+- **The assist is one convar and the part of the toppling it switches on.** Scaling the
+  whole controller by the assist (what the bike does) leaves a rider with no authority at
+  assist 0: the lean target goes through the scaled spring and does nothing. The spring is
+  the rider's own legs and stays on; the assist is the feed-forward.
+- **A guard that a new vehicle walked into.** `Wheel.stepMax` refuses a compression rise of
+  more than 5 units in one substep, to stop a ledge being read as a spring. A spawned wheel
+  starts from zero compression, so a bike whose static sag is over 5 (the first DH numbers:
+  5.06) is refused its own weight every substep and sits on its hull: `comp 0, load 9,000
+  of 70,000`. Nothing flags it; the rest height looks right. The note in the registry and a
+  test (`dh: it rests ON ITS SPRINGS`) are the defence.
+- **A hull is built from the wheels.** `BMX.CollisionBoxes` put a box on each of two
+  identical wheels; a one-wheeled vehicle and a penny-farthing's two sizes needed it to ask
+  how many axles and how big. `Wheel.rearRadius` and a wheelbase of nothing are the two
+  words it learned.
+- **A header does not need a script.** A mass centre 62 units up and 18 behind the front
+  patch goes over under a ~0.3 g front brake on the same tyre model every bike rides on; the
+  `pennyfarthing` balance only decides that it is a crash and which way the rider goes.
+- **A second pair of legs is one number added inside one function.** The pedal drive's
+  push is `crankTorque * (1 - spin) * throttle`; the stoker's throttle is added to the
+  driver's, so two riders' torque sum through the same falling curve and the legs run out of
+  cadence at the same speed (a stronger start, not a higher top speed).
+- **A prop that carries a bike must switch the bike off.** Welding a bike to a car and
+  leaving its tyre model on shakes both; `ent.BMXRack` stops the physics step. The offline
+  shim records constraints rather than simulating them, because the rules (capacity, the
+  permission to unlock) are what is worth testing and they do not need a solver.
+
 ## 7. Roadmap
 
 | Phase | Deliverable | Status |

@@ -156,13 +156,18 @@ T.test("rack: a loaded bike is welded to the rack, set not to collide with it or
     T.eq(bike.st.speed, 123, "the physics step left it alone")
 end)
 
-T.test("rack: a bike that is ridden, on a rack already or not ours is refused", function()
+T.test("rack: a bike that is ridden, locked, fallen, on a rack already or not ours is refused", function()
     local sv, rack, bikeAt = scene()
     local E, R = sv.env, sv.env.BMX.Rack
     local ridden = bikeAt(-100)
     F.rider(sv, ridden)
     local ok, why = R.CanLoad(rack, ridden)
     T.ok(not ok and why:find("riding"), "ridden: " .. tostring(why))
+    local locked = bikeAt(-200)
+    local owner = sv:player("Owner")
+    T.ok(sv.env.BMX.Lock.Lock(locked, owner), "locked")
+    ok, why = R.CanLoad(rack, locked)
+    T.ok(not ok and why:find("locked"), "locked: " .. tostring(why))
     local on = bikeAt(-300)
     T.ok(R.Load(rack, on), "loaded")
     ok, why = R.CanLoad(rack, on)
@@ -260,6 +265,280 @@ T.test("rack: hooks fire for a bike put on and taken off", function()
     R.Load(rack, bike)
     R.Release(bike)
     T.eq(table.concat(log, ","), "on1,off", "in order")
+end)
+
+--------------------------------------------------------------------------
+-- The lock: who may do what
+--------------------------------------------------------------------------
+
+local function lockScene()
+    local sv, world = F.server()
+    local E, B = sv.env, sv.env.BMX
+    local cfg = B.ConfigFor(B.Bikes.stock)
+    local bike = F.bike(sv, classOf(sv, "stock"), E.Vector(0, 0, sv.world.groundZ + B.RestHeight(cfg)))
+    sv:run(1)
+    local owner = sv:player("Owner")
+    local other = sv:player("Other")
+    local admin = sv:player("Admin")
+    admin._admin = true
+    return sv, bike, owner, other, admin, world
+end
+
+T.test("lock: the privilege exists, with the admin default", function()
+    local sv = F.server()
+    local found
+    for _, p in ipairs(sv.env.BMX.Privileges) do if p.name == "BMX - Unlock Any Lock" then found = p end end
+    T.ok(found, "registered")
+    T.eq(found.min, "admin", "for admins")
+    T.eq(sv.env.BMX.Lock.PRIV, "BMX - Unlock Any Lock", "and the lock asks for that one")
+end)
+
+T.test("lock: a parked bike on the ground is locked to the world, by its owner", function()
+    local sv, bike, owner = lockScene()
+    local L = sv.env.BMX.Lock
+    local ok = L.Lock(bike, owner)
+    T.ok(ok, "locked")
+    T.ok(L.Of(bike), "it has a lock")
+    T.eq(bike.BMXLock.ownerSID, owner:SteamID64(), "the owner is the player who locked it, by SteamID64")
+    T.eq(welds(sv, bike, sv.env.game.GetWorld()), 1, "welded to the WORLD")
+    T.eq(bike:GetLocked(), true, "networked, so the chain is drawn")
+    T.eq(bike:GetStandDown(), true, "on its stand")
+end)
+
+T.test("lock permission: only the owner, a player with the privilege, or the console can unlock", function()
+    local sv, bike, owner, other, admin = lockScene()
+    local L = sv.env.BMX.Lock
+    L.Lock(bike, owner)
+    T.eq(L.CanUnlock(bike, owner), true, "the owner")
+    T.eq(L.CanUnlock(bike, other), false, "another player")
+    T.eq(L.CanUnlock(bike, admin), true, "an admin: BMX - Unlock Any Lock")
+    T.eq(L.CanUnlock(bike, nil), true, "the server console")
+    T.eq(L.CanUnlock(bike, sv.env.NULL), true, "a null player is the console too")
+    T.eq(L.IsOwner(bike, owner), true, "owner")
+    T.eq(L.IsOwner(bike, admin), false, "an admin is not the owner")
+    local unlocked = sv:player("Unlocked")
+    T.eq(L.CanUnlock(sv.env.ents.Create("bmx_base"), owner), false, "an unlocked bike has nothing to unlock")
+end)
+
+T.test("lock permission: CAMI decides when an admin mod is installed", function()
+    local sv, bike, owner, other, admin = lockScene()
+    local E, L = sv.env, sv.env.BMX.Lock
+    L.Lock(bike, owner)
+    -- A CAMI that gives "other" the privilege and takes it from "admin".
+    E.CAMI = { RegisterPrivilege = function() end,
+               PlayerHasAccess = function(ply, name, cb) cb(ply == other) end }
+    T.eq(L.CanUnlock(bike, other), true, "granted by CAMI")
+    T.eq(L.CanUnlock(bike, admin), false, "denied by CAMI, whatever IsAdmin says")
+    T.eq(L.CanUnlock(bike, owner), true, "the owner needs no privilege")
+end)
+
+T.test("lock: unlocking: refused for a stranger, with the owner's name; allowed for the owner and an admin", function()
+    local sv, bike, owner, other, admin = lockScene()
+    local L = sv.env.BMX.Lock
+    L.Lock(bike, owner)
+    local ok, why = L.Unlock(bike, other)
+    T.eq(ok, false, "a stranger cannot")
+    T.ok(why:find("Owner"), "and is told who: " .. tostring(why))
+    T.ok(L.Of(bike), "still locked")
+    T.eq(welds(sv, bike, sv.env.game.GetWorld()), 1, "still welded")
+    T.ok(L.Unlock(bike, admin), "an admin can")
+    T.ok(not L.Of(bike), "unlocked")
+    T.eq(welds(sv, bike, sv.env.game.GetWorld()), 0, "the weld is gone")
+    T.eq(bike:GetLocked(), false, "and not drawn locked")
+    L.Lock(bike, owner)
+    T.ok(L.Unlock(bike, owner), "the owner can")
+    local ok2, why2 = L.Unlock(bike, owner)
+    T.ok(not ok2 and why2:find("not locked"), "unlocking an unlocked bike: " .. tostring(why2))
+    L.Lock(bike, owner)
+    T.ok(L.Unlock(bike, other, true), "a script can force it")
+end)
+
+T.test("lock: a locked bike cannot be mounted by anyone but the owner, and the owner's E unlocks it", function()
+    local sv, bike, owner, other, admin = lockScene()
+    local L = sv.env.BMX.Lock
+    L.Lock(bike, owner)
+    bike:Use(other)
+    T.ok(not other:InVehicle(), "a stranger cannot get on")
+    T.ok(other._chat[#other._chat]:find("locked by Owner"), "and is told: " .. tostring(other._chat[#other._chat]))
+    T.ok(L.Of(bike), "it stays locked")
+    bike:Use(owner)
+    T.eq(bike:GetDriver(), owner, "the owner gets on")
+    T.ok(not L.Of(bike), "and it is unlocked by it, as with a key")
+    T.eq(welds(sv, bike, sv.env.game.GetWorld()), 0, "the weld is gone")
+end)
+
+T.test("lock: nobody can board a locked bike as a passenger either (BMX_CanMount is asked for both)", function()
+    local sv, bike, owner, other = lockScene()
+    local L = sv.env.BMX.Lock
+    L.Lock(bike, owner)
+    T.eq(sv.env.hook.Run("BMX_CanMount", other, bike), false, "refused for a stranger")
+    T.eq(sv.env.hook.Run("BMX_CanMount", owner, bike), nil, "the owner passes (and unlocks)")
+end)
+
+T.test("lock: the physgun: a stranger cannot pick it up; the owner and an admin can, and it lets go first", function()
+    local sv, bike, owner, other, admin = lockScene()
+    local E, L = sv.env, sv.env.BMX.Lock
+    L.Lock(bike, owner)
+    T.eq(E.hook.Run("PhysgunPickup", other, bike), false, "a stranger: no")
+    T.ok(L.Of(bike), "still locked")
+    T.eq(E.hook.Run("PhysgunPickup", owner, bike), nil, "the owner: yes")
+    T.ok(not L.Of(bike), "and the lock let go first")
+    L.Lock(bike, owner)
+    T.eq(E.hook.Run("PhysgunPickup", admin, bike), nil, "an admin: yes")
+    T.ok(not L.Of(bike), "and unlocked")
+    T.eq(E.hook.Run("PhysgunPickup", other, bike), nil, "an unlocked bike is anybody's")
+end)
+
+T.test("lock: the tool gun, the property menu and the gravity gun are shut to a stranger too", function()
+    local sv, bike, owner, other, admin = lockScene()
+    local E, L = sv.env, sv.env.BMX.Lock
+    L.Lock(bike, owner)
+    T.eq(E.hook.Run("CanTool", other, { Entity = bike }), false, "the tool gun")
+    T.eq(E.hook.Run("CanTool", owner, { Entity = bike }), nil, "...not for the owner")
+    T.eq(E.hook.Run("CanProperty", other, "remove", bike), false, "properties")
+    T.eq(E.hook.Run("CanProperty", admin, "remove", bike), nil, "...not for an admin")
+    T.eq(E.hook.Run("GravGunPickupAllowed", other, bike), false, "the gravity gun")
+    T.eq(E.hook.Run("GravGunPunt", owner, bike), false, "and nobody punts it")
+    T.eq(E.hook.Run("CanTool", other, { Entity = sv.env.ents.Create("prop_physics") }), nil, "other props are not ours to guard")
+end)
+
+T.test("lock: it needs a bike with nobody on it, standing on the world, upright, not on a rack", function()
+    local sv, bike, owner = lockScene()
+    local E, L = sv.env, sv.env.BMX.Lock
+    local ok, why = L.CanLock(E.ents.Create("prop_physics"), owner)
+    T.ok(not ok and why:find("not a bike"), "a prop: " .. tostring(why))
+    local ride = F.rider(sv, bike)
+    ok, why = L.CanLock(bike, owner)
+    T.ok(not ok and why:find("riding"), "ridden: " .. tostring(why))
+    ride:ExitVehicle()
+    -- in the air: nothing to lock it to
+    local cfg = E.BMX.ConfigFor(E.BMX.Bikes.stock)
+    local up = F.bike(sv, classOf(sv, "stock"), E.Vector(500, 0, sv.world.groundZ + 200))
+    ok, why = L.CanLock(up, owner)
+    T.ok(not ok and why:find("nothing to lock"), "in the air: " .. tostring(why))
+    -- fallen
+    local down = F.bike(sv, classOf(sv, "stock"), E.Vector(-500, 0, sv.world.groundZ + 7))
+    F.layDown(sv, down)
+    sv:run(2)
+    ok, why = L.CanLock(down, owner)
+    T.ok(not ok and why:find("fallen"), "fallen: " .. tostring(why))
+    -- on a rack
+    local rack = E.ents.Create("bmx_bike_rack") rack:SetPos(E.Vector(0, 300, 6)) rack:Spawn()
+    E.BMX.Rack.Load(rack, bike)
+    ok, why = L.CanLock(bike, owner)
+    T.ok(not ok and why:find("rack"), "on a rack: " .. tostring(why))
+    E.BMX.Rack.Release(bike)
+    T.ok(L.CanLock(bike, owner), "back on the ground: fine")
+    T.ok(L.Lock(bike, owner), "locked")
+    ok, why = L.Lock(bike, owner)
+    T.ok(not ok and why:find("already"), "twice: " .. tostring(why))
+end)
+
+T.test("lock: bmx_allow_bikes 0 switches it off with the rest of the bikes", function()
+    local sv, bike, owner = lockScene()
+    local E, L = sv.env, sv.env.BMX.Lock
+    E.GetConVar("bmx_allow_bikes"):SetString("0")
+    local ok, why = L.Lock(bike, owner)
+    T.ok(not ok and why:find("switched off"), "no lock: " .. tostring(why))
+    T.eq(E.hook.Run("PlayerGiveSWEP", owner, "weapon_bmx_lock"), false, "no weapon given")
+    T.eq(E.hook.Run("PlayerSpawnSWEP", owner, "weapon_bmx_lock"), false, "nor spawned")
+    E.GetConVar("bmx_allow_bikes"):SetString("1")
+    T.eq(E.hook.Run("PlayerGiveSWEP", owner, "weapon_bmx_lock"), nil, "back on: fine")
+    T.eq(E.hook.Run("PlayerGiveSWEP", owner, "weapon_pistol"), nil, "and other weapons are not ours")
+end)
+
+--------------------------------------------------------------------------
+-- The weapon
+--------------------------------------------------------------------------
+
+-- A SWEP instance held by `ply`, on the server: the table the engine would copy.
+local function swep(sv, ply)
+    local S = sv.sweps.weapon_bmx_lock
+    local w = setmetatable({ _owner = ply, _sounds = {} }, { __index = S })
+    function w:GetOwner() return self._owner end
+    function w:SetNextPrimaryFire() end
+    function w:SetNextSecondaryFire() end
+    function w:EmitSound(n) self._sounds[#self._sounds + 1] = n end
+    function w:SetHoldType() end
+    return w
+end
+
+local function aim(sv, ply, bike)
+    ply:SetPos(bike:GetPos() + sv.env.Vector(-60, 0, 0))
+    ply._eyeTrace = { Hit = true, Entity = bike, HitPos = bike:GetPos() + sv.env.Vector(-8, 0, 20) }
+end
+
+T.test("weapon: it is a SWEP under BMX with the tool gun's base-game models", function()
+    local sv = F.server()
+    local S = sv.sweps.weapon_bmx_lock
+    T.ok(S, "loaded")
+    T.eq(S.Category, "BMX", "under BMX")
+    T.eq(S.Spawnable, true, "spawnable")
+    T.eq(S.PrintName, "Bike Lock", "its name")
+    T.ok(S.ViewModel:find("^models/weapons/"), "a base-game model")
+    T.ok(S.PrimaryAttack and S.SecondaryAttack and S.Reload, "left, right and reload")
+    T.eq(#sv.errors, 0, table.concat(sv.errors, " | "))
+end)
+
+T.test("weapon: left click locks the bike aimed at, right click unlocks it: the owner's, not a stranger's", function()
+    local sv, bike, owner, other, admin = lockScene()
+    local L = sv.env.BMX.Lock
+    local w = swep(sv, owner)
+    aim(sv, owner, bike)
+    w:PrimaryAttack()
+    T.ok(L.Of(bike), "locked by the left click")
+    T.ok(owner._chat[#owner._chat]:find("locked"), "and the holder is told: " .. tostring(owner._chat[#owner._chat]))
+    local ws = swep(sv, other)
+    aim(sv, other, bike)
+    ws:SecondaryAttack()
+    T.ok(L.Of(bike), "a stranger's right click does nothing")
+    T.ok(other._chat[#other._chat]:find("cannot unlock"), "and says so: " .. tostring(other._chat[#other._chat]))
+    ws:PrimaryAttack()
+    T.ok(other._chat[#other._chat]:find("already locked"), "left click on a locked bike: " .. tostring(other._chat[#other._chat]))
+    ws:Reload()
+    T.ok(other._chat[#other._chat]:find("Owner"), "reload says who locked it: " .. tostring(other._chat[#other._chat]))
+    local wa = swep(sv, admin)
+    aim(sv, admin, bike)
+    wa:SecondaryAttack()
+    T.ok(not L.Of(bike), "an admin's right click unlocks it")
+    w:PrimaryAttack()
+    w:SecondaryAttack()
+    T.ok(not L.Of(bike), "and the owner's")
+end)
+
+T.test("weapon: aimed at nothing, or at a bike too far away, it says so and does nothing", function()
+    local sv, bike, owner = lockScene()
+    local L = sv.env.BMX.Lock
+    local w = swep(sv, owner)
+    owner._eyeTrace = { Hit = false }
+    w:PrimaryAttack()
+    T.ok(owner._chat[#owner._chat]:find("aim at"), "no target: " .. tostring(owner._chat[#owner._chat]))
+    owner:SetPos(bike:GetPos() + sv.env.Vector(-600, 0, 0))
+    owner._eyeTrace = { Hit = true, Entity = bike, HitPos = bike:GetPos() }
+    w:PrimaryAttack()
+    T.ok(not L.Of(bike), "too far")
+end)
+
+--------------------------------------------------------------------------
+-- The client: the chain and the padlock
+--------------------------------------------------------------------------
+
+T.test("client: a locked bike is drawn with a chain and a padlock, an unlocked one is not", function()
+    local sv, bike, owner, other, admin, world = lockScene()
+    local cl = F.client(world)
+    local cb = cl:clientEntity("bmx_base")
+    cb:SetPos(bike:GetPos())
+    cb:SetAngles(bike:GetAngles())
+    local function beams(locked)
+        cb._nw.Locked = locked
+        cl.lines, cl.beams, cl.drawnModels, cl.boxes3d = 0, {}, 0, 0
+        cl.drawnCS = {}
+        cb:Draw()
+        return #cl.beams + (cl.drawnModels or 0) + #(cl.drawnCS or {})
+    end
+    local free = beams(false)
+    local chained = beams(true)
+    T.ok(chained > free, "more is drawn when it is locked: " .. chained .. " against " .. free)
 end)
 
 T.test("client: the rack is drawn: a post and two cradles, darker when loaded", function()

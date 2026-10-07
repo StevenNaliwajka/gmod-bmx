@@ -52,10 +52,10 @@ Then, in game:
 ```
 /bike (in chat)      a window to spawn any bike or park piece (also bmx_menu)
 bmx_spawn            spawn a bike where you are looking
-bmx_spawn cruiser    the 24-inch cruiser (or: mini, road, fixie, city, stock)
+bmx_spawn cruiser    the 24-inch cruiser (or: mini, road, fixie, city, unicycle, penny, tandem, dh, stock)
 ```
 
-or find **BMX** in the spawn menu's Entities tab. There are six bikes: the
+or find **BMX** in the spawn menu's Entities tab. There are ten bikes: the
 20-inch **BMX**, the 24-inch **BMX Cruiser** (longer, heavier, faster at the
 top end, slower off the line), the 16-inch **Mini BMX** (short, light and
 quick, with a low top speed), a 700c **Road Bike** (eight gears, shifted with
@@ -64,7 +64,15 @@ a **Fixie** (the cranks are locked to the rear wheel: S skids, S at a standstill
 rolls it backwards, A/D at a standstill is a trackstand; no front brake unless
 `bmx_fixie_frontbrake 1`) and a **City Bike** (upright, heavy, coaster brake, a
 basket that keeps small props in while you ride gently and throws them out on a
-hop or a crash, and a child seat on the context menu). Press `E` on the bike to
+hop or a crash, and a child seat on the context menu), a **Unicycle** (one wheel,
+a fixed gear and no brake: W / S pedal forward and back to stay under yourself, A / D
+lean, the mouse twists you round, and `bmx_unicycle_assist` says how much of the balance
+is done for you; idle and hop score), a **Penny-Farthing** (a 26-unit front wheel with the
+pedals on its hub, the rider up high, and a hard front brake at speed takes you over the
+bars), a **Tandem** (E on the back takes the second seat; both pedalling, and the torques
+add) and a long-travel **Downhill Bike**. A **Bike Rack** (BMX > Bikes in the spawn menu)
+welds to a car and holds two bikes, and the **Bike Lock** weapon locks a parked bike to the
+ground: only its owner, or an admin, can unlock it. Press `E` on the bike to
 get on, or `E` on the back of a ridden BMX or cruiser to stand on its pegs behind
 the rider (`bmx_passengers 0` turns that off); `E` again to get off, beside it.
 Get off at a slow stop and the kickstand

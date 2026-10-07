@@ -1316,6 +1316,7 @@ function M.Realm(world, which)
     function Ply:PrintMessage(_, s) self:ChatPrint(s) end
     function Ply:GetEyeTrace() return self._eyeTrace or { Hit = false } end
     function Ply:EyeAngles() return self._eyeAngles or Angle() end
+    function Ply:GetShootPos() return self:GetPos() + Vector(0, 0, 64) end
     -- Bones: the seated skeleton in lib/skeleton.lua, posed in the seat.
     -- Manipulations compose as the engine's do, and are also RECORDED by
     -- bone name (ply._bones) for tests that only care what was asked for.
@@ -1654,6 +1655,16 @@ function M.Realm(world, which)
         env.ENT = nil
     end
 
+    -- Load a scripted weapon the way the engine does (G13: the bike lock): a fresh SWEP,
+    -- the realm's entry file, kept as R.sweps[class].
+    function R:loadSwep(class)
+        env.SWEP = { Folder = "weapons/" .. class, Primary = {}, Secondary = {} }
+        self:runFile("weapons/" .. class .. (SERVER and "/init.lua" or "/cl_init.lua"))
+        self.sweps = self.sweps or {}
+        self.sweps[class] = env.SWEP
+        env.SWEP = nil
+    end
+
     -- Load a toolgun mode the way gmod_tool does: a fresh TOOL table, the
     -- file run, the table kept as R.tools[name].
     function R:loadStool(name)
@@ -1684,6 +1695,7 @@ function M.Realm(world, which)
         self:loadEntity("bmx_filmer_cam")
         self:loadEntity("bmx_park_piece")
         self:loadEntity("bmx_bike_rack")
+        self:loadSwep("weapon_bmx_lock")
         self:loadStool("bmx_park")
         for _, fn in ipairs(M.EXTRA_BOOT) do fn(self, env) end
         env.hook.Run("InitPostEntity")

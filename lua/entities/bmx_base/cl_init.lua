@@ -529,6 +529,7 @@ function ENT:Draw()
     local drawer = bike.drawer and BMX.Drawers and BMX.Drawers[bike.drawer]
     if drawer then
         drawer(self, BMX.Draw, lod, debug)
+        if BMX.DrawLock and self:GetLocked() then BMX.DrawLock(self) end
         return
     end
 
@@ -906,6 +907,9 @@ function ENT:Draw()
             tube(pan - fwdW * 3 + rightW * (4 * side) - upW * 1, rPosD + rightW * (2.5 * side), 0.8, COL_CHROME)
         end
     end
+
+    -- LOCKED to the world (G13, sv_lock.lua): a chain round the rear wheel and a padlock.
+    if BMX.DrawLock and self:GetLocked() then BMX.DrawLock(self) end
 
     if self:GetStandDown() then
         local from = bb - rightW * (2 * k)

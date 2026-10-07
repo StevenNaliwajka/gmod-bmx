@@ -94,7 +94,9 @@ ok 'python3 -c "import json,sys; d=json.load(open(sys.argv[1]))[\"description\"]
 ok 'grep -q "workshop/description.bbcode" "$ROOT/tools/package-workshop.sh"' "the kit ships the page text, ready to paste"
 # STEAM'S TABLES. Steam turns every line break inside a [table] into an empty
 # row, so a table goes on one line; a key written as a bare [ or ] reads as a
-# tag and breaks its row, so it goes in [noparse]; and the table has a header.
+# tag and breaks its row (and [noparse] round one does not close: it swallowed
+# the rest of the table on the live page, 2026-10-07), so a key is named in
+# words; and the table has a header.
 ok 'python3 -c "
 import re,sys
 s=open(sys.argv[1]).read()
@@ -102,11 +104,10 @@ ts=re.findall(r\"\[table[^\]]*\]([\s\S]*?)\[/table\]\", s)
 ok=bool(ts)
 for t in ts:
     ok = ok and \"\n\" not in t and t.startswith(\"[tr][th]\")
-    plain = re.sub(r\"\[noparse\][\s\S]*?\[/noparse\]\", \"\", t)
-    plain = re.sub(r\"\[/?(tr|td|th|b|i|u)\]\", \"\", plain)
+    plain = re.sub(r\"\[/?(tr|td|th|b|i|u)\]\", \"\", t)
     ok = ok and \"[\" not in plain and \"]\" not in plain
 sys.exit(0 if ok else 1)" "$ROOT/workshop/description.bbcode"' \
-   "the Controls table is one line, with a header, and no stray [ ] (Steam renders it cleanly)"
+   "the Controls table is one line, with a header, and no [ ] or [noparse] in a cell (Steam renders it cleanly)"
 
 # THE CONTROLS TABLE MATCHES THE INPUT CODE. Every key sv_input.lua reads has its
 # row in the page's Controls table, so documentation that is already wrong cannot ship.

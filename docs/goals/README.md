@@ -66,12 +66,18 @@ and every bot routine went with them.
 On by default but new: `bmx_wheel_stiction` (G04), `bmx_air_assist` (G06),
 `bmx_ragmod` (G07), the bell and water (G18).
 
-**What no agent could verify.** The headless cases for everything above were
-written without a server. The first runs found failures (slopes, wedges, curbs,
-park quarter pipe, tailwhip landings), and the CI fixer is working through them
-on `main`. Nothing has been looked at in a game client: the IK poses, the board
-rider, the replay stand-ins, the menus and the 3D2D signs all need eyes. Feel
-tuning (`docs/TUNING.md`) needs a person on the test server.
+**On the real server.** The headless suite is green on `main` (pipeline 1015,
+856e3e1): 165 passed, 0 failed, and 27 cases marked `wip`, each with a comment
+citing the CI run that showed the feature unfinished. That list is the next
+work: slope hold creeps on 10 and 20 degrees, the 75 degree drop-in, the
+`@mini`/`@road`/`@fixie` 45 degree wedge, the city wheelie, Air 180 / Spine
+Transfer, tandem steering and torque, the skates' soul grind pays the wrong
+trick, tap-ollie height, board bad-catch bail, scooter tailwhip and curbs, and
+the dirt bike's suspension on a big drop. The bot cases moved to
+`gmod-bmx-mode`, which has no headless CI yet. Nothing has been looked at in a
+game client: the IK poses, the board rider, the replay stand-ins, the menus and
+the 3D2D signs all need eyes. Feel tuning (`docs/TUNING.md`) needs a person on
+the test server.
 
 **Waiting on the owner:**
 

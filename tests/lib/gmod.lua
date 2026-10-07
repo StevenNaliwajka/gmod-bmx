@@ -624,6 +624,43 @@ function M.Realm(world, which)
         GetMap = function() return "gm_flatgrass" end,
         MaxPlayers = function() return 8 end,
         ConsoleCommand = function(s) R.log[#R.log + 1] = "console: " .. s end,
+        -- The world entity (G13: the lock welds a bike to it). Made on first use, and
+        -- kept out of ents.GetAll like the engine's own.
+        GetWorld = function()
+            if not R.worldEnt then
+                local w = R.makeEntity("worldspawn")
+                for i, e in ipairs(R.ents) do if e == w then table.remove(R.ents, i) break end end
+                R.worldEnt = w
+            end
+            return R.worldEnt
+        end,
+    }
+    -- CONSTRAINTS (G13: the rack and the lock weld things). Recorded, not simulated: a
+    -- weld here is an entity that says what it joins and can be removed, which is all the
+    -- rules ask of it. The tests that follow a welded bike move it themselves.
+    R.constraints = {}
+    local function constraintOf(kind)
+        return function(a, b, ...)
+            if not (env.IsValid(a) or a == (R.worldEnt or {})) then return nil end
+            local c = R.makeEntity("phys_constraint")
+            for i, e in ipairs(R.ents) do if e == c then table.remove(R.ents, i) break end end
+            c._kind, c._a, c._b = kind, a, b
+            R.constraints[#R.constraints + 1] = c
+            return c
+        end
+    end
+    env.constraint = {
+        Weld = constraintOf("weld"),
+        NoCollide = constraintOf("nocollide"),
+        -- Every live constraint on an entity, of a kind (or any).
+        Find = function(a, b, kind)
+            local out = {}
+            for _, c in ipairs(R.constraints) do
+                if not c._removed and (c._a == a or c._b == a) and (b == nil or c._a == b or c._b == b)
+                    and (kind == nil or c._kind == kind) then out[#out + 1] = c end
+            end
+            return out
+        end,
     }
     local JSON = require("lib.json")
     env.util.TableToJSON = JSON.encode
@@ -832,6 +869,15 @@ function M.Realm(world, which)
         end end end
         return lo, hi
     end
+    function Ent:IsWorld() return self._class == "worldspawn" end
+    function Ent:SetCollisionGroup(g) self._group = g end
+    -- The closest point of the entity's box to a point (the model's bounds, here).
+    function Ent:NearestPoint(p)
+        local l = self:WorldToLocal(p)
+        local mn, mx = self:OBBMins(), self:OBBMaxs()
+        return self:LocalToWorld(Vector(math.max(mn.x, math.min(mx.x, l.x)),
+            math.max(mn.y, math.min(mx.y, l.y)), math.max(mn.z, math.min(mx.z, l.z))))
+    end
     function Ent:Remove()
         if self._removed then return end
         if self.OnRemove then self:OnRemove() end
@@ -971,6 +1017,8 @@ function M.Realm(world, which)
         end
         return makeBody(self, boxes)
     end
+    -- A prop that takes its model's bounds as its body (G13: the bike rack's plate).
+    function Ent:PhysicsInit() return makeBody(self, { { self:OBBMins(), self:OBBMaxs() } }) end
     function Ent:EnableCustomCollisions() end
     function Ent:GetPhysicsObject() return self._phys or INVALID_PHYS end
     function Ent:StartMotionController() self._controller = true end
@@ -1635,6 +1683,7 @@ function M.Realm(world, which)
         self:loadEntity("bmx_test_solid")
         self:loadEntity("bmx_filmer_cam")
         self:loadEntity("bmx_park_piece")
+        self:loadEntity("bmx_bike_rack")
         self:loadStool("bmx_park")
         for _, fn in ipairs(M.EXTRA_BOOT) do fn(self, env) end
         env.hook.Run("InitPostEntity")

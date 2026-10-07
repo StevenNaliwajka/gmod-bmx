@@ -188,11 +188,12 @@ A vehicle that says nothing gets: `balance = "none"`, `drive = { kind = "none" }
 | `id` | Lower-case letters, digits and `_`. Becomes the class `bmx_<id>`. |
 | `family` | `"bike"`, `"board"`, `"skates"`, `"scooter"` or `"moto"`. Decides the spawn menu heading (Bikes, Boards, Scooters, Motor; skates are under Boards) and which `bmx_allow_*` setting can switch it off. |
 | `wheels` | A list of wheels, or a function of the config returning one. At least one, at most eight. See below. |
-| `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (reserved for the skateboard; runs as `none`, with a message, until its module exists), or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
-| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "coaster" }` (the same, a coaster brake: freewheeling, S is the brake and, with the `bike_rearonly` map, that is all there is), `{ kind = "fixed" }` (a fixed gear, below), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", ... }` (reserved for the board) or `{ kind = "none" }`. `pedal`, `fixed`, `coaster` and `throttle` need at least one wheel with `drive = true`. |
-| `seats` | `{ rider = {...}, pegs = {...}, child = {...} }` (G11): the vehicle's seats, each `{ model, offset, angles, massFactor }` with every key optional (an empty table is all defaults). `rider` is always there; omitted, it is the config's `Chassis.seatOffset` and `seatAngles`. `pegs` seats a second player on the rear pegs, `child` in a child seat. `offset` may be a `Vector` or a function of the config (so a seat can follow a frame's size); `massFactor` is the passenger's mass as a fraction of the bike's own `Chassis.mass` (default 0.6 on the pegs, 0.25 in the child seat). The old list form, `{ { model, offset, angles } }`, is still the rider's seat. Checked at registration: an unknown seat or key, a bad type, a `massFactor` outside 0-2. See "Passengers" below. |
-| `input` | An id in `BMX.InputMaps`: `"bike"`, `"drive"`, `"road"`, `"bike_rearonly"`, or one you register. |
-| `pose` | An id in `BMX.PoseSets` (the rider's pose on the client): `"bike"`, `"seated"`, `"road"` (tucked over the drops) or `"upright"`. |
+| `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"unicycle"` (G13: exactly one wheel, balanced on two axes by pedalling and leaning, with `bmx_unicycle_assist`), `"pennyfarthing"` (G13: the single-track mode with the header on its pitch; one front and one rear wheel), `"board"` (reserved for the skateboard; runs as `none`, with a message, until its module exists), or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
+| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "coaster" }` (the same, a coaster brake: freewheeling, S is the brake and, with the `bike_rearonly` map, that is all there is), `{ kind = "fixed" }` (a fixed gear, below; `reverse = true` makes S pedal backwards at any speed instead of skidding, which is a unicycle's only brake), `{ kind = "front-direct" }` (G13: the pedal drive on whichever wheel is the drive wheel, the front's, for a penny-farthing), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", ... }` (reserved for the board) or `{ kind = "none" }`. `pedal`, `fixed`, `coaster`, `front-direct` and `throttle` need at least one wheel with `drive = true`. |
+| `seats` | `{ rider = {...}, pegs = {...}, child = {...} }` (G11): the vehicle's seats, each `{ model, offset, angles, massFactor, pedals }` with every key optional (an empty table is all defaults). `rider` is always there; omitted, it is the config's `Chassis.seatOffset` and `seatAngles`. `pegs` seats a second player on the rear pegs, `child` in a child seat. `offset` may be a `Vector` or a function of the config (so a seat can follow a frame's size); `massFactor` is the passenger's mass as a fraction of the bike's own `Chassis.mass` (default 0.6 on the pegs, 0.25 in the child seat). The old list form, `{ { model, offset, angles } }`, is still the rider's seat. `pedals = true` (G13) says the person in that seat pedals too, and their torque adds to the driver's (a tandem's stoker; see "The odd ones" below). Checked at registration: an unknown seat or key, a bad type, a `massFactor` outside 0-2. See "Passengers" below. |
+| `input` | An id in `BMX.InputMaps`: `"bike"`, `"drive"`, `"road"`, `"bike_rearonly"`, `"unicycle"`, `"penny"`, or one you register. |
+| `drawer` | An id in `BMX.Drawers` (`cl_oddbikes.lua`, G13): the vehicle draws itself in code instead of the stock bike's shape, handed the entity's own drawing primitives (`BMX.Draw`: `tube`, `joint`, `solid`, `ring`, the wheel and the axle trace). Shipped: `"unicycle"`, `"pennyfarthing"`, `"tandem"`. A drawer records `ent.ikTargets` (`rFoot`, `lFoot`, `rHand`, `lHand`) for the rider's IK. |
+| `pose` | An id in `BMX.PoseSets` (the rider's pose on the client): `"bike"`, `"seated"`, `"road"` (tucked over the drops), `"upright"` or `"unicycle"`. |
 | `tricks` | `"all"` or a list of registered trick ids. Limits what is scored from motion: the flips and turns, the held wheelie and stoppie, and registered custom ticks. |
 | `grindPoints` | `false` (cannot grind) or `{ crank = Vector or fn(cfg), pegs = { y, z, x = { ... } } or fn(cfg) }`: where a pipe is looked for and ridden on, and where the pegs are on an edge. |
 | `physics`, `bones`, and every appearance field above | As for a bike. |
@@ -244,6 +245,42 @@ Set `physics = { Drive = { fixedGear = true } }` too: it is the config's switch 
 "the wheel has no freewheel floor". Give it the `bike_rearonly` input map and LMB does
 nothing on the ground, unless the server turns `bmx_fixie_frontbrake` on. Two tricks
 only a fixie earns, `fakie` and `trackstand` (paid per second, `BMX.Fixie.Tick`).
+
+**The odd ones** (G13: the unicycle, penny-farthing, tandem, downhill bike, rack and lock).
+What each added to the platform, for anyone writing the next:
+
+- *A one-wheeled vehicle* is `wheels = { { pos = Vector(0, 0, 0), drive = true } }` with
+  `balance = "unicycle"` and `Wheel.wheelbase = 0` (the hull then has one wheel box, not two on
+  top of each other). One wheel carries all the weight, so say `Wheel.loadShare = 1` (the
+  fraction one wheel carries at rest, default 0.5: it sets the rest height) and a spring to match.
+  The balance is an inverted pendulum on two axes: `alpha = -assist * topple + Kp (target - angle)
+  - Kd (rate)` with the spring a *fraction* (`Unicycle.holdRoll`) of the toppling gradient
+  `m g h / I`, so the break-even assist is `1 - hold` at any inertia the engine measures. The
+  fore-and-aft balance is the real thing, the fixed drive's torque at the patch pitching the body;
+  the mouse's yaw (`inp.mouseX`, from the usercmd) twists it round. `bmx_unicycle_assist` (0..1,
+  default 0.6) is the share of gravity's toppling cancelled for the rider.
+- *Two wheels of different sizes* is a per-wheel `radius` and `Wheel.rearRadius` for the hull
+  (the rear axle sits `radius - rearRadius` lower on the chassis); a wheel's flywheel scales with
+  its radius squared. **The sag must be under `Wheel.stepMax`** (default 5): a wheel's compression
+  may rise at most that much in one substep, and a spawned wheel starts from none, so a bike that
+  sags more than it sits on its hull. Long-travel bikes raise `stepMax` (half the radius is the
+  tallest step a wheel rolls onto).
+- *A drive on the front wheel* is `drive = { kind = "front-direct" }` with `drive = true` on the
+  front wheel: the pedal drive acts on "the first drive wheel", not "the rear".
+- *A header* is physics: a mass centre 62 units up and 18 behind the front patch goes over under
+  a front brake harder than ~0.3 g. The `pennyfarthing` balance only decides it is a crash
+  (`Penny.headerBrake`, `headerSpeed`, `headerPitch`), as reason `"header"` with a forward throw
+  (`ent.crashBoost`, added once to the crash's throw).
+- *A second pair of legs* is a seat with `pedals = true`: `BMX.Tandem.Push(ent, inp)` adds the
+  stoker's throttle (`inp.paxThrottle`, 0..1, from their usercmd) to the driver's inside the pedal
+  drive, so the torques sum through the one falling curve. A passenger's keys are read for nothing
+  else: the front rider steers.
+- *A racked or locked bike* does not simulate: `ent.BMXRack` stops `BMX.PhysicsStep` at its top.
+  `BMX.Rack` (`sv_rack.lua`) and `BMX.Lock` (`sv_lock.lua`) are the rules; the entity
+  `bmx_bike_rack` and the weapon `weapon_bmx_lock` are shells over them. `BMX.Lock.CanUnlock(bike,
+  ply)` is the one permission question: the owner, a player with the CAMI privilege "BMX - Unlock
+  Any Lock", or the console. The offline shim records constraints (`constraint.Weld`,
+  `NoCollide`, `game.GetWorld`) rather than simulating them.
 
 **Server settings.** `bmx_allow_bikes`, `bmx_allow_boards`, `bmx_allow_scooters`
 and `bmx_allow_motor` (default 1; Options > BMX > Server > Vehicles) switch a
@@ -319,8 +356,20 @@ the crash with your own (a deathrun server's opinion of what a crash is).
 
 *Server, notification.* The crash is going ahead (no `BMX_Crash` hook vetoed
 it): fired before the rider is thrown, while they are still aboard, so a log
-or a server's stats can record why they came off. The return value is ignored.
+or a server's stats can record why they came off (`reason` is `"angle"`, `"sideways"`,
+`"impact"`, `"tipped"`, or `"header"`: a penny-farthing's rider over the bars). The
+return value is ignored.
 The trick bot uses it to log its own crashes.
+
+### `BMX_BikeRacked` (bike, rack, slot)
+
+*Server, notification* (G13). A bike was put in a bike rack's slot (1 or 2) and welded to
+it. The return value is ignored.
+
+### `BMX_BikeUnracked` (bike, rack, ply)
+
+*Server, notification* (G13). A bike was let down off a rack. `ply` is who did it by using
+it, or nil (the rack was removed, or a script released it).
 
 ### Scoring
 

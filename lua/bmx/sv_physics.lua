@@ -264,6 +264,11 @@ function BMX.PhysicsStep(ent, phys, dt)
     local wheels = ent.wheels
     if not st or not inp or not wheels then return end
 
+    -- A BIKE ON A RACK OR LOCKED (G13) is a prop on the car or on the world: it welds
+    -- to its carrier through the constraint system, and running the tyre model against
+    -- a car body it is bolted to would only shake the pair of them.
+    if ent.BMXRack then phys:Wake() return end
+
     local hasDriver = IsValid(ent:GetDriver())
 
     ----------------------------------------------------------------------

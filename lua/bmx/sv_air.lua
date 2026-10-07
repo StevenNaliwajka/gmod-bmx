@@ -235,7 +235,13 @@ function BMX.ScoreAir(st)
     end
 
     -- Frame and bar spins, poses, and the compounds they make (sv_tricks.lua).
-    if BMX.ScoreExtras then return BMX.ScoreExtras(st, out) end
+    if BMX.ScoreExtras then out = BMX.ScoreExtras(st, out) end
+
+    -- Every trick of this landing says how long the bike was up, so a score
+    -- table (sv_scores.lua) can keep "biggest air" without a second hook. The
+    -- table is the same shape it always was, with one more field.
+    for _, o in ipairs(out) do o.air = st.airTime or 0 end
+
     return out
 end
 

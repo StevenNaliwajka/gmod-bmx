@@ -61,3 +61,36 @@ list, and no editor.
 
 Model work needs a person with Blender time, or a commission. The API needs a
 freeze: from then on, a breaking change needs a major version.
+
+## Status (2026-10-07)
+
+The public hooks and the guide are done; models, the licence change, the
+example addon and the editor are not started (out of this change's scope).
+
+- **Hooks routed** to stable public names, old ones kept as aliases for one
+  version, fired right after the new ones: `BMX_Mounted(ply, bike)`,
+  `BMX_Dismounted(ply, bike)`, `BMX_TrickLanded(ply, trick, points, bike)` (once
+  per trick), `BMX_ComboBanked(ply, chain, total)`, `BMX_ComboBailed(ply,
+  chain)`, `BMX_CanSpawn(ply, bikeId)`, `BMX_CanMount(ply, bike)`. Fired from
+  `entities/bmx_base/init.lua`, `sv_seat.lua` and `sv_combo.lua`.
+- **`BMX_CanMount` is a breaking change**: same name, arguments were `(bike,
+  ply)`, now `(ply, bike)`. It cannot be an alias. Said so in the guide.
+- **`BMX_RiderCrashed`** is documented as pending and deliberately not fired
+  here (another change adds it). `tests/test_hooks_doc.lua` allows it until
+  then, and fails the day it is fired without leaving its `PENDING` list.
+- **`docs/MODDING.md`**: registering a bike (every registry field, `physics`
+  overrides and what they imply), the hooks list with arguments and realms,
+  deprecated aliases, the commands for server owners. It says
+  `BMX.RegisterTrick` (`sh_tricks.lua`, being built elsewhere) will be the trick
+  API, and gets a section when it lands.
+- **Tests** (`tests/test_hooks_doc.lua`): every documented hook is fired somewhere
+  in `lua/`, every `BMX_` hook fired is documented, and each public hook is
+  exercised with its documented arguments (including both vetoes and that the
+  old names still fire).
+- Also fixed on the way: `sv_test.lua`'s `ShutDown` listener returned a boolean,
+  which ends the hook chain and could have stopped other `ShutDown` listeners.
+
+Left: the licence decision, real models, the example vehicle addon and its CI
+job, `bmx_editor`, and the trick section of MODDING.md once `RegisterTrick`
+exists. The API freeze (a breaking change needs a major version) starts at the
+release that ships this.

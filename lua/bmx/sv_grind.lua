@@ -486,7 +486,8 @@ function BMX.EndGrind(ent, phys, cfg, st, why, charge)
     local t = CurTime() - g.started
     if t >= G.minTime and ent.AwardTricks and IsValid(ent:GetDriver()) then
         ent:AwardTricks({ { name = NAMES[g.kind], count = 1,
-                            points = floor(t * G.pointsPerSec) } })
+                            points = floor(t * G.pointsPerSec),
+                            grind = t } })     -- seconds on the rail, for sv_scores.lua
     end
     hook.Run("BMX_GrindEnded", ent, g.kind, why, t)
 end

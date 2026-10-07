@@ -733,4 +733,7 @@ function BMX.NoteHumans()
 end
 
 timer.Create("BMX.LastHuman", 15, 0, BMX.NoteHumans)
-hook.Add("ShutDown", "BMX.LastHuman", BMX.NoteHumans)
+-- Wrapped so the hook returns NOTHING: a hook that returns a value ends the
+-- chain, and NoteHumans returns a boolean. Left bare it would stop every other
+-- ShutDown listener that happened to run after it, including the scores save.
+hook.Add("ShutDown", "BMX.LastHuman", function() BMX.NoteHumans() end)

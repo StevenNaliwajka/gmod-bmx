@@ -57,8 +57,10 @@ local SERVER_FILES = {
     "bmx/sv_seat.lua",
     "bmx/sv_rules.lua",     -- server-owner settings: bike limit, scoring on/off
     "bmx/sv_settings.lua",  -- changing and saving them: net message, server.json
+    "bmx/sv_scores.lua",    -- personal bests + leaderboard; listens to the public hooks
     "bmx/sv_launch.lua",    -- finding a ramp to get air off, or putting one down
     "bmx/sv_bot.lua",       -- a bot rider that does tricks (bmx_bot_spawn)
+    "bmx/sv_games.lua",     -- SKATE, Trick Attack, Combo Mambo (loads bmx/games/*)
     "bmx/sv_debug.lua",
     "bmx/sv_city.lua",      -- the city's colliders and admin commands
 
@@ -72,6 +74,8 @@ local SERVER_FILES = {
 local CLIENT_FILES = {
     "bmx/cl_view.lua",
     "bmx/cl_hud.lua",
+    "bmx/cl_scores.lua",    -- after cl_hud: it borrows that file's fonts
+    "bmx/cl_games.lua",
     "bmx/cl_sound.lua",
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it

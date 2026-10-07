@@ -54,3 +54,50 @@ does named tricks), which gives a single player someone to play.
 
 Persistence on servers with lots of players. Write on change, batched every
 30 s, and keep the top 10 only.
+
+## Status (2026-10-07)
+
+Done, with offline tests; **not yet seen on a real server** (see the last
+bullet).
+
+- **Personal bests** (`lua/bmx/sv_scores.lua`): best combo, best trick, longest
+  grind, longest manual, biggest air, per player (SteamID64) per map per bike,
+  fed by the public hooks `BMX_TrickLanded` / `BMX_ComboBanked`. The scoring now
+  puts `air`, `held` and `grind` on the trick tables it already built.
+  Saved to `data/bmx/scores/<map>.json`, batched at most every 30 s and on
+  `ShutDown`. Only the **top ten of each stat** is kept, so a player outside it
+  has a session-only best until they make the table (stated in the file).
+- **Panel and banner** (`cl_scores.lua`): `bmx_scores` with a tab per stat and a
+  bike filter, and a NEW BEST banner. The banner is its own `HUDPaint` hook
+  rather than code in `cl_hud.lua`, so the HUD can be redesigned without
+  touching it (it borrows that file's fonts and `bmx_hud`).
+- **Leaderboard sign** (`entities/bmx_leaderboard`): 3D2D, cycles the five
+  stats or shows one (`bmx_leaderboard_set <stat|all> [bike]`), admin-only
+  spawn. Asks for the table only when someone is within reading range.
+- **Games** (`sv_games.lua` + `lua/bmx/games/`): small state machines (lobby,
+  running, done), one at a time, with `bmx_game_start skate|attack|mambo
+  [bot]`, `bmx_game_join`, `bmx_game_leave`, `bmx_game_status`,
+  `bmx_games_admin_only`, and one generic HUD panel (`cl_games.lua`).
+  - **SKATE**: 2-8 players, set/follow, letters, trick-id match (and count),
+    setter who bails gets no letter, timeouts, leavers handled.
+  - **Trick Attack** (2:00, trick points + combo bonuses) and **Combo Mambo**
+    (1:00, best single combo), both take latecomers.
+  - **The trick bot** is a SKATE opponent (`bmx_game_start skate bot`): it sets
+    from `BMX.Bot.TrickList` and follows with `BMX.Bot.Perform`, through the
+    same scoring hooks a human's tricks use; sent home when the game ends.
+- **Exclusions** (`BMX.Scores.Counts`): bots, scripted riders, noclip, and a
+  bike held (or dropped within 3 s) by a physgun do not count, for the table
+  and for games. A bot the game itself invited counts in that game only.
+- **Hooks for gamemodes**: `BMX_NewBest`, `BMX_GameStarted`, `BMX_GameEnded`,
+  `BMX_GameLetter` (documented in `docs/MODDING.md`).
+- **Tests**: `tests/test_scores.lua`, `tests/test_games.lua` (bests, persistence,
+  batching, sort and cap, SKATE turn by turn, timed games, exclusions, the wire
+  and HUD), plus `skate_game_with_bots` in `sv_test_cases.lua` (two bots).
+  **The headless case has not been run**: there is no GMod server in this
+  environment. It only asserts that a game reaches a result, not who wins.
+
+Left: the time trial / checkpoint entities and the letter-Collect pickups (not
+started; the framework takes them as new `Register`ed games plus entities);
+CAMI restriction (a convar, `bmx_games_admin_only`, stands in); a real-server
+look at the sign's 3D2D layout and the panel; `sql.*` storage; a vehicle
+family match for SKATE once G22 gives vehicles families.

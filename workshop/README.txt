@@ -35,7 +35,7 @@ Every later release
   Double-click update.bat. It reads the Workshop ID from workshop-id.txt and
   asks only for a one-line note of what changed. (Linux: ./publish.sh update
   "what changed".) Then check the item page's TITLE and description against
-  addon.json (the title is "BMX: Bikes, Grinds & Tony Hawk Combos"); paste the
+  addon.json (the title is "BMX"; the page text is workshop/description.bbcode); paste the
   new ones in if the page still shows the old.
 
 If the .bat cannot find gmpublish.exe

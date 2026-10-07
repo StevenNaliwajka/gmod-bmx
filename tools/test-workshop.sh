@@ -82,7 +82,7 @@ ok '[[ "$DESC200" == *grind* ]]' "the first 200 characters of the description me
 ok '[[ "$DESC200" == *combo* ]]' "and combos"
 ok '! grep -qi "attempt" "$ROOT/addon.json"' "the description does not call it an attempt"
 TITLE="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["title"])' "$ROOT/addon.json")"
-ok '[[ "$TITLE" == *BMX* && "${TITLE,,}" == *grind* && "${TITLE,,}" == *combo* ]]' "the title names BMX, grinds and combos ($TITLE)"
+ok '[ "$TITLE" = "BMX" ]' "the title is plain BMX, the owner's call ($TITLE)"
 ok '[ "${#TITLE}" -le 128 ]' "the title fits Steam's 128 characters"
 
 # THE CONTROLS SECTION MATCHES THE INPUT CODE. Every key sv_input.lua reads has

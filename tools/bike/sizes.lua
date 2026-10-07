@@ -5,7 +5,8 @@
 return {
     road     = { wheelbase = 48, radius = 13.8, seat = { -12.9, 0, 22.2 } },
     fixie    = { wheelbase = 44, radius = 13.8, seat = { -11.85, 0, 20.3 } },
-    city     = { wheelbase = 52, radius = 14,   seat = { -14, 0, 24 } },
+    city     = { wheelbase = 52, radius = 14,   seat = { -14, 0, 24 },
+                 extra = { sag = 3.9, basket = { mins = { 23, -10, 21 }, maxs = { 43, 10, 37 } } } },
     dh       = { wheelbase = 46, radius = 13.5, seat = { -12.4, 0, 21.2 }, restLength = 16 },
     ebike    = { wheelbase = 44, radius = 11.5, seat = { -11.85, 0, 20.3 } },
     tandem   = { wheelbase = 70, radius = 13,   seat = { 9, 0, 22 }, extra = { stoker = { -18, 0, 22 } } },

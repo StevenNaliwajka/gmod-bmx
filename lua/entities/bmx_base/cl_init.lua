@@ -554,6 +554,18 @@ local function bellFlick(t)
 end
 BMX.BellFlick = bellFlick
 
+-- What a builder may need beyond its sizes (docs/MODELS.md `extra`): the static sag
+-- the frame is drawn lifted by, and the registry's basket box (in chassis space).
+function BMX.ModelExtra(bike, C)
+    local g = physenv and physenv.GetGravity and physenv.GetGravity():Length() or 600
+    local out = { sag = math.Clamp(C.Chassis.mass * g * 0.5 / C.Wheel.spring, 0, C.Wheel.restLength) }
+    if bike.basket then
+        local b = bike.basket
+        out.basket = { mins = { b.mins.x, b.mins.y, b.mins.z }, maxs = { b.maxs.x, b.maxs.y, b.maxs.z } }
+    end
+    return out
+end
+
 -- The anchors a model's layout gives (docs/MODELS.md), in model space:
 --   headT headB          the steer axis (the fork and the bars turn about it)
 --   rear front           the axles, as the model was built

@@ -689,6 +689,15 @@ G.RegisterKind("city", function(opt, G)
     -- FRONT CARRIER (on the head tube: it does not steer) AND THE BASKET
     ------------------------------------------------------------------
     local bx0, bx1, by, bz0, bz1 = 23, 43, 10, 21, 37        -- the server's basket box
+    -- The registry's own box when the game hands it over (opt.extra, BMX.ModelExtra),
+    -- moved DOWN by the static sag: the frame is drawn lifted by it, the box is not.
+    local ex = opt.extra or {}
+    if ex.basket then
+        bx0, bx1 = ex.basket.mins[1], ex.basket.maxs[1]
+        by = ex.basket.maxs[2]
+        bz0, bz1 = ex.basket.mins[3], ex.basket.maxs[3]
+    end
+    bz0, bz1 = bz0 - (ex.sag or 0), bz1 - (ex.sag or 0)
     do
         local Kc = M:bucket("frame", "black")
         local cz = bz0 - 0.32

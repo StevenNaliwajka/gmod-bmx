@@ -1619,10 +1619,12 @@ function G.Build(opt)
     buildWheel(M, "wheelR", R, { rear = true, wall = opt.wall })
     buildCranks(M)
     buildPedal(M)
-    -- The bell, on the left of the bars just inboard of the grip.
+    -- The bell, on the crossbar left of the stem: where a BMX rider mounts one,
+    -- because just inboard of the grip it is under the rider's fist.
     local F = G.FRAME
-    local bellAt = V(F.bars[1], G.GRIP_IN - 1.0, F.bars[3])
-    local bellPivot, bellAxis = G.parts.bell(M, "bars", "bellLever", bellAt, V(0, 1, 0), V(0, 0, 1), V(-1, 0, 0))
+    local cbL, cbR = lerp(barPath(L, 1)[4], barPath(L, 1)[5], 0.6), lerp(barPath(L, -1)[4], barPath(L, -1)[5], 0.6)
+    local bellAt = lerp(cbR, cbL, (2.7 - cbR[2]) / (cbL[2] - cbR[2]))
+    local bellPivot, bellAxis = G.parts.bell(M, "bars", "bellLever", bellAt, sub(cbL, cbR), V(0, 0, 1), V(-1, 0, 0))
     scaleModel(M, k)
     -- Points the drawing code needs, in scaled design space (docs/MODELS.md).
     local function grip(side)

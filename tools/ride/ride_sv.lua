@@ -105,13 +105,24 @@ function S.Next()
         hook.Add("Think", "ridestudio_drive", function()
             if not IsValid(c.bike) or not c.bike.input then return end
             local inp = c.bike.input
-            local go = CurTime() - t0 > 0.4
+            local t = CurTime() - t0
+            local go = t > 0.4
             inp.throttle = go and S.throttle or 0
             inp.leanTarget, inp.brakeRear, inp.brakeFront = 0, 0, 0
             inp.hop, inp.pose = false, nil
+            -- THE SEQUENCE (ridestudio_run ... seq): pedal off, a turn, a bunny hop
+            if S.mode == "seq" then
+                if t > 2.2 and t < 3.4 then inp.leanTarget = 0.7 end
+                if t > 3.6 and t < 4.0 then
+                    if not c.hopHeld then c.bike.hopCharge, c.bike.hopHeld, c.hopHeld = 0, true, true end
+                    inp.hop = true
+                elseif c.hopHeld and t >= 4.0 then
+                    c.bike.hopRelease, c.hopHeld = true, false
+                end
+            end
         end)
     end)
-    timer.Simple(2.6, function()
+    timer.Simple(S.mode == "seq" and 1.4 or 2.6, function()
         if S.cur ~= c then return end
         local o = owner()
         if not IsValid(o) then print("[ride] no owner") return S.Next() end
@@ -119,8 +130,9 @@ function S.Next()
         net.WriteString(id)
         net.WriteEntity(c.ent)
         net.WriteEntity(b)
+        net.WriteString(S.mode or "")
         net.Send(o)
-        c.deadline = CurTime() + 90
+        c.deadline = CurTime() + 120
     end)
 end
 
@@ -158,12 +170,14 @@ concommand.Add("ridestudio_push", function(p)
     print("[ride] pushed " .. #code .. " bytes")
 end)
 
--- ridestudio_run [id,id,...] [throttle]: every vehicle in the menu, or the ones named.
+-- ridestudio_run [id,id,...|all] [throttle] [seq]: every vehicle in the menu, or the ones
+-- named; "seq" rides a pedal-off, a turn and a bunny hop and films it frame by frame.
 concommand.Add("ridestudio_run", function(p, _, a)
     if IsValid(p) then return end
     file.CreateDir("ridestudio")
     file.Delete("ridestudio/_done.txt")
     S.throttle = tonumber(a[2] or "") or 0.45
+    S.mode = a[3]
     local q = {}
     if a[1] and a[1] ~= "" and a[1] ~= "all" then
         for id in a[1]:gmatch("[^,]+") do q[#q + 1] = id end

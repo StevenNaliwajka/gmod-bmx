@@ -9,18 +9,21 @@ local W, H = 960, 640
 local rt = GetRenderTargetEx("ridestudio_rt1", W, H, RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SEPARATE,
     bit.bor(4, 8), 0, IMAGE_FORMAT_RGBA8888)
 
+-- Chunks of 30 kB a quarter second apart: ~120 kB/s, inside a client's upload rate,
+-- so a long run never backs up the owner's connection.
+local CHUNK, GAP = 30000, 0.25
 local function send(name, data, after)
-    local n = math.ceil(#data / 60000)
+    local n = math.ceil(#data / CHUNK)
     for i = 1, n do
-        timer.Simple(i * 0.12, function()
-            local s = data:sub((i - 1) * 60000 + 1, i * 60000)
+        timer.Simple(i * GAP, function()
+            local s = data:sub((i - 1) * CHUNK + 1, i * CHUNK)
             net.Start("ridestudio_img")
             net.WriteString(name) net.WriteUInt(i, 16) net.WriteUInt(n, 16)
             net.WriteUInt(#s, 32) net.WriteData(s, #s)
             net.SendToServer()
         end)
     end
-    timer.Simple(n * 0.12 + 0.1, after)
+    timer.Simple(n * GAP + 0.1, after)
 end
 
 local function done(msg)
@@ -37,6 +40,8 @@ RIDESTUDIO_VIEWS = RIDESTUDIO_VIEWS or {
     { name = "rear",   pos = Vector(-1.5, 0.7, 0.75),   at = 0.5, fov = 42 },
     { name = "legs",   pos = Vector(0.15, -0.95, 0.3),  at = 0.3,  fov = 45 },
     { name = "top",    pos = Vector(0.3, -0.5, 1.6),    at = 0.4,  fov = 42 },
+    -- the bars close up, the bell's lever caught mid-flick (local units)
+    { name = "bell",   lpos = Vector(20, 16, 36), lat = Vector(9, 2.7, 24.5), fov = 34, ring = true },
 }
 
 local function shoot(id, ent, rider)
@@ -58,8 +63,15 @@ local function shoot(id, ent, rider)
                 local base = ent:GetPos()
                 local yawAng = Angle(0, ent:GetAngles().y, 0)
                 local f, r, u = yawAng:Forward(), yawAng:Right(), Vector(0, 0, 1)
-                local at = base + u * (size * v.at)
-                local pos = base + f * (v.pos.x * size) - r * (v.pos.y * size) + u * (v.pos.z * size)
+                local at, pos
+                if v.lpos then
+                    local k = ent.Cfg and ent:Cfg().Wheel.wheelbase / 39 or 1
+                    at, pos = ent:LocalToWorld(v.lat * k), ent:LocalToWorld(v.lpos * k)
+                else
+                    at = base + u * (size * v.at)
+                    pos = base + f * (v.pos.x * size) - r * (v.pos.y * size) + u * (v.pos.z * size)
+                end
+                if v.ring then ent.bellRungAt = CurTime() - 0.055 end
                 local ang = (at - pos):Angle()
                 render.PushRenderTarget(rt)
                 render.Clear(0, 0, 0, 255, true, true)
@@ -75,9 +87,54 @@ local function shoot(id, ent, rider)
     nextView()
 end
 
+-- A sequence: a follow camera on the vehicle's right, a frame every `dt`, so the
+-- rider's motion (pedalling, a turn, a hop and its landing) can be read frame by frame.
+local function sequence(id, ent, n, dt)
+    local size = 70
+    if ent.Cfg then
+        local C = ent:Cfg()
+        size = math.max(60, (C.Wheel.wheelbase or 40) + 2 * (C.Wheel.radius or 10)) * 1.3
+    end
+    local i = 0
+    local yaw0
+    local frames = {}
+    local function upload(j)
+        if j > #frames then return timer.Simple(0.5, function() done() end) end
+        send(string.format("%s_seq%02d", id, j), frames[j], function() upload(j + 1) end)
+    end
+    local function shot()
+        i = i + 1
+        if i > n then return upload(1) end
+        hook.Add("PostRender", "ridestudio", function()
+            hook.Remove("PostRender", "ridestudio")
+            if not IsValid(ent) then return done(id .. ": gone") end
+            local base = ent:GetPos()
+            yaw0 = yaw0 or ent:GetAngles().y
+            -- the camera keeps its own heading (the start's) so a turn shows as a turn
+            local ya = Angle(0, yaw0, 0)
+            local f, r, u = ya:Forward(), ya:Right(), Vector(0, 0, 1)
+            local at = base + u * (size * 0.42)
+            local pos = base + f * (0.25 * size) + r * (1.5 * size) + u * (0.5 * size)
+            render.PushRenderTarget(rt)
+            render.Clear(0, 0, 0, 255, true, true)
+            render.RenderView({ origin = pos, angles = (at - pos):Angle(), x = 0, y = 0, w = W, h = H, fov = 46,
+                drawviewmodel = false, drawhud = false, dopostprocess = false, drawmonitors = false })
+            frames[i] = render.Capture({ format = "jpeg", quality = 72, x = 0, y = 0, w = W, h = H })
+            render.PopRenderTarget()
+            timer.Simple(dt, shot)
+        end)
+    end
+    shot()
+end
+
 net.Receive("ridestudio_cap", function()
     local id = net.ReadString()
     local ent, rider = net.ReadEntity(), net.ReadEntity()
+    local mode = net.ReadString()
+    if mode == "seq" then
+        -- the chunks of each frame go out a beat apart: wait them out before "done"
+        return sequence(id, ent, 26, 0.12)
+    end
     local tries = 0
     local function attempt()
         if IsValid(ent) then return shoot(id, ent, rider) end

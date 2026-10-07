@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Photograph each vehicle RIDDEN, in game, through a connected client.
 #
-#   BMX_RCON_PASSWORD=... tools/ride/shoot.sh [ids|all] [throttle] [outdir]
+#   BMX_RCON_PASSWORD=... tools/ride/shoot.sh [ids|all] [throttle] [outdir] [seq]
 #
 # ids: comma-separated vehicle ids (stock,road,...); default every vehicle in the menu.
 # Needs a test server running this addon with a human connected (the client renders),
@@ -17,6 +17,7 @@ GMOD="${BMX_STUDIO_GMOD:-/opt/gmod/garrysmod}"
 IDS="${1:-all}"
 THR="${2:-0.45}"
 OUT="${3:-$(mktemp -d)}"
+MODE="${4:-}"     # "seq": a pedal-off, a turn and a bunny hop, filmed frame by frame
 mkdir -p "$OUT"
 
 rcon() { python3 "$ROOT/tools/server/rcon.py" --host "$HOST" --port "$PORT" --password "$BMX_RCON_PASSWORD" "$1"; }
@@ -30,7 +31,7 @@ rcon "lua_openscript ridestudio_sv.lua" >/dev/null
 rcon 'lua_run for _,p in ipairs(player.GetHumans()) do p:SendLua([[net.Receive("ridestudio_code",function() RunString(net.ReadString(),"ridestudio") end)]]) end' >/dev/null
 sleep 1
 rcon "ridestudio_push"
-rcon "ridestudio_run $IDS $THR"
+rcon "ridestudio_run $IDS $THR $MODE"
 
 echo "shooting on the client ..."
 st=""

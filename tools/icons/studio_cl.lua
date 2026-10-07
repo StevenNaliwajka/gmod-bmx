@@ -142,7 +142,11 @@ local function shoot(class, group, ent, stage, gmins, gmaxs)
         if not custom and not IsValid(ent) then hook.Remove("PostRender", "bmxstudio") return done(class .. ": gone") end
         -- WARM UP: the bike eases its lean, bars and pose toward the networked state a
         -- frame at a time, so it is drawn (off screen) until it has stopped moving.
-        if frames < 45 or (custom and custom.ready and not custom.ready() and frames < 1500) then
+        -- ...and until a vehicle's built model is ready (BMX.BikeModelFor advances the
+        -- build a few ms a frame), or the picture would be the simple stand-in.
+        local building = not custom and IsValid(ent) and ent.Cfg and BMX.BikeModelFor
+            and ent:Bike().look ~= nil and BMX.BikeModelFor(ent) == nil and frames < 3000
+        if frames < 45 or building or (custom and custom.ready and not custom.ready() and frames < 1500) then
             render.PushRenderTarget(rt)
             cam.Start3D(pos, ang, fov, 0, 0, SZ, SZ, 2, 20000)
             pcall(drawIt)

@@ -219,3 +219,44 @@ BMX.RegisterBike("stock", {
     description = "Street BMX with lean-driven handling.",
     colorIndex  = 1,            -- red; see BMX.Palette in sh_color.lua
 })
+
+-- THE OTHER TWO are the stock bike with other geometry, and nothing else: no
+-- model, no new code, only `physics` overrides. Everything that depends on
+-- size follows from them -- the hull is rebuilt from wheelbase and radius and
+-- balanced onto massCenterExpected (BMX.CollisionBoxes), the inertia is
+-- measured off the real body (BMX.CacheInertia), and the procedural frame is
+-- drawn scaled by wheelbase / 39. The one thing that does NOT scale on its own
+-- is the seat, which is where the rider is put; so each one scales it by the
+-- same wheelbase / 39 the frame is drawn at, or the rider would hover above a
+-- small saddle or sink into a big one.
+--
+-- Every headless case that is about riding runs again on each of them
+-- (sv_test_cases.lua, T.Variant), against the same bands as the stock bike.
+
+-- 24-inch cruiser: longer and heavier. The bigger wheel at the same gearing
+-- and cadence is a higher top speed (~420 u/s against ~350), and the same
+-- crank torque through a bigger wheel pushes a heavier bike less, so it is
+-- slower off the line: crankTorque is raised only far enough that it still
+-- climbs a funbox. Steadier, because a longer wheelbase is.
+BMX.RegisterBike("cruiser", {
+    printName   = "BMX Cruiser",
+    description = "24-inch cruiser: longer, heavier and faster at the top end, slower off the line.",
+    colorIndex  = 8,            -- blue
+    physics = {
+        Chassis = { mass = 94, seatOffset = Vector(-11.6, 0, 19.8) },  -- x 43/39
+        Wheel   = { radius = 12, wheelbase = 43 },
+        Drive   = { crankTorque = 340000 },
+    },
+})
+
+-- 16-inch mini: short and light. Lower top speed (~270 u/s), quicker to turn,
+-- and a ridden mini is mostly a big rider on a small bike, which is the joke.
+BMX.RegisterBike("mini", {
+    printName   = "Mini BMX",
+    description = "16-inch mini: short, light and twitchy, with a low top speed.",
+    colorIndex  = 3,            -- yellow
+    physics = {
+        Chassis = { mass = 82, seatOffset = Vector(-9.2, 0, 15.7) },   -- x 34/39
+        Wheel   = { radius = 8, wheelbase = 34 },
+    },
+})

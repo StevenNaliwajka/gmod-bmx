@@ -165,12 +165,12 @@ function(ctx)
     ctx:ok(snap.fg, "front wheel found ground")
     ctx:ok(snap.rg, "rear wheel found ground")
 
-    local WC = BMX.Config.Wheel
+    local WC = ctx.cfg.Wheel
     ctx:between(snap.fc, 0.15, WC.restLength, "front compression", "u")
     ctx:between(snap.rc, 0.15, WC.restLength, "rear compression", "u")
 
     -- Both wheels carrying load, and between them roughly the whole bike.
-    local weight = BMX.Config.Chassis.mass * physenv.GetGravity():Length()
+    local weight = ctx.cfg.Chassis.mass * physenv.GetGravity():Length()
     ctx:between(snap.load / weight, 0.75, 1.35, "supported weight / actual weight")
 
     -- Ride height: the origin sits on the design axle line, so at rest it sits
@@ -335,7 +335,7 @@ function(ctx)
     -- when it reaches the edge of the map has cadence in hand BY DEFINITION, and
     -- failing it for that is reporting the size of gm_flatgrass as a bug in the
     -- drivetrain. The top-speed floor above still catches a factor-level change.
-    local ratio = cadence / BMX.Config.Drive.maxCadence
+    local ratio = cadence / ctx.cfg.Drive.maxCadence
     if cut then
         ctx:log(string.format("cadence / maxCadence = %.2f, not asserted: the " ..
             "run never reached terminal speed", ratio))
@@ -455,7 +455,7 @@ function(ctx)
     ctx:wait(2.5)
 
     local st = ctx:st()
-    local target = 0.6 * BMX.Config.Balance.maxLean
+    local target = 0.6 * ctx.cfg.Balance.maxLean
     ctx:log(string.format("authority %.2f at %.0f u/s", st.leanAuthority, st.speed))
 
     ctx:between(st.leanAuthority, 0.6, 1.0, "assist authority at speed")
@@ -568,7 +568,7 @@ function(ctx)
                 "share of the hold with the rear wheel down (a wheelie, not a jump)", "%")
             -- The hold assist has a ceiling on purpose, so a wheelie can still be
             -- blown. Past holdMax plus a margin it has looped out.
-            ctx:between(math.deg(st.pitch), 5, math.deg(BMX.Config.Pitch.holdMax) + 30,
+            ctx:between(math.deg(st.pitch), 5, math.deg(ctx.cfg.Pitch.holdMax) + 30,
                 "wheelie pitch", "deg")
 
             -- Let it down, and it pays: a wheelie held this long is past
@@ -653,7 +653,7 @@ end)
 T.Case("crash_ejects", { timeout = 25,
     desc = "a hard impact throws the rider off" },
 function(ctx)
-    ctx:wait(BMX.Config.Crash.grace + 0.3)   -- the grace period is real; respect it
+    ctx:wait(ctx.cfg.Crash.grace + 0.3)   -- the grace period is real; respect it
 
     local phys = ctx.bike:GetPhysicsObject()
     if not ctx:ok(IsValid(phys), "bike has a physics object") then return end
@@ -1270,3 +1270,22 @@ function(ctx)
     end, 6, "the skid flag to clear once the bike stops sliding")
     ctx:ok(cleared, "and clears again when it stops")
 end)
+
+--------------------------------------------------------------------------
+-- THE OTHER SHIPPED BIKES, held to the same bands.
+--
+-- The cruiser and the mini are the stock bike with other geometry (see
+-- sh_bikes.lua), so every case about riding is run again on each, unchanged:
+-- "<case>@cruiser", "<case>@mini". A case that only passes on the bike it was
+-- written against was measuring the stock bike's numbers rather than the
+-- behaviour, and these are what find out.
+--------------------------------------------------------------------------
+for _, bike in ipairs({ "cruiser", "mini" }) do
+    for _, name in ipairs({ "rest", "parked_on_stand", "fallen_is_picked_up",
+                            "accelerate", "brake_locks", "lean_steers",
+                            "lean_tracks_target", "bunny_hop", "wheelie",
+                            "stoppie", "air_mode", "crash_ejects",
+                            "grind_pipe", "grind_ledge" }) do
+        T.Variant(name, bike)
+    end
+end

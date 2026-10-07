@@ -61,7 +61,26 @@ function T.Case(name, opts, fn)
         removesBike = opts.removesBike or false,
         timeout = opts.timeout or 40,
         desc    = opts.desc or "",
+        -- Which bike the case rides: a registry id, the stock bike if omitted.
+        -- Cases read the bike's numbers through ctx.cfg, never BMX.Config, so
+        -- the same case means the same thing on a bike with other geometry.
+        bike    = opts.bike or "stock",
     }
+end
+
+-- Run an existing case again on another bike, as "<case>@<bike>". The case
+-- body is shared, so a shipped bike is held to exactly the bands the stock one
+-- is -- or the band is wrong for it, which is worth finding out on purpose.
+function T.Variant(name, bike, opts)
+    local base = T.cases[name]
+    if not base then error("T.Variant: no case " .. tostring(name)) end
+    opts = opts or {}
+    T.Case(name .. "@" .. bike, {
+        rider = base.rider, removesBike = base.removesBike,
+        timeout = opts.timeout or base.timeout,
+        desc = base.desc .. " (on the " .. bike .. " bike)",
+        bike = bike,
+    }, base.fn)
 end
 
 --------------------------------------------------------------------------
@@ -382,8 +401,10 @@ local function setupCase(case)
         return nil, (groundNote or "no ground") .. " on " .. game.GetMap()
     end
 
-    local bike = ents.Create("bmx_base")
-    if not IsValid(bike) then return nil, "could not create bmx_base" end
+    local class = BMX.ClassFor(case.bike)
+    if not class then return nil, "no such bike: " .. tostring(case.bike) end
+    local bike = ents.Create(class)
+    if not IsValid(bike) then return nil, "could not create " .. class end
     -- Spawn at the bike's ACTUAL resting height, computed rather than guessed:
     -- the origin sits on the design axle line, so at rest it is one radius up
     -- minus the static sag, and the sag is m*g/2 divided by the spring rate.
@@ -393,8 +414,9 @@ local function setupCase(case)
     -- transient big enough to fail cases that were measuring something else
     -- entirely. Deriving it means a future spring change cannot silently
     -- reintroduce that.
-    local WC  = BMX.Config.Wheel
-    local sag = (BMX.Config.Chassis.mass * physenv.GetGravity():Length() * 0.5)
+    local cfg = BMX.ConfigFor(BMX.Bikes[case.bike])
+    local WC  = cfg.Wheel
+    local sag = (cfg.Chassis.mass * physenv.GetGravity():Length() * 0.5)
         / WC.spring
     bike:SetPos(ground + Vector(0, 0, WC.radius - sag + 1))
     bike:SetAngles(Angle(0, 0, 0))
@@ -403,6 +425,7 @@ local function setupCase(case)
 
     local ctx = setmetatable({
         bike = bike, checks = {}, lines = {}, failed = false,
+        cfg = bike:Cfg(),
         ground = ground,
         -- How far this spot can be ridden before the world runs out, minus a
         -- margin so a case stops on its own terms rather than off a cliff.

@@ -314,6 +314,10 @@ server{ name = "bmx_allow_motor", kind = "bool", default = true, category = "veh
     label = "Allow motor vehicles",
     help = "Players may spawn motorbikes and e-bikes, when there are any. Off stops new ones being spawned." }
 
+server{ name = "bmx_fixie_frontbrake", kind = "bool", default = false, category = "vehicles",
+    label = "Front brake on the fixie",
+    help = "A fixed gear's only brake is its legs, and LMB does nothing on one. On, LMB brakes the front wheel of a fixie as it does on a BMX." }
+
 server{ name = "bmx_crash_ragdoll", kind = "bool", default = true, category = "rules",
     label = "Crashes throw the rider",
     help = "A rider who crashes is thrown off as a ragdoll for a moment. Off just shoves them off the bike." }

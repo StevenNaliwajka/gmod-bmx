@@ -1857,7 +1857,7 @@ end)
 -- written against was measuring the stock bike's numbers rather than the
 -- behaviour, and these are what find out.
 --------------------------------------------------------------------------
-for _, bike in ipairs({ "cruiser", "mini", "road" }) do
+for _, bike in ipairs({ "cruiser", "mini", "road", "fixie" }) do
     for _, name in ipairs({ "rest", "parked_on_stand", "fallen_is_picked_up",
                             "accelerate", "brake_locks", "lean_steers",
                             "lean_tracks_target", "bunny_hop", "wheelie",
@@ -2029,4 +2029,39 @@ function(ctx)
         end
     end
     ctx:input({})
+end)
+
+--------------------------------------------------------------------------
+-- THE FIXED GEAR (G10): the one bike whose brake is its legs.
+--
+-- "fixie_skid_stop": from 15 mph, S locks the legs and the rear tyre skids it to a
+-- stop in under 8 m, with the skid networked (the bike's `Skidding` flag, which is
+-- what the client's tyre sound listens to). It rides `vehicle = "fixie"` (like the test
+-- cart, so the suite's "every other case is a stock case" check holds); the riding cases
+-- above are run on it too (the variants), against the same bands.
+--
+-- Written against the plant and not yet run on a server (no server was to hand): the
+-- bands are the goal's own (8 m, a networked skid), not tuned numbers.
+--------------------------------------------------------------------------
+T.Case("fixie_skid_stop", { vehicle = "fixie", timeout = 30,
+    desc = "a fixie from 15 mph: S stops it in under 8 m, the tyre skids and the skid is networked" },
+function(ctx)
+    local b = ctx.bike
+    ctx:ok(b:Bike().drive.kind == "fixed", "it is on the fixed drive")
+    ctx:ok(ctx:accelerateTo(15 * 17.6, 14), "got up to 15 mph")
+    ctx:input({})
+    local start = b:GetPos()
+    local skid = false
+    local grounded = ctx:runUntil(6, function()
+        skid = skid or b:GetSkidding()
+        return ctx:st().speed < 5
+    end, { brakeRear = 1 })
+    local dist = (b:GetPos() - start):Length()
+    ctx:log(string.format("stopped from 15 mph in %.1f m (%.0f u), skid networked: %s",
+        dist / 39.37, dist, tostring(skid)))
+    ctx:ok(grounded, "stayed on the ground")
+    ctx:ok(ctx:st().speed < 5, "it stopped: " .. string.format("%.1f u/s", ctx:st().speed))
+    ctx:between(dist / 39.37, 0, 8, "stopping distance", "m")
+    ctx:ok(skid, "the skid was networked (b:GetSkidding())")
+    ctx:ok(IsValid(b:GetDriver()), "rider still aboard")
 end)

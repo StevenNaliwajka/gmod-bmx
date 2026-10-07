@@ -135,7 +135,7 @@ A vehicle that says nothing gets: `balance = "none"`, `drive = { kind = "none" }
 | `family` | `"bike"`, `"board"`, `"skates"`, `"scooter"` or `"moto"`. Decides the spawn menu heading (Bikes, Boards, Scooters, Motor; skates are under Boards) and which `bmx_allow_*` setting can switch it off. |
 | `wheels` | A list of wheels, or a function of the config returning one. At least one, at most eight. See below. |
 | `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (reserved for the skateboard; runs as `none`, with a message, until its module exists), or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
-| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", ... }` (reserved for the board) or `{ kind = "none" }`. `pedal` and `throttle` need at least one wheel with `drive = true`. |
+| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "fixed" }` (a fixed gear, below), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", ... }` (reserved for the board) or `{ kind = "none" }`. `pedal`, `fixed` and `throttle` need at least one wheel with `drive = true`. |
 | `seats` | `{ { model, offset, angles } }`. One seat for now (passengers are G11). Omitted: the config's `Chassis.seatOffset` and `seatAngles`. |
 | `input` | An id in `BMX.InputMaps`: `"bike"`, `"drive"`, `"road"`, `"bike_rearonly"`, or one you register. |
 | `pose` | An id in `BMX.PoseSets` (the rider's pose on the client): `"bike"`, `"seated"`, `"road"` (tucked over the drops) or `"upright"`. |
@@ -179,6 +179,17 @@ front brake: LMB is only a tailwhip, in the air).
 map lacks is never down. `BMX.InputActions(mapId, ctx)` lists a map's actions for a
 keybind panel. The `bike` map is the controls in the game's help; `drive` is
 forward, back, left, right, jump.
+
+**A fixed gear** (`drive = { kind = "fixed" }`, G10; the shipped `fixie`). The cranks
+are locked to the rear wheel through a stiff spring and damper (`sv_fixie.lua`): the
+rider's push is the pedal drive's, but it goes onto the legs, a flywheel of their own
+(three wheels' worth of inertia, a little drag), and the legs reach the wheel through
+the spring. So there is no freewheel: coasting turns the legs and slows the bike a
+little, S is a skid stop, and S at a standstill pedals backwards (a fakie, scored).
+Set `physics = { Drive = { fixedGear = true } }` too: it is the config's switch for
+"the wheel has no freewheel floor". Give it the `bike_rearonly` input map and LMB does
+nothing on the ground, unless the server turns `bmx_fixie_frontbrake` on. Two tricks
+only a fixie earns, `fakie` and `trackstand` (paid per second, `BMX.Fixie.Tick`).
 
 **Server settings.** `bmx_allow_bikes`, `bmx_allow_boards`, `bmx_allow_scooters`
 and `bmx_allow_motor` (default 1; Options > BMX > Server > Vehicles) switch a

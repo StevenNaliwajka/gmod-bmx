@@ -60,6 +60,7 @@ local SERVER_FILES = {
     "bmx/sv_combo.lua",     -- chained tricks: before sv_physics too
     "bmx/sv_tricks.lua",    -- frame/bar spins and style poses: before sv_physics too
     "bmx/sv_physics.lua",
+    "bmx/sv_fixie.lua",     -- the fixed-gear drive, its two tricks, its front-brake switch (G10)
     "bmx/sv_seat.lua",
     "bmx/sv_compat_ragmod.lua", -- RagMod, if installed: before the crash path asks
     "bmx/sv_bell.lua",      -- R on the ground rings the bell

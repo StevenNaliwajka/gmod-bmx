@@ -86,12 +86,16 @@ BMX.BalanceModeNames = { singletrack = true, board = true, none = true }
 --
 --   pedal      the bike's legs, with the stamina and the climbing assist, all of
 --              it read from the config's Drive group
+--   fixed      a fixed gear (G10): the pedal drive with the cranks LOCKED to the
+--              rear wheel through a stiff spring. No freewheel: coasting turns the
+--              legs, S is a skid stop, S at a standstill pedals backwards
 --   throttle   a motor: torque, falling to nothing at maxSpeed
 --   push       reserved for the skateboard (G23): a kick every kickInterval
 --   none       coasts
 --------------------------------------------------------------------------
 BMX.DriveKinds = {
     pedal    = {},
+    fixed    = {},
     throttle = { torque = "number", maxSpeed = "number" },
     push     = { torque = "number", maxSpeed = "number", kickInterval = "number" },
     none     = {},
@@ -409,7 +413,7 @@ function BMX.ValidateVehicle(def)
     -- Drive.
     local drive = def.drive
     if not istable(drive) or not BMX.DriveKinds[drive.kind] then
-        bad[#bad + 1] = "drive.kind must be one of pedal, throttle, push, none"
+        bad[#bad + 1] = "drive.kind must be one of pedal, fixed, throttle, push, none"
     else
         local allowed = BMX.DriveKinds[drive.kind]
         for k, v in pairs(drive) do
@@ -421,7 +425,8 @@ function BMX.ValidateVehicle(def)
                 end
             end
         end
-        if (drive.kind == "pedal" or drive.kind == "throttle") and nWheels > 0 and nDrive == 0 then
+        if (drive.kind == "pedal" or drive.kind == "fixed" or drive.kind == "throttle")
+            and nWheels > 0 and nDrive == 0 then
             bad[#bad + 1] = "a " .. drive.kind .. " drive needs at least one wheel with drive = true"
         end
         if drive.kind == "throttle" and not (isnumber(drive.torque) and drive.torque > 0) then

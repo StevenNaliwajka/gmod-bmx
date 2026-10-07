@@ -479,6 +479,36 @@ BMX.RegisterBike("road", {
 })
 
 --------------------------------------------------------------------------
+-- THE FIXIE (G10): a track bike with ONE gear and no freewheel. The cranks are
+-- locked to the rear wheel (drive kind "fixed", sv_fixie.lua), so coasting turns the
+-- legs and drags the bike down a little, S is a skid stop, S at a standstill pedals
+-- backwards (fakie, scored) and A or D at a standstill is a trackstand (scored).
+-- Its only brake is its legs, so LMB does nothing unless the server turns
+-- bmx_fixie_frontbrake on: the `bike_rearonly` input map.
+--
+-- 700c wheels and a short, light frame (the numbers a road bike's, without the
+-- gears): gearRatio 2.6, which is a 46t ring on a 17t cog (2.7) near enough, puts the
+-- legs' ceiling at 12.6 * 2.6 * 13.8 = 452 u/s and the top speed under it. `fixedGear`
+-- is the config's own switch for "the wheel has no freewheel floor" (sv_wheel.lua):
+-- without it the wheel could not turn slower than the ground and the legs' drag
+-- would be a number nothing read. `rearBrake` is twice a BMX's: the brake is the
+-- rider's LEGS, which are a good deal stronger than a caliper, so S really does lock
+-- the wheel and skid it (a skid stop from 15 mph is ~3.7 m on the plant; at the BMX's
+-- 95,000 it was 7.6 m, which is a brake, not a skid).
+BMX.RegisterBike("fixie", {
+    printName   = "Fixie",
+    description = "Fixed-gear track bike: the cranks are locked to the rear wheel. Coasting turns the legs, S skids, S at a standstill rolls it backwards (fakie), A/D at a standstill is a trackstand. No front brake.",
+    colorIndex  = 2,            -- orange
+    drive       = { kind = "fixed" },
+    input       = "bike_rearonly",
+    physics = {
+        Chassis = { mass = 80, seatOffset = Vector(-11.85, 0, 20.3) },  -- x 44/39
+        Wheel   = { radius = 13.8, wheelbase = 44, restLength = 11.8, grip = 1.6, rollingResistance = 0.008 },
+        Drive   = { gearRatio = 2.6, fixedGear = true, dragArea = 0.0045, rearBrake = 200000 },
+    },
+})
+
+--------------------------------------------------------------------------
 -- THE TEST CART: the platform's proof that it is not a bicycle.
 --
 -- Four wheels in a rectangle, no balance mode at all (`none`: it stands on its

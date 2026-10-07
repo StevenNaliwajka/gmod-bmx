@@ -21,7 +21,7 @@ local RIDING = { "rest", "parked_on_stand", "fallen_is_picked_up", "accelerate",
 
 T.test("headless: every riding case also runs on the cruiser and the mini", function()
     local S = suite()
-    for _, bike in ipairs({ "cruiser", "mini", "road" }) do
+    for _, bike in ipairs({ "cruiser", "mini", "road", "fixie" }) do
         for _, name in ipairs(RIDING) do
             local v = S.cases[name .. "@" .. bike]
             T.ok(v, name .. "@" .. bike .. " exists")

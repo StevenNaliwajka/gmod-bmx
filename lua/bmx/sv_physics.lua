@@ -338,12 +338,19 @@ function BMX.PhysicsStep(ent, phys, dt)
             nDrive = nDrive + 1
         end
     end
-    local driveTorque = hasDriver and drive(ent, C, dt, inp, st, driveWheel, vdef) or 0
+    -- A drive returns its torque and, optionally, a say in the rear brake: nil
+    -- leaves the rule below, true KEEPS the brake whatever the sign of the torque,
+    -- false DROPS it. The fixed gear (sv_fixie.lua) needs both: its legs' torque on
+    -- the wheel is negative whenever it is slowing down, and a skid stop must not
+    -- be mistaken for pedalling backwards -- but S at a standstill is exactly that.
+    local driveTorque, brakeSay = 0, nil
+    if hasDriver then driveTorque, brakeSay = drive(ent, C, dt, inp, st, driveWheel, vdef) end
+    driveTorque = driveTorque or 0
     local brakeRear   = inp.brakeRear  * C.Drive.rearBrake
     local brakeFront  = inp.brakeFront * C.Drive.frontBrake
 
     -- Paddling backwards is a drive, not a brake, so do not do both at once.
-    if driveTorque < 0 then brakeRear = 0 end
+    if brakeSay == false or (driveTorque < 0 and brakeSay == nil) then brakeRear = 0 end
 
     ----------------------------------------------------------------------
     -- 4. Wheels

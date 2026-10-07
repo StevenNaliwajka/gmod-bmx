@@ -16,6 +16,7 @@ util.AddNetworkString("ridestudio_cap")
 util.AddNetworkString("ridestudio_img")
 util.AddNetworkString("ridestudio_done")
 util.AddNetworkString("ridestudio_end")
+util.AddNetworkString("ridestudio_ready")
 util.AddNetworkString("ridestudio_diag")
 net.Receive("ridestudio_diag", function() local d = net.ReadString() RIDESTUDIO.diag = (RIDESTUDIO.diag or "") .. "\n" .. d print("[ride] client diag: " .. d) end)
 
@@ -122,10 +123,15 @@ function S.Next()
             local pod = c.bike:GetPod()
             if IsValid(pod) then b:EnterVehicle(pod) end
         end
-        local t0 = CurTime()
+        -- HELD STILL until the client says the model is built (that can take a while
+        -- the first time), so the ride does not wander off into a wall meanwhile.
+        if IsValid(c.bike) and IsValid(c.bike:GetPhysicsObject()) then c.bike:GetPhysicsObject():EnableMotion(false) end
+        local t0
         hook.Add("Think", "ridestudio_drive", function()
             if not IsValid(c.bike) or not c.bike.input then return end
             local inp = c.bike.input
+            if not c.ready then inp.throttle = 0 return end
+            t0 = t0 or CurTime()
             local t = CurTime() - t0
             local go = t > 0.4
             inp.throttle = go and S.throttle or 0
@@ -143,7 +149,7 @@ function S.Next()
             end
         end)
     end)
-    timer.Simple(S.mode == "seq" and 1.4 or 2.6, function()
+    timer.Simple(1.0, function()
         if S.cur ~= c then return end
         local o = owner()
         if not IsValid(o) then print("[ride] no owner") return S.Next() end
@@ -175,6 +181,16 @@ net.Receive("ridestudio_img", function()
         file.CreateDir("ridestudio")
         file.Write("ridestudio/" .. name .. ".jpg", table.concat(parts[name]))
         parts[name] = nil
+    end
+end)
+
+net.Receive("ridestudio_ready", function()
+    local c = S.cur
+    if not c then return end
+    c.ready = true
+    if IsValid(c.bike) and IsValid(c.bike:GetPhysicsObject()) then
+        c.bike:GetPhysicsObject():EnableMotion(true)
+        c.bike:GetPhysicsObject():Wake()
     end
 end)
 

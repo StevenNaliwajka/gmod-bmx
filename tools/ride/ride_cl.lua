@@ -163,7 +163,11 @@ local function whenBuilt(ent, fn)
         if not IsValid(ent) then return fn() end
         local ready = not (ent.Cfg and BMX.BikeModelFor) or BMX.BikeModelFor(ent) ~= nil
             or (ent.Bike and not ent:Bike().look)
-        if ready or RealTime() - t0 > 30 then return timer.Simple(0.3, fn) end
+        if ready or RealTime() - t0 > 30 then
+            -- built: the server lets the bike go, and the shots start once it is rolling
+            net.Start("ridestudio_ready") net.SendToServer()
+            return timer.Simple(2.6, fn)
+        end
         timer.Simple(0, step)
     end
     step()

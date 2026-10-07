@@ -472,6 +472,13 @@ function BMX.SolveRiderIK(ply, targets, bike)
                 local toe = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Toe0")
                 -- Twice: the leg solve just turned the foot with the shin.
                 if eb and toe then aim(ply, eb, eb, toe, fwd); aim(ply, eb, eb, toe, fwd) end
+            elseif set and set.openHands then
+                -- Nothing to hold (a unicyclist's balancing arms): the hand relaxed and
+                -- open, fingers out and a little down, not a fist.
+                local knuck = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Finger2")
+                if eb and knuck then
+                    aim(ply, eb, eb, knuck, (right * limb.side + fwd * 0.35 - up * 0.45):GetNormalized())
+                end
             else
                 -- Knuckles forward over the bar, then the fingers closed round it.
                 local knuck = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Finger2")
@@ -590,6 +597,9 @@ BMX.PoseSets.unicycle.rider = function(s)
     return pose
 end
 BMX.PoseSets.unicycle.poses = {}
+-- Open hands, elbows out and a little back: arms held out for balance.
+BMX.PoseSets.unicycle.openHands = true
+BMX.PoseSets.unicycle.poles = { arm = Vector(-0.4, 1, -0.15), leg = Vector(1, 0, 0.2) }
 
 local POSE_HANDS = { "rHand", "lHand" }
 local POSE_LIMBS = { "rHand", "lHand", "rFoot", "lFoot" }

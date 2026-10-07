@@ -221,7 +221,7 @@ local function calibratePelvis(ply, b)
 end
 
 local CROUCH_DEPTH = 9          -- units the pelvis drops at a full crouch
-local RIDE_BEND = 3.2           -- ...and at rest: riding knees are always soft
+local RIDE_BEND = 5             -- ...and at rest: riding knees are always soft
 B.RideBend = RIDE_BEND
 
 local function lowerPelvis(ply, depth)

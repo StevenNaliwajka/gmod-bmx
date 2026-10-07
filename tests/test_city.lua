@@ -794,3 +794,20 @@ T.test("every tree wears an autumn crown inside its own reach, in the hedges' co
         T.ok(M and M.mul and M.mul[1] > M.mul[2], k .. " is an autumn colour")
     end
 end)
+
+T.test("lamp glows and falling leaves draw on frames where GMod says bDrawingSkybox (every frame here)", function()
+    local env = drawnClient()
+    local City = env.BMX.City
+    local sprites, begun = 0, 0
+    env.render.DrawSprite = function() sprites = sprites + 1 end
+    env.render.SetColorMaterial = function() end
+    env.Material = function() return {} end
+    env.mesh.Begin = function() begun = begun + 1 end
+    env.mesh.Position = function() end
+    env.mesh.Color = function() end
+    env.color_white = env.color_white or env.Color(255, 255, 255)
+    City._leaves = { City.SpawnLeaf({ kind = "tree", pos = env.Vector(1000, 0, 84), radius = 218 }, function() return 0.5 end) }
+    env.hook.Run("PostDrawTranslucentRenderables", false, true, false)
+    T.ok(sprites >= #City.Layout().lamps, "a glow at every lamp: " .. sprites)
+    T.ok(begun >= 1, "the leaves drawn")
+end)

@@ -142,6 +142,10 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
         if down("right") then side = 1 elseif down("left") then side = -1 end
     end
 
+    -- A VEHICLE WITH ITS OWN DECODER (the skateboard's: sv_board.lua) reads the keys
+    -- itself: a board's W, S, SPACE and the rest mean other things than a bike's.
+    if map.decode then return map.decode(ply, bike, cmd, down, fwd, side) end
+
     inp.sprint     = down("sprint")
     -- THE CLUTCH LEVER (G15), on SHIFT in a motorcycle's map, which has no sprint:
     -- a map without the action is never down, so no other vehicle has a clutch.

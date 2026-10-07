@@ -42,8 +42,12 @@ end
 T.test("bikes: the BMXs and the road bike are registered, with their own classes", function()
     local sv = F.server()
     local B = sv.env.BMX
-    local ids = B.BikeIDs()
-    T.eq(table.concat(ids, ","), "city,cruiser,dirtbike,ebike,emoto,fixie,mini,moped,road,stock", "the shipped bikes, sorted")
+    -- Bikes only: the skateboard (G23) is in the same registry, under Boards.
+    local ids = {}
+    for _, id in ipairs(B.BikeIDs()) do
+        if B.Bikes[id].family == "bike" then ids[#ids + 1] = id end
+    end
+    T.eq(table.concat(ids, ","), "city,cruiser,fixie,mini,road,stock", "the shipped bikes, sorted")
     T.eq(B.ClassFor("cruiser"), "bmx_cruiser", "cruiser class")
     T.eq(B.ClassFor("mini"), "bmx_mini", "mini class")
     T.eq(B.ClassFor("CRUISER"), "bmx_cruiser", "ids are case-insensitive")
@@ -382,12 +386,12 @@ T.test("bikes: a fresh bike starts in its own colour when its spawner has no pre
     end
 end)
 
-T.test("bikes: an unknown bike name lists them all", function()
+T.test("bikes: an unknown bike name lists every vehicle", function()
     local sv = F.server()
     local ply = looker(sv)
     sv:command("bmx_spawn", ply, "tandem")
     local said = table.concat(ply._chat, "\n")
-    T.ok(said:find("city, cruiser, dirtbike, ebike, emoto, fixie, mini, moped, road, stock", 1, true), "lists them: " .. said)
+    T.ok(said:find("city, cruiser, dirtbike, ebike, emoto, fixie, mini, moped, road, skateboard, stock", 1, true), "lists them: " .. said)
 end)
 
 --------------------------------------------------------------------------

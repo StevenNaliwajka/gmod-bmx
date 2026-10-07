@@ -610,9 +610,15 @@ function BMX.PhysicsStep(ent, phys, dt)
             if paid and ent.AwardTricks then ent:AwardTricks(paid) end
         end
         if BMX.ComboThink then BMX.ComboThink(ent, st) end
+        -- THE BALANCE MODE'S OWN TICK, if it has one: the skateboard's ollie, lean
+        -- and tricks (sv_board.lua), which run in the air as well as on the ground.
+        local mode = BMX.BalanceFor(ent)
+        if mode.Tick then mode.Tick(ent, phys, C, dt, inp, st, vdef) end
     else
         st.manual = nil
         if BMX.TricksIdle then BMX.TricksIdle(ent, st) end
+        local idle = BMX.BalanceFor(ent).Idle
+        if idle then idle(ent, st) end
         -- Got off with a combo open: it was landed, and it banks.
         if st.combo and BMX.ComboEnd then BMX.ComboEnd(ent, true) end
     end

@@ -376,6 +376,7 @@ registerDuplicator("bmx_base")
 -- A real model is a `model` line here plus frameOffset / frameAngles to line
 -- it up with the axle line. See docs/DESIGN.md, "Content".
 BMX.RegisterBike("stock", {
+    look        = "bmx",          -- the detailed BMX model (cl_bikegeo.lua)
     printName   = "BMX",
     description = "Street BMX with lean-driven handling.",
     colorIndex  = 1,            -- red; see BMX.Palette in sh_color.lua
@@ -402,6 +403,7 @@ BMX.RegisterBike("stock", {
 -- slower off the line: crankTorque is raised only far enough that it still
 -- climbs a funbox. Steadier, because a longer wheelbase is.
 BMX.RegisterBike("cruiser", {
+    look        = "bmx",          -- the detailed BMX model (cl_bikegeo.lua)
     printName   = "BMX Cruiser",
     description = "24-inch cruiser: longer, heavier and faster at the top end, slower off the line.",
     colorIndex  = 8,            -- blue
@@ -421,6 +423,7 @@ BMX.RegisterBike("cruiser", {
 -- 16-inch mini: short and light. Lower top speed (~270 u/s), quicker to turn,
 -- and a ridden mini is mostly a big rider on a small bike, which is the joke.
 BMX.RegisterBike("mini", {
+    look        = "bmx",          -- the detailed BMX model (cl_bikegeo.lua)
     printName   = "Mini BMX",
     description = "16-inch mini: short, light and twitchy, with a low top speed.",
     colorIndex  = 3,            -- yellow

@@ -128,6 +128,13 @@ BMX.Sounds = {
     splash = { path = "ambient/water/water_splash%d.wav",
                variants = 3, vol = 0.9, level = 76 },
 
+    -- THE BOARD (G23). Standing in for: a tail snapping the ground (the pop of an
+    -- ollie), a shoe scuffing along the ground (a kick of the push).
+    board_pop  = { path = "physics/wood/wood_plank_impact_hard%d.wav",
+                   variants = 3, vol = 0.7, level = 70 },
+    board_push = { path = "physics/concrete/concrete_impact_soft%d.wav",
+                   variants = 3, vol = 0.35, level = 62 },
+
     -- Frame hitting the world. Standing in for: a crash.
     crash = { path = "physics/metal/metal_box_impact_hard%d.wav",
               variants = 3, vol = 1.0, level = 80 },

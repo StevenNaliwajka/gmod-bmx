@@ -44,8 +44,10 @@ local SHARED = {
     "bmx/sh_gears.lua",     -- the gear model: ratios, cadence, which gear a bike is in (G09)
     "bmx/sh_motor.lua",     -- the motor model: assist, battery, engine and clutch (G14, G15)
     "bmx/sh_passenger.lua", -- seats, the passenger's mass, the child seat's switch (G11)
+    "bmx/sh_board.lua",     -- the skateboard's vocabulary (G23): numbers, input map, pose set; before the registry
     "bmx/sh_bikes.lua",
     "bmx/sh_motorbikes.lua", -- the e-bike, e-moto, dirt bike and moped (G14, G15)
+    "bmx/sh_boards.lua",    -- ...and the boards, registered once RegisterVehicle exists
     "bmx/sh_sound.lua",
     "bmx/sh_color.lua",     -- the palette and the ways to choose from it
     "bmx/sh_stance.lua",    -- seated / standing / attack: IK offsets (G21)
@@ -63,6 +65,10 @@ local SERVER_FILES = {
     "bmx/sv_tricks.lua",    -- frame/bar spins and style poses: before sv_physics too
     "bmx/sv_physics.lua",
     "bmx/sv_fixie.lua",     -- the fixed-gear drive, its two tricks, its front-brake switch (G10)
+    "bmx/sv_board.lua",     -- the skateboard (G23): the board balance, the push drive, the decoder
+    "bmx/sv_board_tricks.lua", -- ...its flips and what a landing pays (wraps BMX.ScoreExtras: after sv_tricks)
+    "bmx/sv_board_carry.lua",  -- ...and carrying one (weapon_bmx_board)
+    "bmx/sv_board_grind.lua",  -- ...its grinds, slides and manuals (wraps sv_grind.lua's entry points)
     "bmx/sv_seat.lua",
     "bmx/sv_passenger.lua", -- a second rider: boarding, mass, the crash (G11)
     "bmx/sv_basket.lua",    -- a city bike's basket: props ride in it until the ride is not gentle (G12)
@@ -77,6 +83,7 @@ local SERVER_FILES = {
     "bmx/sv_launch.lua",    -- finding a ramp to get air off, or putting one down
     "bmx/sv_debug.lua",
     "bmx/sv_park.lua",      -- park pieces: placing, the cap, save/load, presets
+    "bmx/sv_nav.lua",       -- a navmesh a bike can use, and the trick spots on it
     "bmx/sv_menu.lua",      -- /bike in chat, and park pieces placed from the window
 
     -- The headless harness loads last: its cases reference BMX.Config, the
@@ -87,6 +94,8 @@ local SERVER_FILES = {
 }
 
 local CLIENT_FILES = {
+    "bmx/cl_bikegeo.lua",   -- the bike model, built as triangles (pure Lua)
+    "bmx/cl_bikemesh.lua",  -- ...as IMeshes: materials, lighting, drawing
     "bmx/cl_view.lua",
     "bmx/cl_hud.lua",
     "bmx/cl_sound.lua",
@@ -94,6 +103,7 @@ local CLIENT_FILES = {
     "bmx/cl_gears.lua",     -- the shift keys, sent to the server (G09)
     "bmx/cl_motor.lua",     -- motor HUD lines, the whine and the engine note, the moto pose (G14, G15)
     "bmx/cl_passenger.lua", -- who is a passenger, how they sit, where their hands go (G11)
+    "bmx/cl_board.lua",     -- the skateboard's drawing, rider pose and HUD (G23): after cl_rider
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it
     "bmx/cl_filmer.lua",    -- views through a bmx_filmer_cam (bmx_filmer_view)
     "bmx/cl_replay.lua",    -- the last 30 s, played back (bmx_replay)
@@ -106,6 +116,9 @@ local CLIENT_FILES = {
 }
 
 if SERVER then
+    -- The skateboard SWEP (G23), a client file as well: the engine loads weapons itself,
+    -- but sending it explicitly is what makes it work in multiplayer as well.
+    AddCSLuaFile("weapons/weapon_bmx_board.lua")
     for _, f in ipairs(SHARED) do AddCSLuaFile(f) end
     for _, f in ipairs(CLIENT_FILES) do AddCSLuaFile(f) end
 end

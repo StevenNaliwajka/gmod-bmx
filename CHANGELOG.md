@@ -17,9 +17,40 @@ offline suite can boot another repository's files on top of the addon.
 
 **New** (the bot below now ships with BMX (Mode))
 
+- **A navmesh a bike can use**: `bmx_nav_build` meshes the map and saves
+  `maps/<map>.nav`. Unlike the engine's `nav_generate` it traces props as well
+  as brushes, so a prop ramp is a slope on the mesh rather than floor running
+  under it, and it keeps every layer (the floor under an overhead viaduct as
+  well as the viaduct's top). Areas only link where a wheel rolls across, and
+  whatever a rider cannot reach from a spawn is pruned. It also catalogues
+  trick spots (straight runways, launches, rails) for BMX (Mode)'s bot, which
+  routes round the park on it. `bmx_nav_status` shows what it found.
+- **Park pieces sit on the ground**: placed, spawned from the menu or dropped
+  from the physgun, a piece settles upright and frozen onto the highest ground
+  under its footprint, and the navmesh under it is remeshed (`bmx_park_ground`,
+  on by default).
+
+**Fixed**
+
+- Park pieces spawned on a server were never frozen: `SetRenderBounds` (a
+  client-only call) threw on the server partway through building the piece's
+  physics, before the freeze, so a piece could be knocked off its spot.
+
 - **/bike**: type it in chat (or `!bike`, `/bmx`, or `bmx_menu` in the
   console) for a window listing every bike and park piece; a click spawns it
   where you look. For servers whose gamemode has no Q menu.
+- **A detailed bike model.** The bike was a few dozen stretched props; it is
+  now a real model, built in code: a street BMX at real dimensions with
+  welded chromoly tubes and gussets, a raked fork and integrated head tube,
+  9-inch two-piece bars with a crossbar and a top-load stem, ribbed grips, a
+  brake lever whose cable runs through a gyro to a U-brake, a pivotal seat,
+  20 x 2.3 skinwall tyres with tread and sidewall lettering on 36-spoke
+  three-cross wheels, knurled chrome pegs, 25/9 gearing with a link chain,
+  three-piece cranks and pinned platform pedals, and a down-tube graphic. Lit
+  by the map, metallic paint in the bike's colour, chrome that reflects.
+  Every part moves as it should: the fork and bars steer about the head
+  tube, the wheels and cranks turn, whips and barspins spin the frame and the
+  bars. `bmx_bike_model 0` (Options > BMX > Advanced) draws the simple bike.
 - **A trick bot**: `bmx_bot_spawn` puts a bot rider on a bike that rides
   around doing Bunny Hops, Wheelies, Stoppies, Combos, Backflips, Frontflips,
   Barrel Rolls, 360s, Crank Grinds and Double Peg Grinds -- finding ramps in

@@ -198,14 +198,15 @@ local function drawRiderHUD(bike)
     -- Cadence: how close the rider is to spinning out. This is what actually
     -- caps top speed, so showing it explains why pedalling stopped helping.
     ----------------------------------------------------------------------
+    -- Only a pedalled vehicle has a cadence or a stamina: a board is pushed.
+    local dk = (bike:Bike().drive or {}).kind
+    local pedals = dk == "pedal" or dk == "assist"     -- an e-bike is pedalled too (G14)
     local cadFrac = bike:GetCadence() / bike:Cfg().Drive.maxCadence
     if mi and mi.rpm then
         -- An engine's rev counter in the legs' place: red at the limiter.
         bar(x + 14, y + 54, w - 28, 6, mi.rpm, mi.rpm > 0.95 and COL_WARN or COL_GOOD)
         label(mi.clutch and "clutch" or "rpm", x + 14, y + 62, "BMX.Small", COL_DIM)
-    elseif mi and mi.batteryLabel and not mi.assist then
-        -- An e-moto has no legs: nothing to show as a cadence.
-    else
+    elseif pedals then
         bar(x + 14, y + 54, w - 28, 6, cadFrac,
             cadFrac > 0.95 and COL_WARN or COL_GOOD)
         label("cadence", x + 14, y + 62, "BMX.Small", COL_DIM)
@@ -215,7 +216,7 @@ local function drawRiderHUD(bike)
     -- Stamina, only once it has been spent: a permanently full bar is chrome.
     ----------------------------------------------------------------------
     local stam = bike:GetStamina() / bike:Cfg().Drive.staminaMax
-    if stam < 0.999 then
+    if pedals and stam < 0.999 then
         bar(x + 14, y + 80, w - 28, 6, stam,
             stam < 0.2 and COL_BAD or (bike:GetSprinting() and COL_WARN or COL_DIM))
         label("stamina", x + 14 + 62, y + 62, "BMX.Small", COL_DIM)

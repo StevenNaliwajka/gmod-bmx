@@ -2230,3 +2230,65 @@ function(ctx)
     ctx:ok(IsValid(ctx.bike:GetDriver()), "the ridden board's rider is still aboard")
     for _, e in ipairs(made) do SafeRemoveEntity(e) end
 end)
+
+--------------------------------------------------------------------------
+-- THE BOARD'S FLIPS (M2). Roll up, crouch, release SPACE with a direction held,
+-- and judge it by the addon's own scoring (BMX_TrickLanded) and bail path
+-- (BMX_Crashed): a flip off a full crouch is caught and pays, one off a tap does
+-- not have the air to finish and bails.
+--------------------------------------------------------------------------
+local function boardFlip(ctx, keys, hold)
+    local b = ctx.bike
+    local landed, crashed = {}, nil
+    hook.Add("BMX_TrickLanded", "BMX.Test.BoardFlip", function(ply, t) landed[#landed + 1] = t.name end)
+    hook.Add("BMX_Crashed", "BMX.Test.BoardFlip", function(ent, ply, reason) if ent == b then crashed = reason end end)
+    local start = b:GetPos()
+    boardInput(ctx, { push = true })
+    ctx:runUntil(7, function()
+        return ctx:st().fwdSpeed > 100 or (ctx.runway > 0 and b:GetPos():Distance(start) > ctx.runway)
+    end)
+    boardInput(ctx, {})
+    ctx:wait(0.3)
+    boardInput(ctx, { jump = true })
+    ctx:wait(hold)
+    boardInput(ctx, { side = (keys.d and 1 or 0) - (keys.a and 1 or 0) })
+    local inp = b.input.board
+    inp.w, inp.s = keys.w or false, keys.s or false
+    local id, sawBits = nil, false
+    local t0 = CurTime()
+    while CurTime() - t0 < 2.2 do
+        local f = ctx:st().board and ctx:st().board.flip
+        if f then id = f.id end
+        if b:GetBoardBits() ~= 0 then sawBits = true end
+        coroutine.yield()
+    end
+    hook.Remove("BMX_TrickLanded", "BMX.Test.BoardFlip")
+    hook.Remove("BMX_Crashed", "BMX.Test.BoardFlip")
+    return landed, crashed, id, sawBits
+end
+
+T.Case("board_kickflip_lands", { vehicle = "skateboard", timeout = 40,
+    desc = "the skateboard: a kickflip off a full crouch turns the deck, is caught inside 20 degrees, and pays" },
+function(ctx)
+    local landed, crashed, id, sawBits = boardFlip(ctx, { a = true }, 0.45)
+    ctx:log("flip " .. tostring(id) .. ", landed: " .. table.concat(landed, ", ") .. ", crash " .. tostring(crashed))
+    ctx:ok(id == "kickflip", "A after the pop picks the kickflip: " .. tostring(id))
+    ctx:ok(sawBits, "the deck's flip was networked while it turned")
+    ctx:ok(crashed == nil, "it did not bail: " .. tostring(crashed))
+    local paid = false
+    for _, n in ipairs(landed) do if n:find("Kickflip", 1, true) then paid = true end end
+    ctx:ok(paid, "a Kickflip was paid")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "and the rider is still aboard")
+    ctx:ok(ctx.bike:GetBoardBits() == 0, "the deck is flat again")
+    ctx:between(math.deg(math.abs(ctx:st().roll)), 0, 20, "the chassis is level after it", "deg")
+end)
+
+T.Case("board_bails_on_bad_catch", { vehicle = "skateboard", timeout = 40,
+    desc = "the skateboard: a kickflip off a tap pop lands mid-flip, outside the 20 degree catch, and bails" },
+function(ctx)
+    local landed, crashed = boardFlip(ctx, { a = true }, 0.0)
+    ctx:log("landed: " .. table.concat(landed, ", ") .. ", crash " .. tostring(crashed))
+    ctx:ok(crashed == "flip", "bailed on the flip: " .. tostring(crashed))
+    for _, n in ipairs(landed) do ctx:ok(not n:find("Kickflip", 1, true), "no Kickflip was paid") end
+end)
+

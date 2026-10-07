@@ -312,6 +312,27 @@ function B.InputOf(inp)
     return b
 end
 
+-- The four direction keys as booleans { w, s, a, d }: the board record's raw keys
+-- where a decoder wrote them (so W and S together are both seen, which the single
+-- forward axis cannot say), else the standard fields a scripted rider writes.
+function B.Keys(inp)
+    local b = inp.board
+    local w, s, a, d
+    if b and (b.w ~= nil or b.s ~= nil) then
+        w, s = b.w or false, b.s or false
+    else
+        local f = b and b.fwd ~= 0 and b.fwd or ((inp.throttle or 0) - (inp.brakeRear or 0))
+        w, s = f > 0.5, f < -0.5
+    end
+    local sd = b and b.side ~= 0 and b.side or (inp.leanTarget or 0)
+    a, d = sd < -0.5, sd > 0.5
+    -- The flick scheme: the mouse's stroke stands in for the keys.
+    if b and (b.flickF ~= 0 or b.flickS ~= 0) then
+        w, s, a, d = b.flickF > 0, b.flickF < 0, b.flickS < 0, b.flickS > 0
+    end
+    return { w = w, s = s, a = a, d = d }
+end
+
 -- The rider's direction for a flick or a flip, as -1/0/1 each: forward (W), side
 -- (D is +1). The raw keys of the board record where a decoder wrote them, else the
 -- standard fields a scripted rider writes (throttle - brakeRear, the lean key).
@@ -329,3 +350,133 @@ function B.RawDir(inp)
     local function q(v) return v > 0.5 and 1 or (v < -0.5 and -1 or 0) end
     return q(f), q(s)
 end
+
+--------------------------------------------------------------------------
+-- THE FLIPS. During the pop window (Tune.flipWindow after an ollie) a direction
+-- picks the flip, THPS style:
+--
+--           W            front shove-it
+--      W+A  hardflip     W+D  varial kickflip
+--       A   kickflip      D   heelflip
+--      S+A  360 flip     S+D  varial heelflip
+--           S            pop shove-it           W+S  impossible
+--
+-- (Skate's mouse flick picks the same directions, bmx_board_flick.) A flip is the
+-- DECK rotating on its own axes while the rider stays put: roll about its long
+-- axis (the kick and heel), yaw about the vertical (the shove-its), pitch about
+-- the cross axis (the impossible, which wraps the board round the back foot).
+-- Angles are the total each turns through, radians; `dur` how long it takes.
+--
+-- THE CATCH. Land with the deck within Tune.catchAngle (20 degrees) of flat and
+-- wheels down, or bail. "Flat" for a roll or pitch is a whole turn and for yaw a
+-- half turn (a deck is the same either way round), so the catch window is the
+-- last part of the flip, and a pop too low for the board to finish is a bail.
+--------------------------------------------------------------------------
+local PI = math.pi
+B.Flips = {
+    kickflip   = { name = "Kickflip",        w = false, s = false, a = true,  d = false,
+                   roll =  TAU, yaw = 0,   pitch = 0,   dur = 0.42, points = 300, input = "A after the pop" },
+    heelflip   = { name = "Heelflip",        w = false, s = false, a = false, d = true,
+                   roll = -TAU, yaw = 0,   pitch = 0,   dur = 0.42, points = 300, input = "D after the pop" },
+    popshove   = { name = "Pop Shove-it",    w = false, s = true,  a = false, d = false,
+                   roll = 0,    yaw = PI,  pitch = 0,   dur = 0.36, points = 200, input = "S after the pop" },
+    frontshove = { name = "Front Shove-it",  w = true,  s = false, a = false, d = false,
+                   roll = 0,    yaw = -PI, pitch = 0,   dur = 0.36, points = 200, input = "W after the pop" },
+    flip360    = { name = "360 Flip",        w = false, s = true,  a = true,  d = false,
+                   roll =  TAU, yaw = TAU, pitch = 0,   dur = 0.55, points = 600, input = "S + A after the pop" },
+    varialheel = { name = "Varial Heelflip", w = false, s = true,  a = false, d = true,
+                   roll = -TAU, yaw = -PI, pitch = 0,   dur = 0.46, points = 400, input = "S + D after the pop" },
+    varialkick = { name = "Varial Kickflip", w = true,  s = false, a = false, d = true,
+                   roll =  TAU, yaw = PI,  pitch = 0,   dur = 0.46, points = 400, input = "W + D after the pop" },
+    hardflip   = { name = "Hardflip",        w = true,  s = false, a = true,  d = false,
+                   roll =  TAU, yaw = -PI, pitch = 0,   dur = 0.50, points = 450, input = "W + A after the pop" },
+    impossible = { name = "Impossible",      w = true,  s = true,  a = false, d = false,
+                   roll = 0,    yaw = 0,   pitch = TAU, dur = 0.50, points = 500, input = "W + S after the pop" },
+}
+B.FlipOrder = { "kickflip", "heelflip", "popshove", "frontshove", "flip360",
+                "varialheel", "varialkick", "hardflip", "impossible" }
+
+T.flipWindow = 0.45          -- s after the pop in which a direction picks a flip
+T.flipSettle = 0.06          -- s a direction is held before it counts (so a diagonal is two keys)
+T.catchAngle = math.rad(20)  -- land within this of flat, or bail
+T.cleanAngle = math.rad(5)   -- within this it is a clean catch
+T.okAngle    = math.rad(12)
+T.catchMult  = { clean = 1.25, ok = 1.0, late = 0.6 }
+T.switchMult = 1.2
+T.fakieMult  = 1.1
+T.nollieMult = 1.1
+
+-- Which flip a set of keys picks, or nil. W + S is the impossible whatever A and
+-- D say; otherwise the keys must be exactly a row's.
+function B.FlipFor(k)
+    if not (k.w or k.s or k.a or k.d) then return nil end
+    local a, d = k.a, k.d
+    if a and d then a, d = false, false end
+    local w, s = k.w, k.s
+    if w and s then a, d = false, false end
+    for _, id in ipairs(B.FlipOrder) do
+        local f = B.Flips[id]
+        if f.w == w and f.s == s and f.a == a and f.d == d then return id end
+    end
+    return nil
+end
+
+-- How far through its turn each axis of the deck is, `t` seconds after the flip
+-- began: roll, yaw, pitch (radians). Ease-out: it spins fastest at first and
+-- settles into the catch, which is what a flip looks like and what leaves the
+-- last part of it flat enough to land.
+function B.FlipAngles(flip, t)
+    local x = BMX.Clamp((t or 0) / flip.dur, 0, 1)
+    local e = 1 - (1 - x) * (1 - x)
+    return flip.roll * e, flip.yaw * e, flip.pitch * e
+end
+
+-- How far from a flat landing the deck is at time `t`: the largest, over its three
+-- axes, of the distance to the nearest whole turn (a half turn for yaw).
+function B.CatchError(flip, t)
+    local r, y, p = B.FlipAngles(flip, t)
+    local function off(a, q)
+        local m = abs(a) % q
+        return min(m, q - m)
+    end
+    return max(off(r, TAU), off(y, PI), off(p, TAU))
+end
+
+-- "clean", "ok", "late", or nil for a bail.
+function B.CatchGrade(err)
+    if err <= T.cleanAngle then return "clean" end
+    if err <= T.okAngle then return "ok" end
+    if err <= T.catchAngle then return "late" end
+    return nil
+end
+
+-- The seconds, after a flip begins, from which a landing is caught: the start of
+-- its catch window. (It stays caught from there on: the flip is over.)
+function B.CatchFrom(flip)
+    local lo, hi = 0, flip.dur
+    for _ = 1, 30 do
+        local mid = (lo + hi) / 2
+        if B.CatchError(flip, mid) <= T.catchAngle then hi = mid else lo = mid end
+    end
+    return hi
+end
+
+-- The points for a flip landed: its own, times the catch (clean more, late
+-- less), the stance (switch and fakie pay more) and the nollie.
+function B.FlipPoints(flip, grade, switch, fakie, nollie)
+    local mult = T.catchMult[grade] or 0
+    if switch then mult = mult * T.switchMult elseif fakie then mult = mult * T.fakieMult end
+    if nollie then mult = mult * T.nollieMult end
+    return floor(flip.points * mult + 0.5)
+end
+
+-- THE TRICKS, registered like every other (sh_tricks.lua): scored on landing by
+-- sv_board_tricks.lua, listed by the trick overlay, and what a vehicle's `tricks`
+-- list names.
+for _, id in ipairs(B.FlipOrder) do
+    local f = B.Flips[id]
+    BMX.RegisterTrick{ id = id, name = f.name, kind = "custom", points = f.points, input = f.input }
+end
+BMX.RegisterTrick{ id = "board180", name = "180", kind = "custom", points = 120,
+    input = "CTRL + A / D in the air (a half turn)" }
+

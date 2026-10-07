@@ -88,7 +88,8 @@ BMX.RegisterVehicle({
     seats       = { { offset = Vector(0, 0, B.Tune.seatZ), angles = Angle(0, B.Tune.seatYaw.regular, 0) } },
     input       = "board",
     pose        = "board",
-    tricks      = { "spin360" },
+    tricks      = { "spin360", "board180", "kickflip", "heelflip", "popshove", "frontshove",
+                    "flip360", "varialheel", "varialkick", "hardflip", "impossible" },
     grindPoints = B.GrindPoints,
     physics = {
         Chassis = {

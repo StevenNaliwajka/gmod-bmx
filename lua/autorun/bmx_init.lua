@@ -62,6 +62,7 @@ local SERVER_FILES = {
     "bmx/sv_tricks.lua",    -- frame/bar spins and style poses: before sv_physics too
     "bmx/sv_physics.lua",
     "bmx/sv_board.lua",     -- the skateboard (G23): the board balance, the push drive, the decoder
+    "bmx/sv_board_tricks.lua", -- ...its flips and what a landing pays (wraps BMX.ScoreExtras: after sv_tricks)
     "bmx/sv_seat.lua",
     "bmx/sv_compat_ragmod.lua", -- RagMod, if installed: before the crash path asks
     "bmx/sv_bell.lua",      -- R on the ground rings the bell

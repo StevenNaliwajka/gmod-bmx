@@ -266,8 +266,8 @@ end
 -- latch).
 --------------------------------------------------------------------------
 local function dirLatch(inp)
-    local f, s = B.RawDir(inp)
-    return { f = f, s = s }
+    local k = B.Keys(inp)
+    return { w = k.w, s = k.s, a = k.a, d = k.d }
 end
 
 local function pop(ent, phys, cfg, dt, inp, st, b, now)
@@ -366,6 +366,19 @@ local function sync(ent, st, b, now)
     if flags ~= ent:GetBoardFlags() then ent:SetBoardFlags(flags) end
 end
 
+B.Sync = sync
+
+-- What the stance multiplies a trick by: switch pays most, fakie a little.
+function B.StanceMult(b)
+    return b.switch and T.switchMult or (b.fakie and T.fakieMult or 1)
+end
+
+-- The stance's words for a trick's name ("Switch " / "Fakie " / ""), so every trick
+-- that pays says how it was done.
+function B.StancePrefix(b)
+    return b.switch and "Switch " or (b.fakie and "Fakie " or "")
+end
+
 --------------------------------------------------------------------------
 -- THE TICK: once a substep with a rider aboard (sv_physics.lua, 6b), on the ground
 -- and in the air alike.
@@ -407,8 +420,9 @@ function BMX.BoardIdle(ent, st)
     local b = st.board
     if not b then return end
     b.crouching, b.crouchT, b.kt, b.manual, b.meter = false, 0, nil, nil, nil
+    b.pitchTarget, b.pitchFF, b.mtr, st.manual = 0, 0, nil, nil
     b.lean, b.leanRate = 0, 0
-    b.flipRoll, b.flipYaw, b.flipPitch, b.flip = 0, 0, 0, nil
+    b.flipRoll, b.flipYaw, b.flipPitch, b.flip, b.latch, b.popAt = 0, 0, 0, nil, nil, nil
     b.ps = {}
     sync(ent, st, b, CurTime())
 end
@@ -425,6 +439,7 @@ local function decode(ply, bike, cmd, down, fwd, side)
     local air = st.airMode and true or false
 
     b.fwd, b.side = fwd, side
+    b.w, b.s = down("forward"), down("back")
     b.jump, b.alt = down("jump"), down("alt")
     b.grab, b.duck, b.swap = down("grab"), down("crouch"), down("swap")
 

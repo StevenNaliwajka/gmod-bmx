@@ -833,9 +833,9 @@ end)
 T.test("overlay: a trick registered later is listed with no change to the overlay", function()
     local s = scene()
     local E = s.cl.env
-    E.BMX.RegisterTrick{ id = "kickflip", name = "Kickflip", input = "KICK", points = 10, kind = "custom" }
+    E.BMX.RegisterTrick{ id = "bunnyslide", name = "Bunnyslide", input = "KICK", points = 10, kind = "custom" }
     local found
-    for _, l in ipairs(E.BMX.TrickOverlayLines()) do if l.text == "Kickflip" then found = l end end
+    for _, l in ipairs(E.BMX.TrickOverlayLines()) do if l.text == "Bunnyslide" then found = l end end
     T.ok(found, "listed")
     T.eq(found.input, "KICK", "with its input")
 end)

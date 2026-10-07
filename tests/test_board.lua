@@ -11,39 +11,8 @@
 ----------------------------------------------------------------------------]]
 
 local F = require("lib.fixture")
-
-local function gravity(sv) return sv.world.gravity end
-
--- A board resting on the plant, upright, facing +X. Four wheels carry the weight,
--- so the static sag is m g / 4 / k.
-local function board(sv, at)
-    local B = sv.env.BMX
-    local cfg = B.ConfigFor(B.Vehicles.skateboard)
-    local sag = cfg.Chassis.mass * gravity(sv) / 4 / cfg.Wheel.spring
-    local e = F.bike(sv, "bmx_skateboard",
-        at or sv.env.Vector(0, 0, sv.world.groundZ + cfg.Wheel.radius - sag))
-    return e
-end
-
-local function ridden(opts)
-    local sv = F.server(opts)
-    local e = board(sv)
-    F.scripted(sv, e)
-    sv:run(0.6)
-    return sv, e
-end
-
--- Write the standard input and the board record, the way a scripted rider (the
--- bot, the headless harness) does. Anything omitted is neutral.
-local function press(e, t)
-    t = t or {}
-    F.input(e, { throttle = t.throttle, brakeRear = t.brake, lean = t.lean })
-    local b = e.input.board or {}
-    e.input.board = b
-    b.fwd, b.side = t.fwd or 0, t.side or 0
-    b.jump, b.alt, b.grab, b.duck, b.swap = t.jump or false, t.alt or false,
-        t.grab or false, t.duck or false, t.swap or false
-end
+local BF = require("lib.board")
+local board, ridden, press = BF.board, BF.ridden, BF.press
 
 --------------------------------------------------------------------------
 -- The registration

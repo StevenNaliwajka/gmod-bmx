@@ -32,7 +32,7 @@ R.NET_RENT = "bmx_rental_rent"   -- client -> server: this machine, this vehicle
 R.Model    = "models/props_interiors/vendingmachinesoda01a.mdl"
 R.REACH    = 160    -- u: how close to the machine a rent is honoured
 R.BAY      = 40     -- u: how far in front of the machine's face the vehicle appears
-R.IDLE     = 90     -- s: an empty rental is returned after this long
+R.IDLE     = 120    -- s: an empty rental is returned after this long (BMX (Mode)'s bmx_idle_cleanup is 120 too)
 R.COOLDOWN = 2      -- s: between two rents by one player
 
 -- Where a machine's vehicle appears, and which way it faces: in front of the

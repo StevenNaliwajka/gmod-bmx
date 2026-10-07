@@ -273,6 +273,9 @@ client{ name = "bmx_bike_model", kind = "bool", default = true, category = "adva
 client{ name = "bmx_bike_build_ms", kind = "float", default = 4, min = 0.5, max = 50, decimals = 1,
     category = "advanced", label = "Bike model build time",
     help = "Milliseconds a frame spent building the detailed bike the first time one is seen. Higher builds it sooner, with a bigger hitch." }
+client{ name = "bmx_predict", kind = "bool", default = false, category = "advanced",
+    label = "Predict my own bike's lean",
+    help = "On a server with ping, your bike's lean and steering are drawn a moment ahead of what the network has told you, so it answers your keys sooner. Only your own bike, only the picture: the server still decides. Off draws exactly what the server sent." }
 client{ name = "bmx_lod_scale", kind = "float", default = 1, min = 0, max = 4, decimals = 1,
     category = "advanced", label = "Bike detail distance",
     help = "How far away bikes keep full detail. 1 is normal, 2 is twice as far, 0 always draws every part." }
@@ -379,6 +382,13 @@ server{ name = "bmx_water", kind = "bool", default = true, category = "world",
 server{ name = "bmx_water_eject", kind = "bool", default = true, category = "world",
     label = "Deep water throws riders",
     help = "A rider is thrown off when the water reaches their chest. Off keeps them aboard." }
+
+server{ name = "bmx_lagcomp", kind = "bool", default = false, category = "feel",
+    label = "Tricks count where they were pressed",
+    help = "A hop, ollie or spine transfer pressed at the lip counts at the lip even if it reaches the server a moment late. Only changes when a press is judged, not what the bike does. Off judges a press when it arrives." }
+server{ name = "bmx_lagcomp_max", kind = "float", default = 0.15, min = 0, max = 0.5, decimals = 2,
+    category = "feel", label = "Most a press may be back-dated (seconds)",
+    help = "The longest the server will back-date a trick press for lag. Higher forgives a worse connection and a later, easier takeoff for everyone." }
 
 server{ name = "bmx_wheel_stiction", kind = "bool", default = true, category = "feel",
     label = "Parked wheels stick",

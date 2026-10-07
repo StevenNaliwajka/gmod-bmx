@@ -711,7 +711,12 @@ function BMX.PhysicsStep(ent, phys, dt)
         ent.hopRelease = false
         ent.hopHeld    = false
 
-        if grounded and hasDriver and CurTime() >= (ent.hopReady or 0) then
+        -- G30 (bmx_lagcomp): a release pressed while the bike was still on the
+        -- ground counts, though it has left it by the time the command arrived.
+        local pressedGrounded = grounded
+            or (BMX.LagCompGrace and BMX.LagCompGrace(ent, ent.hopReleaseAge))
+        ent.hopReleaseAge = nil
+        if pressedGrounded and hasDriver and CurTime() >= (ent.hopReady or 0) then
             local charge = max(H.minCharge, (ent.hopCharge or 0) / H.chargeTime)
 
             -- Pop along the surface normal, not along world up, so hopping off

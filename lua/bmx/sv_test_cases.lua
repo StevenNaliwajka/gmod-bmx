@@ -2730,3 +2730,40 @@ function(ctx)
     ctx:between(deepest, ctx.cfg.Wheel.restLength * 0.4, ctx.cfg.Wheel.restLength * 2.2, "suspension compression on landing", "u")
     ctx:between(math.deg(math.abs(ctx:st().roll)), 0, 20, "roll once it has settled", "deg")
 end)
+
+-- G30: PREDICTION IS DISPLAY-ONLY, and the lag compensation is a no-op for a
+-- rider who is on the ground.
+--
+-- A bot cannot be given net_fakelag, so this is the half that CAN be asserted
+-- headless: the client's prediction code is not on this realm at all (nothing the
+-- server simulates can read it), and with bmx_lagcomp ON a scripted rider's ride
+-- is the ride it always was -- the lean follows the shared controller's own
+-- smoothing, and a hop released on the ground still leaves it (the grace only
+-- ever turns a press that arrived in the air into one that counts on the ground).
+--------------------------------------------------------------------------
+T.Case("predict_display_only", { timeout = 40,
+    desc = "bmx_lagcomp 1 changes nothing for a rider on the ground: the lean reaches its target at BMX.Lean's rate, a ground hop still hops, and no client prediction exists server-side" },
+function(ctx)
+    T.ConVar(ctx, "bmx_lagcomp", 1)
+    ctx:ok(BMX.PredictRollOffset == nil, "the client's prediction is not loaded on the server")
+    ctx:ok(BMX.Lean and BMX.Predict, "the shared controller is loaded on the server")
+    if not ctx:accelerateTo(160, 12) then return end
+
+    ctx:input({ throttle = 0.5, lean = 1 })
+    local t0 = CurTime()
+    ctx:waitUntil(function() return CurTime() - t0 >= 0.6 end, 3, "the lean")
+    ctx:between(ctx.bike.input.lean, 0.95, 1.0001, "the smoothed lean reached its target (3/s, so 0.34 s)")
+    ctx:ok(ctx:st().roll > math.rad(5), "the bike leaned right")
+    ctx:ok((ctx.bike.input.cmdAge or 0) == 0, "no back-dating for a scripted rider")
+
+    ctx:input({ throttle = 0.5 })
+    ctx:wait(1.0)
+    local z0 = ctx.bike:GetPos().z
+    ctx:hop()
+    local up = ctx:waitUntil(function()
+        local f, r = ctx:wheels()
+        return not f.onGround and not r.onGround
+    end, 1.5, "both wheels to leave the ground")
+    ctx:ok(up, "a hop released on the ground leaves it with bmx_lagcomp on")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "rider aboard")
+end)

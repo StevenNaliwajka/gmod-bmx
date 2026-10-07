@@ -728,6 +728,29 @@ function ENT:Draw()
     tube(barL, gripL, 1.5 * k, COL_TYRE)            -- grips
     tube(barR, gripR, 1.5 * k, COL_TYRE)
 
+    -- THE BAR SHAPE (`barStyle`, G09/G12): the BMX's flat riser is the default.
+    -- DROP bars carry on forward and curl down and back from each outer end, the
+    -- road bike's hoods and drops; SWEPT bars run back toward the rider, the city
+    -- bike's. Both are drawn from the same bar points the hands are aimed at, so
+    -- they turn, spin and fold with the bars exactly as the flat bar does.
+    local style = bike.barStyle
+    if style == "drop" or style == "swept" then
+        local f = bars.fwd
+        for _, g in ipairs({ gripL, gripR }) do
+            if style == "drop" then
+                local a = g + f * (4.5 * k) - up * (1.2 * k)
+                local b = a + f * (2.0 * k) - up * (6.5 * k)
+                local c = b - f * (5.5 * k) - up * (1.0 * k)
+                tube(g, a, 1.2 * k, COL_TYRE)
+                tube(a, b, 1.2 * k, COL_TYRE)
+                tube(b, c, 1.2 * k, COL_TYRE)
+            else
+                local a = g - f * (6.5 * k) + up * (1.5 * k)
+                tube(g, a, 1.4 * k, COL_TYRE)
+            end
+        end
+    end
+
     -- The brake cable, from the right lever through the gyro to the rear brake
     -- (BMX.BrakeCable). Not at the far LOD, where it is under a pixel wide.
     if lod < 2 then
@@ -774,7 +797,7 @@ function ENT:Draw()
     -- pedals still; rolling forward (or back), pedals forward (or back). They
     -- used to follow the rider's networked cadence, which was only loosely the
     -- same thing and read as pedals with a mind of their own.
-    self.crankAngle = rSpin / C.Drive.gearRatio
+    self.crankAngle = rSpin / BMX.GearRatio(self, C)     -- the current gear's on a bike with gears
 
     local cr = rightW * (-CHAINY * k)            -- -Y local is +right world
     local ringC = bb + cr

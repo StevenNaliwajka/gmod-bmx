@@ -103,7 +103,8 @@ local function drivetrain(ent, cfg, dt, inp, st, rear)
     local cad = D.maxCadence  * (sprinting and D.sprintCadence or 1)
 
     -- Crank speed implied by the rear wheel through the gear.
-    local crankOmega = rear.omega / D.gearRatio
+    local gearRatio = BMX.GearRatio(ent, cfg)       -- the bike's, or the current gear's (sh_gears.lua)
+    local crankOmega = rear.omega / gearRatio
     st.cadence = crankOmega
 
     -- Falling torque curve. At maxCadence the rider is spinning out and
@@ -160,7 +161,7 @@ local function drivetrain(ent, cfg, dt, inp, st, rear)
     end
 
     st.sprinting = sprinting
-    return crank / D.gearRatio
+    return crank / gearRatio
 end
 
 --------------------------------------------------------------------------

@@ -258,6 +258,9 @@ function M.Realm(world, which)
     env.SIMPLE_USE = 1
     env.KEY_K = 21
     env.KEY_L = 22
+    -- The bracket keys and the wheel: the road bike's gear shift (G09). The engine's numbers.
+    env.KEY_LBRACKET, env.KEY_RBRACKET = 53, 54
+    env.MOUSE_WHEEL_UP, env.MOUSE_WHEEL_DOWN = 112, 113
     env.IsFirstTimePredicted = function() return true end
     function env.VectorRand()
         return Vector(math.random() * 2 - 1, math.random() * 2 - 1, math.random() * 2 - 1)

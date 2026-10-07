@@ -1857,7 +1857,7 @@ end)
 -- written against was measuring the stock bike's numbers rather than the
 -- behaviour, and these are what find out.
 --------------------------------------------------------------------------
-for _, bike in ipairs({ "cruiser", "mini" }) do
+for _, bike in ipairs({ "cruiser", "mini", "road" }) do
     for _, name in ipairs({ "rest", "parked_on_stand", "fallen_is_picked_up",
                             "accelerate", "brake_locks", "lean_steers",
                             "lean_tracks_target", "bunny_hop", "wheelie",

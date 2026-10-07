@@ -424,6 +424,61 @@ BMX.RegisterBike("mini", {
 })
 
 --------------------------------------------------------------------------
+-- 700c ROAD BIKE (G09). The first bike with GEARS, and the first that is not a
+-- BMX in different clothes: a long, light frame on big narrow tyres, drop bars, a
+-- tucked rider, built to be fast on the flat and poor over a jump.
+--
+-- WHAT IS DIFFERENT, and why each number is where it is:
+--   wheel 13.8 / wheelbase 48   a 700c wheel (~27 in across) and a bike a fifth
+--                               longer than the BMX. Long means steady and slow to
+--                               turn in, which is the road bike's character.
+--   restLength 11.8            more travel for a bigger wheel, and the wheel boxes'
+--                               floor -(radius - restLength) back at the stock -2,
+--                               under the chainring by no more than a BMX's is (the
+--                               cruiser's note, above, is why it matters to a grind).
+--   mass 78                     the rider and a bike half the weight of a BMX's.
+--   grip 1.5, rolling 0.007     narrow, hard, high-pressure tyres: more grip per
+--                               contact patch and much less rolling loss.
+--   dragArea 0.0037             a rider tucked over drops presents well under the
+--                               BMX rider's frontal area.
+--   gears                       eight ratios, 1.2 to 3.5. The bottom one (1.2) is a
+--                               standing start in a low gear, the top one at the
+--                               legs' ceiling is 12.6 * 3.5 * 13.8 = 608 u/s and
+--                               terminal speed there is ~1.6x the BMX's (measured on
+--                               the plant, tests/test_road.lua) with the legs at
+--                               ~100 rpm. Neighbouring gears' 60-110 rpm bands
+--                               overlap all the way up from a jog (BMX.Gears.Covers).
+--   crankTorque 310000          a touch over the BMX's: the gears do the rest. A low
+--                               gear multiplies the push at the wheel, which the
+--                               tyre has grip for (1.5 * the rear's share of 78 kg).
+--   Hop.popSpeed 190           a road bike does not bunny hop like a BMX does.
+--   Balance leanKp/Kd, fadeInHigh   the lean (and so the steer that comes from it)
+--                               is answered faster once the bike is moving: the
+--                               assist is whole by 95 u/s, not 110. Quicker at
+--                               speed, which is where a road bike lives.
+--
+-- THE SCORE IS x1.5, "the road bike tax": tricks are allowed and still pay, and
+-- paying more is what makes a road bike backflip a thing a server remembers.
+BMX.RegisterBike("road", {
+    printName   = "Road Bike",
+    description = "700c road bike: long, light and fast, with gears ([ ] or the mouse wheel), drop bars and a tucked rider. Tricks score x1.5.",
+    colorIndex  = 13,           -- white
+    gears       = { ratios = { 1.2, 1.5, 1.8, 2.15, 2.5, 2.85, 3.15, 3.5 }, start = 4 },
+    input       = "road",
+    pose        = "road",
+    barStyle    = "drop",
+    scoreMult   = 1.5,
+    physics = {
+        Chassis = { mass = 78, seatOffset = Vector(-12.9, 0, 22.2) },  -- x 48/39
+        Wheel   = { radius = 13.8, wheelbase = 48, restLength = 11.8,
+                    grip = 1.5, rollingResistance = 0.007 },
+        Drive   = { crankTorque = 310000, dragArea = 0.0037 },
+        Hop     = { popSpeed = 190 },
+        Balance = { leanKp = 300, leanKd = 70, fadeInHigh = 95 },
+    },
+})
+
+--------------------------------------------------------------------------
 -- THE TEST CART: the platform's proof that it is not a bicycle.
 --
 -- Four wheels in a rectangle, no balance mode at all (`none`: it stands on its

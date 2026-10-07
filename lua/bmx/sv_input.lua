@@ -140,7 +140,20 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     inp.sprint     = down("sprint")
     inp.tuck       = down("tuck")
     inp.wheelieMod = down("weightBack")
-    inp.brakeFront = down("brakeFront") and 1 or 0
+    -- THE FRONT BRAKE is the map's `brakeFront` on the GROUND, which a fixie's and
+    -- a city bike's map does not list (bike_rearonly: LMB is only a tailwhip,
+    -- in the air). A fixie rider can ask for a front brake back with
+    -- bmx_fixie_frontbrake 1; the city bike's coaster brake is S and that is all.
+    local ba = map.actions.brakeFront
+    local frontBrake = ba ~= nil and down("brakeFront")
+    if frontBrake then
+        local onGround = false
+        for _, c in ipairs(ba.ctx) do if c == "ground" then onGround = true end end
+        if not onGround and not (BMX.FrontBrakeConVar and BMX.FrontBrakeConVar(bike)) then
+            frontBrake = false
+        end
+    end
+    inp.brakeFront = frontBrake and 1 or 0
 
     -- Follow the DEBOUNCED air mode, not raw ground contact. Two reasons: the
     -- networked Grounded flag is a 20 Hz copy of something that changes at

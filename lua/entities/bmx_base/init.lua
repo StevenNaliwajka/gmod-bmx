@@ -411,6 +411,22 @@ function ENT:AwardTricks(tricks)
     -- none of it -- no points, no callout, no combo -- rather than a score
     -- nobody can see going up.
     if BMX.ScoringEnabled and not BMX.ScoringEnabled() then return 0 end
+
+    -- THE MULTIPLIER: the vehicle's own (`scoreMult`: the road bike's x1.5) times
+    -- a passenger's (x2, sv_passenger.lua), applied to every trick HERE so that
+    -- the score, the callout, the public hook and the combo's chain all see the
+    -- same number. On copies: the caller's list is not ours to rewrite.
+    local mult = (self:Bike().scoreMult or 1) * (BMX.PassengerScoreMult and BMX.PassengerScoreMult(self) or 1)
+    if mult ~= 1 then
+        local scaled = {}
+        for i, t in ipairs(tricks) do
+            local c = {}
+            for k, v in pairs(t) do c[k] = v end
+            c.points = math.floor((t.points or 0) * mult + 0.5)
+            scaled[i] = c
+        end
+        tricks = scaled
+    end
     local total = 0
     for _, t in ipairs(tricks) do total = total + t.points end
     if total <= 0 then return 0 end

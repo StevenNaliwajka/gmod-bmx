@@ -45,6 +45,33 @@ The id is lower-case and becomes the entity class `bmx_<id>`
 | `seatModel` | Model the invisible pod uses; only its seat attachment and sit animation matter. |
 | `colorIndex` | Starting `BMX.Palette` index (`sh_color.lua`). |
 | `physics` | Per-bike config overrides, below. |
+| `gears` | `{ ratios = { 1.2, 1.5, ... }, start = 4 }`: **2 to 11 gears** (G09). Each ratio is wheel revolutions per crank revolution, what `physics.Drive.gearRatio` is for a single-speed bike (the BMX's is 2.78), lowest gear first and strictly rising; `start` is the gear a new bike is in (default: the middle one). Validated at registration like `physics`: a list of the wrong length, ratios out of order, a ratio of 0 or over 20, a `start` outside the box, or any other key is reported and the vehicle is **not registered**. A bike without `gears` is single-speed and runs on `Drive.gearRatio`. See "Gears" below. |
+| `scoreMult` | A number above 0 and at most 10 that multiplies every trick the vehicle scores (the road bike's is 1.5). Applied once, in `ENT:AwardTricks`, so the score, the callout, `BMX_TrickLanded` and the combo's chain all see the same number. |
+| `barStyle` | `"flat"` (the default), `"drop"` or `"swept"`: the shape of the procedurally drawn bars. |
+
+### Gears
+
+`BMX.RegisterBike("road", { gears = { ratios = { 1.2, 1.5, 1.8, 2.15, 2.5, 2.85, 3.15, 3.5 }, start = 4 }, input = "road", ... })`
+is the whole of it. The drive asks `BMX.GearRatio(ent, cfg)` for the ratio it runs
+on, which is the current gear's on a bike with `gears` and `Drive.gearRatio` on any
+other; the crank turns, the cadence on the HUD and the rider's legs all follow.
+The gear is a networked integer on the entity (`ent:GetGear()`, 1-based; 0 reads as
+`start`).
+
+The rider shifts with `]` and the mouse wheel up, `[` and the wheel down (the
+`shiftUp` and `shiftDown` actions of the `road` input map, below; `bmx_shift_wheel 0`
+gives the wheel back to the weapon switch). The client sends one small message and
+the server decides: the sender must be the rider, and a bike takes at most one
+shift per `BMX.Gears.SHIFT_COOLDOWN`. Server code can shift directly with
+`BMX.Shift(bike, +1 | -1)` (cooldown applies) or `BMX.SetGear(bike, n)`.
+
+The model (`lua/bmx/sh_gears.lua`) is what keeps the cadence sane. The legs' torque
+falls to nothing at `Drive.maxCadence` (120 rpm), so a bike tops out a little under
+that in whatever gear it is in; the box's job is that **some gear puts the legs
+between `BMX.Gears.CAD_LOW` and `CAD_HIGH` (60 and 110 rpm) at every speed**, so
+neighbouring gears' bands must overlap. `BMX.Gears.Covers(def, cfg, lowSpeed)`
+checks that for a box, `BMX.Gears.InBand`, `Best` and `CadenceRpm` are the pieces,
+and the road bike's own box is tested against it.
 
 ### Physics overrides
 
@@ -110,8 +137,8 @@ A vehicle that says nothing gets: `balance = "none"`, `drive = { kind = "none" }
 | `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"board"` (reserved for the skateboard; runs as `none`, with a message, until its module exists), or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
 | `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", ... }` (reserved for the board) or `{ kind = "none" }`. `pedal` and `throttle` need at least one wheel with `drive = true`. |
 | `seats` | `{ { model, offset, angles } }`. One seat for now (passengers are G11). Omitted: the config's `Chassis.seatOffset` and `seatAngles`. |
-| `input` | An id in `BMX.InputMaps`: `"bike"` or `"drive"`, or one you register. |
-| `pose` | An id in `BMX.PoseSets` (the rider's pose on the client): `"bike"` or `"seated"`. |
+| `input` | An id in `BMX.InputMaps`: `"bike"`, `"drive"`, `"road"`, `"bike_rearonly"`, or one you register. |
+| `pose` | An id in `BMX.PoseSets` (the rider's pose on the client): `"bike"`, `"seated"`, `"road"` (tucked over the drops) or `"upright"`. |
 | `tricks` | `"all"` or a list of registered trick ids. Limits what is scored from motion: the flips and turns, the held wheelie and stoppie, and registered custom ticks. |
 | `grindPoints` | `false` (cannot grind) or `{ crank = Vector or fn(cfg), pegs = { y, z, x = { ... } } or fn(cfg) }`: where a pipe is looked for and ridden on, and where the pegs are on an edge. |
 | `physics`, `bones`, and every appearance field above | As for a bike. |
@@ -141,7 +168,13 @@ the vehicle still registers, as it always has.) `RegisterVehicle` returns the
 definition, or `false`.
 
 **Input maps.** `BMX.RegisterInputMap{ id, actions = { name = { key = IN_..., ctx = { "ground", "air" }, label = "..." } } }`.
-`key` is the usercmd bit, `ctx` is any of `ground`, `air`, `grind`, `manual`.
+`key` is the usercmd bit, `ctx` is any of `ground`, `air`, `grind`, `manual`. An
+action may instead (or as well) carry `buttons = { KEY_..., MOUSE_... }`: buttons the
+**client** sees (the usercmd does not carry them), which is how the road bike's gear
+shift is bound; a button-only action is never "down" to the usercmd decode and is
+still listed for a keybind panel. The shipped maps: `bike`, `drive`, `road` (the
+bike's, plus `shiftUp` and `shiftDown`) and `bike_rearonly` (the bike's with no ground
+front brake: LMB is only a tailwhip, in the air).
 `sv_input.lua` reads the key for each action from the vehicle's map; an action the
 map lacks is never down. `BMX.InputActions(mapId, ctx)` lists a map's actions for a
 keybind panel. The `bike` map is the controls in the game's help; `drive` is

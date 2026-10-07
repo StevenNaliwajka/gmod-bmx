@@ -523,6 +523,42 @@ BMX.PoseSets.seated.rider = function(s)
 end
 BMX.PoseSets.seated.poses = {}
 
+-- ROAD (G09): the bike's pose with the body folded down over the bars. The base
+-- pose already tucks with speed; this adds a flat-back crouch that is there even
+-- at a standstill and deepens a little with speed (a rider on the drops is lower
+-- than one on the hoods, and they are on the drops once they are going), and the
+-- head comes up against it to look down the road. The hands and feet are the
+-- IK's, on the drop bar's grips (cl_init.lua), so this is only the torso.
+RIDER.roadTuck     = 20      -- degrees of spine forward over the bike's own
+RIDER.roadTuckFast = 10      -- ...and this much more at the top speed
+BMX.PoseSets.road.rider = function(s)
+    local pose = BMX.RiderPose(s)
+    local frac = math.Clamp((s.speed or 0) / math.max(s.topSpeed or 1, 1), 0, 1)
+    local spine = pose.spine.y + RIDER.roadTuck + RIDER.roadTuckFast * frac
+    pose.spine = Angle(pose.spine.p, spine, pose.spine.r)
+    pose.head  = Angle(0, -spine * 0.8, 0)
+    return pose
+end
+BMX.PoseSets.road.poses = BMX.RiderPoses
+
+-- UPRIGHT (G12): a Dutch bike's rider sits up and a little back, and does not
+-- tuck with speed (the bike has no speed to tuck for). The pedalling is unhurried:
+-- shorter strokes, since the legs are doing a stroll, not a sprint.
+RIDER.uprightBack  = 7       -- degrees of spine BACK from vertical
+RIDER.uprightSwing = 0.7     -- the thigh and calf swing, as a fraction of the BMX's
+BMX.PoseSets.upright.rider = function(s)
+    local pose = BMX.RiderPose(s)
+    local spine = -RIDER.uprightBack + pose.spine.y * 0.25
+    pose.spine = Angle(pose.spine.p, spine, pose.spine.r)
+    pose.head  = Angle(0, -spine * 0.7, 0)
+    for _, k in ipairs({ "rThigh", "lThigh", "rCalf", "lCalf" }) do
+        local a = pose[k]
+        pose[k] = Angle(a.p, a.y * RIDER.uprightSwing, a.r)
+    end
+    return pose
+end
+BMX.PoseSets.upright.poses = BMX.RiderPoses
+
 local POSE_HANDS = { "rHand", "lHand" }
 local POSE_LIMBS = { "rHand", "lHand", "rFoot", "lFoot" }
 
@@ -655,7 +691,7 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     local pose = set.rider({
         crank    = bike.crankAngle or 0,
         speed    = bike:GetSpeedUPS(),
-        topSpeed = C.Drive.maxCadence * C.Drive.gearRatio * C.Wheel.radius,
+        topSpeed = BMX.Gears.TopCeiling(bike, C),
         sprint   = bike:GetSprinting(),
         hop      = math.max(bike:GetHopCharge(), bike.bmxLand or 0),
         pitch    = select(2, BMX.Attitude(bike, vector_up)),

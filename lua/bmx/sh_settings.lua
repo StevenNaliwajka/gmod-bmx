@@ -245,6 +245,9 @@ client{ name = "bmx_rider_anim", kind = "bool", default = true, category = "ride
 client{ name = "bmx_rider_ik", kind = "bool", default = true, category = "rider",
     label = "Hands on the bars",
     help = "Put riders' hands on the grips and feet on the pedals. Off uses a simpler swing, which looks worse but costs less." }
+client{ name = "bmx_shift_wheel", kind = "bool", default = true, category = "rider",
+    label = "Shift gears with the mouse wheel",
+    help = "On a bike with gears (the road bike), the mouse wheel changes gear as well as [ and ]. Off leaves the wheel to the weapon switch." }
 client{ name = "bmx_rider_pose", kind = "choice", default = "seated", choices = { "seated", "standing", "attack" },
     category = "rider", label = "Riding position",
     help = "How you sit on the bike: seated, standing on the pedals, or the low attack position. Other players see it too." }

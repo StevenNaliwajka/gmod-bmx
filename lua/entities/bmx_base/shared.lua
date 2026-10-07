@@ -104,6 +104,11 @@ function ENT:SetupDataTables()
     -- Slot 7, not the next free one, to leave the low slots to whoever adds
     -- the next state the client needs.
     self:NetworkVar("Int",   7, "TrickBits")
+    -- The gear a bike with `gears` is in, 1-based; 0 is "not set", which reads
+    -- as the registration's start (sh_gears.lua). Networked because the client
+    -- draws the cranks and the HUD from it as well as the server driving the
+    -- wheel from it.
+    self:NetworkVar("Int",   3, "Gear")
 
     if SERVER then
         self:SetColorIndex(self:Bike().colorIndex or 1)

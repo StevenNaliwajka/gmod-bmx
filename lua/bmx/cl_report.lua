@@ -84,7 +84,7 @@ local EXTRA = {
     { "bmx_scoring", "1" }, { "bmx_combos", "1" }, { "bmx_max_per_player", "0" },
     { "bmx_air_assist", "1" }, { "bmx_nose_manual", "0" },
     { "bmx_crash_ragdoll", "1" }, { "bmx_ragmod", "1" },
-    { "bmx_bell", "1" }, { "bmx_bell_cooldown", "0.6" },
+    { "bmx_bell", "1" }, { "bmx_bell_cooldown", "0.3" },
     { "bmx_water", "1" }, { "bmx_water_eject", "1" }, { "bmx_sounds", "1" },
     { "bmx_vol_ride", "1" }, { "bmx_vol_wind", "1" }, { "bmx_vol_bell", "1" },
     { "bmx_hud", "1" }, { "bmx_units", "kmh" }, { "bmx_stick_deadzone", "0.1" },

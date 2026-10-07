@@ -46,15 +46,41 @@ T.test("sounds: the new ones are base-game paths, and variants carry a %d", func
         T.ok(S[key], key .. " is in the table")
         local p = S[key].path
         T.ok(p:match("^[%w_]+/[%w_/]*[%w_%%]+%.wav$"), key .. " looks like a sound path: " .. p)
-        -- Nothing shipped in the addon: base-game folders only.
+        -- Base-game folders, or the addon's own synthesised sounds (sound/bmx/).
         T.ok(p:match("^buttons/") or p:match("^ambient/") or p:match("^physics/")
-            or p:match("^garrysmod/"), key .. " is under a base-game sound folder")
+            or p:match("^garrysmod/") or p:match("^bmx/"), key .. " is under a base-game sound folder or sound/bmx/")
         T.eq(S[key].variants ~= nil, p:find("%%d") ~= nil, key .. ": variants <=> %d in the path")
     end
     for key, s in pairs(S) do
         T.ok(s.path and #s.path > 0, key .. " has a path")
         T.ok(not s.path:find("^sound/"), key .. " is relative to sound/")
     end
+end)
+
+T.test("sounds: the addon's own (sound/bmx/) are on disk, every variant, and licensed", function()
+    local sv = F.server()
+    local S = sv.env.BMX.Sounds
+    local n = 0
+    for key, s in pairs(S) do
+        if s.path:match("^bmx/") then
+            for i = 1, s.variants or 1 do
+                local p = "sound/" .. (s.variants and string.format(s.path, i) or s.path)
+                local f = io.open(p, "rb")
+                T.ok(f ~= nil, key .. ": " .. p .. " is in the repository")
+                if f then
+                    local head = f:read(12) or ""
+                    f:close()
+                    T.ok(head:sub(1, 4) == "RIFF" and head:sub(9, 12) == "WAVE", p .. " is a WAV file")
+                end
+                n = n + 1
+            end
+        end
+    end
+    T.ok(n >= 3, "the bell's variants are among them")
+    T.eq(S.bell.path:match("^bmx/") ~= nil, true, "the bell is the addon's own, not a door chime")
+    local lic = io.open("sound/bmx/LICENSE.txt", "r")
+    T.ok(lic ~= nil, "sound/bmx/LICENSE.txt states their licence")
+    if lic then lic:close() end
 end)
 
 T.test("sounds: wind volume is speed squared, clamped", function()
@@ -127,6 +153,34 @@ T.test("bell: not in the air, not in a manual (R is the barspin there)", functio
     T.eq(bells(sv), 0, "held through the landing")
 end)
 
+T.test("bell: R rings on the ground whatever else is held (RMB in a wheelie, W, Shift)", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    local ply = F.rider(sv, bike)
+    -- RMB down, no manual begun: this press used to be neither a ring nor a barspin.
+    E.hook.Run("StartCommand", ply, cmd(IN.ATTACK2 + IN.RELOAD))
+    T.eq(bells(sv), 1, "RMB + R rings")
+    sv:run(E.GetConVar("bmx_bell_cooldown"):GetFloat() + 0.1)
+    E.hook.Run("StartCommand", ply, cmd(IN.FORWARD))
+    E.hook.Run("StartCommand", ply, cmd(IN.FORWARD + IN.SPEED + IN.RELOAD))
+    T.eq(bells(sv), 2, "W + Shift + R rings")
+    T.eq(bike.input.bar, 0, "and never starts a barspin on the ground")
+end)
+
+T.test("bell: two quick presses are two rings (the default cooldown is a thumb's flick)", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    local ply = F.rider(sv, bike)
+    T.ok(E.GetConVar("bmx_bell_cooldown"):GetFloat() <= 0.3, "the default is short")
+    E.hook.Run("StartCommand", ply, cmd(IN.RELOAD))
+    E.hook.Run("StartCommand", ply, cmd(0))
+    sv:run(0.35)
+    E.hook.Run("StartCommand", ply, cmd(IN.RELOAD))
+    T.eq(bells(sv), 2, "ring, ring")
+end)
+
 T.test("bell: bmx_bell 0, bmx_sounds 0 and a bike with no bell are all silent", function()
     local sv = F.server()
     local E = sv.env
@@ -177,6 +231,71 @@ T.test("bell: the client plays it at the listener's own bmx_vol_bell", function(
     cl.sounds = {}
     cl:deliver(msg)
     T.eq(#cl.sounds, 0, "and nothing at 0")
+end)
+
+-- The rider's own client, on its own bike, as test_client.lua builds one.
+local function ownBike()
+    local sv, world = F.server()
+    local bike = F.bike(sv)
+    F.rider(sv, bike, { name = "Human" })
+    local cl = F.client(world)
+    local cb = cl:clientEntity("bmx_base")
+    cb:SetPos(bike:GetPos())
+    cb:SetAngles(bike:GetAngles())
+    local pod = cl.makeEntity("prop_vehicle_prisoner_pod")
+    pod:SetParent(cb)
+    cb:SetPod(pod)
+    local me = cl:player("Human")
+    me._vehicle = pod
+    cl.localPlayer = me
+    cb:SetDriver(me)
+    cb:SetGrounded(true)
+    return sv, cl, bike, cb, world
+end
+
+local function ccmd(buttons)
+    return { KeyDown = function(_, k) return (buttons % (k * 2)) >= k end,
+             GetButtons = function() return buttons end, GetForwardMove = function() return 0 end,
+             GetSideMove = function() return 0 end, CommandNumber = function() return 0 end }
+end
+
+local function bellSounds(cl)
+    local n = 0
+    for _, snd in ipairs(cl.sounds) do if snd.name:find("^bmx/bell") then n = n + 1 end end
+    return n
+end
+
+T.test("bell: the rider hears their own press AT ONCE, and the server's echo is not a second ring", function()
+    local sv, cl, bike, cb, world = ownBike()
+    local E = cl.env
+    cl.sounds = {}
+    E.hook.GetTable().CreateMove["BMX.BellNow"](ccmd(IN.RELOAD))
+    T.eq(bellSounds(cl), 1, "rang on the press, before any message")
+    T.ok(cb.bellRungAt ~= nil, "and the lever on the bars knows")
+    E.hook.GetTable().CreateMove["BMX.BellNow"](ccmd(IN.RELOAD))
+    T.eq(bellSounds(cl), 1, "held: once per press")
+    -- the server rings the same press and tells everyone
+    sv.env.BMX.Bell.Ring(bike, 50)
+    local msg
+    for _, m in ipairs(world.wire) do if m.name == "bmx_bell" then msg = m end end
+    msg.items[1].value = cb
+    cl:deliver(msg)
+    T.eq(bellSounds(cl), 1, "its echo is dropped")
+    -- a ring the client did not play itself (another rider's, or one it could not judge)
+    cl:deliver(msg)
+    T.eq(bellSounds(cl), 2, "a ring it did not play is heard")
+end)
+
+T.test("bell: the rider's client leaves to the server a press that could be a barspin", function()
+    local _, cl, _, cb = ownBike()
+    local E = cl.env
+    cl.sounds = {}
+    E.hook.GetTable().CreateMove["BMX.BellNow"](ccmd(IN.ATTACK2 + IN.RELOAD))
+    T.eq(bellSounds(cl), 0, "RMB held (maybe a manual): the server decides")
+    E.hook.GetTable().CreateMove["BMX.BellNow"](ccmd(0))
+    cb:SetGrounded(false)
+    E.hook.GetTable().CreateMove["BMX.BellNow"](ccmd(IN.RELOAD))
+    T.eq(bellSounds(cl), 0, "in the air it is a barspin")
 end)
 
 -- ----------------------------------------------------------------- water

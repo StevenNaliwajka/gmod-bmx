@@ -376,7 +376,7 @@ server{ name = "bmx_ragmod", kind = "bool", default = true, category = "rules",
 server{ name = "bmx_bell", kind = "bool", default = true, category = "sound",
     label = "Bells",
     help = "Riders can ring their bell with R on the ground. Off removes the bell for everyone." }
-server{ name = "bmx_bell_cooldown", kind = "float", default = 0.6, min = 0, max = 10, decimals = 1,
+server{ name = "bmx_bell_cooldown", kind = "float", default = 0.3, min = 0, max = 10, decimals = 2,
     category = "sound", label = "Bell cooldown (seconds)",
     help = "The least time between one rider's rings, so nobody can spam the bell." }
 server{ name = "bmx_sounds", kind = "bool", default = true, category = "sound",

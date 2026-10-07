@@ -495,6 +495,7 @@ do
     ma.sprint = nil
     ma.forward   = { key = IN_FORWARD, ctx = { G, A, "grind" }, label = "Throttle / nose down" }
     ma.clutch    = { key = IN_SPEED, ctx = { G }, label = "Clutch (hold; let go with the throttle open to pop a wheelie)" }
+    ma.bar       = { key = IN_RELOAD, ctx = { G, A, "manual" }, label = "Horn / barspin" }
     ma.shiftUp   = { buttons = up,   ctx = { G, A }, label = "Shift up (] or wheel up)" }
     ma.shiftDown = { buttons = down, ctx = { G, A }, label = "Shift down ([ or wheel down)" }
     BMX.RegisterInputMap{ id = "moto", label = "Motorcycle", actions = ma }

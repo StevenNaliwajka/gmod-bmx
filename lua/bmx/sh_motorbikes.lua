@@ -80,6 +80,7 @@ BMX.RegisterBike("emoto", {
     printName   = "E-Moto",
     description = "Electric motorbike: throttle on W, no pedalling, regen braking on S, about 2.5x a BMX's top speed. Heavy, with long-travel suspension.",
     family      = "moto",
+    bell        = "horn",       -- R on the ground: a horn, not a bicycle bell
     colorIndex  = 8,            -- blue
     drive       = { kind = "throttle", torque = 700000, maxSpeed = 850, regen = 260000,
                     battery = 3, motorRatio = 10 },
@@ -117,6 +118,7 @@ BMX.RegisterBike("dirtbike", {
     printName   = "Dirt Bike",
     description = "Trials and freestyle motocross: an engine with a torque curve, five gears ([ ] or the wheel), a clutch on SHIFT (let go with the throttle open to pop a wheelie), long-travel suspension and FMX poses (Alt in the air: superman, heel clicker, cliffhanger).",
     family      = "moto",
+    bell        = "horn",       -- R on the ground: a horn, not a bicycle bell
     colorIndex  = 2,            -- orange
     gears       = { ratios = { 0.01695, 0.0217, 0.02777, 0.03555, 0.0455 }, start = 1 },
     drive       = {
@@ -152,6 +154,7 @@ BMX.RegisterBike("moped", {
     printName   = "Moped",
     description = "Piaggio-style moped: pedal it off for the first few metres and the engine takes over. One speed, about 45 km/h.",
     family      = "moto",
+    bell        = "horn",       -- R on the ground: a horn, not a bicycle bell
     colorIndex  = 12,           -- white
     drive       = {
         kind = "engine", torque = 9000, idle = 1500, redline = 7800, inertia = 9,

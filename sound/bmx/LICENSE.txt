@@ -1,0 +1,11 @@
+sound/bmx/ -- the addon's own sounds
+
+bell1.wav bell2.wav bell3.wav   a bicycle bell, "ring-ring"
+horn1.wav horn2.wav             an electric motorbike horn
+
+These are not recordings and contain no sampled material. Each file is
+computed from first principles (the partials of a struck steel dome; a buzzing
+diaphragm through a horn's resonance) by tools/sound/make_sounds.py in this
+repository, which regenerates them byte for byte. They are original work and
+are released under the same MIT licence as the code (see LICENSE at the root
+of the repository). You may use them for anything, with or without credit.

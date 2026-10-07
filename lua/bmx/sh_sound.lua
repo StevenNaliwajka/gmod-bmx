@@ -3,7 +3,7 @@
 
     Every sound this addon plays, in one table, on both realms.
 
-    WHY NOTHING IS SHIPPED IN THE ADDON. Two reasons, and the second is the one
+    WHY ALMOST NOTHING IS SHIPPED IN THE ADDON. Two reasons, and the second is the one
     that matters. The addon has zero content dependencies on purpose (see
     docs/DESIGN.md section 8): clone it, ride it, no mounts, no downloads, no
     missing-content errors for half a server. And audio lifted out of another
@@ -12,7 +12,12 @@
     every client, they cost nothing to license, and they add not one byte to
     the .gma.
 
-    THEY ARE PLACEHOLDERS, chosen by reading filenames on a headless server.
+    The exceptions are sounds the addon MAKES (the bell and the horn: sound/bmx/,
+    synthesised by tools/sound/make_sounds.py), which are original, so neither
+    reason applies; the server sends them to clients without the Workshop copy
+    (sv_icons.lua).
+
+    THE REST ARE PLACEHOLDERS, chosen by reading filenames on a headless server.
     Nobody has heard them. Every entry says what it is standing in for, so
     replacing one with something recorded or CC0 is a one-line edit against a
     stated intent rather than a guess at what the last person meant.
@@ -119,10 +124,20 @@ BMX.Sounds = {
     recolor = { path = "garrysmod/balloon_pop_cute.wav", vol = 0.45, level = 68 },
 
     -- The bike bell (R, on the ground). Played on every client from a net
-    -- message (sv_bell.lua) so each listener's own bmx_vol_bell applies.
-    -- Standing in for: a ting-ting. A bike may name another key in its registry
-    -- entry (`bell = "horn"`) or `bell = false` for none.
-    bell = { path = "buttons/bell1.wav", vol = 0.8, pitch = { 118, 128 }, level = 70 },
+    -- message (sh_bell.lua) so each listener's own bmx_vol_bell applies.
+    -- A bike may name another key in its registry entry (`bell = "horn"`) or
+    -- `bell = false` for none.
+    --
+    -- THESE TWO ARE THE ADDON'S OWN, not stand-ins: sound/bmx/, computed by
+    -- tools/sound/make_sounds.py from the physics of a struck steel dome (a
+    -- "ring-ring" of two strikes, inharmonic partials that beat) and of an
+    -- electric disc horn. Nothing sampled, so nothing to license: the files are
+    -- original work under the addon's licence (sound/bmx/LICENSE.txt). The base
+    -- game has no bicycle bell; buttons/bell1.wav pitched up was a door chime.
+    -- Three bells and two horns, so a ring twice in a row is not the same file.
+    bell = { path = "bmx/bell%d.wav", variants = 3, vol = 0.75, pitch = { 97, 103 }, level = 72 },
+    -- A motorbike's (the e-moto, the dirt bike, the moped): a horn, not a bell.
+    horn = { path = "bmx/horn%d.wav", variants = 2, vol = 0.8, pitch = { 98, 102 }, level = 80 },
 
     -- A wheel going into water at speed (sv_water.lua). Standing in for: a splash.
     splash = { path = "ambient/water/water_splash%d.wav",

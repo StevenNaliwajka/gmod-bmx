@@ -330,6 +330,9 @@ local TOP_LEVEL = {
     look = true,
     -- a box small props ride in (G12, sv_basket.lua)
     basket = true,
+    -- what R rings on the ground (sh_bell.lua): a key in BMX.Sounds ("horn"), or
+    -- false for nothing; absent, the bike bell
+    bell = true,
     -- appearance and mount points (as RegisterBike always took them)
     printName = true, description = true, author = true, model = true,
     colorIndex = true, seatModel = true, wheelModel = true, forkModel = true,

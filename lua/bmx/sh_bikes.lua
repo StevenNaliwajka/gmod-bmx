@@ -556,7 +556,7 @@ BMX.RegisterBike("fixie", {
 --------------------------------------------------------------------------
 -- THE CITY BIKE (G12): a Dutch bike. Upright, heavy and unhurried, with swept-back
 -- bars, a coaster brake, a front basket, a kickstand (every bike has one), the bell
--- (sv_bell.lua, R) and a child seat that is on a context-menu switch.
+-- (sh_bell.lua, R) and a child seat that is on a context-menu switch.
 --
 --   wheel 14 / wheelbase 52     a 28-inch wheel and a long frame; the seat scales
 --                               with it, x 52/39

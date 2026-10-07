@@ -36,8 +36,14 @@ if not CLIENT then return end
 
 -- Precache, so the first skid is not the first time the engine goes looking for
 -- the file. These all ship with the game, so this is cheap and cannot fail.
+-- A sound with variants is a pattern (a %d in the path): each numbered file is
+-- precached, not the pattern, which names no file at all.
 for _, s in pairs(BMX.Sounds) do
-    if s.path then util.PrecacheSound(s.path) end
+    if s.path and s.variants then
+        for i = 1, s.variants do util.PrecacheSound(string.format(s.path, i)) end
+    elseif s.path then
+        util.PrecacheSound(s.path)
+    end
 end
 
 --------------------------------------------------------------------------
@@ -60,16 +66,76 @@ BMX.VolRide = function() return vol(cvRide) end
 BMX.VolWind = function() return vol(cvWind) end
 BMX.VolBell = function() return vol(cvBell) end
 
--- The server decided a bell rang (sv_bell.lua); how loud is this listener's.
+--------------------------------------------------------------------------
+-- THE BELL (sh_bell.lua). Played here, at the listener's own bmx_vol_bell.
+--
+-- The rider's own press rings AT ONCE, from this client, without waiting for the
+-- server: a bell is a button, and one that answers a round trip late feels like a
+-- press that did not take. It rings only when the rule is sure to agree -- on the
+-- ground, the bike level and neither weight key held, which is when R cannot be a
+-- barspin in a manual -- and otherwise leaves it to the server. The server's
+-- message reaches this client as well, and is dropped when it is the echo of a
+-- ring already played here.
+--------------------------------------------------------------------------
+local ownRing = setmetatable({}, { __mode = "k" })    -- bike -> when this client rang it
+local ECHO = 0.75                                      -- seconds an echo can take to come back
+
+local function playBell(ent, key)
+    local S = BMX.Sounds[key]
+    if not S or not BMX.SoundsOn() then return false end
+    -- The lever on the bars flicks (cl_init.lua reads this), heard or not.
+    ent.bellRungAt = CurTime()
+    local v = BMX.VolBell()
+    if v <= 0 then return true end
+    ent:EmitSound(BMX.SoundFile(key), S.level, S.pitch and math.random(S.pitch[1], S.pitch[2]) or 100,
+        S.vol * v)
+    return true
+end
+BMX.PlayBell = playBell
+
+-- The server decided a bell rang; how loud is this listener's.
 net.Receive("bmx_bell", function()
     local ent = net.ReadEntity()
     local key = net.ReadString()
-    local S = BMX.Sounds[key]
-    if not IsValid(ent) or not S or not BMX.SoundsOn() then return end
-    local v = BMX.VolBell()
-    if v <= 0 then return end
-    ent:EmitSound(BMX.SoundFile(key), S.level, S.pitch and math.random(S.pitch[1], S.pitch[2]) or 100,
-        S.vol * v)
+    if not IsValid(ent) or not BMX.Sounds[key] then return end
+    local mine = ownRing[ent]
+    if mine and CurTime() - mine < ECHO then
+        ownRing[ent] = nil           -- the echo of the ring already heard
+        return
+    end
+    playBell(ent, key)
+end)
+
+-- Would the server ring for this press, for certain? (Its rule is sh_bell.lua and
+-- sv_input.lua: on the ground, not in a manual.) A manual is not networked, but it
+-- cannot begin without a weight key and it holds the bike off level, so a press
+-- with neither key down and the bike level is a ring.
+function BMX.BellPredictable(bike, weightKeyDown)
+    if not bike:GetGrounded() or weightKeyDown then return false end
+    if (bike.GetLeanFwd and bike:GetLeanFwd() or 0) > 0.05 then return false end
+    local _, pitch = BMX.Attitude(bike, vector_up)
+    return math.abs(pitch or 0) < math.rad(8)
+end
+
+local bellHeld = false
+hook.Add("CreateMove", "BMX.BellNow", function(cmd)
+    local ply = LocalPlayer()
+    local bike = IsValid(ply) and BMX.LocalBike and BMX.LocalBike(ply)
+    if not bike or bike:GetDriver() ~= ply then bellHeld = false return end
+    local map = BMX.InputMapFor(bike)
+    local a = map.actions.bar
+    local down = a ~= nil and a.key ~= nil and cmd:KeyDown(a.key)
+    if down and not bellHeld and not map.decode and BMX.Bell and BMX.Bell.Allowed(bike) then
+        local wb, lf = map.actions.weightBack, map.actions.brakeFront
+        local weight = (wb and cmd:KeyDown(wb.key)) or (lf and cmd:KeyDown(lf.key) and cmd:KeyDown(IN_DUCK))
+        if BMX.BellPredictable(bike, weight) and playBell(bike, BMX.Bell.KeyFor(bike)) then
+            ownRing[bike] = CurTime()
+            -- The same clock as the server's, so a fast double press is not judged
+            -- twice differently here and there.
+            bike.bellNext = CurTime() + BMX.Bell.Cooldown()
+        end
+    end
+    bellHeld = down
 end)
 
 --------------------------------------------------------------------------

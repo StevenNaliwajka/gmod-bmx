@@ -192,7 +192,7 @@ T.test("city: parked, it stands on its kickstand, and a bell rings", function()
     sv:run(2)
     T.ok(bike:GetStandDown(), "the stand is down")
     T.ok(math.abs(bike.st.roll) < bike:Cfg().Stand.maxRoll and bike.st.roll < 0, "leaning on it")
-    T.ok(B.Bell and B.Bell.Ring, "the bell is the existing one (sv_bell.lua)")
+    T.ok(B.Bell and B.Bell.Ring, "the bell is the existing one (sh_bell.lua)")
 end)
 
 T.test("city: the upright pose sits further back than the BMX's and does not tuck with speed", function()

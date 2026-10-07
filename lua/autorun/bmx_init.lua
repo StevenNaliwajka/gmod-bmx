@@ -53,6 +53,7 @@ local SHARED = {
     "bmx/sh_scooter.lua",   -- the kick scooter (G24): its map, grinds and registration (needs sh_board's push)
     "bmx/sh_skates.lua",    -- inline skates (G25): the first WORN vehicle: the step, the grinds, the registration
     "bmx/sh_sound.lua",
+    "bmx/sh_bell.lua",      -- R on the ground rings the bell: the rule both realms judge by
     "bmx/sh_color.lua",     -- the palette and the ways to choose from it
     "bmx/sh_stance.lua",    -- seated / standing / attack: IK offsets (G21)
     "bmx/sh_park.lua",      -- the park pieces: one generator for collision and drawing
@@ -86,7 +87,6 @@ local SERVER_FILES = {
     "bmx/sv_passenger.lua", -- a second rider: boarding, mass, the crash (G11)
     "bmx/sv_basket.lua",    -- a city bike's basket: props ride in it until the ride is not gentle (G12)
     "bmx/sv_compat_ragmod.lua", -- RagMod, if installed: before the crash path asks
-    "bmx/sv_bell.lua",      -- R on the ground rings the bell
     "bmx/sv_gears.lua",     -- [ ] and the wheel change gear (G09)
     "bmx/sv_motor.lua",     -- the motor drives, the battery and the spawn gate (G14, G15)
     "bmx/sv_water.lua",     -- drag, splash and ejection in water (sv_physics checks for it)

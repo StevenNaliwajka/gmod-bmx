@@ -14,6 +14,7 @@ PORT="${BMX_STUDIO_PORT:-27016}"
 SSH="${BMX_STUDIO_SSH:-root@$HOST}"
 GMOD="${BMX_STUDIO_GMOD:-/opt/gmod/garrysmod}"
 : "${BMX_RCON_PASSWORD:?set BMX_RCON_PASSWORD (the rcon_password of the server)}"
+: "${BMX_STUDIO_OWNER:?set BMX_STUDIO_OWNER (the name of YOUR connected client; nobody else is used)}"
 IDS="${1:-all}"
 THR="${2:-0.45}"
 OUT="${3:-$(mktemp -d)}"
@@ -27,8 +28,8 @@ scp -q "$HERE/ride_cl.lua" "$SSH:$GMOD/data/ridestudio_cl.txt"
 ssh "$SSH" "chown gmod: $GMOD/lua/ridestudio_sv.lua $GMOD/data/ridestudio_cl.txt 2>/dev/null; rm -rf $GMOD/data/ridestudio"
 
 rcon "lua_openscript ridestudio_sv.lua" >/dev/null
-[ -n "${BMX_STUDIO_OWNER:-}" ] && rcon "ridestudio_owner $BMX_STUDIO_OWNER"
-rcon 'lua_run for _,p in ipairs(player.GetHumans()) do p:SendLua([[net.Receive("ridestudio_code",function() RunString(net.ReadString(),"ridestudio") end)]]) end' >/dev/null
+rcon "ridestudio_owner $BMX_STUDIO_OWNER"
+rcon "lua_run for _,p in ipairs(player.GetHumans()) do if p:Nick()==\"$BMX_STUDIO_OWNER\" then p:SendLua([[net.Receive(\"ridestudio_code\",function() RunString(net.ReadString(),\"ridestudio\") end)]]) end end" >/dev/null
 sleep 1
 rcon "ridestudio_push"
 rcon "ridestudio_run $IDS $THR $MODE"

@@ -26,9 +26,12 @@ hook.Add("SetupPlayerVisibility", "ridestudio", function()
     if S.cur and IsValid(S.cur.bike) then AddOriginToPVS(S.cur.bike:GetPos()) end
 end)
 
+-- Only ever the NAMED owner's client: a public test server can have strangers on it,
+-- and nobody else's game should be pushed code or made to render.
 local function owner()
+    if not S.ownerName then return nil end
     for _, p in ipairs(player.GetHumans()) do
-        if not S.ownerName or p:Nick() == S.ownerName then return p end
+        if p:Nick() == S.ownerName then return p end
     end
 end
 concommand.Add("ridestudio_owner", function(p, _, a) if IsValid(p) then return end S.ownerName = a[1] end)
@@ -72,6 +75,11 @@ function S.Next()
     cleanup()
     local id = table.remove(S.queue or {}, 1)
     if not id then print("[ride] done") file.Write("ridestudio/_done.txt", "ok") return end
+    if not owner() then
+        S.queue = {}
+        file.Write("ridestudio/_done.txt", "owner " .. tostring(S.ownerName) .. " is not connected")
+        return
+    end
     local def = BMX.Vehicles[id]
     if not def then print("[ride] no vehicle " .. id) return S.Next() end
     local g, yaw, run = stage()

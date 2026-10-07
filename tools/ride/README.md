@@ -12,8 +12,9 @@ standing alone; this one shoots it in use.
 
 Arguments: vehicle ids (comma-separated, or `all`), the throttle (0..1), and where
 to put the JPEGs. Same settings as the icon studio: `BMX_STUDIO_HOST`,
-`BMX_STUDIO_PORT`, `BMX_STUDIO_SSH`, `BMX_STUDIO_GMOD`, `BMX_STUDIO_OWNER` (the
-human whose client renders).
+`BMX_STUDIO_PORT`, `BMX_STUDIO_SSH`, `BMX_STUDIO_GMOD`, and `BMX_STUDIO_OWNER`, which is
+required: the name of YOUR client. Nobody else's client is ever sent code or made to
+render, and with the owner not connected the run stops at once.
 
 The stage is open floor (`RIDESTUDIO.FLOOR`, petopia_bmx_fall's park by default);
 the vehicle faces the longest clear run from there. Worn vehicles (the skates) are

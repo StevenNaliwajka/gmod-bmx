@@ -130,6 +130,13 @@ the built-in ragdoll is then skipped. RagMod is handled this way by
 the crash with your own (a deathrun server's opinion of what a crash is).
 `severity` is 0..1.
 
+### `BMX_Crashed` (bike, ply, reason, severity)
+
+*Server, notification.* The crash is going ahead (no `BMX_Crash` hook vetoed
+it): fired before the rider is thrown, while they are still aboard, so a log
+or a server's stats can record why they came off. The return value is ignored.
+The trick bot uses it to log its own crashes.
+
 ### Scoring
 
 ### `BMX_TrickLanded` (ply, trick, points, bike)

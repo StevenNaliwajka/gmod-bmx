@@ -108,6 +108,9 @@ local CLIENT_FILES = {
 }
 
 if SERVER then
+    -- The skateboard SWEP (G23), a client file as well: the engine loads weapons itself,
+    -- but sending it explicitly is what makes it work in multiplayer as well.
+    AddCSLuaFile("weapons/weapon_bmx_board.lua")
     for _, f in ipairs(SHARED) do AddCSLuaFile(f) end
     for _, f in ipairs(CLIENT_FILES) do AddCSLuaFile(f) end
 end

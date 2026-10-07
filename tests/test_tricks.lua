@@ -117,7 +117,12 @@ T.test("registry: every pose has a wire id, a rider pose and a trick", function(
     end
     local cl = F.client(sv.world)
     for _, name in ipairs(cl.env.BMX.PoseNames) do
-        T.ok(cl.env.BMX.RiderPoses[name], name .. " has an IK pose on the client")
+        -- The bike's rows, or those of another pose set (the skateboard's grabs).
+        local found = cl.env.BMX.RiderPoses[name] ~= nil
+        for _, set in pairs(cl.env.BMX.PoseSets) do
+            if set.poses and set.poses[name] then found = true end
+        end
+        T.ok(found, name .. " has an IK pose on the client")
     end
 end)
 

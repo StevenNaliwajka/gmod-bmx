@@ -281,6 +281,10 @@ server{ name = "bmx_city", kind = "bool", default = true, category = "world",
     label = "Build the city",
     help = "Build the city around the park on maps that have one. Takes effect on the next map change." }
 
+server{ name = "bmx_park_max", kind = "int", default = 120, min = 1, max = 500, category = "world",
+    label = "Park piece limit",
+    help = "The most park pieces (ramps, rails, quarter pipes) that can stand at once, however they were placed or loaded. Each is a physics object, so a very large park costs the server." }
+
 server{ name = "bmx_bot_name", kind = "string", default = "Peter Griffin", maxLen = 32, category = "bots",
     label = "Bot name",
     help = "What a bot rider spawned with bmx_bot_spawn is called." }

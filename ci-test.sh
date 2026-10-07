@@ -25,6 +25,11 @@ echo "▶ offline suite"
 # every branch before the headless stage borrows the real one.
 ./tools/run-tests.sh
 
+echo "▶ workshop kit"
+# The upload scripts, driven against a fake gmpublish: the real one only ever
+# runs on the publisher's PC, at the moment an update reaches subscribers.
+./tools/test-workshop.sh
+
 echo "▶ shell syntax"
 for f in install.sh ci-test.sh tools/*.sh tools/server/*.sh tools/server/bmx-test; do
   [ -f "$f" ] || continue

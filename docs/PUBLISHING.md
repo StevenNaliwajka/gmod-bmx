@@ -2,9 +2,9 @@
 
 Getting this onto the Steam Workshop, and what is deliberately not automated.
 
-GitHub is the primary channel: server owners clone straight into
-`garrysmod/addons` and never touch a `.gma`. The Workshop exists for players in
-singleplayer and for servers that prefer a mounted addon.
+The Workshop is how players get it. A server can mount the Workshop item or
+run a checkout of this repository straight from `garrysmod/addons`, which needs
+no `.gma` at all.
 
 ---
 
@@ -63,14 +63,13 @@ Build the kit:
 tools/package-workshop.sh        # -> dist/BMX-Workshop-<version>.zip
 ```
 
-It holds `bmx.gma`, `icon.jpg`, `publish.bat` (first upload: `gmpublish create`),
-`update.bat` (`gmpublish update -id`), `find-gmpublish.ps1` (finds Garry's Mod
+It holds `bmx.gma`, `icon.jpg`, `workshop-id.txt`, `update.bat` (`gmpublish update
+-id`, the one to use), `publish.bat` (first upload only: `gmpublish create`), `find-gmpublish.ps1` (finds Garry's Mod
 through the registry and every Steam library folder, falling back to asking),
 `publish.sh` for a Linux PC, and a README with the steps. By hand:
 
 ```
-gmpublish.exe create -addon bmx.gma -icon icon.jpg
-gmpublish.exe update -addon bmx.gma -id <workshop-id> -changes "what changed"
+gmpublish.exe update -addon bmx.gma -id 3814420080 -changes "what changed"
 ```
 
 (An earlier version of this file said `gmpublish publish`; the command is
@@ -83,20 +82,38 @@ Files): accept the Workshop agreement if asked, and set the visibility.
 from anything in the repo, and publishing without `-id` creates a second item
 rather than updating the first.
 
-Workshop ID: _not yet published_
+Workshop ID: 3814420080
+(<https://steamcommunity.com/sharedfiles/filedetails/?id=3814420080>, first
+published 2026-09-27 as v1.0.0).
+
+The same number lives in `workshop/workshop-id.txt`, which the kit ships and
+both `update.bat` and `publish.sh update` read, so an update needs nothing
+typed. `publish.bat` and `publish.sh create` refuse while that file exists
+(type NEW, or pass `--new`, to make a second item on purpose).
+`tools/test-workshop.sh` checks all of this against a fake `gmpublish`.
+
+**A Workshop update goes out only when the owner says so.** The addon is live
+and people are subscribed: `main` and the test server move as fast as the work
+does, Steam moves on a decision.
 
 ## What CI does and does not do
 
-`.github/workflows/build.yml` parses every Lua file on each push, packs a `.gma`
-as an artifact so a branch can be tested on a server without merging, and
-attaches one to a GitHub release on a `v*` tag. It never touches the Workshop.
+The GitLab pipeline (`.gitlab-ci.yml`) parses every Lua file, runs the offline
+suite and `tools/test-workshop.sh` on every push, deploys `main` to the test
+server and runs the headless suite there. It never touches the Workshop: the
+`.gma` and the kit are built by `tools/package-workshop.sh` on the machine
+that publishes. (There used to be a GitHub Actions workflow as well; the
+repository has no GitHub remote, so it never ran, and it was removed.)
 
 ## Tagging a release
 
 ```
-git tag -a v0.2.0 -m "..." && git push origin v0.2.0
+git tag -a v1.1.0 -m "..." && git push origin v1.1.0
 ```
 
-Keep `BMX.Version` in `lua/autorun/bmx_init.lua` in step: it is what the server
+Tag when the Workshop update goes out, not before: the tag says "this is what
+subscribers have". Keep `BMX.Version` in `lua/autorun/bmx_init.lua`, the top
+entry of `CHANGELOG.md` and the tag in step (the offline suite checks the first
+two agree): it is what the server
 prints at load, and a version that disagrees with the tag makes a bug report
 useless.

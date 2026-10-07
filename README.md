@@ -6,27 +6,29 @@ Two wheels, a real tyre model, and steering that is an *output* of how far you
 are leaning rather than a key you press. Wheelies, stoppies, bunny hops, air
 control and flips.
 
-**Status: v0.1.0, pre-alpha.** Two test suites gate every commit: an
-**offline suite** of 218 tests that executes the addon (client half included)
-against a Garry's Mod shim in a stock Lua 5.1, and a **headless suite** of 19
-cases on a real dedicated server. The bike rides, brakes, skids, steers from
-lean, hops and lands, holds a wheelie and a stoppie, and scores tricks. **It
-has never been ridden by a human**, so nothing is known about how it feels,
-and every number in it is derived or measured rather than played. See
-[Tuning](docs/TUNING.md).
+**Status: live on the
+[Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814420080)**
+since 2026-09-27. [CHANGELOG.md](CHANGELOG.md) says what each version added,
+and which one the Workshop has. Two test suites gate every commit: an **offline suite** that
+executes the addon (client half included) against a Garry's Mod shim in a
+stock Lua 5.1, and a **headless suite** on a real dedicated server that seats a
+bot on the bike and measures what it does. The bike rides, brakes, skids,
+steers from lean, hops and lands, wheelies, stoppies, grinds, flips and scores
+combos. Its feel numbers were derived and measured before anybody rode it, and
+are now being tuned from what riders say. See [Tuning](docs/TUNING.md).
 
 ---
 
 ## Install
 
-Clone straight into your addons folder. There is nothing to build and no
-content dependency beyond base Garry's Mod -- including the audio, which is all
-base-game paths rather than shipped files.
+**Players:** subscribe to
+[BMX Bike on the Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814420080).
+There is no content dependency beyond base Garry's Mod -- including the audio,
+which is all base-game paths rather than shipped files.
 
-```
-cd garrysmod/addons
-git clone https://github.com/<you>/gmod-bmx.git
-```
+**Servers:** add Workshop item `3814420080` to your server's collection
+(`host_workshop_collection`), or put a checkout of this repository in
+`garrysmod/addons/gmod-bmx`. There is nothing to build.
 
 Then, in game:
 

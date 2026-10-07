@@ -15,7 +15,13 @@ if not exist "%GMP%" ( echo Not found: %GMP% & pause & exit /b 1 )
 echo Using %GMP%
 
 echo.
-set /p WSID=Workshop ID of BMX Bike (the number publish.bat printed): 
+rem THE LIVE ITEM'S ID SHIPS IN THE KIT (workshop-id.txt), so nobody types it:
+rem a mistyped ID updates nothing, or somebody else's item.
+set "WSID="
+if exist "%HERE%workshop-id.txt" set /p WSID=<"%HERE%workshop-id.txt"
+if not defined WSID set /p WSID=Workshop ID of BMX Bike (the number publish.bat printed): 
+echo Updating Workshop item %WSID%
+echo   https://steamcommunity.com/sharedfiles/filedetails/?id=%WSID%
 set /p NOTE=What changed in this version (one line): 
 echo.
 echo   Steam must be running and signed in as ConvexBurrito5.

@@ -15,7 +15,7 @@ convar tuning.
 
 ```
 cd garrysmod/addons
-git clone https://github.com/<you>/gmod-bmx.git
+git clone <this repository> gmod-bmx
 ```
 
 Launch, start a sandbox game on `gm_flatgrass`, and:

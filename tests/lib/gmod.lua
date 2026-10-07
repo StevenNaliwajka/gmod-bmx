@@ -1605,6 +1605,16 @@ function M.Realm(world, which)
         env.TOOL = nil
     end
 
+    -- A weapon the way the engine loads one from lua/weapons/<class>.lua: a fresh
+    -- SWEP table, the file run, the table kept as R.sweps[class].
+    function R:loadWeapon(class)
+        env.SWEP = { Primary = {}, Secondary = {} }
+        self:runFile("weapons/" .. class .. ".lua")
+        self.sweps = self.sweps or {}
+        self.sweps[class] = env.SWEP
+        env.SWEP = nil
+    end
+
     -- The whole addon, in the engine's order: autorun, then entities, then one
     -- tick so the deferred work in sh_bikes (derive) runs.
     function R:boot()
@@ -1615,6 +1625,7 @@ function M.Realm(world, which)
         self:loadEntity("bmx_filmer_cam")
         self:loadEntity("bmx_park_piece")
         self:loadStool("bmx_park")
+        self:loadWeapon("weapon_bmx_board")
         env.hook.Run("InitPostEntity")
         self:runTimers()
         return self

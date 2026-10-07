@@ -127,17 +127,30 @@ local function sequence(id, ent, n, dt)
     shot()
 end
 
+-- Wait for the vehicle's built model (cl_init BMX.BikeModelFor advances its build;
+-- the owner's own view is elsewhere, so nothing else would), up to 30 s.
+local function whenBuilt(ent, fn)
+    local t0 = RealTime()
+    local function step()
+        if not IsValid(ent) then return fn() end
+        local ready = not (ent.Cfg and BMX.BikeModelFor) or BMX.BikeModelFor(ent) ~= nil
+            or (ent.Bike and not ent:Bike().look)
+        if ready or RealTime() - t0 > 30 then return timer.Simple(0.3, fn) end
+        timer.Simple(0, step)
+    end
+    step()
+end
+
 net.Receive("ridestudio_cap", function()
     local id = net.ReadString()
     local ent, rider = net.ReadEntity(), net.ReadEntity()
     local mode = net.ReadString()
     if mode == "seq" then
-        -- the chunks of each frame go out a beat apart: wait them out before "done"
-        return sequence(id, ent, 26, 0.12)
+        return whenBuilt(ent, function() sequence(id, ent, 26, 0.12) end)
     end
     local tries = 0
     local function attempt()
-        if IsValid(ent) then return shoot(id, ent, rider) end
+        if IsValid(ent) then return whenBuilt(ent, function() shoot(id, ent, rider) end) end
         tries = tries + 1
         if tries > 40 then return done(id .. ": never arrived") end
         timer.Simple(0.1, attempt)

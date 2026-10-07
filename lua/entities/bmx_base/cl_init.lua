@@ -566,6 +566,23 @@ function BMX.ModelExtra(bike, C)
     return out
 end
 
+-- The built model this vehicle is drawn as (its registry `look`), or nil while it
+-- is still being built (a few ms a frame: BMX.BikeMesh.Get) or when it has none.
+-- Calling it advances the build, so anything that wants the model ready (the icon
+-- and ride studios) can pump it.
+function BMX.BikeModelFor(ent)
+    local bike = ent.Bike and ent:Bike()
+    if not bike or bike.hasModel or bike.wheelModel or not bike.look or not BMX.BikeMesh then return nil end
+    local C = ent:Cfg()
+    local WC = C.Wheel
+    local k = WC.wheelbase / 39
+    return BMX.BikeMesh.Get(k, WC.radius, bike.look, bike.look ~= "bmx" and {
+        wheelbase = WC.wheelbase, rearRadius = WC.rearRadius, restLength = WC.restLength,
+        seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
+        extra = BMX.ModelExtra(bike, C),
+    } or nil)
+end
+
 -- The anchors a model's layout gives (docs/MODELS.md), in model space:
 --   headT headB          the steer axis (the fork and the bars turn about it)
 --   rear front           the axles, as the model was built
@@ -951,13 +968,7 @@ function ENT:Draw()
     -- Every other kind is its own builder (cl_geo_*.lua: `look = "road"`, ...), handed
     -- the vehicle's own sizes so the saddle is under its rider and the wheels on
     -- its axles.
-    local model = not debug and not bike.hasModel and not bike.wheelModel
-        and bike.look and BMX.BikeMesh
-        and BMX.BikeMesh.Get(k, WC.radius, bike.look, bike.look ~= "bmx" and {
-            wheelbase = WC.wheelbase, rearRadius = WC.rearRadius, restLength = WC.restLength,
-            seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
-            extra = BMX.ModelExtra and BMX.ModelExtra(bike, C) or nil,
-        } or nil)
+    local model = not debug and BMX.BikeModelFor(self)
     -- A tandem's stoker targets come only from the detailed model (DrawDetailed): a
     -- frame drawn without it must not leave last frame's world points behind.
     if not model then self.ikTargetsStoker = nil end

@@ -1219,6 +1219,7 @@ function M.Realm(world, which)
         return cv and cv:GetString() or ""
     end
     function Ply:GetInfoNum(name, def)
+        if self._info and self._info[name] ~= nil then return tonumber(self._info[name]) or def end
         local cv = world.convars[name]
         return cv and cv:GetFloat() or def
     end

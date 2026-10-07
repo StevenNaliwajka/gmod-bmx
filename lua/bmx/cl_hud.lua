@@ -16,6 +16,9 @@ BMX = BMX or {}
 
 CreateClientConVar("bmx_debug", "0", true, true,
     "Stream this bike's simulation state from the server and draw the tuning overlay.")
+-- Userinfo, so the server's usercmd decode (sv_input.lua) reads each rider's own.
+CreateClientConVar("bmx_stick_deadzone", "0.1", true, true,
+    "Gamepad stick deadzone for riding, 0..0.9: stick travel inside it counts as centred.")
 local cv_hud = CreateClientConVar("bmx_hud", "1", true, false, "Draw the rider HUD.")
 local cv_units = CreateClientConVar("bmx_units", "kmh", true, false,
     "Speed units on the HUD: kmh, mph or ups.")

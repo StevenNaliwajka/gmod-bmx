@@ -41,6 +41,20 @@ local function axis(value, cvName, fallback)
     return BMX.Clamp(value / scale, -1, 1)
 end
 
+-- A STICK AT REST IS NOT AT ZERO. A worn gamepad sits a few percent off
+-- centre, and on this bike a few percent of side axis is a few percent of lean,
+-- which is a steady turn the rider never asked for. So each rider's axes go
+-- through their own bmx_stick_deadzone (a userinfo convar, cl_hud.lua): inside
+-- it is zero, and outside it the rest of the travel is stretched back to 0..1,
+-- so there is no jump at its edge and a full stick is still a full command. A
+-- keyboard sends 0 or full scale, which it leaves exactly as it was.
+local function deadzone(v, d)
+    local a = math.abs(v)
+    if a <= d then return 0 end
+    return (v > 0 and 1 or -1) * math.min((a - d) / (1 - d), 1)
+end
+BMX.StickDeadzone = deadzone
+
 -- A fresh, all-neutral input table. Kept as a constructor rather than a shared
 -- constant so a stale reference can never leak between riders.
 function BMX.BlankInput()
@@ -79,8 +93,9 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     local buttons = cmd:GetButtons()
     local function down(bit_) return bit.band(buttons, bit_) ~= 0 end
 
-    local fwd  = axis(cmd:GetForwardMove(), "sv_forwardspeed", 400)
-    local side = axis(cmd:GetSideMove(),    "sv_sidespeed",    400)
+    local dz   = BMX.Clamp(ply:GetInfoNum("bmx_stick_deadzone", 0.1), 0, 0.9)
+    local fwd  = deadzone(axis(cmd:GetForwardMove(), "sv_forwardspeed", 400), dz)
+    local side = deadzone(axis(cmd:GetSideMove(),    "sv_sidespeed",    400), dz)
 
     -- Digital fallback: some clients (and every bot) send buttons with zero
     -- move axes. Without this the bike is unrideable and the cause is invisible.

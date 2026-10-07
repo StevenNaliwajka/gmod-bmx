@@ -83,8 +83,10 @@ from anything in the repo, and publishing without `-id` creates a second item
 rather than updating the first.
 
 Workshop ID: 3814420080
-(<https://steamcommunity.com/sharedfiles/filedetails/?id=3814420080>, first
-published 2026-09-27 as v1.0.0).
+(<https://steamcommunity.com/sharedfiles/filedetails/?id=3814420080>, posted
+2026-10-05; its page reports 467.997 KB, which matches no commit's .gma
+exactly -- it lies between v1.0.0's and the combos commit's -- so which build
+it is was not recorded. Record the commit next time, below.)
 
 The same number lives in `workshop/workshop-id.txt`, which the kit ships and
 both `update.bat` and `publish.sh update` read, so an update needs nothing
@@ -106,6 +108,7 @@ does, Steam moves on a decision.
    the first upload; if the page still shows the old one, paste the new
    `description` from `addon.json` in (the page takes BBCode).
 4. Tag it: `git tag -a v<version> -m "..." && git push origin v<version>`.
+   The tag is the record of which commit subscribers have.
 
 ## What CI does and does not do
 

@@ -8,7 +8,7 @@ control and flips.
 
 **Status: live on the
 [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814420080)**
-since 2026-09-27. [CHANGELOG.md](CHANGELOG.md) says what each version added,
+since 2026-10-05. [CHANGELOG.md](CHANGELOG.md) says what each version added,
 and which one the Workshop has. Two test suites gate every commit: an **offline suite** that
 executes the addon (client half included) against a Garry's Mod shim in a
 stock Lua 5.1, and a **headless suite** on a real dedicated server that seats a
@@ -68,6 +68,12 @@ disagrees with either.
 | `CTRL` | tuck: less drag | tuck: faster rotation |
 | `K` | next paint colour, in a puff of smoke | same |
 | `L` | cinematic camera on/off | same |
+
+**Gamepad.** A controller's left stick is read as an analog axis, so a half
+stick is half throttle, half lean or half a flip, and buttons bound to the keys
+above do what the keys do. `bmx_stick_deadzone` (client, default `0.1`) is how
+much stick travel counts as centred: raise it if your bike creeps into a turn
+with the stick let go.
 
 **Cinematic camera.** `L` while riding (or `bmx_cinematic 1`): the camera cuts
 between GTA-style external shots, trackside cameras you ride past, a low chase,

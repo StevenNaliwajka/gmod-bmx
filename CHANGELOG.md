@@ -22,6 +22,10 @@ a Workshop update goes out only when the owner says so.
   have out (spawn menu and `bmx_spawn` alike), `bmx_scoring 0` turns scoring
   off entirely, `bmx_combos 0` keeps trick points but drops combo bonuses.
 
+- **Gamepad deadzone**: `bmx_stick_deadzone` (client, default 0.1), so a
+  stick resting slightly off centre no longer holds a slight lean -- which on
+  this bike is a slow turn. Full stick and keyboard keys are unchanged.
+
 **Changed**
 
 - The chase camera no longer sways with the bike's lean.
@@ -41,7 +45,12 @@ a Workshop update goes out only when the owner says so.
   its tickrate. The offline suite has tests for the bikes, the settings, the
   upload kit and sixteen riders at once.
 
-## 1.0.0 -- 2026-09-27, the first Workshop release
+## 1.0.0 -- tagged 2026-09-27; the Workshop item was posted 2026-10-05
+
+(The posted build was not recorded, and its size matches neither v1.0.0 nor
+the combos commit exactly, so combos and the steadier camera below under 1.1.0
+may already be on the Workshop. From 1.1.0 on, the release tag is the record.)
+
 
 Lean-to-steer riding on raycast wheels with a real tyre model; pedalling,
 braking and skids; wheelies, manuals, stoppies, bunny hops, flips, barrel

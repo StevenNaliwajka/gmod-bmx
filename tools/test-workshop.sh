@@ -73,7 +73,7 @@ ok '[[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]' "the version is MAJOR.MINOR.PATCH"
 ok 'python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$ROOT/addon.json"' "addon.json is valid JSON"
 ok 'python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if len(d[\"description\"]) < 8000 else 1)" "$ROOT/addon.json"' \
    "the Workshop description fits Steam's 8000 characters"
-for name in "BMX Cruiser" "Mini BMX" "Combos" "bmx_max_per_player" "bmx_scoring" "bmx_combos"; do
+for name in "BMX Cruiser" "Mini BMX" "Combos" "bmx_max_per_player" "bmx_scoring" "bmx_combos" "bmx_stick_deadzone"; do
   ok 'grep -q "$name" "$ROOT/addon.json"' "the Workshop description mentions $name"
 done
 for cv in bmx_max_per_player bmx_scoring bmx_combos; do

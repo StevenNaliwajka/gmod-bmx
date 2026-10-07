@@ -59,9 +59,10 @@ T.test("A/D set the lean target: D is right (+), A is left (-)", function()
 end)
 
 T.test("analog axes are scaled by sv_forwardspeed / sv_sidespeed, and clamped", function()
-    local sv, bike, _, send = rig()
+    local sv, bike, ply_, send = rig()
     sv.env.CreateConVar("sv_forwardspeed", "10000")
     sv.env.CreateConVar("sv_sidespeed", "10000")
+    ply_:ConCommand("bmx_stick_deadzone 0")   -- the scaling alone, no deadzone
     send(0, 5000, -2500)
     T.near(bike.input.throttle, 0.5, 1e-9, "half stick forward")
     T.near(bike.input.leanTarget, -0.25, 1e-9, "quarter stick left")
@@ -167,4 +168,101 @@ T.test("a key pressed only after takeoff works at once", function()
     T.eq(bike.input.pitchTarget, 1, "S in the air is a backflip straight away")
     send(IN.FORWARD)
     T.eq(bike.input.pitchTarget, -1, "switching keys counts as a fresh press")
+end)
+
+--------------------------------------------------------------------------
+-- The gamepad deadzone (bmx_stick_deadzone)
+--------------------------------------------------------------------------
+
+local function stickRig(dz)
+    local sv, bike, ply, send = rig()
+    sv.env.CreateConVar("sv_forwardspeed", "10000")
+    sv.env.CreateConVar("sv_sidespeed", "10000")
+    if dz then ply:ConCommand("bmx_stick_deadzone " .. dz) end
+    return sv, bike, ply, send
+end
+
+T.test("deadzone: a stick resting a little off centre does not lean the bike", function()
+    local _, bike, _, send = stickRig()
+    send(0, 0, 600)                         -- 6% right, a worn stick at rest
+    T.eq(bike.input.leanTarget, 0, "no lean from 6% of side axis")
+    send(0, -800, 0)                        -- 8% back
+    T.eq(bike.input.brakeRear, 0, "and no brake from 8% back")
+    T.eq(bike.input.throttle, 0, "or throttle")
+end)
+
+T.test("deadzone: the default is 0.1, and a rider's own setting is used", function()
+    local _, bike, ply, send = stickRig()
+    send(0, 0, 1200)
+    T.ok(bike.input.leanTarget > 0, "12% is past the default 0.1")
+    ply:ConCommand("bmx_stick_deadzone 0.2")
+    send(0, 0, 1200)
+    T.eq(bike.input.leanTarget, 0, "but inside this rider's 0.2")
+end)
+
+T.test("deadzone: past it the travel is rescaled, with no jump at the edge", function()
+    local _, bike, _, send = stickRig(0.1)
+    send(0, 0, 1001)
+    T.between(bike.input.leanTarget, 0, 0.001, "just past the edge is just above zero")
+    send(0, 0, 5500)
+    T.near(bike.input.leanTarget, 0.5, 1e-9, "55% of travel is half lean: (0.55 - 0.1) / 0.9")
+    send(0, 0, 10000)
+    T.eq(bike.input.leanTarget, 1, "a full stick is still full lean")
+    send(0, 0, -10000)
+    T.eq(bike.input.leanTarget, -1, "full left too")
+end)
+
+T.test("deadzone: keyboard keys are untouched by it", function()
+    local _, bike, _, send = stickRig(0.5)
+    send(IN.MOVERIGHT)
+    T.eq(bike.input.leanTarget, 1, "D is full lean")
+    send(IN.FORWARD)
+    T.eq(bike.input.throttle, 1, "W is full throttle")
+    send(0, 0, 10000)
+    T.eq(bike.input.leanTarget, 1, "and a full-scale axis (what a keyboard sends) is full")
+end)
+
+T.test("deadzone: an out-of-range setting is clamped, never a divide by zero", function()
+    local _, bike, ply, send = stickRig()
+    ply:ConCommand("bmx_stick_deadzone 1")
+    send(0, 0, 10000)
+    T.finite(bike.input.leanTarget, "finite at a deadzone of 1")
+    T.eq(bike.input.leanTarget, 1, "clamped to 0.9, so a full stick still steers")
+    ply:ConCommand("bmx_stick_deadzone -3")
+    send(0, 0, 300)
+    T.near(bike.input.leanTarget, 0.03, 1e-9, "a negative one is no deadzone")
+    ply:ConCommand("bmx_stick_deadzone banana")
+    send(0, 0, 600)
+    T.eq(bike.input.leanTarget, 0, "garbage falls back to the default 0.1")
+end)
+
+T.test("deadzone: in the air the same stick rolls and pitches proportionally", function()
+    local _, bike, _, send = stickRig(0.1)
+    bike.st.airMode = true
+    send(0, 5500, 0)
+    T.near(math.abs(bike.input.pitchTarget), 0.5, 1e-9, "half pitch from 55% stick")
+    T.eq(bike.input.throttle, 0, "no pedalling in the air")
+end)
+
+T.test("deadzone: the function itself is odd, monotonic and bounded", function()
+    local sv = F.server()
+    local dz = sv.env.BMX.StickDeadzone
+    local last = -math.huge
+    for i = -100, 100 do
+        local v = dz(i / 100, 0.15)
+        T.ok(v >= last, "monotonic at " .. i)
+        T.near(v, -dz(-i / 100, 0.15), 1e-12, "odd at " .. i)
+        T.between(v, -1, 1, "bounded at " .. i)
+        last = v
+    end
+    T.eq(dz(2, 0.1), 1, "beyond full scale is still 1")
+end)
+
+T.test("deadzone: the client offers the setting, and sends it to the server", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local cv = world.convars.bmx_stick_deadzone
+    T.ok(cv, "bmx_stick_deadzone exists")
+    T.ok(cv.userinfo, "as userinfo, so the server can read each rider's")
+    T.eq(cv:GetFloat(), 0.1, "default 0.1")
 end)

@@ -726,10 +726,31 @@ local function frame(pw, ph, kind)
         surface.SetDrawColor(245, 245, 245, 255) surface.DrawRect(-pw / 2 - 14, -ph / 2 - 14, pw + 28, ph + 28)
         surface.SetDrawColor(40, 40, 44, 255) surface.DrawRect(-pw / 2 - 4, -ph / 2 - 4, pw + 8, ph + 8)
     end
-    for i = 1, 4 do
-        local lx = -pw / 2 + pw * (i - 0.5) / 4
-        surface.SetDrawColor(50, 50, 55, 255) surface.DrawRect(lx - 3, -ph / 2 - 46, 6, 30)
-        surface.SetDrawColor(255, 245, 200, 255) surface.DrawRect(lx - 16, -ph / 2 - 52, 32, 10)
+    -- the floodlights: hung on the frame's top edge, an even row centred on
+    -- the board, their heads just over the edge where they wash the face
+    -- (they used to float 50 px above it, on long stalks)
+    local edge = -ph / 2 - (kind == "wood" and 22 or kind == "alu" and 8 or 14)
+    local n = pw > 1400 and 5 or 4
+    for i = 1, n do
+        local lx = -pw / 2 + pw * (i - 0.5) / n
+        surface.SetDrawColor(50, 50, 55, 255) surface.DrawRect(lx - 3, edge - 14, 6, 14)
+        surface.SetDrawColor(40, 40, 44, 255) surface.DrawRect(lx - 18, edge - 22, 36, 12)
+        surface.SetDrawColor(255, 245, 205, 255) surface.DrawRect(lx - 15, edge - 12, 30, 4)
+    end
+end
+
+-- The floodlights' light on the face: a warm wash fading down the board
+-- from each lamp, drawn over the ad so it reads as lit, never washed out.
+local function lampWash(pw, ph)
+    local n = pw > 1400 and 5 or 4
+    for i = 1, n do
+        local lx = -pw / 2 + pw * (i - 0.5) / n
+        local w = pw / n
+        for k = 0, 5 do
+            local f = k / 6
+            surface.SetDrawColor(255, 236, 190, 26 * (1 - f))
+            surface.DrawRect(lx - w * (0.25 + 0.2 * f), -ph / 2 + ph * 0.06 * k, w * (0.5 + 0.4 * f), ph * 0.06 + 1)
+        end
     end
 end
 
@@ -1010,8 +1031,11 @@ City.AdStyles = STYLES
 
 local function adSign(s, pw, ph)
     draw.NoTexture()
-    local fn = STYLES[s.style or "comic"] or STYLES.comic
+    local style = s.style or "comic"
+    local fn = STYLES[style] or STYLES.comic
     fn(s, pw, ph, City.AdPicture(s))
+    -- the styles with floodlights (frame() drew the lamps) get their light
+    if style ~= "tv" and style ~= "neon" then lampWash(pw, ph) end
 end
 
 local function transitSign(s, pw, ph)

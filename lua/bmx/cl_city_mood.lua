@@ -138,8 +138,11 @@ local GLOW
 -- covers the world floor anyway.
 local DLIGHTS = 4
 
-hook.Add("PostDrawTranslucentRenderables", "BMXCityMoodLamps", function(depth, sky)
-    if depth or sky then return end
+-- NOT on `sky`: GMod passes bDrawingSkybox = true on every ordinary frame
+-- of gm_skatepark (measured on a live client, 63 of 63), so returning on it
+-- drew no glow at all and only the lamp models' own tiny bulbs showed.
+hook.Add("PostDrawTranslucentRenderables", "BMXCityMoodLamps", function(depth, sky, sky3d)
+    if depth or sky3d then return end
     local m = mood()
     local L = City._layout
     if not m or not L or not L.lamps then return end
@@ -150,8 +153,9 @@ hook.Add("PostDrawTranslucentRenderables", "BMXCityMoodLamps", function(depth, s
     for _, l in ipairs(L.lamps) do
         local h = l._head or Vector(l.head[1], l.head[2], l.head[3])
         l._head = h
-        render.DrawSprite(h, 110, 110, col)
-        render.DrawSprite(h, 34, 34, color_white)
+        -- a halo and a bright ball the size of the lamp's globe
+        render.DrawSprite(h, 190, 190, col)
+        render.DrawSprite(h, 60, 60, color_white)
     end
 end)
 

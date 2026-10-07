@@ -367,7 +367,7 @@ function BM.Get(k, radius, kind, opt)
     while SysTime() < deadline do
         local ok, res = coroutine.resume(m.job)
         if not ok then
-            m.failed = true
+            m.failed, m.err = true, tostring(res)
             MsgN("[BMX] bike model failed to build, using the simple bike: " .. tostring(res))
             return nil
         end
@@ -381,6 +381,16 @@ function BM.Get(k, radius, kind, opt)
 end
 
 -- Throw every built model away (bmx_bike_model_rebuild, or a hot reload).
+-- What the cache holds, for a bug report or a probe: key -> "ready" | "building" |
+-- "failed: <error>".
+function BM.Status()
+    local out = {}
+    for key, m in pairs(models) do
+        out[key] = m.ready and "ready" or m.failed and ("failed: " .. tostring(m.err)) or "building"
+    end
+    return out
+end
+
 function BM.Clear()
     for _, m in pairs(models) do
         if m.groups then

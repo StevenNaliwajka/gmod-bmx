@@ -17,7 +17,7 @@ util.AddNetworkString("ridestudio_img")
 util.AddNetworkString("ridestudio_done")
 util.AddNetworkString("ridestudio_end")
 util.AddNetworkString("ridestudio_diag")
-net.Receive("ridestudio_diag", function() RIDESTUDIO.diag = net.ReadString() print("[ride] client diag: " .. RIDESTUDIO.diag) end)
+net.Receive("ridestudio_diag", function() local d = net.ReadString() RIDESTUDIO.diag = (RIDESTUDIO.diag or "") .. "\n" .. d print("[ride] client diag: " .. d) end)
 
 RIDESTUDIO = RIDESTUDIO or {}
 local S = RIDESTUDIO
@@ -209,7 +209,7 @@ concommand.Add("ridestudio_run", function(p, _, a)
         end
     end
     S.queue = q
-    S.ended, S.restored = nil, nil
+    S.ended, S.restored, S.diag = nil, nil, nil
     print("[ride] " .. #q .. " jobs")
     S.Next()
 end)

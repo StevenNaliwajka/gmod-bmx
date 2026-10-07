@@ -200,6 +200,11 @@ print("[ride] client ready")
 
 -- The server says the run is over: the client's settings go back.
 net.Receive("ridestudio_end", function()
+    local st = {}
+    for key, v in pairs(BMX.BikeMesh and BMX.BikeMesh.Status and BMX.BikeMesh.Status() or {}) do
+        st[#st + 1] = key .. " " .. v
+    end
+    net.Start("ridestudio_diag") net.WriteString("models: " .. table.concat(st, " | ")) net.SendToServer()
     local was = restoreSettings()
     net.Start("ridestudio_done") net.WriteString("settings restored: " .. was) net.SendToServer()
 end)

@@ -13,7 +13,7 @@
 
         BMX - Change Server Settings   superadmin   the Server panel, bmx_reset_server
         BMX - Physgun Ridden           admin        pick up a bike with a rider on it
-        BMX - Spawn Motor Vehicles     admin        engines (nothing uses it yet)
+        BMX - Spawn Motor Vehicles     admin        the e-bike, e-moto, dirt bike and moped (sv_motor.lua)
         BMX - Remove Any Bike          admin        remove other people's bikes (nothing uses it yet)
         BMX - Unlock Any Lock          admin        unlock a bike someone else locked (weapon_bmx_lock)
         BMX - Build Parks              admin        bmx_park_save / _load / _preset / _clear

@@ -91,6 +91,10 @@ end
 -- gears, the one ratio's for any other. What "how fast is fast" is measured
 -- against for the wind and the grind's pitch and the rider's tuck.
 function G.TopCeiling(ent, cfg)
+    -- A motor's own top speed (sh_motor.lua): an engine's redline in the top gear,
+    -- a throttle motor's maxSpeed. The legs' ceiling below means nothing to either.
+    local top = BMX.Motor and BMX.Motor.TopSpeed and BMX.Motor.TopSpeed(ent, cfg)
+    if top then return top end
     local g = G.Def(ent)
     return G.CeilingSpeed(cfg, g and g.ratios[#g.ratios] or cfg.Drive.gearRatio)
 end

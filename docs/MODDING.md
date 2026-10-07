@@ -190,7 +190,7 @@ A vehicle that says nothing gets: `balance = "none"`, `drive = { kind = "none" }
 | `family` | `"bike"`, `"board"`, `"skates"`, `"scooter"` or `"moto"`. Decides the spawn menu heading (Bikes, Boards, Scooters, Motor; skates are under Boards) and which `bmx_allow_*` setting can switch it off. |
 | `wheels` | A list of wheels, or a function of the config returning one. At least one, at most eight. See below. |
 | `balance` | `"singletrack"` (lean-derived steering: exactly one front and one rear wheel), `"unicycle"` (G13: exactly one wheel, balanced on two axes by pedalling and leaning, with `bmx_unicycle_assist`), `"pennyfarthing"` (G13: the single-track mode with the header on its pitch; one front and one rear wheel), `"board"` (the skateboard's, `sv_board.lua`: the chassis is held flat to the ground and the rider's lean is a state of its own that the steering reads; needs no particular wheel layout), or `"none"` (nothing holds the vehicle up; it stands on its wheels). |
-| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "coaster" }` (the same, a coaster brake: freewheeling, S is the brake and, with the `bike_rearonly` map, that is all there is), `{ kind = "fixed" }` (a fixed gear, below; `reverse = true` makes S pedal backwards at any speed instead of skidding, which is a unicycle's only brake), `{ kind = "front-direct" }` (G13: the pedal drive on whichever wheel is the drive wheel, the front's, for a penny-farthing), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", torque = N, maxSpeed = N, kickInterval = N }` (a skateboard rider's kick: `torque` is the speed one kick adds at a standstill, u/s, falling to nothing at `maxSpeed`, one kick every `kickInterval` seconds while the throttle is held; also the foot-drag brake and the kick-turn) or `{ kind = "none" }`. `pedal`, `fixed`, `coaster`, `front-direct` and `throttle` need at least one wheel with `drive = true`. |
+| `drive` | `{ kind = "pedal" }` (the bike's legs and stamina, from the config's `Drive`), `{ kind = "coaster" }` (the same, a coaster brake: freewheeling, S is the brake and, with the `bike_rearonly` map, that is all there is), `{ kind = "fixed" }` (a fixed gear, below; `reverse = true` makes S pedal backwards at any speed instead of skidding, which is a unicycle's only brake), `{ kind = "front-direct" }` (G13: the pedal drive on whichever wheel is the drive wheel, the front's, for a penny-farthing), `{ kind = "throttle", torque = N, maxSpeed = N }` (a motor whose torque falls to nothing at `maxSpeed`), `{ kind = "push", torque = N, maxSpeed = N, kickInterval = N }` (a skateboard rider's kick: `torque` is the speed one kick adds at a standstill, u/s, falling to nothing at `maxSpeed`, one kick every `kickInterval` seconds while the throttle is held; also the foot-drag brake and the kick-turn) or `{ kind = "none" }`. `pedal`, `fixed`, `coaster`, `front-direct` and `throttle` need at least one wheel with `drive = true`. The motor kinds `assist` (an e-bike), `engine` (petrol) and `throttle` with `battery` / `regen` / `motorRatio` (the e-moto) are described under "Motor vehicles" below; `assist` and `engine` need a drive wheel. |
 | `seats` | `{ rider = {...}, pegs = {...}, child = {...} }` (G11): the vehicle's seats, each `{ model, offset, angles, massFactor, pedals }` with every key optional (an empty table is all defaults). `rider` is always there; omitted, it is the config's `Chassis.seatOffset` and `seatAngles`. `pegs` seats a second player on the rear pegs, `child` in a child seat. `offset` may be a `Vector` or a function of the config (so a seat can follow a frame's size); `massFactor` is the passenger's mass as a fraction of the bike's own `Chassis.mass` (default 0.6 on the pegs, 0.25 in the child seat). The old list form, `{ { model, offset, angles } }`, is still the rider's seat. Checked at registration: an unknown seat or key, a bad type, a `massFactor` outside 0-2. `pedals = true` (G13) says the person in that seat pedals too, and their torque adds to the driver's (a tandem's stoker; see "The odd ones" below). See "Passengers" below. |
 | `input` | An id in `BMX.InputMaps`: `"bike"`, `"drive"`, `"road"`, `"bike_rearonly"`, `"unicycle"`, `"penny"`, or one you register. |
 | `drawer` | An id in `BMX.Drawers` (`cl_oddbikes.lua`, G13): the vehicle draws itself in code instead of the stock bike's shape, handed the entity's own drawing primitives (`BMX.Draw`: `tube`, `joint`, `solid`, `ring`, the wheel and the axle trace). Shipped: `"unicycle"`, `"pennyfarthing"`, `"tandem"`. A drawer records `ent.ikTargets` (`rFoot`, `lFoot`, `rHand`, `lHand`) for the rider's IK. |
@@ -318,6 +318,50 @@ touching down on a transition is a revert, LMB swaps feet (switch). Player setti
 Adding a board is a `BMX.RegisterVehicle` with `balance = "board"`, `drive = { kind =
 "push" }`, `input = "board"`, `pose = "board"` and its own `wheels`; add flips with
 `BMX.Board.Flips` before the first board is spawned.
+
+### Motor vehicles (G14, G15)
+
+The shipped `ebike`, `emoto`, `dirtbike` and `moped` are registry entries of family
+`moto` (the Motor heading, `bmx_allow_motor`, and the CAMI privilege "BMX - Spawn Motor
+Vehicles", an admin by default). They are single-track vehicles; what makes them motors is
+the drive. The model is `lua/bmx/sh_motor.lua` (pure functions: the assist's cut-off, the
+battery's arithmetic, the torque curve, the clutch), the drives and the battery are
+`sv_motor.lua`, the HUD and the sounds `cl_motor.lua`.
+
+**`assist`** (`drive = { kind = "assist", assist = 1, motorRatio = 12 }`): the pedal drive's
+torque plus LEVEL times what the rider asks of the pedals (`crankTorque * throttle / gear
+ratio`), faded out over the last 2 km/h under `bmx_ebike_limit` (25 by default), so the
+legs take over above it. Level 0-3, on the mouse wheel and `[` `]` (the `ebike` input map:
+the road bike's shift actions mean the level), spawning at `assist`. The motor's torque is
+cut as the front wheel rises (`M.WheelieCut`): level 3 is four times a rider's push through
+one tyre and loops a bike over otherwise.
+
+**`throttle` with `battery` / `regen`**: a no-legs motor, `torque` falling to nothing at
+`maxSpeed`; S adds `regen` of braking torque and puts the energy back in the pack.
+
+**The battery** is Wh on the vehicle's state (`st.battery`, networked as `Battery`, 0-1, or
+-1 for infinite). Capacity is `bmx_ebike_battery` times the drive's `battery` (default 1);
+0 is infinite. It drains with the motor's work at the wheel, `torque * omega` in newton-metres
+(a torque unit is `1 / 39.37^2` N m) divided by 0.85, and regen returns 60% of what braking
+takes. A parked, unridden vehicle recharges in two minutes. An empty pack means no motor.
+
+**`engine`** (`drive = { kind = "engine", torque, curve = { {rpm, fraction}, ... }, idle,
+redline, inertia, friction, clutch, engageRpm, ratio, popGain, popTime, pedalStart }`; all but
+the last four are required, and `ratio` only without `gears`): an engine with a torque curve
+over rpm, an inertia, engine braking and a rev limiter, behind a clutch and the road bike's
+gear model. `gears = { ratios = {...} }` is as for the road bike, but a ratio here is wheel
+revolutions per ENGINE revolution, so the lowest gear is the smallest number. The clutch lever
+is SHIFT (the `moto` input map, `inp.clutch`); a centrifugal bite (`engageRpm`) means a
+stopped bike in gear neither stalls nor creeps. Let the lever go with the throttle open and
+the engine well above the wheel's speed (a clutch pop) and the stored revs dump into the wheel
+and the nose is kicked up for `popTime` seconds: a wheelie, which RMB holds. `pedalStart`
+(the moped) is metres of pedalling before the engine catches. The clutch is three states
+(open, locked, slipping: `M.EngineStep`) and, locked, the wheel carries the engine's inertia
+(`wheel.extraInertia`, sv_wheel.lua).
+
+**FMX tricks** are ordinary pose tricks: `heel_clicker` and `cliffhanger` are registered in
+`sh_motor.lua` with `BMX.RegisterTrick`, decoded for a vehicle whose family is `moto`
+(`DecodePose`'s `moto` flag: Alt + A / D, Alt + S; Alt + W + S is the registry's superman).
 
 ## 2. Tricks
 

@@ -44,9 +44,11 @@ local SHARED = {
     "bmx/sh_tricks.lua",    -- the trick registry; the scoring and the overlay read it
     "bmx/sh_vehicles.lua",  -- what a vehicle is: families, input maps, pose sets, the checks
     "bmx/sh_gears.lua",     -- the gear model: ratios, cadence, which gear a bike is in (G09)
+    "bmx/sh_motor.lua",     -- the motor model: assist, battery, engine and clutch (G14, G15)
     "bmx/sh_passenger.lua", -- seats, the passenger's mass, the child seat's switch (G11)
     "bmx/sh_board.lua",     -- the skateboard's vocabulary (G23): numbers, input map, pose set; before the registry
     "bmx/sh_bikes.lua",
+    "bmx/sh_motorbikes.lua", -- the e-bike, e-moto, dirt bike and moped (G14, G15)
     "bmx/sh_boards.lua",    -- ...and the boards, registered once RegisterVehicle exists
     "bmx/sh_sound.lua",
     "bmx/sh_color.lua",     -- the palette and the ways to choose from it
@@ -81,6 +83,7 @@ local SERVER_FILES = {
     "bmx/sv_compat_ragmod.lua", -- RagMod, if installed: before the crash path asks
     "bmx/sv_bell.lua",      -- R on the ground rings the bell
     "bmx/sv_gears.lua",     -- [ ] and the wheel change gear (G09)
+    "bmx/sv_motor.lua",     -- the motor drives, the battery and the spawn gate (G14, G15)
     "bmx/sv_water.lua",     -- drag, splash and ejection in water (sv_physics checks for it)
     "bmx/sv_stance.lua",    -- copies each rider's bmx_rider_pose onto the player
     "bmx/sv_rules.lua",     -- server-owner settings: bike limit, scoring on/off
@@ -108,6 +111,7 @@ local CLIENT_FILES = {
     "bmx/cl_rider.lua",     -- after cl_view: it finds the rider's bike the same way
     "bmx/cl_gears.lua",     -- the shift keys, sent to the server (G09)
     "bmx/cl_oddbikes.lua",  -- the unicycle, the penny-farthing and the tandem, drawn in code (G13)
+    "bmx/cl_motor.lua",     -- motor HUD lines, the whine and the engine note, the moto pose (G14, G15)
     "bmx/cl_passenger.lua", -- who is a passenger, how they sit, where their hands go (G11)
     "bmx/cl_board.lua",     -- the skateboard's drawing, rider pose and HUD (G23): after cl_rider
     "bmx/cl_cinematic.lua", -- L: the cinematic camera; cl_view hands over to it

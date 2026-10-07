@@ -256,6 +256,12 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, sn
     local WC    = self:WheelConfig(C)
     local radius = WC.radius
     local maxLen = BMX.WheelReach(WC)
+    -- THE WHEEL'S INERTIA, plus the engine's when a locked clutch ties one to it (G15,
+    -- sv_motor.lua sets `extraInertia` = engine inertia / ratio^2 each substep it is
+    -- locked, and nothing otherwise): a flywheel 50 times the wheel's own is what an
+    -- engine on a locked clutch IS, and without it the wheel answers a drive torque
+    -- at its own tiny inertia and the clutch chatters. Every other vehicle: unchanged.
+    local WI    = WC.inertia + (self.extraInertia or 0)
 
     local mountWorld = ent:LocalToWorld(self.mount)
     local down       = -ent:GetUp()
@@ -333,14 +339,14 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, sn
         -- still stops the wheel), which is how a real rider sets up a landing.
         local netTorque = driveTorque
         if brakeTorque > 0 then
-            local dOmega = brakeTorque / WC.inertia * dt
+            local dOmega = brakeTorque / WI * dt
             if abs(self.omega) <= dOmega then
                 self.omega = 0
             else
                 self.omega = self.omega - dOmega * (self.omega > 0 and 1 or -1)
             end
         end
-        self.omega = self.omega + (netTorque / WC.inertia) * dt
+        self.omega = self.omega + (netTorque / WI) * dt
         -- bearing drag, so a free wheel eventually stops
         self.omega = self.omega * (1 - min(0.4 * dt, 0.5))
 
@@ -494,7 +500,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, sn
     -- bike tops out at a third of walking pace with its rear wheel screaming.
     -- Measured: 75 u/s against a 210 u/s floor, cadence pinned at 0.99.
     ----------------------------------------------------------------------
-    local omegaFree = self.omega + (driveTorque / WC.inertia) * dt
+    local omegaFree = self.omega + (driveTorque / WI) * dt
 
     -- A brake-LOCKED wheel is a different constraint, not a stiffer one: the
     -- tyre force reacts into the brake and through it into the chassis, rather
@@ -502,7 +508,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, sn
     -- so the two can never disagree.
     local locked = false
     if brakeTorque > 0 then
-        local dOmega = brakeTorque / WC.inertia * dt
+        local dOmega = brakeTorque / WI * dt
         if abs(omegaFree) <= dOmega then
             omegaFree = 0                 -- locked: the slip becomes -vFwd,
             locked    = true              -- the tyre saturates, and you skid
@@ -588,7 +594,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, sn
     ----------------------------------------------------------------------
     local invCompLong = 1 / effectiveMass(ent, phys, cfg, contact, fwdDir, self.coupling)
     if not locked then
-        invCompLong = invCompLong + radius * radius / WC.inertia
+        invCompLong = invCompLong + radius * radius / WI
     end
 
     local capLong = abs(slipLong) / (dt * invCompLong)
@@ -689,7 +695,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, sn
     if locked then
         self.omega = 0
     else
-        self.omega = omegaFree - (Flong * radius / WC.inertia) * dt
+        self.omega = omegaFree - (Flong * radius / WI) * dt
     end
 
     -- Freewheel: a BMX cassette cannot be driven backwards by the ground, so a

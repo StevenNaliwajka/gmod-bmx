@@ -131,6 +131,17 @@ function ENT:SetupDataTables()
     -- wheel from it.
     self:NetworkVar("Int",   3, "Gear")
 
+    -- THE MOTOR (G14, G15; sv_motor.lua copies them from the state at 20 Hz, cl_motor.lua
+    -- and cl_sound.lua read them). High slot numbers on purpose, to stay clear of
+    -- whoever adds the next ordinary state.
+    --   Rpm      the motor's or engine's speed, rev/min: the whine's and the note's pitch
+    --   Battery  the pack's charge 0..1, or -1 for an infinite one (bmx_ebike_battery 0)
+    --   Clutch   the clutch lever, 0 out (engaged) .. 1 pulled in
+    --   Assist   an e-bike's level + 1 (0 = never set, which reads as the registration's)
+    self:NetworkVar("Float", 12, "Rpm")
+    self:NetworkVar("Float", 13, "Battery")
+    self:NetworkVar("Float", 14, "Clutch")
+    self:NetworkVar("Int",   12, "Assist")
     -- THE BOARD's state (sv_board.lua, G23), for the board family: the deck's
     -- lean (radians), the push phase (0..1 through a kick, -1 not kicking), the
     -- crouch (0..1 of the ollie's preload), the balance meter (-1..1, a manual or a

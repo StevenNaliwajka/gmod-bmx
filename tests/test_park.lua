@@ -566,7 +566,8 @@ T.test("park: a preset is one command, builds where asked, replaces the park, an
     for _, p in ipairs(P.Snapshot()) do mx, my, n = mx + p.pos.x, my + p.pos.y, n + 1 end
     T.near(mx / n, 1000, 300, "round the origin it was given: x")
     T.near(my / n, 2000, 300, "round the origin it was given: y")
-    T.near(first.pos.z, 5, 1e-6, "at its height")
+    -- laid at the origin's height, then settled on the floor under it (bmx_park_ground)
+    T.near(first.pos.z, sv.world.groundZ, 1e-6, "settled on the ground")
     sv:command("bmx_park_preset", nil)
     T.eq(P.Count(), #P.Layout("dirt_line"), "no id only lists them")
 end)
@@ -597,7 +598,15 @@ T.test("park: the tool places a piece at the aim, snaps to the one it is aimed a
     T.ok(tool:LeftClick({ HitPos = E.Vector(500, 100, 9), Entity = E.NULL }), "a click on the ground places")
     local a = P.All()[1]
     T.eq(P.Count(), 1, "one piece")
-    T.near(a:GetPos().x, 500, 1e-6, "at the aim") T.near(a:GetPos().z, 9, 1e-6, "on the floor it hit")
+    T.near(a:GetPos().x, 500, 1e-6, "at the aim") T.near(a:GetPos().z, sv.world.groundZ, 1e-6, "settled on the floor")
+    -- bmx_park_ground 0: where it is put, even off the floor
+    E.GetConVar("bmx_park_ground"):SetInt(0)
+    T.ok(tool:LeftClick({ HitPos = E.Vector(-900, 100, 9), Entity = E.NULL }), "a second piece")
+    local hover
+    for _, e in ipairs(P.All()) do if e ~= a then hover = e end end
+    T.near(hover:GetPos().z, 9, 1e-6, "left where it was put")
+    hover:Remove()
+    E.GetConVar("bmx_park_ground"):SetInt(1)
     T.near(a:GetAngles().y, 0, 1e-6, "turned to the nearest quarter of the player's 8 degrees")
     T.eq(a._phys.motion, false, "frozen")
 

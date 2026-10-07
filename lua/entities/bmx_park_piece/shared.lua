@@ -51,7 +51,10 @@ function ENT:BuildPhysics()
     self:SetSolid(SOLID_VPHYSICS)
     self:SetMoveType(MOVETYPE_VPHYSICS)
     self:EnableCustomCollisions(true)
-    self:SetRenderBounds(b.mins, b.maxs)
+    -- Client only: on the server this is not a method, and the error it
+    -- threw stopped the build before the freeze below, so every piece a
+    -- server spawned was left awake and got knocked off its spot.
+    if CLIENT then self:SetRenderBounds(b.mins, b.maxs) end
     local phys = self:GetPhysicsObject()
     if IsValid(phys) then
         phys:SetMaterial("concrete")

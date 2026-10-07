@@ -338,6 +338,9 @@ server{ name = "bmx_crash_ragdoll", kind = "bool", default = true, category = "r
 server{ name = "bmx_park_max", kind = "int", default = 120, min = 1, max = 500, category = "world",
     label = "Park piece limit",
     help = "The most park pieces (ramps, rails, quarter pipes) that can stand at once, however they were placed or loaded. Each is a physics object, so a very large park costs the server." }
+server{ name = "bmx_park_ground", kind = "bool", default = true, category = "world",
+    label = "Park pieces sit on the ground",
+    help = "A park piece settles onto the ground under it when it is placed, spawned or let go of with the physgun. Off, it stays exactly where it is put, in mid-air if need be." }
 
 
 server{ name = "bmx_ragmod", kind = "bool", default = true, category = "rules",

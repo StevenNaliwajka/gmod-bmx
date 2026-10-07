@@ -110,6 +110,11 @@ BMX.BalanceModeNames = { singletrack = true, board = true, skates = true, none =
 --              kick-turn (a scooter brakes with its fender)
 --   stride     alternating strides of a pair of skates (G25): a worn vehicle's push,
 --              spread over the legs in turn (sv_skates.lua)
+--   assist     an e-bike (G14): the pedal drive plus a motor of LEVEL x the rider's
+--              torque, fading out at bmx_ebike_limit; sh_motor.lua adds this kind
+--   engine     a petrol engine (G15): a torque curve, a clutch, the road bike's gears
+--              or one ratio; sh_motor.lua adds this kind
+--   (throttle also takes `battery`, `regen`, `motorRatio` for the e-moto, G14)
 --   none       coasts
 --------------------------------------------------------------------------
 BMX.DriveKinds = {
@@ -527,7 +532,7 @@ function BMX.ValidateVehicle(def)
     -- Drive.
     local drive = def.drive
     if not istable(drive) or not BMX.DriveKinds[drive.kind] then
-        bad[#bad + 1] = "drive.kind must be one of pedal, fixed, coaster, front-direct, throttle, push, stride, none"
+        bad[#bad + 1] = "drive.kind must be one of pedal, fixed, coaster, front-direct, throttle, push, stride, assist, engine, none"
     else
         local allowed = BMX.DriveKinds[drive.kind]
         for k, v in pairs(drive) do
@@ -540,13 +545,17 @@ function BMX.ValidateVehicle(def)
             end
         end
         if (drive.kind == "pedal" or drive.kind == "fixed" or drive.kind == "coaster" or drive.kind == "throttle"
-            or drive.kind == "front-direct")
+            or drive.kind == "front-direct" or drive.kind == "assist" or drive.kind == "engine")
             and nWheels > 0 and nDrive == 0 then
             bad[#bad + 1] = "a " .. drive.kind .. " drive needs at least one wheel with drive = true"
         end
         if drive.kind == "throttle" and not (isnumber(drive.torque) and drive.torque > 0) then
             bad[#bad + 1] = "a throttle drive needs a torque"
         end
+        -- The motor kinds (sh_motor.lua) check their own fields: a torque curve, a
+        -- redline, an assist level. Loaded after this file, so it is looked up here.
+        local dc = BMX.DriveChecks and BMX.DriveChecks[drive.kind]
+        if dc then dc(drive, bad, def) end
     end
 
     -- Seats (G11): the old list (the rider's seat, at most one), or a map by kind,

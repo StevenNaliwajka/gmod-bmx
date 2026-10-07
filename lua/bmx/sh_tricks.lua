@@ -148,6 +148,14 @@ function BMX.TrickForPose(pose) return BMX.PoseTricks[pose] end
 -- every powered wheelie would change what a wheelie is worth.
 --------------------------------------------------------------------------
 function BMX.DecodePose(k)
+    -- A MOTORCYCLE'S POSES (G15, FMX): Alt + W + S is the superman as ever, Alt + A / D
+    -- a heel clicker and Alt + S a cliffhanger. Only for a vehicle that says so (`moto`),
+    -- so a BMX rider's Alt + A is still a can-can and nothing there moved.
+    if k.moto and k.air and k.alt and not k.rmb and not k.jump then
+        if k.fwd and k.back then return "superman" end
+        if (k.side or 0) ~= 0 then return "heelclicker" end
+        if k.back then return "cliffhanger" end
+    end
     if k.air then
         if k.alt then
             if k.rmb then

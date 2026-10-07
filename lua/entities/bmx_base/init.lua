@@ -332,6 +332,7 @@ function ENT:Think()
         self:SetCadence(st.cadence)
         self:SetSprinting(st.sprinting or false)
         self:SetLeanFwd(st.leanFwd or 0)
+        if BMX.MotorThink then BMX.MotorThink(self, st) end     -- rpm, battery, parked charging (sv_motor.lua)
         self:SetHopCharge(self.hopHeld
             and math.min(1, (self.hopCharge or 0) / self:Cfg().Hop.chargeTime) or 0)
     end

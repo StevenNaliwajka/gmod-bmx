@@ -984,6 +984,9 @@ function ENT:Draw()
     -- used to follow the rider's networked cadence, which was only loosely the
     -- same thing and read as pedals with a mind of their own.
     self.crankAngle = rSpin / BMX.GearRatio(self, C)     -- the current gear's on a bike with gears
+    -- A motorbike has pegs where the pedals are, and an engine's ratio would spin the
+    -- cranks at 20x the wheel (cl_motor.lua FixedCranks): hold them still.
+    if BMX.Motor and BMX.Motor.FixedCranks and BMX.Motor.FixedCranks(self) then self.crankAngle = 0 end
 
     local cr = rightW * (-CHAINY * k)            -- -Y local is +right world
     local ringC = bb + cr

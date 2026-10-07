@@ -559,7 +559,36 @@ files. What they taught the platform:
   shim records constraints rather than simulating them, because the rules (capacity, the
   permission to unlock) are what is worth testing and they do not need a solver.
 
-## 6g. The kick scooter (G24)
+## 6g. Motors on the platform (G14, G15)
+
+The e-bike, the e-moto, the dirt bike and the moped are the first powered vehicles, and the
+core took four small edits for them: a drive may be any function (it already was), the wheel
+may carry extra inertia (`sv_wheel.lua`), a shift key may mean an assist level, and the input
+and tricks decode know about a clutch and a motorcyclist's poses. The rest is new files
+(`sh_motor.lua`, `sh_motorbikes.lua`, `sv_motor.lua`, `cl_motor.lua`). What each taught:
+
+- **Energy has a unit.** A torque here is `kg u^2 / s^2`, 1/1550 of a newton-metre, so the
+  battery is in Wh and the drain is `torque * omega * (1 / 39.37^2) / efficiency`. The suite
+  checks that the pack gave up exactly the motor's work over the efficiency, measured from
+  what the drives return and not from the model's own books, and that the bike's kinetic
+  energy never exceeds the motor's and the legs' work together.
+- **An engine and a wheel are not one kind of thing.** Reflected through a first gear the
+  wheel's inertia is 0.03 against the engine's 14. A clutch solved like a tyre (the torque
+  that would lock it, clamped to its capacity) chattered between plus and minus its capacity
+  every tick for as long as the throttle was held: a capacity of torque spins the wheel past
+  the engine in one step. The cure is not a smaller step. While locked, engine and wheel ARE
+  one body, so the wheel carries the engine's inertia (`Ie / ratio^2`, about 400 wheels' worth)
+  and the engine's torque is the torque on it; slipping, the clutch passes at most the
+  capacity, at most what closes the speeds this step, and at most what the tyre can hold.
+- **Traction control is what keeps a strong motor a bicycle.** Level 3 is four times the
+  rider's push at one tyre and looped the plant's e-bike over backwards in 0.6 s. The motor's
+  torque is cut as the nose comes up (6 to 16 degrees; 22 to 38 when the rider is holding a
+  wheelie): a real controller limits current for the same reason.
+- **A clutch pop needs no special torque.** Dumping 9,600 rpm of engine inertia into a
+  locked drivetrain is a 16 degree wheelie for a third of a second by itself; a nose-up kick
+  on top (`popGain`) makes it a wheelie a rider can catch with RMB.
+
+## 6h. The kick scooter (G24)
 
 The third client of the platform, and the one that needed no new physics. A scooter is
 a single-track vehicle (so the bike's balance holds it up and steers it from the lean)
@@ -595,7 +624,7 @@ trick scoring, the combo, the crash and the landing judge are the bike's, with t
 small wrappers (`sv_scooter.lua`: the grind sparks, the bri flip, and a manual being
 called a manual).
 
-## 6h. Worn vehicles: the skates (G25)
+## 6i. Worn vehicles: the skates (G25)
 
 The first vehicle that is not an entity. A skater has no chassis and no seat: the player
 is the thing that moves, and the platform's idea of a vehicle (a registry entry, a state,

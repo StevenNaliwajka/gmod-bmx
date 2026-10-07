@@ -64,7 +64,9 @@ local function wrap(text, font, w, lines)
     return table.concat(out, "\n")
 end
 
-local function vehicleTab(sheet, sec, frame)
+-- `pick(id)` is what a click does; the /bike window spawns, the rental machine
+-- rents (cl_rental.lua).
+local function vehicleTab(sheet, sec, frame, pick)
     local scroll = vgui.Create("DScrollPanel", sheet)
     local grid = vgui.Create("DIconLayout", scroll)
     grid:Dock(FILL)
@@ -84,13 +86,15 @@ local function vehicleTab(sheet, sec, frame)
         end
         b:SetTooltip(it.info)
         b.DoClick = function()
-            RunConsoleCommand("bmx_spawn", it.id)
+            if pick then pick(it.id) else RunConsoleCommand("bmx_spawn", it.id) end
             surface.PlaySound("ui/buttonclick.wav")
             frame:Close()
         end
     end
     return scroll
 end
+M.VehicleTab = vehicleTab
+M.Colors = COL
 
 local function parkTab(sheet, sec)
     local scroll = vgui.Create("DScrollPanel", sheet)

@@ -58,6 +58,7 @@ local SHARED = {
     "bmx/sh_stance.lua",    -- seated / standing / attack: IK offsets (G21)
     "bmx/sh_park.lua",      -- the park pieces: one generator for collision and drawing
     "bmx/sh_menu.lua",      -- /bike: what the spawn window lists (after bikes and park)
+    "bmx/sh_rental.lua",    -- the free bike rental machine (bmx_rental): after the menu it borrows from
 }
 
 local SERVER_FILES = {
@@ -98,6 +99,7 @@ local SERVER_FILES = {
     "bmx/sv_park.lua",      -- park pieces: placing, the cap, save/load, presets
     "bmx/sv_nav.lua",       -- a navmesh a bike can use, and the trick spots on it
     "bmx/sv_menu.lua",      -- /bike in chat, and park pieces placed from the window
+    "bmx/sv_rental.lua",    -- renting from a bmx_rental machine, returning, the idle sweep
     "bmx/sv_icons.lua",     -- the spawn-menu pictures, sent to clients without the Workshop copy
 
     -- The headless harness loads last: its cases reference BMX.Config, the
@@ -137,6 +139,7 @@ local CLIENT_FILES = {
     "bmx/cl_park.lua",      -- draws the park pieces
     "bmx/cl_options.lua",   -- spawn menu > Options > BMX, built from BMX.Settings
     "bmx/cl_menu.lua",      -- the /bike window (bmx_menu)
+    "bmx/cl_rental.lua",    -- the rental machine's window (its vehicle tabs)
 }
 
 if SERVER then

@@ -854,6 +854,8 @@ function M.Realm(world, which)
         ["models/hunter/plates/plate8x8.mdl"]          = { Vector(-189.8, -189.8, -1.7), Vector(189.8, 189.8, 1.7) },
         ["models/hunter/blocks/cube025x8x025.mdl"]     = { Vector(-5.9, -189.8, -5.9), Vector(5.9, 189.8, 5.9) },
         ["models/props_c17/signpole001.mdl"]           = { Vector(-1.4, -1.4, 0), Vector(1.4, 1.4, 110) },
+        -- the rental machine (bmx_rental): its hull, read from the HL2 mdl. The origin is its middle.
+        ["models/props_interiors/vendingmachinesoda01a.mdl"] = { Vector(-21.7, -26.4, -48.3), Vector(21.4, 26.3, 48.3) },
     }
     function Ent:OBBMins()
         local b = MODEL_BOUNDS[self._model or ""]
@@ -1726,6 +1728,7 @@ function M.Realm(world, which)
         self:loadEntity("bmx_filmer_cam")
         self:loadEntity("bmx_park_piece")
         self:loadEntity("bmx_bike_rack")
+        self:loadEntity("bmx_rental")
         self:loadSwep("weapon_bmx_lock")
         self:loadStool("bmx_park")
         for _, fn in ipairs(M.EXTRA_BOOT) do fn(self, env) end

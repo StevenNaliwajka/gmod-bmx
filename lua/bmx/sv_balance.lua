@@ -528,6 +528,22 @@ function BMX.PitchControl(ent, phys, cfg, dt, inp, st, wheels)
         if step > room then alpha = alpha * room / step end
         if alpha > 0 then torque = torque + BMX.TorqueFor(iPivot, alpha) end
     end
+    -- ...AND NOT OVER BACKWARDS, the same guard mirrored: on the rear wheel
+    -- alone past tailGuardStart nose-up with no wheelie asked for (no
+    -- pitch-back, no wheelie modifier). Stalled on top of a 12-unit, 45-degree
+    -- hump at 150 u/s the rear jammed against its face and the bike stood up
+    -- to 85 degrees and went over backwards (1 ride in 150, real server).
+    if CRg.tailGuardStart and frontUp and not rearUp and inp.pitch <= 0 and not inp.wheelieMod
+        and IsValid(ent:GetDriver()) and st.pitch > CRg.tailGuardStart then
+        local rate = -math.rad(phys:GetAngleVelocity().y)
+        local want = -CRg.recoverPitchKp / CRg.recoverPitchKd * (st.pitch - CRg.tailGuardStart)
+        local iPivot = BMX.PivotInertia(ent, C, false)
+        local alpha = CRg.recoverPitchKd * (want - rate)
+        local step = math.abs(alpha * iPivot / BMX.IPitch(ent) * dt)
+        local room = 0.5 * math.abs(want - rate)
+        if step > room then alpha = alpha * room / step end
+        if alpha < 0 then torque = torque + BMX.TorqueFor(iPivot, alpha) end
+    end
 
     BMX.ApplyTorque(phys, ent, axisR, torque, dt)
 end

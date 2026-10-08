@@ -1760,10 +1760,13 @@ local function rideInto(ctx, xa, y, speed)
         rise = math.max(rise, phys:LocalToWorld(phys:GetMassCenter()).z - com0)
         return CurTime() - t0 > 2.5
     end, 5, "the ride past it")
-    ctx:input({})
     -- Judged once it has settled: a bike coming down off a hump onto its rear
-    -- wheel is nose-up for a moment, and that is a landing, not a fall.
+    -- wheel is nose-up for a moment, and that is a landing, not a fall. STILL
+    -- PEDALLING through it: a rider who lets go of everything on a bike that
+    -- has stalled on top of a 45-degree hump falls over with it standing
+    -- still (2 rides in 150), which is not the bump's doing.
     ctx:wait(1.0)
+    ctx:input({})
     local upright = math.abs(b.st.roll or 0) < math.rad(30) and math.abs(b.st.pitch or 0) < math.rad(30)
     hook.Remove("BMX_Crashed", "bmx_test_rideinto")
     ctx:log(string.format("  %d u/s at %d: roll %.0f, pitch %.0f, rider %s%s", speed, y,

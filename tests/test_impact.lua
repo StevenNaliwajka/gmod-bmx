@@ -291,3 +291,47 @@ T.test("impact: the guard leaves a stoppie the rider asks for alone", function()
     local on = onTheFront(sv2, bike2, sv2.env, 40, { pitch = -1, brakeFront = 1 })
     T.near(on, off, 1, "a stoppie's deepest nose-down, deg, with and without the guard")
 end)
+
+-- ...and the same mirrored: stalled on top of a 12-unit, 45-degree hump the
+-- rear jammed against its face and the bike stood up to 85 degrees and went
+-- over backwards (1 ride in 150). A wheelie the rider asks for is left alone.
+local function onTheRear(sv, bike, E, deg, inp)
+    local C = bike:Cfg()
+    local half, r = C.Wheel.wheelbase * 0.5, C.Wheel.radius
+    local a = math.rad(deg)
+    local phys = bike:GetPhysicsObject()
+    -- pivoted nose-up about the rear axle, rear tyre on the ground
+    phys:SetAngles(E.Angle(-deg, 0, 0))
+    phys:SetPos(E.Vector(-half + half * math.cos(a), 0, sv.world.groundZ + r + half * math.sin(a)))
+    phys:SetVelocity(E.Vector(20, 0, 0))
+    phys:SetAngleVelocity(E.Vector(0, -120, 0))          -- still going over, nose-up
+    F.input(bike, inp)
+    local worst = 0
+    sv:run(1.0, function() worst = math.max(worst, math.deg(bike.st.pitch or 0)) end)
+    return worst
+end
+
+T.test("impact: on its rear wheel with no wheelie asked for, the bike does not go over backwards", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    F.scripted(sv, bike)
+    sv:run(0.5)
+    local worst = onTheRear(sv, bike, E, 50, { throttle = 0.5 })
+    T.between(worst, 0, 70, "furthest nose-up, deg (over backwards: 85+)")
+    T.between(math.deg(bike.st.pitch), -10, 40, "nose-up a second later, deg")
+end)
+
+T.test("impact: the rear guard leaves a wheelie the rider asks for alone", function()
+    local function deepest(guard)
+        local sv = F.server()
+        local bike = F.bike(sv)
+        F.scripted(sv, bike)
+        sv:run(0.5)
+        bike:Cfg().Crash.tailGuardStart = guard
+        return onTheRear(sv, bike, sv.env, 30, { pitch = 1, throttle = 1 })
+    end
+    local on = deepest(math.rad(35))
+    local off = deepest(nil)
+    T.near(on, off, 1, "a wheelie's highest nose-up, deg, with and without the guard")
+end)

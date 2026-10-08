@@ -819,6 +819,9 @@ C.Crash = {
     -- On the front wheel alone with no stoppie asked for, past this nose-down
     -- the rider leans back (sv_balance.lua, BMX.PitchControl). nil turns it off.
     noseGuardStart = math.rad(20),
+    -- ...and on the rear wheel alone with no wheelie asked for, past this
+    -- nose-up the rider leans forward. nil turns it off.
+    tailGuardStart = math.rad(35),
 
     -- Impact into geometry: chassis hull collision above this speed throws the
     -- rider regardless of angle.

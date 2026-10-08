@@ -687,6 +687,7 @@ local function advance()
                 failed = -1
             end
             run = nil
+            if BMX.Settings and BMX.Settings.EndTestRun then BMX.Settings.EndTestRun() end
             if GetConVar("bmx_test_quit"):GetBool() then
                 timer.Simple(1, function()
                     MsgN("[BMX] bmx_test_quit is set -- shutting down (" ..
@@ -800,6 +801,8 @@ function T.Run(only)
     end
 
     run = { queue = queue, idx = 1, results = {}, skipped = skipped }
+    -- On the shipped settings, whatever this server has saved (sv_settings.lua).
+    if BMX.Settings and BMX.Settings.BeginTestRun then BMX.Settings.BeginTestRun() end
     hook.Add("Think", "BMX.TestRunner", advance)
     return true
 end
@@ -828,6 +831,7 @@ concommand.Add("bmx_test_abort", function(ply)
     if not run then MsgN("[BMX] no run in progress") return end
     teardown(run.ctx)
     run = nil
+    if BMX.Settings and BMX.Settings.EndTestRun then BMX.Settings.EndTestRun() end
     hook.Remove("Think", "BMX.TestRunner")
     MsgN("[BMX] run aborted")
 end)

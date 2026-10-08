@@ -349,6 +349,35 @@ T.test("settings: a change from the console is saved, once, a moment later", fun
     T.ok(json:find("\"bmx_combos\":%s*false"), "both changes in the one write")
 end)
 
+-- The CI server's server.json had come to hold bmx_wheel_sweep 1 (a sweep case's
+-- T.ConVar, saved), and the whole headless suite there rode with the swept wheel.
+T.test("settings: a headless run is on the defaults, saves nothing, and gives the saved values back", function()
+    local sv = F.server()
+    local S = sv.env.BMX.Settings
+    local CV = sv.env.GetConVar
+    CV("bmx_wheel_sweep"):SetString("1")
+    CV("bmx_combos"):SetString("0")
+    sv.world.time = sv.world.time + 1
+    sv:runTimers()
+    local saved = sv.files["bmx/server.json"]
+    T.ok(saved and saved:find("\"bmx_wheel_sweep\":%s*true"), "saved with the sweep on")
+
+    S.BeginTestRun()
+    T.eq(CV("bmx_wheel_sweep"):GetInt(), 0, "the run rides on the default: sweep off")
+    T.eq(CV("bmx_combos"):GetInt(), 1, "and combos on")
+    CV("bmx_wheel_sweep"):SetString("1")              -- what a case's T.ConVar does
+    sv.world.time = sv.world.time + 1
+    sv:runTimers()
+    T.eq(sv.files["bmx/server.json"], saved, "nothing a run turns is saved")
+
+    S.EndTestRun()
+    T.eq(CV("bmx_wheel_sweep"):GetInt(), 1, "the server's own values are back after")
+    T.eq(CV("bmx_combos"):GetInt(), 0, "all of them")
+    sv.world.time = sv.world.time + 1
+    sv:runTimers()
+    T.ok(sv.files["bmx/server.json"]:find("\"bmx_combos\":%s*false"), "and saving works again")
+end)
+
 --------------------------------------------------------------------------
 -- CAMI
 --------------------------------------------------------------------------

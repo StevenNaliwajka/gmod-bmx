@@ -149,9 +149,11 @@ function S.LoadServer()
     return n
 end
 
--- A change from anywhere writes the file, a moment later and once.
+-- A change from anywhere writes the file, a moment later and once. Not while
+-- the headless suite is running: what it turns (T.ConVar, the defaults it runs
+-- on) is the test's, not the server's setting.
 function S.QueueSave()
-    if S.loading then return end
+    if S.loading or S.testing then return end
     timer.Create("BMX.SaveSettings", 0.5, 1, S.SaveServer)
 end
 
@@ -165,3 +167,28 @@ hook.Add("InitPostEntity", "BMX.Settings", function()
         end
     end
 end)
+
+--------------------------------------------------------------------------
+-- THE HEADLESS SUITE RUNS ON THE DEFAULTS (sv_test.lua). Every case's bands were
+-- set on the shipped values, and the CI server's server.json had come to hold
+-- bmx_wheel_sweep 1 -- a sweep case's own T.ConVar, saved half a second after it
+-- was set and never set back on that server -- so every case on it rode with
+-- the swept wheel and the suite there measured something else (over_bumps and
+-- rides_up_wedge_45@fixie red only there, pipelines 1123-1125). For a run the
+-- server rows go to their defaults with saving off, and the saved file is put
+-- back when it ends.
+--------------------------------------------------------------------------
+function S.BeginTestRun()
+    S.testing = true
+    S.loading = true
+    for _, row in ipairs(S.Rows("server")) do setConVar(row, row.default) end
+    S.loading = false
+    if BMX.ApplyConVars then BMX.ApplyConVars() end
+end
+
+function S.EndTestRun()
+    for _, row in ipairs(S.Rows("server")) do setConVar(row, row.default) end
+    S.LoadServer()
+    if BMX.ApplyConVars then BMX.ApplyConVars() end
+    S.testing = false
+end

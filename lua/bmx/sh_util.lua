@@ -187,6 +187,21 @@ end
 --            skipped, so the fan reports only what is DIFFERENT. Without it a
 --            wheel resting on the floor, 3 units deep into it, always out-ranks
 --            the first unit of a curb beside it.
+--   floorAt  a point on that surface (the strut's contact). Hits that do not
+--            stand up out of its plane are skipped too: past a convex edge --
+--            the top of a wedge's face, the far side of a hump -- what lies
+--            beyond falls away under the plane the tyre is on, and a tyre on
+--            that plane cannot run into it. Anything it can run into (a curb,
+--            a wall, the foot of a ramp) stands up out of the plane. Cast from
+--            full extension the fan reaches down through the floor, and there
+--            it found the plateau behind a 45 degree wedge's top: a rear wheel landing on the face
+--            just under the lip, the strut 7.7 u into its travel, read the
+--            plateau as an edge 4 u deep with its normal level -- a wall -- and
+--            the bike stopped dead under the lip and rolled back down
+--            (rides_up_wedge_45@fixie, 1 ride in 12 and the CI's pipelines
+--            1124 and 1125). The far side of a hump is the same edge: the
+--            18-unit hump at 150 u/s stalled nose up on its crest 2 rides in
+--            10 with the sweep on (over_bumps), 0 in 30 with this.
 --
 -- It takes a trace FUNCTION rather than calling util.TraceLine, so the offline
 -- suite can run it against a hand-built wedge and a step with no engine at all.
@@ -205,8 +220,13 @@ BMX.SWEEP_LITE  = { 35, 60, 85 }
 BMX.SWEEP_EXTRA = { -40, -20, 20, 48, 72, 92 }
 -- (Together: nine rays, 20 degrees or less apart over -40..92. LITE is what
 -- fires alone when there is no floor to rule hits out against.)
+--
+-- How far above the floor's plane a hit must stand to be something the tyre
+-- can run into (floorAt). The edge itself lies ON the plane, and a hit a
+-- fraction past it is the same phantom; a quarter unit is far below any curb.
+BMX.SWEEP_ABOVE_FLOOR = 0.25
 
-function BMX.SweepContact(centre, down, axle, dir, radius, degs, trace, best, ignore)
+function BMX.SweepContact(centre, down, axle, dir, radius, degs, trace, best, ignore, floorAt)
     local fwd = axle:Cross(down)           -- Source: forward = right x down
     local rays = 0
     for _, deg in ipairs(degs) do
@@ -217,7 +237,8 @@ function BMX.SweepContact(centre, down, axle, dir, radius, degs, trace, best, ig
         if tr.Hit and not tr.StartSolid and tr.Fraction > 0 then
             local h = radius * tr.Fraction
             local dr = radius - h
-            local same = ignore and tr.HitNormal:Dot(ignore) > 0.9
+            local same = ignore and (tr.HitNormal:Dot(ignore) > 0.9
+                or (floorAt and (tr.HitPos - floorAt):Dot(ignore) < BMX.SWEEP_ABOVE_FLOOR))
             if not same and (not best or dr > best.dr) then
                 best = { dr = dr, h = h, d = d, n = tr.HitNormal, P = tr.HitPos }
             end
@@ -337,10 +358,10 @@ function BMX.SweepProbe(centre, down, axle, dir, radius, trace, floorPoint, floo
     end
 
     local best = BMX.SweepContact(centre, down, axle, dir, radius,
-        BMX.SWEEP_LITE, trace, nil, floorNormal)
+        BMX.SWEEP_LITE, trace, nil, floorNormal, floorPoint)
     if best or floorNormal then
         best = BMX.SweepContact(centre, down, axle, dir, radius,
-            BMX.SWEEP_EXTRA, trace, best, floorNormal)
+            BMX.SWEEP_EXTRA, trace, best, floorNormal, floorPoint)
     end
     return BMX.SweepResolve(centre, axle, radius, trace, best)
 end

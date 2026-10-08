@@ -1603,8 +1603,11 @@ function(ctx)
     sweepOn(ctx)
     local g = ctx.ground
     local xa, rise = g.x + 500, 30
-    -- ramp, then a plateau to land on
-    T.Solid(ctx, { hull({ { xa, g.z - 8 }, { xa + 330, g.z - 8 }, { xa + 330, g.z + rise },
+    -- ramp, then a plateau to land on. 700 u of it: a bike that keeps its
+    -- speed over the lip (no phantom wall under it, BMX.SweepContact's
+    -- floorAt) is 320-370 u past the foot after 3.5 s, and a 330 u plateau
+    -- had it falling off the far end when it was measured (30.2 u up).
+    T.Solid(ctx, { hull({ { xa, g.z - 8 }, { xa + 700, g.z - 8 }, { xa + 700, g.z + rise },
                           { xa + rise, g.z + rise }, { xa, g.z } }, -300, 300) })
     ctx:wait(0.3)
     local worst = 0

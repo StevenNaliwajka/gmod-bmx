@@ -382,6 +382,39 @@ T.test("sweep: ignoring the floor's normal is what keeps the floor from hiding a
     T.ok(curb and curb.n.z < 0.1, "filtered, it is the curb's face")
 end)
 
+T.test("sweep: over a convex edge what falls away below the floor's plane is not a face (the wedge's lip)", function()
+    local sv = F.server()
+    local E, B = sv.env, sv.env.BMX
+    local V = E.Vector
+    local r2 = math.sqrt(0.5)
+    -- A 45 degree face up to a plateau at z = 30 (rides_up_wedge_45), and the
+    -- fixie's rear wheel as measured on a real server landing on it just under
+    -- the lip: the bike nose up 30 degrees (its strut's `down` tilted
+    -- forward), the strut 7.7 u into its travel on the face, so the fan, cast
+    -- from full extension, sits inside the face and reaches the plateau past
+    -- the lip -- geometry under the plane the tyre is on.
+    local prof = { { -200, 0 }, { 0, 0 }, { 30, 30 }, { 200, 30 } }
+    local tracer = profileTracer(E, prof)
+    local centre = V(23.7, 0, 31.4)
+    local down = V(0.5, 0, -0.866)
+    local axle = V(0, -1, 0)
+    local floorN, floorP = V(-r2, 0, r2), V(28.6, 0, 28.6)
+    local c = B.SweepProbe(centre, down, axle, 1, 13.8, tracer, floorP, floorN, true)
+    T.eq(c, nil, "nothing beyond the lip is reported")
+    -- Filtered on the floor's normal alone (as it was), the plateau read as an
+    -- edge with a level normal: a wall under the lip, which stopped the bike
+    -- dead and rolled it back down the wedge.
+    local raw = B.SweepContact(centre, down, axle, 1, 13.8, B.SWEEP_LITE, tracer, nil, floorN)
+    raw = B.SweepContact(centre, down, axle, 1, 13.8, B.SWEEP_EXTRA, tracer, raw, floorN)
+    local old = B.SweepResolve(centre, axle, 13.8, tracer, raw)
+    T.ok(old and old.normal.z < 0.5 and old.normal.x < -0.8,
+        "by the normal alone it was a wall: " .. tostring(old and old.normal.x) .. ", " .. tostring(old and old.normal.z))
+    -- And at the FOOT of the face (concave) the face still stands up out of
+    -- the floor and is found.
+    local foot = probe(sv, prof, -4, 7)
+    T.ok(foot and foot.normal.x < -0.5, "the foot of the face is still found")
+end)
+
 --------------------------------------------------------------------------
 -- THE SWEPT WHEEL on the plant: a bike rolling into a box. The hull passes
 -- through the box (the plant does not collide with solids), so what is

@@ -1837,6 +1837,109 @@ function(ctx)
 end)
 
 --------------------------------------------------------------------------
+-- A KERB THAT IS AN ENTITY (petopia_bmx_fall's planting beds and pier
+-- plinths, bmx_city_solid): a 20 u bed with a lamp post standing in it, one
+-- frozen multi-convex body of 50,000 kg -- the city's own recipe, material
+-- set BEFORE the freeze. Built the other way round the engine thaws the body
+-- while IsMotionEnabled() still says false, and a bike pushed it 3-6 u per
+-- ride and rode into it, wheels sunk in the kerb (tests/test_frozen_solids.lua).
+-- Ridden at it square at 50, 100 and 200 u/s, three times each, a fresh bike
+-- every ride: it stops at the kerb (or climbs onto it), nothing of the bike's
+-- -- tyre or hull -- ends up inside it, and the kerb does not move.
+--------------------------------------------------------------------------
+T.Case("into_a_kerb_solid", { timeout = 90,
+    desc = "a 20 u planting-bed kerb (a frozen entity solid, as the city builds it) at 50/100/200 u/s: stops or climbs, never sinks in, the kerb never moves" },
+function(ctx)
+    local g = ctx.ground
+    local xa, depth, h = g.x + 400, 84, 20
+    local kerb = T.Solid(ctx, {
+        boxHull(xa, xa + depth, g.z, g.z + h),
+        hull({ { xa + 32, g.z + h }, { xa + 52, g.z + h }, { xa + 52, g.z + 440 }, { xa + 32, g.z + 440 } }, -10, 10),
+    })
+    if not IsValid(kerb) then return end
+    local kp = kerb:GetPhysicsObject()
+    if IsValid(kp) then kp:SetMass(50000) kp:EnableMotion(false) kp:Sleep() end
+    local home = kerb:GetPos()
+    ctx:wait(0.3)
+    local lo = Vector(xa, g.y - 300, g.z)
+    local hi = Vector(xa + depth, g.y + 300, g.z + h)
+    local function inside(p)
+        return math.min(p.x - lo.x, hi.x - p.x, p.y - lo.y, hi.y - p.y, p.z - lo.z, hi.z - p.z)
+    end
+    for _, speed in ipairs({ 50, 100, 200 }) do
+        for run = 1, 3 do
+            local y = (run - 2) * 8
+            local old = ctx.bike
+            if IsValid(ctx.bot) and IsValid(ctx.bot:GetVehicle()) then ctx.bot:ExitVehicle() end
+            local b = ents.Create(old:GetClass())
+            b:SetPos(Vector(xa - 160, g.y + y, g.z + BMX.RestHeight(ctx.cfg) + 0.5))
+            b:SetAngles(Angle(0, 0, 0))
+            b:Spawn()
+            b:Activate()
+            SafeRemoveEntity(old)
+            ctx.bike = b
+            if IsValid(ctx.bot) then
+                ctx.bot:SetPos(Vector(xa - 400, g.y - 200, g.z + 8))
+                ctx.bot:EnterVehicle(b:GetPod())
+            end
+            ctx:wait(0.3)
+            ctx:input({})
+            putBike(ctx, Vector(xa - 160, g.y + y, g.z + BMX.RestHeight(ctx.cfg)), Angle(0, 0, 0),
+                Vector(speed, 0, 0))
+            for _, w in ipairs(b.wheels) do
+                w.omega = speed / w:WheelConfig(b:Cfg()).radius
+                w.lastComp, w.anchor = nil, nil
+            end
+            local cfg = b:Cfg()
+            local reach = cfg.Wheel.wheelbase * 0.5 + cfg.Wheel.radius
+            local worst, what, moved, t0, far, pressing = -math.huge, "", 0, CurTime(), -math.huge, false
+            ctx:waitUntil(function()
+                if not IsValid(b) then return true end
+                -- coasting in at the case's speed, then pedalling INTO it: a
+                -- rider pressing on at walking pace is what pushed the thawed
+                -- kerbs away
+                far = math.max(far, b:GetPos().x + reach - xa)
+                if not pressing and far > -10 then pressing = true ctx:input({ throttle = 0.4 }) end
+                local fwd, up = b:GetForward(), b:GetUp()
+                for _, w in ipairs(b.wheels) do
+                    local r = w:WheelConfig(cfg).radius
+                    local axle = b:LocalToWorld(w:VisualOffset(cfg))
+                    for i = 0, 15 do
+                        local a = i / 16 * math.pi * 2
+                        local d = inside(axle + fwd * (math.cos(a) * r) + up * (math.sin(a) * r))
+                        if d > worst then worst, what = d, "tyre" end
+                    end
+                end
+                for bi, box in ipairs(BMX.CollisionBoxes(cfg)) do
+                    for _, cx in ipairs({ box[1].x, box[2].x }) do
+                        for _, cy in ipairs({ box[1].y, box[2].y }) do
+                            for _, cz in ipairs({ box[1].z, box[2].z }) do
+                                local d = inside(b:LocalToWorld(Vector(cx, cy, cz)))
+                                if d > worst then worst, what = d, "hull box " .. bi end
+                            end
+                        end
+                    end
+                end
+                if IsValid(kerb) then moved = math.max(moved, kerb:GetPos():Distance(home)) end
+                return CurTime() - t0 > 3
+            end, 6, "the ride into the kerb")
+            ctx:input({})
+            local label = string.format("%d u/s, %d u to the side", speed, y)
+            local up = IsValid(b) and math.abs(b.st.roll or 0) < math.rad(30) and math.abs(b.st.pitch or 0) < math.rad(30)
+            ctx:log(string.format("%s: deepest %.1f u inside the kerb (%s), kerb moved %.2f u, tyre front got to x %.0f, rider %s",
+                label, math.max(worst, 0), what, moved, far,
+                IsValid(b) and IsValid(b:GetDriver()) and "aboard" or "off"))
+            ctx:between(math.max(worst, 0), 0, 3, label .. ": deepest any tyre or hull point went into the kerb", "u")
+            ctx:between(moved, 0, 0.05, label .. ": how far the kerb moved", "u")
+            ctx:ok(IsValid(b) and IsValid(b:GetDriver()) and up, label .. ": rider aboard and the bike upright")
+            -- and it got there: the front of the tyre at the face (or past it,
+            -- up on top), not held up short by something else on the ground
+            ctx:ok(far > -6, label .. ": the bike reached the kerb (front of the tyre got to x " .. math.floor(far) .. ")")
+        end
+    end
+end)
+
+--------------------------------------------------------------------------
 -- THE OTHER SHIPPED BIKES, held to the same bands.
 --
 -- The cruiser and the mini are the stock bike with other geometry (see

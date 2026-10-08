@@ -1038,11 +1038,19 @@ function M.Realm(world, which)
     function Phys:IsValid() return env.IsValid(self.ent) end
     function Phys:SetMass(m) self.mass = m end
     function Phys:GetMass() return self.mass end
-    function Phys:SetMaterial(m) self.material = m end
+    -- A MATERIAL SET ON A FROZEN BODY THAWS IT, as VPhysics does (measured on
+    -- a real server, 2026-10-08): IsMotionEnabled() still answers false, but
+    -- the body is pushed by whatever presses on it. `thawed` is that hidden
+    -- state, for tests to catch; EnableMotion(false) after the material is
+    -- what really freezes a body.
+    function Phys:SetMaterial(m)
+        self.material = m
+        if self.motion == false then self.thawed = true end
+    end
     function Phys:GetMassCenter() return Vector(self.mc) end
     function Phys:EnableDrag(b) self.drag = b end
     function Phys:SetDamping(l, a) self.linDamp, self.angDamp = l, a end
-    function Phys:EnableMotion(b) self.motion = b end
+    function Phys:EnableMotion(b) self.motion = b self.thawed = nil end
     function Phys:IsMotionEnabled() return self.motion end
     function Phys:EnableGravity(b) self.gravity = b end
     function Phys:EnableCollisions(b) self.collisions = b end

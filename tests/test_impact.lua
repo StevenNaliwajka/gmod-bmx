@@ -240,3 +240,54 @@ T.test("impact: a wheel meeting the foot of a slope keeps its speed along it", f
     T.between(phys:GetVelocity():Length(), before:Length() * math.cos(a) - 25, before:Length() + 5,
         "speed after meeting the slope, u/s (VPhysics left 102)")
 end)
+
+--------------------------------------------------------------------------
+-- NOT OVER THE BARS BY ACCIDENT (Crash.noseGuardStart). Cresting an 18-unit
+-- hump shorter on top than the bike, at 150 u/s, the bike pivoted on its
+-- front wheel on to 74 degrees and over, one ride in ten: no rider asked for
+-- it. A stoppie the rider does ask for is left alone.
+--------------------------------------------------------------------------
+local function onTheFront(sv, bike, E, deg, inp)
+    local C = bike:Cfg()
+    local half, r = C.Wheel.wheelbase * 0.5, C.Wheel.radius
+    local a = math.rad(deg)
+    local phys = bike:GetPhysicsObject()
+    -- pivoted nose-down about the front axle, front tyre on the ground
+    phys:SetAngles(E.Angle(deg, 0, 0))
+    phys:SetPos(E.Vector(half - half * math.cos(a), 0, sv.world.groundZ + r + half * math.sin(a)))
+    phys:SetVelocity(E.Vector(80, 0, 0))
+    phys:SetAngleVelocity(E.Vector(0, 120, 0))           -- still going over, nose-down
+    F.input(bike, inp)
+    local worst = 0
+    sv:run(1.0, function() worst = math.max(worst, -math.deg(bike.st.pitch or 0)) end)
+    return worst
+end
+
+T.test("impact: on its front wheel with no stoppie asked for, the bike does not go over the bars", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    F.scripted(sv, bike)
+    sv:run(0.5)
+    local worst = onTheFront(sv, bike, E, 40, { throttle = 0.5 })
+    T.between(worst, 0, 55, "furthest nose-down, deg (over the bars: 75+)")
+    T.between(-math.deg(bike.st.pitch), -10, 30, "nose-down a second later, deg")
+end)
+
+T.test("impact: the guard leaves a stoppie the rider asks for alone", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    F.scripted(sv, bike)
+    sv:run(0.5)
+    local guard = bike:Cfg().Crash.noseGuardStart
+    bike:Cfg().Crash.noseGuardStart = nil
+    local off = onTheFront(sv, bike, E, 40, { pitch = -1, brakeFront = 1 })
+    local sv2 = F.server()
+    local bike2 = F.bike(sv2)
+    F.scripted(sv2, bike2)
+    sv2:run(0.5)
+    bike2:Cfg().Crash.noseGuardStart = guard
+    local on = onTheFront(sv2, bike2, sv2.env, 40, { pitch = -1, brakeFront = 1 })
+    T.near(on, off, 1, "a stoppie's deepest nose-down, deg, with and without the guard")
+end)

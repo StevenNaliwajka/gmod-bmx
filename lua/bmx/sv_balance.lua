@@ -507,6 +507,28 @@ function BMX.PitchControl(ent, phys, cfg, dt, inp, st, wheels)
         torque = torque + BMX.TorqueFor(iPivot, alpha)
     end
 
+    -- NOT OVER THE BARS BY ACCIDENT. On the front wheel alone, past
+    -- noseGuardStart nose-down, with the rider asking for no stoppie (no
+    -- pitch-forward, no nose manual, no front brake), the rider's weight goes
+    -- back: levelled toward noseGuardStart by the same never-past-it law as
+    -- the landing assist above. Cresting an 18-unit hump whose top is shorter
+    -- than the bike at 150 u/s, the front dropped down the far face while
+    -- the rear still climbed the near one, and the bike pitched on to 74
+    -- degrees and over (one ride in ten, real server).
+    local CRg = C.Crash
+    if CRg.noseGuardStart and rearUp and not frontUp and not nose and inp.pitch >= 0
+        and (inp.brakeFront or 0) < 0.1 and IsValid(ent:GetDriver())
+        and st.pitch < -CRg.noseGuardStart then
+        local rate = -math.rad(phys:GetAngleVelocity().y)
+        local want = -CRg.recoverPitchKp / CRg.recoverPitchKd * (st.pitch + CRg.noseGuardStart)
+        local iPivot = BMX.PivotInertia(ent, C, true)
+        local alpha = CRg.recoverPitchKd * (want - rate)
+        local step = math.abs(alpha * iPivot / BMX.IPitch(ent) * dt)
+        local room = 0.5 * math.abs(want - rate)
+        if step > room then alpha = alpha * room / step end
+        if alpha > 0 then torque = torque + BMX.TorqueFor(iPivot, alpha) end
+    end
+
     BMX.ApplyTorque(phys, ent, axisR, torque, dt)
 end
 

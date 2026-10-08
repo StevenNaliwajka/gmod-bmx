@@ -1746,6 +1746,12 @@ local function rideInto(ctx, xa, y, speed)
         w.lastComp, w.anchor = nil, nil
     end
     local phys = b:GetPhysicsObject()
+    local crashed
+    hook.Add("BMX_Crashed", "bmx_test_rideinto", function(ent, ply, reason)
+        if ent == b and not crashed then
+            crashed = string.format("%s at %.0f u/s, x %.0f past it", tostring(reason), ent.st and ent.st.speed or -1, ent:GetPos().x - xa)
+        end
+    end)
     ctx:waitUntil(function() return b:GetPos().x > xa - 110 end, 6, "the approach")
     local com0 = phys:LocalToWorld(phys:GetMassCenter()).z
     local up, rise, t0 = -math.huge, -math.huge, CurTime()
@@ -1755,9 +1761,14 @@ local function rideInto(ctx, xa, y, speed)
         return CurTime() - t0 > 2.5
     end, 5, "the ride past it")
     ctx:input({})
+    -- Judged once it has settled: a bike coming down off a hump onto its rear
+    -- wheel is nose-up for a moment, and that is a landing, not a fall.
+    ctx:wait(1.0)
     local upright = math.abs(b.st.roll or 0) < math.rad(30) and math.abs(b.st.pitch or 0) < math.rad(30)
-    ctx:log(string.format("  %d u/s at %d: roll %.0f, pitch %.0f, rider %s", speed, y,
-        math.deg(b.st.roll or 0), math.deg(b.st.pitch or 0), IsValid(b:GetDriver()) and "aboard" or "off"))
+    hook.Remove("BMX_Crashed", "bmx_test_rideinto")
+    ctx:log(string.format("  %d u/s at %d: roll %.0f, pitch %.0f, rider %s%s", speed, y,
+        math.deg(b.st.roll or 0), math.deg(b.st.pitch or 0), IsValid(b:GetDriver()) and "aboard" or "off",
+        crashed and (" (thrown: " .. crashed .. ")") or ""))
     return up, rise, IsValid(b:GetDriver()) and upright
 end
 
@@ -1802,19 +1813,16 @@ function(ctx)
     SafeRemoveEntity(bar)
 end)
 
-T.Case("over_bumps", { timeout = 80,
-    desc = "an 8-unit speed bump and an 18-unit, 40 degree hump at 300 u/s, a 12-unit hump at 150: ridden over, rider aboard" },
+T.Case("over_bumps", { timeout = 100,
+    desc = "an 8-unit speed bump and an 18-unit, 40 degree hump at 300 u/s, 12 and 18-unit humps at 150: ridden over, rider aboard" },
 function(ctx)
     local g = ctx.ground
     local xa = g.x + 400
-    -- {base width, height, top width, speed}. Each held 20 rides in 20.
-    --
-    -- NOT the 18-unit hump at 150 u/s: its top is shorter than the bike, so
-    -- the front drops 18 units down the far face while the rear is still
-    -- climbing the near one, and a rider on half throttle who never leans
-    -- back goes over the bars about one ride in ten (it was 3 in 7 before
-    -- these fixes). That is the shape, not a glitch.
-    for _, s in ipairs({ { 50, 8, 20, 300 }, { 40, 12, 12, 150 }, { 60, 18, 20, 300 } }) do
+    -- {base width, height, top width, speed}. The 18-unit hump at 150 is the
+    -- hard one: its top is shorter than the bike, so the front drops down the
+    -- far face while the rear still climbs, and a rider who never leaned back
+    -- went over the bars one ride in ten until Crash.noseGuardStart (0 in 40).
+    for _, s in ipairs({ { 50, 8, 20, 300 }, { 40, 12, 12, 150 }, { 60, 18, 20, 300 }, { 60, 18, 20, 150 } }) do
         local w, h, top = s[1], s[2], s[3]
         local inset = (w - top) / 2
         T.Solid(ctx, { hull({ { xa, g.z - 2 }, { xa + w, g.z - 2 },

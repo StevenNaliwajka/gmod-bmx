@@ -222,7 +222,7 @@ local function tryGrind(ply, w, mv, vel)
     sk.spin, w.airT = 0, 0
 
     st.airSince, st.grind, st.grounded = 0, g, true
-    g.bal = { v = 0, t = 0, phase = math.random() * 6.28 }
+    g.bal = B.MeterStart(math.random() * 6.28, B.Tune.meterGrind)
     w.meter = 0
     g.jumpWas = i.jump
     hook.Run("BMX_WornGrind", ply, w.id, g.move)

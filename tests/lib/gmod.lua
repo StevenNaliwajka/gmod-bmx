@@ -1068,6 +1068,12 @@ function M.Realm(world, which)
         local e, d = self.ent, math.deg
         return Vector(d(self.w:Dot(e._f)), d(self.w:Dot(e._l)), d(self.w:Dot(e._u)))
     end
+    -- (GMod's Add* forms: the same units, added to what is there.)
+    function Phys:AddVelocity(v) self.v = self.v + v end
+    function Phys:AddAngleVelocity(v)
+        local e, r = self.ent, math.rad
+        self.w = self.w + e._f * r(v.x) + e._l * r(v.y) + e._u * r(v.z)
+    end
     function Phys:GetPos() return self.ent:GetPos() end
     function Phys:SetPos(p) self.ent._pos = Vector(p) end
     function Phys:SetAngles(a)

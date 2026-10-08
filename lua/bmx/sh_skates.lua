@@ -401,7 +401,20 @@ function S.Observe(ply, w, mv, dt)
 
     local cast = S.Cast(ply, origin, sk.heading, w.def)
     w.cast = cast
-    return vel, ply:IsOnGround(), cast
+    -- THE GROUND. The engine's flag is from its last move, at the last origin. A
+    -- skater moved since by something other than their own motion (a teleport: a
+    -- respawn, a rental, a script's SetPos) can be in the air with the flag still
+    -- saying ground, and SPACE then jumped from mid-air -- straight up past a rail
+    -- the skater was put over, instead of locking onto it. After such a jump the
+    -- wheels' own cast says.
+    local grounded = ply:IsOnGround()
+    local last = w.lastOrigin
+    if grounded and last then
+        local moved = (origin - last):Length()
+        if moved > 32 + vel:Length() * (dt or 0) * 2 then grounded = cast.n > 0 end
+    end
+    w.lastOrigin = origin
+    return vel, grounded, cast
 end
 
 -- THE STEP, and writing what it says into the player's velocity. Returns S.Step's result.

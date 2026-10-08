@@ -665,6 +665,17 @@ function ENT:NoteImpact(data, CR)
     if not IsValid(self:GetDriver()) then return end
     local st = self.st
     if not st or st.grind then return end
+    -- A BOARD COMING DOWN ONTO A TRANSITION: the trucks, below the deck's body box,
+    -- meeting a face the deck already lies along (sv_board.lua turns it onto the
+    -- face on the way down). Steep as a wall by its normal, but it is landed on,
+    -- not ridden into: soaked as a wall it lost two thirds of its speed down
+    -- the face of a quarter pipe and stalled there.
+    -- (The normal's sign is the engine's business; either way along the deck's up.)
+    if self:Bike().balance == "board" and data.HitPos
+        and math.abs(self:GetUp():Dot(n)) > math.cos(math.rad(25)) then
+        local body = BMX.CollisionBoxes(self:Cfg())[1]
+        if self:WorldToLocal(data.HitPos).z < body[1].z then return end
+    end
     -- A WHEEL MEETING A SLOPE it rides onto (the foot of a ramp or a quarter
     -- pipe): a surface between impactNormalZ and rampNormalZ from level, met
     -- below the body box, riding rather than landing. See 2c.

@@ -411,6 +411,30 @@ T.test("board ride: an ollie. Hold to crouch, release to pop; a longer hold goes
     T.ok(e:GetDriver():InVehicle(), "and nobody was thrown")
 end)
 
+T.test("board ride: a SPACE tap down and up between two ticks is still the shortest ollie", function()
+    -- The decoder runs per usercmd and the simulation per tick; a client sends
+    -- several usercmds a tick, so a quick tap can be down in one and up in the
+    -- next with no step between. The press is latched until a step reads it.
+    local sv = F.server()
+    local e = board(sv)
+    local ply = F.rider(sv, e, { name = "Tapper" })
+    local IN = require("lib.gmod").IN
+    sv:run(0.6)
+    local ground = e:GetPos().z
+    sv.env.hook.Run("StartCommand", ply, cmd(IN.JUMP))
+    sv.env.hook.Run("StartCommand", ply, cmd(0))
+    local peak, air = ground, false
+    sv:run(1.2, function()
+        sv.env.hook.Run("StartCommand", ply, cmd(0))
+        peak = math.max(peak, e:GetPos().z)
+        if not e.st.grounded then air = true end
+        return false
+    end)
+    T.ok(air, "it left the ground")
+    T.ok(peak - ground > 3 and peak - ground < 20, "a tap's height: " .. (peak - ground))
+    T.ok(e.input.board.jumpTap == nil, "and the latch was spent by the step that read it")
+end)
+
 T.test("board ride: an ollie keeps its pop in the direction of travel, not straight up", function()
     local sv, e = ridden()
     press(e, { throttle = 1, fwd = 1 })

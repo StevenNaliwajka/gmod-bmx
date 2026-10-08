@@ -315,10 +315,14 @@ local function ollie(ent, phys, cfg, dt, inp, st, b, now)
     local pressed = now - (inp.cmdAge or 0)
     local canPop = (pressed - b.lastGround) <= T.coyote and now >= b.popReady
 
-    if bi.jump then
+    -- The latched press (the decoder's jumpTap) counts as held for one step.
+    local jump, tapKeys = bi.jump or bi.jumpTap, (not bi.jump) and bi.jumpTapKeys or nil
+    bi.jumpTap, bi.jumpTapKeys = nil, nil
+    if jump then
         if not b.crouching and canPop and not st.grind and not b.kt then
             b.crouching, b.crouchT = true, 0
-            b.latch = dirLatch(inp)
+            b.latch = tapKeys and { w = tapKeys.w, s = tapKeys.s, a = tapKeys.a, d = tapKeys.d }
+                or dirLatch(inp)
         end
         if b.crouching then b.crouchT = min(T.crouchMax, b.crouchT + dt) end
     elseif b.crouching then
@@ -394,6 +398,120 @@ function B.StancePrefix(b)
 end
 
 --------------------------------------------------------------------------
+-- ON THE TRANSITION: DROPPING IN. Rolled off the top of a quarter pipe, the
+-- board's nose tips over the coping and the face then falls away faster than a
+-- body flung off it falls: left to VPhysics it flew out level, came down on the
+-- transition's foot nose-first and went over (a 75 degree drop-in: "crash
+-- impact", or upside down, on a real server). A skater keeps the trucks on the
+-- face. So with no wheel down and the board coming down over a surface it could
+-- ride (Tune.stick*), the speed it has is turned along that surface, kept whole,
+-- and the deck is turned onto it. The concave transition below then holds the
+-- wheels on by itself (the push it needs is v^2 / R plus gravity's share).
+--
+-- Not on the way up (a launch off a lip or a kicker is an air), not in the
+-- first stickAfterPop of an ollie, not on a wall (stickMaxAngle), not on a rail,
+-- in a manual or a kick-turn; and nothing at all with any wheel on the ground,
+-- where the wheels do it.
+--------------------------------------------------------------------------
+local function transition(ent, phys, C, dt, st, b, now)
+    if st.grind or b.manual or b.kt or b.revert then return end
+    if b.popAt and now - b.popAt < T.stickAfterPop then return end
+    local wheels = ent.wheels
+    if not wheels or #wheels == 0 then return end
+    -- Which trucks are down. Both: the wheels have it. One (the front come down
+    -- onto the transition, the back still over it): the other is swung down
+    -- onto the surface about the one that is down.
+    local fDown, rDown = false, false
+    for _, w in ipairs(wheels) do
+        if w.onGround then if w.isFront then fDown = true else rDown = true end end
+    end
+    if fDown and rDown then return end
+    local partial = fDown or rDown
+    local vel = phys:GetVelocity()
+    if vel.z > 0 then return end
+    local speed = vel:Length()
+    if speed < T.stickMinSpeed then return end
+
+    -- Under EVERY wheel, along the deck's down, the same surface: a board still
+    -- across the coping (the back wheels over the deck, the front over the face)
+    -- is pivoting over it, which VPhysics does, and is left to.
+    local up = ent:GetUp()
+    local WC = C.Wheel
+    local len = WC.restLength + WC.radius + T.stickReach
+    local sum, gap, normals = Vector(0, 0, 0), math.huge, {}
+    local front, rear, nf, nr = Vector(0, 0, 0), Vector(0, 0, 0), 0, 0
+    for i, w in ipairs(wheels) do
+        local m = ent:LocalToWorld(w.mount)
+        local tr = util.TraceLine({ start = m, endpos = m - up * len,
+            filter = ent.traceFilter or ent, mask = MASK_SOLID })
+        if not tr.Hit or tr.StartSolid or tr.HitNormal.z < math.cos(T.stickMaxAngle) then return end
+        normals[i] = tr.HitNormal
+        sum = sum + tr.HitNormal
+        if w.isFront then front, nf = front + tr.HitPos, nf + 1 else rear, nr = rear + tr.HitPos, nr + 1 end
+        if not w.onGround then gap = math.min(gap, tr.Fraction * len - (WC.restLength + WC.radius)) end
+    end
+    if nf == 0 or nr == 0 or gap < T.stickMinGap then return end
+    local n = sum:GetNormalized()
+    for _, hn in ipairs(normals) do
+        if hn:Dot(n) < math.cos(T.stickSpread) then return end
+    end
+    front, rear = front / nf, rear / nr
+
+    -- THE ATTITUDE TO TAKE: along the CHORD between the points under the front
+    -- and back trucks, not square to the averaged normal. On a transition's
+    -- curve the two differ by the bend over a wheelbase, and square to the
+    -- average the back trucks met the steeper face above first and kicked the
+    -- nose down into it (a real server: thrown back up onto the deck).
+    local chord = front - rear
+    local cl = chord:Length()
+    if cl < 1 then return end
+    chord = chord / cl
+    local target = n - chord * n:Dot(chord)
+    if target:LengthSqr() < 1e-6 then return end
+    target:Normalize()
+
+    -- Its speed along the surface: what was carrying it off is turned onto it,
+    -- the whole of it kept, and the gap to the surface closed at stickClose...
+    -- (With a truck down, its speed is the wheels', untouched.)
+    local v = vel
+    local vn = v:Dot(n)
+    local close = -math.min(gap * T.stickClose, T.stickCloseMax)
+    if not partial and vn > close then
+        local vt = v - n * vn
+        local lt = vt:Length()
+        local keep = math.sqrt(math.max(speed * speed - close * close, 0))
+        if lt > 1 then v = vt * (keep / lt) + n * close end
+    elseif not partial and vn < -T.stickApproach then
+        -- ...and it does not slam into it either: past stickApproach toward the
+        -- surface is soaked, as a landing's is.
+        v = v - n * (vn + T.stickApproach)
+    end
+
+    -- The deck onto the surface: up turned toward the target, the yaw kept.
+    -- About the mass centre: turned about the point under the wheels, the mass
+    -- centre's share of the turn was speed made from nothing (116 u/s over the
+    -- coping became 174) and lost again as the turn ended.
+    local f, l = ent:GetForward(), -ent:GetRight()
+    local av = phys:GetAngleVelocity()                          -- body axes, deg/s
+    local axis = up:Cross(target)
+    local sinA = axis:Length()
+    local rate = 0
+    if sinA > 1e-4 then
+        local ang = math.asin(math.min(sinA, 1))
+        if up:Dot(target) < 0 then ang = math.pi - ang end
+        rate = math.min(ang * T.stickGain, T.stickRate)
+        axis = axis / sinA
+    end
+    local omega = axis * rate
+    -- ADDED, not set: a SetVelocity here, in the motion controller, pinned the
+    -- board where it was for good (a real server: it hung on the coping with
+    -- its velocity counting up and its position never changing).
+    phys:AddVelocity(v - vel)
+    phys:AddAngleVelocity(Vector(math.deg(omega:Dot(f)) - av.x, math.deg(omega:Dot(l)) - av.y, 0))
+    b.onTransition = now
+end
+
+--------------------------------------------------------------------------
 -- THE TICK: once a substep with a rider aboard (sv_physics.lua, 6b), on the ground
 -- and in the air alike.
 --------------------------------------------------------------------------
@@ -417,6 +535,7 @@ function BMX.BoardTick(ent, phys, C, dt, inp, st, vdef)
     b.fakie = B.IsFakie(st.fwdSpeed or 0, b.fakie)
 
     ollie(ent, phys, C, dt, inp, st, b, now)
+    transition(ent, phys, C, dt, st, b, now)
     kickTurn(ent, phys, C, dt, st, b)
     edgeCatch(ent, dt, st, b, ent.wheels)
 
@@ -456,6 +575,15 @@ local function decode(ply, bike, cmd, down, fwd, side)
     b.fwd, b.side = fwd, side
     b.w, b.s = down("forward"), down("back")
     b.jump, b.alt = down("jump"), down("alt")
+    -- A TAP SHORTER THAN A TICK. The decoder runs per usercmd and the simulation
+    -- per tick, and a client batches usercmds: a quick SPACE tap could be down in
+    -- one usercmd and up in the next, both inside one tick, and the simulation
+    -- never saw it (no crouch, no pop). The press is latched until a step has
+    -- read it (ollie(), below), so the shortest tap is a one-tick crouch: a
+    -- popMin ollie. The direction keys down at that press are kept with it: they
+    -- are what the crouch's latch holds (a key pressed as SPACE came back up is a
+    -- flip, not one held into the crouch).
+    if b.jump and not b.jumpTap then b.jumpTap, b.jumpTapKeys = true, B.Keys(inp) end
     b.grab, b.duck, b.swap = down("grab"), down("crouch"), down("swap")
 
     -- THE FLICK SCHEME (bmx_board_flick, a userinfo convar, cl_board.lua): the

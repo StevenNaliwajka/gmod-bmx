@@ -269,6 +269,26 @@ function BMX.PhysicsStep(ent, phys, dt)
     -- a car body it is bolted to would only shake the pair of them.
     if ent.BMXRack then phys:Wake() return end
 
+    ----------------------------------------------------------------------
+    -- 0. MOVED BY SOMETHING ELSE THIS TICK (a SetPos on the physics object: a
+    -- teleport, a respawn, a script putting the bike somewhere). The physics
+    -- object is already there; the entity's transform, which the wheels cast
+    -- from (ent:LocalToWorld), still says where it was, until the tick ends.
+    -- Run a substep now and every wheel finds the OLD ground and pushes on the
+    -- new body with a lever arm the length of the jump: a skateboard put 600
+    -- units away spun at 1,600 deg/s and went end over end before it had
+    -- rolled a unit (measured on a real server). Within a tick the entity
+    -- lags the body by at most the tick's own motion, so a gap well past that
+    -- is a teleport: no forces this substep, and the wheels forget the ground
+    -- they had (their compression and any pinned contact patch).
+    ----------------------------------------------------------------------
+    local gap = (phys:GetPos() - ent:GetPos()):Length()
+    if gap > 16 + phys:GetVelocity():Length() * engine.TickInterval() * 2 then
+        for _, w in ipairs(wheels) do w.lastComp, w.anchor = nil, nil end
+        st.preVel, st.preAngV = nil, nil
+        return
+    end
+
     local hasDriver = IsValid(ent:GetDriver())
 
     ----------------------------------------------------------------------

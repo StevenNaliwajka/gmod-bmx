@@ -179,3 +179,35 @@ a measured offset: every number is in `Tune` or `cl_board.lua`), whether the sta
 base pose sits the root where the feet should be, the pop and the flip timing against
 real VPhysics landings, and the bot's 50-50 timing. Ride sessions with `bmx_debug 1`
 per the tuning guide.
+
+### Update (2026-10-08): the four headless cases pass on a real server
+
+All nine board cases now run on the server; `board_ollie_height`,
+`board_bails_on_bad_catch` and `board_drops_in_to_quarter` lost `wip` (each passed
+10 of 10 on a private srcds, below). What was unfinished, and the fix:
+
+- **The tap ollie** lifted 0.03 u: SPACE down and up inside one tick was never seen by
+  a physics step. `sv_board.lua` latches the press (`jumpTap`, with the direction keys
+  down at that press) until a step reads it, so the shortest tap is a one-tick crouch
+  (a popMin ollie, 8.9 u measured). A real client batches usercmds, so this is a
+  player's quick tap too, not only the harness's.
+- **The bad-catch bail** never fired because the tap never popped; with the pop back,
+  a kickflip off a tap lands mid-flip and bails ("flip").
+- **The drop-in** had two faults. A board moved by `SetPos` on its physics object
+  ran its next substep with the wheels cast from the entity's old transform, 600 u
+  away: 1,600 deg/s of spin before it rolled a unit. `sv_physics.lua` step 0 now skips
+  that substep and clears the wheels' contact memory (all vehicles). Then the drop
+  itself: the board flew off the coping level and came down nose-first. The new
+  `transition()` in `sv_board.lua` (`Tune.stick*`) keeps it on the face: off the
+  ground, coming down, with one surface under all four wheels no steeper than 80
+  degrees, the speed is turned along the surface (kept whole) and the deck turned
+  onto the chord between the trucks; with one truck down the other is swung onto it.
+  Truck hits on a face the deck lies along are no longer soaked as a wall
+  (`ENT:NoteImpact`). It rides out at about 110-150 u/s; slower than a frictionless
+  drop would give (the truck boxes still rub the curve), a feel item, not a fault.
+- **The manual / grind balance meter** started at exactly 0, where some wobble
+  phases held it near true for 12-14 s; it now starts 0.12 off on the side the
+  wobble pulls (`B.MeterStart`), lost unattended in 2.3-3.1 s for every phase. A
+  manual that is lost needs RMB let go before the next (held on, it relifted the
+  same tick). The offline suite passes on every `BMX_TEST_SEED` (1-20 checked).
+

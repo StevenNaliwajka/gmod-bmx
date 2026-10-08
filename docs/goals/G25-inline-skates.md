@@ -60,3 +60,14 @@ skated it on a server**: the engine's part (below) is an assumption that only th
 **Tests.** `tests/test_skates.lua` (33): the registration and the platform's checks, the input map, the settings, the step on a plant (stride to speed with alternating legs, coasting, both brakes, crossovers, the view chase, grip, the jump, slopes, spins and the landing rules), equip and holster through the SWEP and the commands, the setup through the real `SetupMove` and `Move` hooks with a stand-in for the engine's movement (stride, the wall rule, steering, a jump and a bail, scoring), the grinds on rails (soul, mizou, backslide, a ledge, the pop, the balance lost), the client (A / D turn the view, the prediction, the boots, the legs, the sparks). Headless cases `skates_stride_to_speed` and `skates_soul_grind`: written, **not run**.
 
 **For the next pass.** The skates' feel, the player's pose on a real model (the stride swing and pelvis nudge are numbers in `cl_skates.lua`), a rolling sound (base-game placeholders: none yet), a third-person camera for a skater (the chase camera is the vehicles'), and the missing grinds, flips and grabs.
+
+### Update (2026-10-08)
+
+`skates_soul_grind` runs on the server and passes (10 of 10 on a private srcds):
+the grind paid only "Air Time" because it lasted 0.21 s, under `Grind.minTime`.
+The skater was put over the rail from standing and the engine's ground flag still
+said floor, so SPACE jumped them up past the rail and they locked on near its
+end. `S.Observe` now trusts that flag only when the player has not been moved
+further than their own motion since the last tick, and asks the wheels' cast
+otherwise. The grind's balance meter starts the board's way (`B.MeterStart`).
+

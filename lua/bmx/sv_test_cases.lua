@@ -2150,6 +2150,10 @@ local function boardInput(ctx, t)
     b.side = t.side or 0
     b.jump, b.alt, b.grab = t.jump or false, t.alt or false, t.grab or false
     b.duck, b.swap = t.duck or false, t.swap or false
+    -- As the usercmd decoder does (sv_board.lua): a press is latched until a step
+    -- reads it, so SPACE down and up again inside one tick (a "hold" of 0 s) is
+    -- still the shortest tap, a one-tick crouch, as it is for a player.
+    if b.jump and not b.jumpTap then b.jumpTap, b.jumpTapKeys = true, BMX.Board.Keys(ctx.bike.input) end
 end
 
 -- (The board's state has no fwdSpeed before the first physics tick, and these
@@ -2249,9 +2253,10 @@ function(ctx)
     boardInput(ctx, {})
 end)
 
--- WORK IN PROGRESS: CI a326eb6: a tap ollie lifts the board 0.03 u (a full
---   crouch lifts it 28 u): the tap-length jump is unfinished (G23).
-T.Case("board_ollie_height", { wip = true, vehicle = "skateboard", timeout = 40,
+-- The tap (a 0 s hold) is SPACE down and up inside one tick, which the board
+-- reads as the shortest crouch (sv_board.lua latches the press: jumpTap). It
+-- lifted the board 0.03 u while the press was lost between two steps.
+T.Case("board_ollie_height", { vehicle = "skateboard", timeout = 40,
     desc = "the skateboard: hold SPACE to crouch, release to pop; the longer the hold the higher, and it lands" },
 function(ctx)
     local b = ctx.bike
@@ -2398,13 +2403,14 @@ function(ctx)
     ctx:between(math.deg(math.abs(ctx:st().roll)), 0, 20, "the chassis is level after it", "deg")
 end)
 
--- WORK IN PROGRESS: CI a326eb6: a flip landed on a bad catch is not bailed
---   ('landed: , crash nil'): the board's catch check never fires (G23).
-T.Case("board_bails_on_bad_catch", { wip = true, vehicle = "skateboard", timeout = 40,
+-- (It never bailed while the tap pop was lost: no pop, no flip to judge. And A
+-- pressed in the tick SPACE came up is a flip, not a key held into the crouch.)
+T.Case("board_bails_on_bad_catch", { vehicle = "skateboard", timeout = 40,
     desc = "the skateboard: a kickflip off a tap pop lands mid-flip, outside the 20 degree catch, and bails" },
 function(ctx)
-    local landed, crashed = boardFlip(ctx, { a = true }, 0.0)
-    ctx:log("landed: " .. table.concat(landed, ", ") .. ", crash " .. tostring(crashed))
+    local landed, crashed, id = boardFlip(ctx, { a = true }, 0.0)
+    ctx:log("flip " .. tostring(id) .. ", landed: " .. table.concat(landed, ", ") .. ", crash " .. tostring(crashed))
+    ctx:ok(id == "kickflip", "A after the pop picked the kickflip: " .. tostring(id))
     ctx:ok(crashed == "flip", "bailed on the flip: " .. tostring(crashed))
     for _, n in ipairs(landed) do ctx:ok(not n:find("Kickflip", 1, true), "no Kickflip was paid") end
 end)
@@ -2511,10 +2517,12 @@ function(ctx)
     ctx:between(math.deg(math.abs(ctx:st().pitch)), 0, 8, "level again", "deg")
 end)
 
--- WORK IN PROGRESS: The same 75 degree drop-in as rolls_in_to_quarter, on
---   the skateboard: 445 u/s into the floor, 'crash impact', roll 83 degrees
---   (CI a326eb6).
-T.Case("board_drops_in_to_quarter", { wip = true, vehicle = "skateboard", timeout = 40,
+-- The same 75 degree drop-in as rolls_in_to_quarter, on the skateboard. Two
+-- things made it fail: the put itself (a board SetPos'd 600 u spun at 1,600
+-- deg/s before it rolled -- sv_physics.lua step 0) and the drop (it flew off
+-- the coping level and came down nose-first; sv_board.lua transition() keeps
+-- it on the face now).
+T.Case("board_drops_in_to_quarter", { vehicle = "skateboard", timeout = 40,
     desc = "the skateboard: rolling off the top of a 75 degree quarter pipe it follows the transition down and rides out onto the floor" },
 function(ctx)
     local g = ctx.ground
@@ -3534,10 +3542,11 @@ function(ctx)
     skateInput(ctx, {})
 end)
 
--- WORK IN PROGRESS: CI a326eb6: the soul grind locks on and ends at the
---   rail's end cleanly, but pays 'Air Time' instead of 'Soul Grind'; the
---   skates' trick registration (G25 first cut) is unfinished.
-T.Case("skates_soul_grind", { wip = true, vehicle = "skates", timeout = 40,
+-- It paid 'Air Time' and no 'Soul Grind' because the grind lasted 0.21 s (under
+-- Grind.minTime): put over the rail from standing, the engine's ground flag was
+-- still the floor's, so SPACE jumped the skater up past the rail and it locked
+-- on late, near the end. S.Observe now checks the flag after a teleport.
+T.Case("skates_soul_grind", { vehicle = "skates", timeout = 40,
     desc = "inline skates: SPACE in the air over a park flat rail along it locks a soul grind, the soles on the rail's top, and pays it" },
 function(ctx)
     local g = ctx.ground
@@ -3552,7 +3561,10 @@ function(ctx)
     local landed = {}
     hook.Add("BMX_TrickLanded", "BMX.Test.SkatesSoul", function(ply, t) landed[#landed + 1] = t.name end)
     local endedWhy
-    hook.Add("BMX_WornGrindEnded", "BMX.Test.SkatesSoul", function(ply, id, move, why) if ply == p then endedWhy = endedWhy or why end end)
+    local heldFor
+    hook.Add("BMX_WornGrindEnded", "BMX.Test.SkatesSoul", function(ply, id, move, why, t)
+        if ply == p and not endedWhy then endedWhy, heldFor = why, t end
+    end)
     -- In the air, a little over the rail's start, along it, SPACE held.
     p:SetPos(Vector(line.a.x + 8, line.a.y, line.a.z + 6))
     p:SetVelocity(Vector(240, 0, -30) - p:GetVelocity())
@@ -3576,6 +3588,7 @@ function(ctx)
     hook.Remove("BMX_WornGrindEnded", "BMX.Test.SkatesSoul")
     hook.Remove("BMX_TrickLanded", "BMX.Test.SkatesSoul")
     skateInput(ctx, {})
+    ctx:log(string.format("on the rail %.2f s, ended '%s'", heldFor or -1, tostring(endedWhy)))
     ctx:ok(started and move == "skate_soul", "locked into a soul grind: " .. tostring(move))
     ctx:ok(endedWhy == "end" or endedWhy == "slow", "let go where the rail ends: " .. tostring(endedWhy))
     ctx:between(worstUp, 0, 4, "the soles stayed on the rail's top", "u")

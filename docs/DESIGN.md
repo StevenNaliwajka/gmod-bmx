@@ -821,8 +821,10 @@ one.
 
 **Ripped assets do not go in a public repository.** A GTA 5 BMX model, or
 anything extracted from another game, is the fastest way to have the repository
-taken down. Original or CC0 only, licensed separately from the code and stated
-explicitly.
+taken down. Original, CC0 or CC BY 4.0 only (owner decision 2026-10-08, G20),
+licensed separately from the code and stated explicitly: every third-party piece
+needs a row in `CREDITS.md` with its author, source and licence, and CC BY work is
+credited on the Workshop page too.
 
 **That includes audio, and audio is where the temptation is worst**, because a
 sound file is small, easy to extract and feels less like theft than a model.
@@ -835,5 +837,5 @@ in the `.gma` -- and the suite walks every entry to prove the file is really
 there, because a wrong path is silent for the player and noisy in their console.
 They are placeholders, and each one records what it stands in for so replacing
 it is a one-line edit rather than a guess. If real audio is ever recorded or
-sourced CC0, it lands beside the model with the same rules: stated licence,
+sourced CC0 or CC BY 4.0, it lands beside the model with the same rules: stated licence,
 separate from the code.

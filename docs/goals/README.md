@@ -88,15 +88,18 @@ city. A vehicle that only works with the mode or the map installed is a bug.
 
 **Waiting on the owner:**
 
-1. **Model licence (G20):** allow CC-BY 4.0 with credits, alongside original
-   and CC0? This unblocks real models for the thumbnail.
-2. **Public tracker (G08):** GitHub mirror, issues-only repo, or none. The
-   templates are in `.github/ISSUE_TEMPLATE/`.
-3. **Workshop (G29):** the description in `addon.json` is rewritten. The
+1. **Model licence (G20):** DECIDED 2026-10-08: CC BY 4.0 with credits is
+   allowed alongside original and CC0 (`CREDITS.md`, `docs/DESIGN.md` §8).
+2. **Public tracker (G08):** DONE: the public GitHub copy
+   (StevenNaliwajka/gmod-bmx) has Issues on with the templates, and the
+   Workshop page links it.
+3. **Workshop (G29):** DECIDED 2026-10-08: title stays "BMX", gallery gets
+   new media of the new features. Earlier note: the description in `addon.json` is rewritten. The
    title is back to "BMX" on `main`, changed by someone after G29 proposed
    "BMX: Bikes, Grinds & Tony Hawk Combos". Pick one, then thumbnail,
    video and screenshots. Whether boards ship in the same item or a second one.
-4. **Release:** a version number for all of this, and the go.
+4. **Release:** DECIDED 2026-10-08: 1.2.0, published to the Workshop once the
+   suites are green.
 
 ## What I think we should do
 

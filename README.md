@@ -398,5 +398,5 @@ To look at the model without the game: `tools/bike/export.lua` and
 
 **Do not add ripped assets.** A GTA 5 BMX model, or anything extracted from
 another game, in a public repository is the fastest way to get it taken down.
-Original or CC0 models only, licensed separately from the code and stated
-explicitly.
+Original, CC0 or CC BY 4.0 content only, each third-party piece with a row in
+[CREDITS.md](CREDITS.md) (work, author, source, licence).

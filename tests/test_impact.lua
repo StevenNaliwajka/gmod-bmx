@@ -190,3 +190,53 @@ T.test("impact: a wheel finding the ground past its travel does not fire the bum
     sv:run(0.3, function() up = math.max(up, phys:GetVelocity().z) end)
     T.between(up, -1e9, 150, "thrown up by it, u/s")
 end)
+
+--------------------------------------------------------------------------
+-- A HARD STOP AND A RAMP'S FOOT (a 36-unit park quarter pipe at 190 u/s,
+-- real server: the rider was thrown on 12 rides in 20). Scrapes on the way
+-- up had the nose turning up at 250 deg/s when the front wheel met the
+-- vertical top and stopped; kept, that spin looped the bike over backwards.
+-- And at the foot the wheel box's corner took 183 u/s down to 60, so it
+-- stalled there instead of rolling up.
+--------------------------------------------------------------------------
+T.test("impact: a hard stop takes the pitch the bike was already turning at", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    F.scripted(sv, bike)
+    sv:run(0.5)
+    F.accelerateTo(sv, bike, 150, 6)
+    local phys = bike:GetPhysicsObject()
+    -- Already pitching nose-up at 250 deg/s, then stopped dead by the face.
+    phys:SetAngleVelocity(E.Vector(0, -250, 30))
+    sv:run(sv.world.dt)
+    phys:SetVelocity(E.Vector(-10, 0, 40))
+    bike:NoteImpact({ Speed = 120, HitNormal = E.Vector(1, 0, 0), HitEntity = E.game.GetWorld() },
+        bike:Cfg().Crash)
+    sv:run(sv.world.dt)
+    local w = phys:GetAngleVelocity()
+    T.between(math.abs(w.y), 0, 60, "pitch spin after a hard stop, deg/s (was 250)")
+    T.between(math.abs(w.x), 0, 60, "roll spin after it, deg/s")
+end)
+
+T.test("impact: a wheel meeting the foot of a slope keeps its speed along it", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    F.scripted(sv, bike)
+    sv:run(0.5)
+    F.accelerateTo(sv, bike, 180, 6)
+    local phys = bike:GetPhysicsObject()
+    local before = phys:GetVelocity()
+    -- What VPhysics left after the box's corner met a 22-degree face.
+    phys:SetVelocity(E.Vector(60, 0, 83))
+    local a = math.rad(22)
+    local n = E.Vector(math.sin(a), 0, -math.cos(a))           -- as HitNormal reports it
+    local body = E.BMX.CollisionBoxes(bike:Cfg())[1]
+    bike:NoteImpact({ Speed = 43, HitNormal = n, HitEntity = E.game.GetWorld(),
+        HitPos = bike:LocalToWorld(E.Vector(29.6, 0, body[1].z - 4)) }, bike:Cfg().Crash)
+    T.ok(bike.bmxImpact and bike.bmxImpact.ramp, "noted as a slope it rides onto")
+    sv:run(sv.world.dt)
+    T.between(phys:GetVelocity():Length(), before:Length() * math.cos(a) - 25, before:Length() + 5,
+        "speed after meeting the slope, u/s (VPhysics left 102)")
+end)

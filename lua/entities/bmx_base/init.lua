@@ -660,12 +660,30 @@ end
 -- contact of a step is the one kept: one hit reports several.
 function ENT:NoteImpact(data, CR)
     if not CR.impactSoak or self.bmxImpact then return end
-    if data.Speed < (CR.impactMinSpeed or 0) then return end
     local n = data.HitNormal
-    if not n or math.abs(n.z) > (CR.impactNormalZ or 0.7) then return end
+    if not n then return end
     if not IsValid(self:GetDriver()) then return end
     local st = self.st
     if not st or st.grind then return end
+    -- A WHEEL MEETING A SLOPE it rides onto (the foot of a ramp or a quarter
+    -- pipe): a surface between impactNormalZ and rampNormalZ from level, met
+    -- below the body box, riding rather than landing. See 2c.
+    local ramp = false
+    if math.abs(n.z) > (CR.impactNormalZ or 0.7) then
+        if math.abs(n.z) > (CR.rampNormalZ or 0) or math.abs(n.z) < (CR.rampMinNormalZ or 1)
+            or st.airMode then return end
+        if data.Speed < (CR.rampMinSpeed or math.huge) then return end
+        -- The FRONT wheel, meeting the slope ahead. The rear clipping a hump's
+        -- crest is not riding onto anything: kept along it, that pitched the
+        -- bike over the far side of an 18-unit hump (3 rides in 17).
+        local body = BMX.CollisionBoxes(self:Cfg())[1]
+        if not data.HitPos then return end
+        local loc = self:WorldToLocal(data.HitPos)
+        if loc.z >= body[1].z or loc.x <= 0 then return end
+        ramp = true
+    elseif data.Speed < (CR.impactMinSpeed or 0) then
+        return
+    end
     local other = data.HitEntity
     if IsValid(other) and not other:IsWorld() then
         if other:IsPlayer() or other:IsNPC() then return end
@@ -675,7 +693,8 @@ function ENT:NoteImpact(data, CR)
             return
         end
     end
-    self.bmxImpact = { normal = Vector(n.x, n.y, 0) }
+    self.bmxImpact = ramp and { ramp = true, normal = Vector(n) }
+        or { normal = Vector(n.x, n.y, 0) }
 end
 
 -- A crash decided inside a physics callback (a collision, or the substep

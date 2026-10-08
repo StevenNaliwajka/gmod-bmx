@@ -855,6 +855,17 @@ C.Crash = {
     impactKeepSpin = 0.15,
     impactPop      = 25,
     impactBounce   = 30,
+    -- ...and a HARD STOP (over impactStopSpeed into the obstacle, at least
+    -- impactStopFrac of it gone) takes the pitch and roll spin it already had.
+    impactStopSpeed = 50,
+    impactStopFrac  = 0.6,
+    -- A wheel meeting a slope it rides onto (normal between rampMinNormalZ and
+    -- rampNormalZ: 14 to 30 degrees) at rampMinSpeed or more keeps its motion
+    -- along the slope (sv_physics.lua, 2c). Not steeper: kept whole along a
+    -- 40-degree bump face, the bump became a kicker and looped the bike.
+    rampNormalZ    = 0.97,
+    rampMinNormalZ = 0.87,
+    rampMinSpeed = 20,
 }
 
 --------------------------------------------------------------------------

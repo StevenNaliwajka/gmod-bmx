@@ -297,6 +297,24 @@ function BMX.PhysicsStep(ent, phys, dt)
     ----------------------------------------------------------------------
     local imp = ent.bmxImpact
     ent.bmxImpact = nil
+    -- ONTO A SLOPE (imp.ramp): a tyre rolling onto it keeps the motion along
+    -- its surface and loses only what went into it. The wheel's box corner
+    -- meeting the foot of a 36-unit quarter pipe at 183 u/s left 60 (the
+    -- bike stalled at the foot one ride in five); what survives here is the
+    -- motion it had, slid onto the slope's plane, never more than VPhysics
+    -- left plus that.
+    if imp and imp.ramp and hasDriver and st.preVel then
+        local CR = C.Crash
+        local w0, w1 = st.preAngV, phys:GetAngleVelocity()
+        phys:SetAngleVelocity(w0 + (w1 - w0) * (CR.impactKeepSpin or 0))
+        local n = imp.normal:GetNormalized()
+        if st.preVel:Dot(n) > 0 then n = -n end         -- out of the slope, toward the bike
+        local along = st.preVel - n * st.preVel:Dot(n)
+        local v = phys:GetVelocity()
+        if along:Length() > v:Length() and BMX.FiniteVec(along) then phys:SetVelocity(along) end
+        st.rampHits = (st.rampHits or 0) + 1
+        imp = nil
+    end
     if imp and hasDriver and st.preVel then
         local CR = C.Crash
         local w0, w1 = st.preAngV, phys:GetAngleVelocity()
@@ -311,6 +329,20 @@ function BMX.PhysicsStep(ent, phys, dt)
             local back = -v:Dot(nIn)
             local cap = CR.impactBounce or 0
             if back > cap then v = v + nIn * (back - cap) end
+        end
+        -- A HARD STOP: most of a fast approach taken out in one hit. The rider
+        -- plants rather than letting the bike rotate on, so the pitch and roll
+        -- it was ALREADY turning at go too (yaw stays: a glance still turns
+        -- it). Riding up a 36-unit park quarter pipe, scrapes on the way up
+        -- had the nose turning up at 250 deg/s when the front wheel met the
+        -- vertical top; kept, that looped the bike over backwards onto its
+        -- side and threw the rider half the time.
+        local inBefore = st.preVel:Dot(nIn)
+        if inBefore > (CR.impactStopSpeed or math.huge)
+            and math.max(v:Dot(nIn), 0) < inBefore * (1 - (CR.impactStopFrac or 1)) then
+            local w = phys:GetAngleVelocity()
+            phys:SetAngleVelocity(Vector(0, 0, w.z))
+            st.hardStops = (st.hardStops or 0) + 1
         end
         if BMX.FiniteVec(v) then phys:SetVelocity(v) end
         st.impactAt = CurTime()

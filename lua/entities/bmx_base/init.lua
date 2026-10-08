@@ -676,6 +676,28 @@ function ENT:NoteImpact(data, CR)
         local body = BMX.CollisionBoxes(self:Cfg())[1]
         if self:WorldToLocal(data.HitPos).z < body[1].z then return end
     end
+    -- WITH THE SWEPT WHEEL ON (bmx_wheel_sweep), steeper faces too, and either
+    -- wheel: the fan has found the face as the tyre's contact, so a wheel box
+    -- meeting it is the wheel rolling into the corner, and the motion is turned
+    -- up the face rather than stopped by it (`roll`, 2c). Into a 45 degree wedge
+    -- VPhysics kept 0.71 of the speed, the share along the face, and threw the
+    -- nose up: a bike needing 155 u/s to climb 30 u arrived at the top at 50-90
+    -- and stalled on the edge (the mini, road and fixie, real server). Off,
+    -- nothing here changes.
+    local C0 = self:Cfg()
+    if C0.Wheel.sweep and C0.Wheel.sweep > 0 and not st.airMode and data.HitPos
+        and self:Bike().family == "bike"
+        and math.abs(n.z) >= (CR.sweepRampMinNormalZ or 1) and math.abs(n.z) <= (CR.rampNormalZ or 0)
+        and data.Speed >= (CR.rampMinSpeed or math.huge) then
+        local body = BMX.CollisionBoxes(C0)[1]
+        if self:WorldToLocal(data.HitPos).z < body[1].z then
+            local other = data.HitEntity
+            if not IsValid(other) or other:IsWorld() or not (IsValid(data.HitObject) and data.HitObject:IsMotionEnabled()) then
+                self.bmxImpact = { ramp = true, roll = true, normal = Vector(n) }
+                return
+            end
+        end
+    end
     -- A WHEEL MEETING A SLOPE it rides onto (the foot of a ramp or a quarter
     -- pipe): a surface between impactNormalZ and rampNormalZ from level, met
     -- below the body box, riding rather than landing. See 2c.

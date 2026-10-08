@@ -126,6 +126,30 @@ T.test("DiscContact refuses a wall it cannot stand on", function()
         E.Vector(1, 0, 0), 10), nil, "ground normal square to the strut")
 end)
 
+-- A wheel pitched well over an edge (a deck's lip, a wedge's top): the plane under the
+-- ray, taken as going on for ever, put the disc's contact past the edge and the axle
+-- far up the strut (full travel, the bump stop). The disc touches the edge.
+T.test("EdgeDiscContact: over an edge the disc sits on the corner, one radius from it", function()
+    local B, E = realm()
+    local a = E.Angle(65, 0, 0)               -- nose down 65, as going over a quarter pipe's lip
+    local f, r, u = a:Forward(), a:Right(), a:Up()
+    local mount = E.Vector(0, 0, 20)
+    local edge = mount - u * 24 - f * 6       -- the deck's corner, 6 off the strut line
+    local s, c, n = B.EdgeDiscContact(mount, -u, r, edge, 10)
+    T.ok(s ~= nil, "the edge is within reach")
+    local axle = mount - u * s
+    T.near((axle - edge):Length(), 10, 1e-6, "the axle is one radius from the corner")
+    T.near(c.x, edge.x, 1e-9, "the contact is the corner")
+    T.near(n:Dot((axle - edge):GetNormalized()), 1, 1e-6, "pushing from the corner toward the axle")
+    T.near(s, 24 - 8, 1e-6, "8 short of the corner along the strut (6 off it, radius 10)")
+    -- the plane's answer for a ray landing on the deck's level ground behind: the
+    -- disc 'touches' that plane well up the strut, at full travel and past it
+    local dist = (mount.z - edge.z) / math.cos(math.rad(65))
+    local sp = B.DiscContact(mount, -u, r, dist, E.Vector(0, 0, 1), 10)
+    T.ok(sp < s - 5, string.format("the plane put the axle %.1f u higher up the strut", s - sp))
+    T.eq(B.EdgeDiscContact(mount, -u, r, mount - u * 24 - f * 15, 10), nil, "an edge out of the disc's reach is no contact")
+end)
+
 -- One wheel against a stubbed body, to see its forces without the plant.
 local function wheelRig(opts)
     opts = opts or {}

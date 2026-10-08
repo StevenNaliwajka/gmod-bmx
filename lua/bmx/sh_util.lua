@@ -128,6 +128,36 @@ function BMX.DiscContact(mount, down, axle, dist, normal, radius)
 end
 
 --------------------------------------------------------------------------
+-- THE DISC ON AN EDGE. BMX.DiscContact treats the ground the ray met as a
+-- plane that goes on for ever, and pitched well over against it (riding off a
+-- deck into a drop-in, a wheel at the top of a wedge) the disc's lowest point
+-- on that plane lies past the plane's real edge: over the drop, where there is
+-- nothing. The plane's "contact" there sat 33 u up the strut, the compression
+-- went to full travel in one substep, and the bump stop kicked the wheel
+-- (174,000 on a road bike's rear going over a quarter pipe's lip, real server).
+--
+-- What the disc meets there is the EDGE: the point `e` where the ground under
+-- the ray ends. This is the strut position at which a disc of `radius`, in the
+-- wheel's plane, just touches that point, the point, and the normal at it (from
+-- the edge to the axle). nil if the edge is out of the disc's reach.
+--------------------------------------------------------------------------
+function BMX.EdgeDiscContact(mount, down, axle, e, radius)
+    local d = e - mount
+    d = d - axle * d:Dot(axle)                     -- into the wheel's plane
+    local along = d:Dot(down)
+    local q = d - down * along                     -- off the strut line, in plane
+    local h2 = q:LengthSqr()
+    if h2 >= radius * radius then return nil end
+    local s = along - math.sqrt(radius * radius - h2)
+    local centre = mount + down * s
+    local n = centre - e
+    n = n - axle * n:Dot(axle)
+    local len = n:Length()
+    if len < 1e-6 then return nil end
+    return s, e, n / len
+end
+
+--------------------------------------------------------------------------
 -- THE SWEPT WHEEL: what the tyre touches IN FRONT of the axle.
 --
 -- BMX.DiscContact answers one question: where does the disc touch the ground

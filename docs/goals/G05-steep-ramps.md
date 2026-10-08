@@ -118,3 +118,24 @@ degree face, VPhysics keeps the 0.71 of the speed along it, the bike reaches the
 three to 9-10/10 and broke the cruiser (5/10, 2/8): faster, a bike flies off the top edge,
 and a wheel coming down on that convex corner is pushed out of it as an obstacle and
 stopped dead. Rolling over a crest is what is left; it was not shipped.
+
+## Status update (2026-10-08, later): over the crest
+
+`rides_up_wedge_45` on `@mini`, `@road` and `@fixie` and `rolls_in_to_quarter@road` are no
+longer `wip`: 10/10 each on a private server, and the stock bike, the cruiser and the city
+bike still 10/10 on the wedge, every bike 10/10 on the drop-in. Two changes:
+
+- **A wheel at a convex edge touches the edge.** `BMX.DiscContact` takes the ground the
+  strut's ray met as a plane that goes on for ever, and a wheel pitched well over against it
+  (the rear going over a quarter pipe's lip, a wheel at a wedge's top) had its disc contact
+  past the plane's real edge: the axle 33 u up the strut, full travel at once, the bump stop
+  at 174,000 kicking the wheel (the road bike turned over on the drop-in 5 rides in 30).
+  When the disc's contact is more than `Wheel.edgeCheck` (3 u) from the ray's hit and a
+  short trace there finds no ground, the edge is found between them and the disc sits on it
+  (`BMX.EdgeDiscContact`, `sv_wheel.lua`); near the ray no trace is spent.
+- **Rolling into the wedge's corner** (with the sweep on): a wheel box meeting a 53-76
+  degree face is turned up it with `Crash.sweepRampKeep` (0.9) of its speed, where VPhysics
+  kept the 0.71 along it. Tried alone earlier it broke the cruiser (5/10: a faster bike off
+  the top edge was stopped dead coming down on that edge); with the edge contact it is 10/10.
+
+Offline: `tests/test_units.lua` "EdgeDiscContact: over an edge the disc sits on the corner".

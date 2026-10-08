@@ -277,10 +277,37 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, sn
     -- Where the DISC touches, not where the ray landed. See BMX.DiscContact:
     -- the two agree on the level and under lean, and differ under pitch by
     -- exactly the error that was lifting wheelies past their balance point.
-    local s, contact
+    local s, contact, edgeNormal
     if tr.Hit then
         s, contact = BMX.DiscContact(mountWorld, down, ent:GetRight(),
             maxLen * tr.Fraction, tr.HitNormal, radius)
+        -- IS THE GROUND REALLY THERE? Far from the ray's own hit (a wheel
+        -- pitched well over against the surface) the disc's lowest point on the
+        -- plane may be past the plane's edge. Then the edge is what it touches
+        -- (BMX.EdgeDiscContact). Near the ray hit it is the plane's, as always,
+        -- and no trace is spent.
+        if s and (contact - tr.HitPos):LengthSqr() > (WC.edgeCheck or 3) ^ 2 then
+            local n = tr.HitNormal
+            local function ground(p)
+                local t = util.TraceLine({ start = p + n * 1.5, endpos = p - n * 1.5,
+                    filter = filter, mask = MASK_SOLID })
+                return t.Hit and not t.StartSolid and t.HitNormal:Dot(n) > 0.95
+            end
+            if not ground(contact) then
+                local a, b = tr.HitPos, contact          -- a on the ground, b past it
+                for _ = 1, 6 do
+                    local m = (a + b) * 0.5
+                    if ground(m) then a = m else b = m end
+                end
+                local es, ec, en = BMX.EdgeDiscContact(mountWorld, down, ent:GetRight(), a, radius)
+                if es then
+                    s, contact, edgeNormal = es, ec, en
+                else
+                    s, contact = nil, nil
+                end
+                self.edgeHits = (self.edgeHits or 0) + 1
+            end
+        end
     end
 
     ----------------------------------------------------------------------
@@ -364,7 +391,7 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, sn
     -- Suspension
     ----------------------------------------------------------------------
     local comp   = WC.restLength - s                -- >= 0
-    local normal = sweepNormal or tr.HitNormal
+    local normal = sweepNormal or edgeNormal or tr.HitNormal
 
     ----------------------------------------------------------------------
     -- A STEP IS NOT A SPRING. The strut is a ray from the mount, and the

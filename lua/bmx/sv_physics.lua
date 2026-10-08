@@ -330,6 +330,12 @@ function BMX.PhysicsStep(ent, phys, dt)
         local n = imp.normal:GetNormalized()
         if st.preVel:Dot(n) > 0 then n = -n end         -- out of the slope, toward the bike
         local along = st.preVel - n * st.preVel:Dot(n)
+        -- ROLLED INTO (the swept wheel's corner, imp.roll): turned up the face
+        -- with Crash.sweepRampKeep of the speed it had, not just its share
+        -- along it.
+        if imp.roll and along:LengthSqr() > 1 then
+            along = along:GetNormalized() * (st.preVel:Length() * (CR.sweepRampKeep or 0))
+        end
         local v = phys:GetVelocity()
         if along:Length() > v:Length() and BMX.FiniteVec(along) then phys:SetVelocity(along) end
         st.rampHits = (st.rampHits or 0) + 1
@@ -694,6 +700,17 @@ function BMX.PhysicsStep(ent, phys, dt)
         -- rule threw its rider there, in mid-air, before the landing (which
         -- judges itself) had even happened. Measured on the live server.
         if abs(vel.z) > CR.tipMaxVz then over = false end
+        -- NOR AT THE TOP OF A VERT AIR. Off a quarter pipe the bike hangs nose-up
+        -- over the coping with the deck well within reach below, slowest right
+        -- at the apex, and the half turn about world up IS a roll of the frame
+        -- past 90 degrees: this rule threw the rider at the top of the Air 180,
+        -- in the air, up to 6 rides in 10 (vert_turnaround, real server). The landing
+        -- judges itself, as for the barrel roll above. Only for as long as a vert
+        -- flight lasts: a bike that came down on its side somewhere with no wheel
+        -- on the ground is still "in the air", and is not to lie there for ever.
+        if st.airMode and st.launchKind == "vert" and (st.airTime or 0) < (CR.vertTipGrace or 0) then
+            over = false
+        end
         local near = false
         if over then
             local com = phys:LocalToWorld(phys:GetMassCenter())

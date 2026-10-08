@@ -227,7 +227,7 @@ function BMX.VertAir(ent, phys, cfg, dt, inp, st, w)
         st.spineBlend, st.spineDone = 0, true
     end
     if st.spineBlend and sp then
-        -- OVER THE TOP toward the far face, at least spineSpeed across it, and
+        -- OVER THE TOP toward the far face, spineSpeed across it, and
         -- gravity left to bring it down. Blended onto the way DOWN the face (70
         -- degrees: 48 u/s across, 132 down) the bike dropped straight onto the
         -- spine's top from its apex a hand's width short of it and hung there
@@ -237,8 +237,10 @@ function BMX.VertAir(ent, phys, cfg, dt, inp, st, w)
         local h = Vector(sp.dir.x, sp.dir.y, 0)
         local want
         if h:LengthSqr() > 1e-4 then
-            local vh = Vector(vel.x, vel.y, 0)
-            want = h:GetNormalized() * max(vh:Length(), A.spineSpeed) + vector_up * vel.z
+            -- spineSpeed across, not "at least": carried at whatever it came up
+            -- with, a bike that left the face clean flew past the far face's foot
+            -- and landed flat on the floor (x 511-553 of a spine ending at 492).
+            want = h:GetNormalized() * A.spineSpeed + vector_up * vel.z
         else
             want = sp.dir * max(vel:Length(), A.spineSpeed)
         end

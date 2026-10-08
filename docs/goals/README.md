@@ -103,6 +103,14 @@ on a private server: 191 passed, 0 failed, 5 wip. `grind_ledge` (red once, pipel
 not fail in 46 targeted runs; it failed once as `grind_ledge@fixie` in a full-suite run and
 not in the next. Its log now says where the front axle got to and what else was on the ledge.
 
+**Later 2026-10-08.** `rides_up_wedge_45` `@mini`/`@road`/`@fixie` and
+`rolls_in_to_quarter@road` run now, 10/10 each (a wheel at a convex edge sits on the edge,
+and with the sweep on a wheel rolling into a face is turned up it, G05); cruiser, stock and
+city still 10/10. That leaves **1 `wip`: `vert_turnaround`** (5-7/10), stopped on for an owner
+decision about the Air 180's axis (G06 "Stopped"). The bike `crowd` case no longer counts
+the server's ticks: it times the bikes' code against a reference job, as `board_crowd` does
+(limit 10; 5.2-6.6 with and without three busy cores, 10.9-12.4 made twice as dear).
+
 **Where assets live (owner, 2026-10-07):** every BMX *vehicle* asset (vehicle
 code, models, materials, sounds, and anything a bike, board, scooter, skate or
 motor vehicle needs to be drawn or heard) goes in **this addon**,

@@ -116,3 +116,34 @@ second, and a 180 about world up plus the nose-over is ~300 degrees of rotation;
 degree top it drifts toward the deck. (Tried and not kept: starting the heading aim at 130
 degrees of turn and a slower spine carry, both worse.) Offline: `tests/test_air_assist.lua`
 "nose up off a wall, a quick D: a half turn and back over onto the face in half a second".
+
+## Stopped (2026-10-08): `vert_turnaround` needs a design decision
+
+`vert_turnaround` stays `wip` at 5-7/10 (30 more rides on a private server). One more real
+fix went in: the tip rule (`sv_physics.lua` 6a) no longer throws the rider at the apex of a
+vert air (the first `Crash.vertTipGrace`, 1.2 s, of one), where the deck is within reach
+below and the half turn about world up is a roll of the frame past 90 degrees; with a quicker
+turn it had thrown the rider in mid-air 6 rides in 10. No ride since has crashed in the air.
+
+`spine_transfer` carries the bike across the top at `spineSpeed`, no longer "at least":
+with the wheel's edge contact (G05) a bike leaves the spine's face cleaner, and carried at
+whatever it came up with it flew past the far face's foot (x 511-553 of a spine ending at 492)
+and landed flat. 18/20 since. What is left, measured at touchdown on every ride:
+
+- The flight off the 84 u park quarter pipe at 430 u/s is ~0.5 s, and the turn about WORLD
+  up is still going at touchdown: 147-196 degrees turned, still turning at 2-4 rad/s, and
+  the bike's forward 55-80 degrees off the fall line (forward.fall 0.05-0.76). The ones that
+  land within ~45 degrees ride it out; the others go over on the 70 degree face.
+- Tried and measured, none kept: a turn up to 2x faster on a short flight (0/8 and 1/10: the
+  bike reaches the drop spinning hard and comes round upside down), an exact axis-angle
+  attitude error for the drop (0/8), the heading aim from 130 degrees (4/10), and a faster
+  approach (520 u/s: it carries over onto the deck, 2/10).
+
+Why it is a design question: a half turn about world up of a bike that leaves the wall
+nose-up, then a nose-over onto the face, is ~300 degrees of rotation in half a second. The
+shortest Air 180 that lands wheels to the wall is one half turn about the WALL'S normal (the
+bike's own up axis when vertical), which this goal ruled out in its spec ("yaw about the
+bike's own up axis would swing the nose sideways instead") and which `vertSpin`, the
+quantity the trick is scored and tested on, reads as only ~60 degrees. Changing the turn's
+axis, or what an Air 180 is measured by, is the owner's call; with either, the drop-in steering
+already in place would have time to land it.

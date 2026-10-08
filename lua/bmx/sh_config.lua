@@ -278,6 +278,12 @@ C.Wheel = {
     -- the friction circle still lets go of a catch it cannot hold.
     brakeStickSpeed = 24,
 
+    -- THE DISC ON AN EDGE (sv_wheel.lua, BMX.EdgeDiscContact). When the disc's
+    -- contact on the ground's plane lies more than edgeCheck from where the strut's
+    -- ray met it, a short trace checks the ground is really there; past an edge,
+    -- the disc sits on the edge instead of on the plane going on beyond it.
+    edgeCheck = 3,
+
     -- SWEPT CONTACT (sv_wheel.lua, "swept wheel"; BMX.SweepContact). The single
     -- downward ray cannot see a face in front of the tyre, so a wheel at the
     -- foot of a ramp, a curb or a wall sinks into it. With sweep on, a fan of
@@ -865,6 +871,7 @@ C.Crash = {
     tipPitch = math.rad(75),
     tipTime  = 0.15,
     tipMaxVz = 80,          -- u/s: moving vertically faster than this is flight
+    vertTipGrace = 1.2,     -- s: a vert air's first this-long is not judged by the tip rule
 
     -- RIDING INTO SOMETHING THAT DOES NOT MOVE (a post, a goal, a kerb's face)
     -- with a rider aboard. VPhysics stops the hull with an impulse at the box
@@ -895,6 +902,11 @@ C.Crash = {
     rampNormalZ    = 0.97,
     rampMinNormalZ = 0.87,
     rampMinSpeed = 20,
+    -- With bmx_wheel_sweep on, a wheel box meeting a face from sweepRampMinNormalZ
+    -- (53 degrees) up to rampNormalZ is a wheel rolling into the corner it found:
+    -- turned up the face keeping sweepRampKeep of its speed (sv_physics.lua, 2c).
+    sweepRampMinNormalZ = 0.6,
+    sweepRampKeep = 0.9,
 }
 
 --------------------------------------------------------------------------

@@ -1296,31 +1296,76 @@ function(ctx)
 end)
 
 --------------------------------------------------------------------------
+-- (crowd used to count the server's ticks per real second and want 0.9 of nominal:
+-- on the shared CI box, other private servers beside it, that is the box's load as
+-- much as the bikes', the flake board_crowd had. It now times the bikes' own code
+-- against a reference job run beside it, board_crowd's method, which see. On a
+-- private server on the CI box: 5.2-5.5 as it is, 5.3-6.6 over ten runs with three
+-- cores busy-looping beside it, and 10.9-12.4 with the bikes' code made twice as dear
+-- (bmx_test_crowd_slow 2). Over 10 fails.)
+local CROWD_LIMIT = 10
+CreateConVar("bmx_test_crowd_slow", "1", FCVAR_NONE, "headless crowd case: make the timed bike code this many times as dear (1 = as it is)")
 T.Case("crowd", { timeout = 40,
-    desc = "a server with two dozen bikes out keeps its tick rate, and none of them NaNs" },
+    desc = "two dozen bikes out (parked, fallen, dropped): their code's CPU per tick, against a reference job timed in the same ticks, stays under its budget; none NaNs" },
 function(ctx)
     -- THE QUESTION A PUBLIC SERVER ASKS FIRST, and the one the offline suite
-    -- cannot answer: what the bikes cost VPhysics and the Lua substep for real.
-    -- So: the ridden bike (standing, so it cannot run out of test ground in
-    -- the seven seconds this takes), eight parked, eight fallen and eight
-    -- dropped tumbling from height -- every state a bike on a busy server is in
-    -- -- and then count the ticks the server actually manages per real second.
-    -- A server that falls behind runs fewer ticks than its tickrate, and that is
-    -- what a player feels as everything going slow-motion and rubber-banding.
-    local want = 1 / engine.TickInterval()
-    local function tickRate(secs)
-        local n, t0 = 0, SysTime()
+    -- cannot answer: what the bikes cost the Lua substep for real. The ridden
+    -- bike (standing, so it cannot run out of test ground), eight parked, eight
+    -- fallen and eight dropped tumbling from height -- every state a bike on a
+    -- busy server is in. Their code (BMX.PhysicsStep and each bike's Think) is
+    -- timed in CPU time, and after every fourth call a small fixed reference
+    -- job (a ray, some float maths) is timed the same way, so contention from
+    -- outside slows both and the ratio stays put (board_crowd).
+    local tick = engine.TickInterval()
+    local refTrace = { start = ctx.ground + Vector(0, 0, 60), endpos = ctx.ground - Vector(0, 0, 20), mask = MASK_SOLID }
+    local stepCpu, refCpu, calls = 0, 0, 0
+    -- bmx_test_crowd_slow N: each timed call spins as long again N-1 times
+    -- over -- how this case was shown to catch bike code made twice as dear.
+    local slowCv = GetConVar("bmx_test_crowd_slow")
+    local slow = slowCv and slowCv:GetFloat() or 1
+    local function timed(fn, ...)
+        local c = os.clock()
+        local r = fn(...)
+        local c1 = os.clock()
+        if slow > 1 then
+            local til = c1 + (c1 - c) * (slow - 1)
+            while os.clock() < til do end
+            c1 = os.clock()
+        end
+        stepCpu = stepCpu + c1 - c
+        calls = calls + 1
+        if calls % 4 == 0 then
+            util.TraceLine(refTrace)
+            local a = 0
+            for i = 1, 40 do a = a + math.sin(i) * math.sqrt(i) end
+            refCpu = refCpu + (os.clock() - c1) * 4
+        end
+        return r
+    end
+    local step = BMX.PhysicsStep
+    BMX.PhysicsStep = function(...) return timed(step, ...) end
+    ctx.undo = ctx.undo or {}
+    ctx.undo[#ctx.undo + 1] = function() BMX.PhysicsStep = step end
+    local function timeThink(e)
+        local think = e.Think
+        e.Think = function(...) return timed(think, ...) end
+    end
+    timeThink(ctx.bike)
+    local function measure(secs)
+        local n, t0, c0 = 0, SysTime(), os.clock()
+        stepCpu, refCpu = 0, 0
         hook.Add("Tick", "BMX.Test.Crowd", function() n = n + 1 end)
         ctx:wait(secs)
         hook.Remove("Tick", "BMX.Test.Crowd")
-        return n / math.max(SysTime() - t0, 1e-3)
+        n = math.max(n, 1)
+        return n / math.max(SysTime() - t0, 1e-3), (os.clock() - c0) / n, stepCpu / n, refCpu / n
     end
 
     ctx:input({})
-    local alone = tickRate(2)
-    ctx:log(string.format("one bike: %.1f ticks/s of %.0f", alone, want))
+    local aloneRate, aloneCpu, aloneStep, aloneRef = measure(2)
 
     local ids, made = BMX.BikeIDs(), {}
+    ctx.solids = ctx.solids or {}           -- removed with the case, however it ends
     local function put(i, pos, ang)
         local id = ids[(i - 1) % #ids + 1]
         local e = ents.Create(BMX.ClassFor(id))
@@ -1330,6 +1375,8 @@ function(ctx)
         e:Spawn()
         e:Activate()
         made[#made + 1] = e
+        ctx.solids[#ctx.solids + 1] = e
+        timeThink(e)
         return e
     end
     for i = 1, 8 do
@@ -1338,20 +1385,19 @@ function(ctx)
         put(i, ctx.ground + Vector(-200 + i * 50, -260, 20), Angle(0, 0, 90))
         put(i, ctx.ground + Vector(-200 + i * 50, 420, 200 + i * 20), Angle(i * 40, i * 25, i * 60))
     end
-    ctx:log(string.format("%d more bikes out: parked, fallen and dropped", #made))
     ctx:wait(1)     -- the drops land and the tumbling starts
 
-    local crowded = tickRate(4)
-    ctx:log(string.format("%d bikes: %.1f ticks/s of %.0f", #made + 1, crowded, want))
-    if engine.ServerFrameTime then
-        local ft, sd = engine.ServerFrameTime()
-        ctx:log(string.format("server frame time %.2f ms (sd %.2f) of a %.2f ms tick",
-            ft * 1000, (sd or 0) * 1000, engine.TickInterval() * 1000))
-    end
-
+    local rate, cpu, stepc, ref = measure(4)
+    BMX.PhysicsStep = step
+    ctx:log(string.format("one bike: %.1f ticks/s, CPU %.2f ms/tick (BMX step %.2f)",
+        aloneRate, aloneCpu * 1000, aloneStep * 1000))
+    ctx:log(string.format("%d bikes: %.1f ticks/s of %.0f, CPU %.2f ms/tick (BMX step %.2f) of a %.2f ms tick",
+        #made + 1, rate, 1 / tick, cpu * 1000, stepc * 1000, tick * 1000))
+    ctx:log(string.format("bikes' code / reference job: %.2f with 25 (reference %.3f ms/tick), %.2f with one",
+        stepc / math.max(ref, 1e-9), ref * 1000, aloneStep / math.max(aloneRef, 1e-9)))
     ctx:ok(#made == 24, "all 24 extra bikes spawned")
-    ctx:between(crowded / want, 0.9, 1.1, "the server keeps its tickrate with 25 bikes out")
-    ctx:between(crowded / math.max(alone, 1), 0.9, 1.1, "as many ticks as with one bike")
+    ctx:ok(stepc > aloneStep, "the crowd's bike code was timed")
+    ctx:between(stepc / math.max(ref, 1e-9), 0, CROWD_LIMIT, "the bikes' code per tick, in reference jobs run beside it", "x")
 
     local bad = 0
     for _, e in ipairs(made) do
@@ -1364,8 +1410,6 @@ function(ctx)
     end
     ctx:ok(bad == 0, "every bike in the crowd survived, with finite state (" .. bad .. " bad)")
     ctx:ok(IsValid(ctx.bike:GetDriver()), "the ridden bike's rider is still aboard")
-
-    for _, e in ipairs(made) do SafeRemoveEntity(e) end
 end)
 
 --------------------------------------------------------------------------
@@ -1575,9 +1619,8 @@ end)
 
 -- (Was wip, CI a326eb6: on its side at the bottom on every bike. Passing on
 -- main since the riding-into-things work (04141d0, d2d700d: the hard stop and
--- the ramp foot) and the landing assist's limit: 10/10 stock and on the
--- cruiser, mini, fixie and city bike, real server, 2026-10-08. @road is still
--- wip, below.)
+-- the ramp foot) and the landing assist's limit: 10/10 stock and on every
+-- other bike, real server, 2026-10-08; @road with the edge contact, below.)
 T.Case("rolls_in_to_quarter", { timeout = 30,
     desc = "sweep on: dropping in down a 75 degree quarter pipe and riding out of it" },
 function(ctx)
@@ -1988,26 +2031,15 @@ for _, bike in ipairs({ "cruiser", "mini", "road", "fixie", "city" }) do
         -- sh_bikes.lua, 10/10. holds_on_slope and rolls_in_to_quarter: as their
         -- base cases, above.)
         --
-        -- WIP: rides_up_wedge_45 on the mini, the road bike and the fixie
-        -- (bmx_wheel_sweep, default off). Re-measured 2026-10-08 on a real
-        -- server: mini 7/12, road 7/10, fixie 5/10, every failure the same --
-        -- the wheel box meets the 45 degree face, VPhysics keeps the 0.71 of
-        -- the speed along it, and the bike reaches the top edge at 60-90 u/s and
-        -- stalls on it or rolls back. Turning the motion up the face instead
-        -- (most of the speed kept) got these three to 9-10/10 but made the
-        -- cruiser 5/10 and 2/8: a faster bike flies off the top edge and a wheel
-        -- coming down on that convex corner is pushed out of it as an obstacle
-        -- (back as much as up) and stopped dead. Rolling over a crest (G05/G16)
-        -- is the unfinished part.
-        --
-        -- WIP: rolls_in_to_quarter on the road bike: 25/30 on a real server
-        -- (2026-10-08), and the five it lost all the same -- turned over on the
-        -- way down (roll 164) and the rider thrown. The other five bikes are
-        -- 10/10. The road bike's tall, narrow, long frame on a 75 degree face
-        -- is the part not looked at.
-        T.Variant(name, bike, { wip = ((name == "rides_up_wedge_45"
-            and (bike == "mini" or bike == "road" or bike == "fixie"))
-            or (name == "rolls_in_to_quarter" and bike == "road")) or nil })
+        -- (rides_up_wedge_45 on the mini, road and fixie was wip: they stalled on
+        -- the wedge's top edge. Two fixes, 2026-10-08: a wheel rolling into the
+        -- face it found is turned up it (Crash.sweepRampKeep), and a wheel at a
+        -- convex edge touches the EDGE, not the plane past it (sv_wheel.lua,
+        -- BMX.EdgeDiscContact), which had kicked the wheel at full travel.
+        -- rolls_in_to_quarter@road was wip, 25/30: the rear strut's ray met the
+        -- deck past the lip as a plane and threw the bike over -- the same edge
+        -- fix. Each 9-10/10 on a real server, the cruiser and stock still 10/10.)
+        T.Variant(name, bike, {})
     end
 end
 
@@ -2871,7 +2903,7 @@ local function rideOffPiece(ctx, xa, back, speed, seconds, each)
     return flew, landed
 end
 
--- WORK IN PROGRESS: CI a326eb6 and 1004: flies off the quarter pipe as
+-- WORK IN PROGRESS (stopped on, see docs/goals/G06): CI a326eb6 and 1004: flies off the quarter pipe as
 --   'vert' but turns 86-90 degrees where a half turn (130-230) is the
 --   trick, and comes down at roll 73. Bot/air control routine (G06)
 --   unfinished.
@@ -2885,7 +2917,10 @@ end
 --   180 about world up plus the nose-over is ~300 degrees of rotation in it,
 --   and in 3-5 of 10 the bike is still swinging about world up when it lands
 --   and ends facing across the face (forward x > -0.3); off a 70 degree top
---   it also drifts toward the deck, now and then onto it.
+--   it also drifts toward the deck, now and then onto it. The tip rule no
+--   longer throws the rider at the apex (sv_physics.lua 6a): no crash in the
+--   air in the last 30 rides, 5-7/10 still. What is left is the turn's axis --
+--   docs/goals/G06, "Stopped".
 T.Case("vert_turnaround", { wip = true, timeout = 40,
     desc = "up a tall park quarter pipe with D tapped in the air: classified vert, turned round about world up, lands facing down the ramp and is still ridden" },
 function(ctx)
@@ -2929,7 +2964,8 @@ end)
 -- face from its apex short of the top, and it hung on the spine's coping; it
 -- now carries it across the top (Air.spineSpeed) and gravity brings it down.
 -- With the vert turn's fixes (sv_air.lua) and 39211f2's tail guard: 20/20 on a
--- real server, 2026-10-08.)
+-- real server, 2026-10-08; with the wheels' edge contact and the carry held to
+-- spineSpeed, 18/20.)
 T.Case("spine_transfer", { timeout = 40,
     desc = "over a park spine with a fresh W at the top: the far face is seen, the velocity carried onto it, Spine Transfer scored, and it lands on the far side" },
 function(ctx)

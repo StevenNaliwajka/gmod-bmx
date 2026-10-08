@@ -126,7 +126,7 @@ function BMX.TryGrind(ent, phys, cfg, st, vel)
             if entry and ent.AwardTricks then ent:AwardTricks({ entry }) end
         end
         ent:SetGrind(B.SparkCode[g.move] or 4)
-        g.bal = { v = 0, t = 0, phase = math.random() * 6.28 }
+        g.bal = B.MeterStart(math.random() * 6.28, T.meterGrind)
         b.meter = 0
         b.slide = not B.Grinds[g.move].along
         b.jumpWas = bi.jump
@@ -232,6 +232,10 @@ local function endManual(ent, st, b, why)
     local kind = b.manual
     b.manual, b.meter, b.pitchTarget, b.pitchFF, b.mtr = nil, nil, 0, 0, nil
     st.manual = nil
+    -- A manual lost (dropped or looped out) is over until RMB is let go: held
+    -- on, it lifted the nose again the same tick, and a rider who had stopped
+    -- balancing was in a third manual seven seconds later.
+    if why ~= "release" then b.manualSpent = true end
     if why == "loop" then
         if ent.QueueCrash then ent:QueueCrash("manual", 0.5) end
         return
@@ -250,8 +254,9 @@ function B.ManualStep(ent, phys, C, dt, inp, st, b, now)
     local speed = st.speed or 0
     local grounded = st.grounded
 
+    if not bi.grab then b.manualSpent = nil end
     local free = grounded and not b.crouching and not b.kt and not b.powerslide and not st.grind
-    local want = bi.grab and free
+    local want = bi.grab and free and not b.manualSpent
     if b.manual then
         b.manualAir = grounded and 0 or ((b.manualAir or 0) + dt)
         want = bi.grab and (b.manualAir or 0) < 0.2 and speed >= 15 and not b.crouching
@@ -262,7 +267,7 @@ function B.ManualStep(ent, phys, C, dt, inp, st, b, now)
     if want and not b.manual then
         b.manual = bi.alt and "nose" or "manual"
         b.manualT, b.manualAir = 0, 0
-        b.mtr = { v = 0, t = 0, phase = math.random() * 6.28 }
+        b.mtr = B.MeterStart(math.random() * 6.28, T.meterManual)
         st.manual = { kind = b.manual, held = 0, gone = 0 }
     end
     if not b.manual then return end

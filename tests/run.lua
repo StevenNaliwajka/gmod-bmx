@@ -38,12 +38,11 @@ local T = require("lib.t")
 _G.T = T
 
 local filter = arg and arg[1]
--- The random sequence every case starts from (see the case loop). NOT EVERY
--- SEED PASSES TODAY: the board's two "unattended the meter is lost" cases
--- (test_board_grind) fail on about half of seeds 1-8 -- with some starting
--- phases the meter's wobble holds it near true longer than the grind or the
--- manual lasts, which sh_board.lua's B.MeterStep says cannot happen. That is
--- the board's to settle; 4 is a seed the whole suite passes on.
+-- The random sequence every case starts from (see the case loop). Every seed
+-- passes (the board's "unattended the meter is lost" cases once failed on half
+-- of them: a meter started at 0 could sit near true for 14 s on some wobble
+-- phases; sh_board.lua's B.MeterStart fixed that). 4 is the default so a failure
+-- reproduces; BMX_TEST_SEED=n runs another.
 local SEED = tonumber(os.getenv("BMX_TEST_SEED") or "") or 4
 
 -- Discover test files. A fixed glob rather than a list, so a new test file can

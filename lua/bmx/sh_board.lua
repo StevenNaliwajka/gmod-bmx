@@ -108,6 +108,28 @@ B.Tune = {
     catchTime  = 0.06,
 
     ----------------------------------------------------------------------
+    -- ON THE TRANSITION (sv_board.lua, transition()). Off the ground with no
+    -- wheel down, coming down (not an ollie's way up, not an ollie's first
+    -- stickAfterPop), with one surface no steeper than stickMaxAngle under all
+    -- four wheels within stickReach: the board is ON it, the way a skater
+    -- dropping in keeps the trucks pressed to the face. Its speed is turned along
+    -- the surface rather than off it, the gap closed, and the deck turns to lie
+    -- on it at up to stickRate.
+    -- Steeper than stickMaxAngle is a wall (a ledge's face): the board leaves it.
+    ----------------------------------------------------------------------
+    stickReach    = 24,
+    stickMaxAngle = math.rad(80),
+    stickSpread   = math.rad(20),   -- every wheel over the same surface, within this
+    stickClose    = 10,      -- 1/s: of the gap to the surface, as speed toward it
+    stickCloseMax = 160,     -- u/s
+    stickMinGap   = 1.5,     -- closer, the wheels and VPhysics have it
+    stickApproach = 40,      -- u/s toward the surface, at most
+    stickRate     = 6,       -- rad/s
+    stickGain     = 14,      -- 1/s: of the angle left, per second
+    stickAfterPop = 0.45,
+    stickMinSpeed = 60,
+
+    ----------------------------------------------------------------------
     -- Where the rider's feet go on the deck, board space (x forward), and which
     -- way the seat model faces for each stance (a seat faces its own +Y, so the
     -- yaw that turns that onto the board's right, the side a regular rider faces,
@@ -647,13 +669,35 @@ BMX.RegisterTrick{ id = "board_nosemanual", name = "Nose Manual", kind = "ground
 -- of the disturbance, `control` what a key can do about it. Pure, so the suite
 -- can run it. `m` is { v = value, t = time, phase = radians }; `push` is the key,
 -- -1..1, already signed so that a positive push raises the meter.
+--
+-- THE START (B.MeterStart): a meter starts off true by 0.12, and which way is
+-- not a coin toss. The unattended meter is linear, so from v0 it goes as
+-- e^(u t) * (v0 + L) plus a bounded ripple, where L is the wobble's pull,
+-- L = integral of e^(-u s) w(s) ds from 0 (the Laplace transform of the two
+-- sines, at s = u). Starting on L's side keeps |v0 + L| >= 0.12 whatever the
+-- phase, so an unattended meter is lost in about ln(1 / 0.12) / u seconds (3 s
+-- on a grind, 2.7 on a manual) for EVERY phase. Started at 0, or on the other
+-- side, some phases cancel L and the meter sat near true for longer than the
+-- grind or the manual lasted (the offline suite failed on half its seeds).
+local function wobblePull(phase, P)
+    local u = P.unstable
+    local function lap(a, p) return (u * math.sin(p) + a * math.cos(p)) / (u * u + a * a) end
+    return P.wobble * (0.65 * lap(1.9, phase) + 0.35 * lap(4.3, 2 * phase))
+end
+B.MeterStartOff = 0.12
+
+function B.MeterStart(phase, P)
+    phase = phase or 0
+    local m = { t = 0, phase = phase }
+    m.v = B.MeterStartOff * ((P and wobblePull(phase, P) < 0) and -1 or 1)
+    return m
+end
+
 function B.MeterStep(m, dt, push, P)
+    if m.v == nil then m.v = B.MeterStart(m.phase, P).v end
     m.t = (m.t or 0) + dt
     local w = P.wobble * (math.sin(1.9 * m.t + (m.phase or 0)) * 0.65
         + math.sin(4.3 * m.t + 2 * (m.phase or 0)) * 0.35)
-    -- It starts off true by a little, one way or the other by the phase, so an
-    -- unattended meter is lost in a few seconds whatever the wobble does.
-    if m.v == nil then m.v = 0.12 * (math.sin((m.phase or 0) * 3.7 + 1) >= 0 and 1 or -1) end
     m.v = m.v + (P.unstable * m.v + w + P.control * push) * dt
     return m.v
 end

@@ -163,12 +163,20 @@ T.test("manuals: the balance meter runs away unattended, is held by the keys, an
     local sv = F.server()
     local B = sv.env.BMX.Board
     for _, P in ipairs({ B.Tune.meterGrind, B.Tune.meterManual }) do
-        -- Unattended: it gets to 1 within a few seconds, for any wobble phase.
-        for ph = 0, 6, 1.5 do
-            local m, t = { phase = ph }, 0
-            while math.abs(m.v or 0) < 1 and t < 20 do B.MeterStep(m, 1 / 66, 0, P) t = t + 1 / 66 end
-            T.ok(t > 1.2 and t < 8, "unattended it is lost in " .. t .. " s (phase " .. ph .. ")")
+        -- Unattended: it gets to 1 within a few seconds, for EVERY wobble phase --
+        -- a fresh meter (B.MeterStart, as the rides start one) and a bare one alike.
+        -- Swept finely: started at 0 some phases held it near true for 12-14 s.
+        local lo, hi = math.huge, 0
+        for i = 0, 628 do
+            local ph = i / 100
+            for _, m in ipairs({ B.MeterStart(ph, P), { phase = ph } }) do
+                local t = 0
+                while math.abs(m.v or 0) < 1 and t < 20 do B.MeterStep(m, 1 / 66, 0, P) t = t + 1 / 66 end
+                lo, hi = math.min(lo, t), math.max(hi, t)
+            end
         end
+        T.ok(lo > 1.2 and hi < 4, string.format("unattended it is lost in %.2f-%.2f s over every phase", lo, hi))
+        T.near(math.abs(B.MeterStart(1, P).v), 0.12, 1e-9, "a fresh meter starts off true by 0.12")
         -- Held: a rider pushing against it keeps it for as long as they like.
         local m, worst = { phase = 1.1 }, 0
         for _ = 1, 66 * 30 do

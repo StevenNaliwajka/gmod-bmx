@@ -94,8 +94,8 @@ it once the upload is done):
 
 | Version | Kit built | From commit | Uploaded |
 |---|---|---|---|
-| 1.1.1 | 2026-10-07 | 932dc8c (tools/workshop_sync.py, from Linux) | 2026-10-07, with the gallery |
 | 1.2.0 | 2026-10-08 | a5e785b (tools/workshop_sync.py, from Linux; with BMX (Mode) 51d9a47 and Petopia BMX Fall 40ef174) | 2026-10-08, page text and gallery unchanged |
+| 1.1.1 | 2026-10-07 | 932dc8c (tools/workshop_sync.py, from Linux) | 2026-10-07, with the gallery |
 | 1.1.0 | 2026-10-07 | 817644e (tools/workshop_sync.py, from Linux) | 2026-10-07 16:25, with the gallery; icon now workshop/icon.gif |
 
 The same number lives in `workshop/workshop-id.txt`, which the kit ships and

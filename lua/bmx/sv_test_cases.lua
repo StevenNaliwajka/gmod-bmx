@@ -3030,11 +3030,14 @@ end)
 -- seat is the one with pedals. Skipped, with a log line, when the server has no free
 -- player slot (like passenger_mount_and_crash, whose second bot this one shares).
 --------------------------------------------------------------------------
--- WORK IN PROGRESS: CI a326eb6: two pairs of legs are not quicker off the
---   line (179 u/s alone, 157 both pedalling), the captain's D does not turn
---   it, and 110 u/s is never reached. The tandem's drive/steer mapping is
---   unfinished.
-T.Case("tandem_rides", { wip = true, vehicle = "tandem", timeout = 60,
+-- (Was wip, CI a326eb6: "alone 179, both 157, D does not turn it". The drive and the
+-- steering were fine; the case was not. The stoker bot left over from the last run was
+-- put back down on top of the new tandem and shoved it to 150 u/s before the "alone"
+-- launch, and a pedalling stoker out-pushed the captain's rear brake, so the stops
+-- rolled 870 units and the turn ran off the end of the test ground. Now the stoker
+-- gets off first, both launches start from a standstill, the captain's brake cuts the
+-- stoker's push (sv_tandem.lua) and the tandem's brake is sized for two.)
+T.Case("tandem_rides", { vehicle = "tandem", timeout = 60,
     desc = "a second bot boards a tandem; both pedalling is quicker off the line than one, and the captain steers" },
 function(ctx)
     local b = ctx.bike
@@ -3044,12 +3047,31 @@ function(ctx)
         return
     end
     pax.BMXScripted = true
-    pax:SetPos(ctx.ground + Vector(-60, 0, 8))
+    -- Off whatever it sat on last run FIRST, then out of the way: ExitVehicle puts a
+    -- player at the exit point, and done the other way round that was on top of this
+    -- run's tandem, which it shoved to 150 u/s before the first launch (and a bot made
+    -- this run spawns a tick late, at the spawn point the bike is on). Both launches
+    -- below must start from a standstill to mean anything.
     if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+    ctx:wait(0.2)
+    pax:SetPos(ctx.ground + Vector(-90, 80, 8))
+    pax:SetVelocity(-pax:GetVelocity())
 
-    ctx:wait(0.5)
+    ctx:wait(0.3)
     BMX.Passenger.TryBoard(b, pax, true)
     ctx:wait(0.4)
+    -- Held still, not braked: S at a standstill paddles a bike backwards.
+    local function standstill()
+        ctx:input({})
+        local phys = b:GetPhysicsObject()
+        for _ = 1, 3 do
+            phys:SetVelocity(vector_origin)
+            phys:SetAngleVelocity(vector_origin)
+            for _, w in ipairs(b.wheels) do w.omega = 0 end
+            ctx:wait(0.1)
+        end
+    end
+    standstill()
     ctx:ok(pax:InVehicle(), "the stoker is seated")
     ctx:ok(b:GetPaxPegs() == pax, "on the second seat")
     ctx:ok(b.paxSeats and b.paxSeats.pegs and b.paxSeats.pegs.pedals == true, "which has pedals")
@@ -3060,7 +3082,9 @@ function(ctx)
         b.input.paxThrottle = stoker
         ctx:runUntil(2, nil, { throttle = 1 })
         local v = ctx:st().speed
+        -- The stoker is still pedalling: the captain's brake is what stops it.
         ctx:runUntil(8, function() return ctx:st().speed < 8 end, { brakeRear = 1 })
+        standstill()
         return v
     end
     local alone = launch(0)

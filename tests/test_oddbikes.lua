@@ -310,6 +310,25 @@ T.test("tandem: the torque is the SUM of the two riders'", function()
     T.near(none, 0, 1e-9, "nobody pedalling: nothing")
 end)
 
+T.test("tandem: the captain's brake stops the stoker's push, and the brake is sized for two", function()
+    local sv, e = ridden("tandem")
+    local B = sv.env.BMX
+    local one = torque(sv, e, 1, 0)
+    board(sv, e)
+    T.near(torque(sv, e, 0, 1), one, one * 0.001, "the stoker alone drives it")
+    e.input.paxThrottle, e.input.throttle = 1, 0
+    for _, k in ipairs({ "brakeRear", "brakeFront" }) do
+        e.input.brakeRear, e.input.brakeFront = 0, 0
+        e.input[k] = 1
+        T.eq(B.Tandem.Push(e, e.input), 0, "the captain on " .. k .. ": the stoker adds nothing")
+    end
+    e.input.brakeRear, e.input.brakeFront = 0, 0
+    T.eq(B.Tandem.Push(e, e.input), 1, "off the brake: the stoker is back")
+    local cfg = e:Cfg()
+    T.ok(cfg.Drive.rearBrake > B.Config.Drive.rearBrake * 1.4,
+        "a rear brake for two riders' weight: " .. cfg.Drive.rearBrake)
+end)
+
 T.test("tandem: a stoker who is not on the seat adds nothing, whatever the last throttle was", function()
     local sv, e = ridden("tandem")
     local one = torque(sv, e, 1, 0)

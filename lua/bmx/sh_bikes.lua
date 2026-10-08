@@ -729,6 +729,9 @@ BMX.RegisterVehicle({
 --                               = 359 u/s, whoever is pedalling, and a tandem with both is
 --                               quicker to GET there
 --   tricks none                 it is a long bike with two people on it
+--   rearBrake 150000            the BMX's 95,000 scaled by the weight it stops (1.6x): it
+--                               is the only brake (bike_rearonly), and with the stoker
+--                               aboard the BMX's took four times the distance
 BMX.RegisterBike("tandem", {
     look        = "tandem",        -- its model (docs/MODELS.md)
     printName   = "Tandem",
@@ -746,7 +749,8 @@ BMX.RegisterBike("tandem", {
         Chassis = { mass = 118, hullMin = Vector(-30, -4, 2), hullMax = Vector(24, 4, 38),
                     massCenterExpected = Vector(-3, 0, 20), seatOffset = Vector(9, 0, 22) },
         Wheel   = { radius = 13, wheelbase = 70, restLength = 10, spring = 12000, damper = 700 },
-        Drive   = { gearRatio = 2.4, maxCadence = 11.5, crankTorque = 340000, dragArea = 0.0075 },
+        Drive   = { gearRatio = 2.4, maxCadence = 11.5, crankTorque = 340000, dragArea = 0.0075,
+                    rearBrake = 150000 },
         Hop     = { popSpeed = 110 },
         Balance = { maxLean = math.rad(34) },
     },

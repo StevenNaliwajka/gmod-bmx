@@ -17,6 +17,13 @@
     (which is the legs' ceiling). A stoker who is not pedalling adds nothing, and a
     stoker alone with a captain who is coasting still drives it.
 
+    THE CAPTAIN STOPS IT. While the captain holds a brake the stoker's push is nothing:
+    a tandem's two cranksets are one timing chain, and a stoker who keeps mashing while
+    the captain squeezes the lever is how a tandem runs a stop sign. Measured on the
+    server before this rule: the stoker's 141,700 of wheel torque against the BMX's
+    95,000 rear brake, and a captain on the brake rolled 870 units at 110 u/s instead
+    of stopping. The brake is sized for the weight as well (sh_bikes.lua, rearBrake).
+
     THE FRONT RIDER STEERS. A passenger's input is not read for anything but this: the
     usercmd decode (sv_input.lua) only ever reads the driver's, so the lean, the brake
     and the hop are the captain's. The stoker's W is their pedalling and nothing else.
@@ -35,6 +42,7 @@ function T.Push(ent, inp)
     if not (pax and IsValid(pax)) then return 0 end
     local seat = ent.paxSeats and ent.paxSeats.pegs
     if not (seat and seat.pedals) then return 0 end
+    if (inp.brakeRear or 0) > 0 or (inp.brakeFront or 0) > 0 then return 0 end
     return BMX.Clamp(inp.paxThrottle or 0, 0, 1)
 end
 

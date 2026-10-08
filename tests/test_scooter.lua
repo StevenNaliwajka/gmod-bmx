@@ -621,7 +621,7 @@ T.test("scooter draw: it draws to the end, with finite parts, and records both h
 end)
 
 T.test("scooter draw: a whip turns the deck about the steer tube and leaves the bars, the hands and the feet", function()
-    local cl, ent = cscene()
+    local cl, ent, E = cscene()
     cdraw(cl, ent)
     local h0, f0 = ent.ikTargets.rHand, ent.ikTargets.rFoot
     local n0 = #cl.beams
@@ -630,7 +630,12 @@ T.test("scooter draw: a whip turns the deck about the steer tube and leaves the 
     cdraw(cl, ent)
     local h1, f1 = ent.ikTargets.rHand, ent.ikTargets.rFoot
     T.near((h1 - h0):Length(), 0, 1e-6, "the hands are where the bars were")
-    T.near((f1 - f0):Length(), 0, 1e-6, "the feet stay where the deck was")
+    T.near((f1 - f0 - E.Vector(0, 0, f1.z - f0.z)):Length(), 0, 1e-6, "the feet stay over where the deck was")
+    T.ok(f1.z - f0.z > 3, "and have jumped up off it to let it pass under: " .. (f1.z - f0.z))
+    ent.drawWhip = 0
+    ent:SetTrickBits(0)
+    cdraw(cl, ent)
+    T.near((ent.ikTargets.rFoot - f0):Length(), 0, 1e-6, "and come down on it again as it comes home")
     T.ok(#cl.beams + #cl.drawnCS >= 12, "and it is still a whole scooter")
     for _, b in ipairs(cl.beams) do T.ok(b.a.x == b.a.x and b.b.z == b.b.z, "no NaN mid-whip") end
 end)
@@ -642,7 +647,13 @@ T.test("scooter draw: a barspin lets the hands stay on the unspun bars; every po
     ent.drawBar = math.pi
     ent:SetTrickBits(128 * 256)
     cdraw(cl, ent)
-    T.near((ent.ikTargets.rHand - h0):Length(), 0, 1e-6, "the hands let go while the bars go round")
+    local off = ent.ikTargets.rHand - h0
+    T.ok(off.z > 1.5 and off:Length() < 5, "the hands let go, up off the bar, while it goes round: " .. off.z)
+    T.ok((ent.ikTargets.rHand - ent.ikTargets.lHand):Length() > 12, "still a hand each side")
+    ent.drawBar = 0
+    ent:SetTrickBits(0)
+    cdraw(cl, ent)
+    T.near((ent.ikTargets.rHand - h0):Length(), 0, 1e-6, "and take the grips again as the bars come home")
     local B = cl.env.BMX
     for _, n in ipairs(B.PoseNames) do
         ent:SetTrickBits(B.PoseIDs[n] * 65536)

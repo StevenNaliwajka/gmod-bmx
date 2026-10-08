@@ -342,23 +342,38 @@ end)
 T.test("sound: coasting ticks the freewheel, pedalling does not", function()
     local s = scene()
     local E = s.cl.env
-    local tick = E.BMX.Sounds.tick.path
+    local function ticks()
+        local n = 0
+        for _, x in ipairs(s.cl.sounds) do if x.name:find("^bmx/tick%d%.wav$") then n = n + 1 end end
+        return n
+    end
+    local function buzz()
+        for _, p in ipairs(s.cl.patches) do
+            if p.path == E.BMX.Sounds.freewheel.path then return p.playing end
+        end
+        return false
+    end
     s.cb:SetGrounded(true)
-    s.cb:SetSpeedUPS(200)
 
+    -- A slow roll: single ticks, as many as the pawls pass.
+    s.cb:SetSpeedUPS(25)
     s.cb:SetCadence(0)
     s.cl.sounds = {}
     s.cl:run(1.0)
-    local coasting = 0
-    for _, x in ipairs(s.cl.sounds) do if x.name == tick then coasting = coasting + 1 end end
-    T.between(coasting, 10, 66, "freewheel ticks in a second of coasting at 200 u/s")
+    T.between(ticks(), 6, 30, "freewheel ticks in a second of coasting at 25 u/s")
 
+    -- Coasting fast: too many to hear apart, so the buzz loop.
+    s.cb:SetSpeedUPS(200)
+    s.cl.sounds = {}
+    s.cl:run(0.5)
+    T.ok(buzz(), "the freewheel buzzes coasting at 200 u/s")
+
+    -- Pedalling at the wheel's pace: locked, silent.
     s.cb:SetCadence(10)
     s.cl.sounds = {}
     s.cl:run(1.0)
-    for _, x in ipairs(s.cl.sounds) do
-        T.ok(x.name ~= tick, "no freewheel tick while the cranks are turning")
-    end
+    T.eq(ticks(), 0, "no freewheel tick while the cranks are turning")
+    T.ok(not buzz(), "and no buzz")
 end)
 
 T.test("sound: a skid is heard only when the server says the tyre is sliding", function()

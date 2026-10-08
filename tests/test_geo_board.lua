@@ -507,7 +507,18 @@ T.test("scooter drawing: the model's deck, fork, bars, bell lever and two wheels
     s.ent:Draw()
     T.ok((named(s.cl, "deck")[1]:Col(1) + d0):Length() < 0.6, "the deck half way round")
     T.near((named(s.cl, "bars")[1]:Col(1) - b0):Length(), 0, 1e-6, "the bars stayed")
-    sameTargets(ik0, s.ent.ikTargets, "scooter mid-whip")
+    -- mid-whip the hands stay on the bars and the feet have jumped straight up off the
+    -- deck to let it pass under them (SC.RiderTargets)
+    for k, v in pairs(ik0) do
+        local d = s.ent.ikTargets[k] - v
+        if k:find("Foot") then
+            T.near(d.x, 0, 1e-6, "scooter mid-whip: " .. k .. " stays over its place on the deck")
+            T.near(d.y, 0, 1e-6, "scooter mid-whip: " .. k .. " not sideways")
+            T.ok(d.z > 3, "scooter mid-whip: " .. k .. " jumped off the deck: " .. d.z)
+        else
+            T.near(d:Length(), 0, 1e-9, "scooter mid-whip: " .. k .. " where the primitive drawing put it")
+        end
+    end
     s.ent.drawWhip, s.ent.drawBar = 0, math.pi
     s.ent:SetTrickBits(128 * 256)
     reset(s.cl)
@@ -523,6 +534,13 @@ T.test("scooter drawing: the model's deck, fork, bars, bell lever and two wheels
     local b1 = named(s.cl, "bars")[1]:Col(1)
     T.ok(math.atan2(b1.y, b1.x) < -0.1, "steered right: " .. math.atan2(b1.y, b1.x))
     T.near((named(s.cl, "deck")[1]:Col(1) - d0):Length(), 0, 1e-6, "the deck did not")
+    -- ...and the hands went round with the grips
+    local bs = named(s.cl, "bars")[1]
+    for _, side in ipairs({ 1, -1 }) do
+        local grip = bs:Apply(s.E.Vector(F0.bars.x, -side * (T0.barWidth * 0.5 - 1.8), F0.bars.z))
+        local hand = side > 0 and s.ent.ikTargets.rHand or s.ent.ikTargets.lHand
+        T.ok((grip - hand):Length() < 0.5, "steered, a hand still on its grip: " .. (grip - hand):Length())
+    end
     rigid(s.cl, "scooter steered")
     -- the bell's lever flicks when it rings
     s.ent:SetSteer(0)

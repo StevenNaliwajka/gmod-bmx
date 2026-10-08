@@ -99,7 +99,14 @@ Vectors; nested tables are fine):
 | `at = { group = { {x,y,z}, ... } }` | preview only: where to put a group built about its own origin |
 
 The rider's hands and feet are put on these points by IK (cl_rider.lua), so they
-must be where a rider's hands and feet would really be on that vehicle.
+must be where a rider's hands and feet would really be on that vehicle: the ball
+of the foot goes 0.9 k above a pedal's centre or a peg's top, and the bar inside
+the closed fist (tests/test_contacts.lua checks every registered vehicle).
+
+A vehicle without pedals (`BMX.Motor.HasPedals` false: a throttle drive, or an
+engine without `pedalStart`) has `pegs` and no `bb`, `cranks` or `pedal`, and no
+drawing of it may show any. Its pegs are data in `G.Pegs` (cl_geo_moto.lua), so
+the stand-in drawing puts them, and the feet, where the built model will.
 
 ## Materials (roles)
 

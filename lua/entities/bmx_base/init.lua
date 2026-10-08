@@ -403,9 +403,18 @@ function ENT:OnLanded(tricks, front, rear)
 
     if fall > 40 and BMX.SoundsOn() then
         local key = fall > 320 and "land_hard" or "land_soft"
+        -- A deck lands as what it is made of: a skateboard's maple slaps, a
+        -- scooter's aluminium clanks. Tyres are the bikes' (BMX.LandSoundKey).
+        key = BMX.LandSoundKey and BMX.LandSoundKey(self:Bike(), key) or key
         local L   = BMX.Sounds[key]
         self:EmitSound(BMX.SoundFile(key), L.level, math.random(94, 106),
             L.vol * math.Clamp(fall / 600, 0.25, 1))
+        -- And a bike with a chain hears it slap the stay: the landing's rattle.
+        if fall > 120 and BMX.HasChain and BMX.HasChain(self:Bike()) then
+            local CS = BMX.Sounds.chainslap
+            self:EmitSound(BMX.SoundFile("chainslap"), CS.level, math.random(94, 106),
+                CS.vol * math.Clamp(fall / 500, 0.3, 1))
+        end
     end
 
     -- Trick scoring: a trick that ends in a crash should still be

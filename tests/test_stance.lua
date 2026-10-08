@@ -92,6 +92,17 @@ T.test("stance: IK targets move by the stance's offsets, as a copy", function()
 
     ply:SetNWInt("BMXStance", B.RiderStanceId.attack)
     T.eq(B.StanceOf(ply), "attack", "other players' stance comes from the networked int")
+    -- No stance takes a hand off its grip or a foot off its pedal: the body moves.
+    for _, name in ipairs(B.RiderStances) do
+        local o = B.RiderPoseOffset(name)
+        for _, key in ipairs({ "rHand", "lHand", "rFoot", "lFoot" }) do
+            T.ok(o[key] == nil, name .. ": " .. key .. " stays on the bike")
+        end
+    end
+    T.ok(B.RiderPoseOffset("attack").spineLean > 10, "attack folds the torso over the bars")
+    -- The mechanism, for a row that does move a limb.
+    local real = B.StanceOffsets.attack
+    B.StanceOffsets.attack = { rHand = V(1.5, 0, -1.5), lFoot = V(0, 0, -0.5), spineLean = 22 }
     local out = B.StanceTargets(ply, bike, ik)
     T.ok(out ~= ik, "a copy, so applying twice does not stack")
     local off = B.RiderPoseOffset("attack")
@@ -101,6 +112,7 @@ T.test("stance: IK targets move by the stance's offsets, as a copy", function()
     T.near(out.lFoot.z, 5 + off.lFoot.z, 1e-9, "foot moved")
     T.near(ik.rHand.z, 30, 1e-9, "the original is untouched")
     T.near(B.StanceLean(ply), off.spineLean, 1e-9, "the torso folds with it")
+    B.StanceOffsets.attack = real
 
     ply:SetNWInt("BMXStance", 99)
     T.eq(B.StanceOf(ply), "seated", "an unknown id is seated")

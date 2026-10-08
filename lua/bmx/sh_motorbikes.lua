@@ -162,6 +162,7 @@ BMX.RegisterBike("moped", {
     colorIndex  = 12,           -- white
     drive       = {
         kind = "engine", torque = 9000, idle = 1500, redline = 7800, inertia = 9,
+        sound = "engine2t",     -- a 50 cc two-stroke's buzz, not the dirt bike's four-stroke
         friction = 0.12, clutch = 2.5, engageRpm = 2800, ratio = 0.0567, pedalStart = 4,
         curve = { { 1500, 0.6 }, { 3500, 0.85 }, { 5500, 1.0 }, { 7800, 0.7 } },
     },

@@ -1,22 +1,15 @@
 --[[--------------------------------------------------------------------------
     bmx/cl_sound.lua
 
-    What a BMX sounds like, built entirely out of sounds that ship with Garry's
-    Mod.
+    What a BMX sounds like. The sound table itself is sh_sound.lua: most entries
+    are sounds that ship with Garry's Mod (zero content dependencies, nothing
+    lifted from another game; docs/DESIGN.md section 8), and the ones that matter
+    most -- the bell, the freewheel, the tyres, the engines -- are the addon's own,
+    synthesised by tools/sound/make_sounds.py.
 
-    WHY NOTHING IS SHIPPED IN THE ADDON. Two reasons, and the second is the one
-    that matters. The addon has zero content dependencies on purpose (see
-    docs/DESIGN.md section 8): clone it, ride it, no mounts, no downloads, no
-    "you are missing content" pink checkerboard for half a server. And audio
-    lifted out of another game is the fastest way to have a public Workshop item
-    and its repository taken down. Base-game sounds have neither problem: they
-    are already on every client, they cost nothing to license, and they add not
-    one byte to the .gma.
-
-    They are also, obviously, PLACEHOLDERS chosen by reading filenames. Nobody
-    has heard this. Each entry below says what it is standing in for, so that
-    replacing it with something recorded or CC0 is a one-line edit against a
-    stated intent rather than a guess at what the previous person meant.
+    WHAT PLAYS IS WHAT THE VEHICLE HAS. A skateboard has no freewheel to tick and
+    no tyres to hum; a motorbike has no pawls. Each loop asks the vehicle
+    (BMX.HasFreewheel, BMX.RollSoundKey) rather than assuming a BMX.
 
     WHY THE LOOPS ARE CLIENT-SIDE. A looping sound wants to start, stop and
     change pitch many times a second in response to speed. Doing that from the
@@ -148,10 +141,13 @@ end)
 --------------------------------------------------------------------------
 local live = {}
 
+-- Every loop a bike can have, so stopAll and the sweep never miss one.
+local LOOPS = { "roll", "roll_wheel", "skid", "wind", "freewheel", "chain" }
+
 local function stopAll(state)
-    if state.roll then state.roll:Stop() end
-    if state.skid then state.skid:Stop() end
-    if state.wind then state.wind:Stop() end
+    for _, key in ipairs(LOOPS) do
+        if state[key] then state[key]:Stop() end
+    end
 end
 
 local function channel(ent, state, key)
@@ -163,93 +159,136 @@ end
 
 local function playing(patch) return patch and patch:IsPlaying() end
 
+-- One loop, toward what it should be this frame: playing at `vol` and `pitch`, or
+-- (vol nil) faded out over `fadeOut` and then stopped. A deadline in the state, not
+-- a timer.Simple: this runs EVERY FRAME while a fade plays out, and it used to queue
+-- a fresh timer each time -- a dozen closures per jump per bike, all racing to stop
+-- the same patch. A loop that comes back mid-fade simply picks up again.
+local function drive(ent, state, key, vol, pitch, fadeIn, fadeOut)
+    local stopKey = key .. "Stop"
+    if vol and vol > 0.003 then
+        local patch = channel(ent, state, key)
+        if not playing(patch) then patch:PlayEx(0, pitch) end
+        patch:ChangeVolume(vol, fadeIn)
+        patch:ChangePitch(math.Clamp(pitch, 1, 255), fadeIn)
+        state[stopKey] = nil
+        return
+    end
+    local patch = state[key]
+    if not playing(patch) then state[stopKey] = nil return end
+    if not state[stopKey] then
+        patch:ChangeVolume(0, fadeOut)
+        state[stopKey] = CurTime() + fadeOut + 0.05
+    elseif CurTime() >= state[stopKey] then
+        patch:Stop()
+        state[stopKey] = nil
+    end
+end
+
+-- SPEED IS SPEED. The tyres, the wind and a skid are pitched and levelled by how
+-- fast the vehicle is really going, not by how close to its own top speed: they
+-- used to be scaled by each vehicle's top, so a city bike at its 20 km/h roared
+-- like a road bike at 45. ROLL_REF is where the tyre loop reaches the top of its
+-- pitch range (about 45 km/h); WIND_FULL is where the wind is at its loudest.
+local ROLL_REF, WIND_FULL = 500, 520
+BMX.SoundSpeedRefs = { roll = ROLL_REF, wind = WIND_FULL }
+
+-- The freewheel goes from single ticks to its loop at this many clicks a second.
+local BUZZ_AT = 24
+
 local function update(ent, state, dt)
+    local def      = ent:Bike()
     local cfg      = ent:Cfg()
     local speed    = ent:GetSpeedUPS()
     local grounded = ent:GetGrounded()
-
-    -- Terminal speed is the natural scale for "how fast is fast": it is what
-    -- the drivetrain tops out at, so the mapping stays right if someone retunes
-    -- the gearing.
-    local topSpeed = BMX.Gears.TopCeiling(ent, cfg)
-    local frac     = math.Clamp(speed / math.max(topSpeed, 1), 0, 1)
+    local frac     = math.Clamp(speed / ROLL_REF, 0, 1)
 
     -- Muted by the server: stop what is playing and make nothing.
     if not BMX.SoundsOn() then stopAll(state) return end
     local vRide = BMX.VolRide()
 
     ----------------------------------------------------------------------
-    -- Rolling
+    -- Rolling. Tyres hum; a board's, a scooter's and skates' urethane wheels
+    -- grind. It comes in over the first walking pace, so a bike creeping
+    -- off the line is nearly silent.
     ----------------------------------------------------------------------
-    local S = BMX.Sounds.roll
-    local roll = channel(ent, state, "roll")
-    if grounded and speed > 12 then
-        if not playing(roll) then roll:PlayEx(0, S.pitch[1]) end
-        roll:ChangeVolume(S.vol * math.min(1, frac * 2.2) * vRide, 0.1)
-        roll:ChangePitch(Lerp(frac, S.pitch[1], S.pitch[2]), 0.1)
-        state.rollStop = nil
-    elseif playing(roll) then
-        -- Fade, then stop once the fade is done. A deadline in the state, not
-        -- a timer.Simple: this branch runs EVERY FRAME while the fade plays out,
-        -- and it used to queue a fresh timer each time -- a dozen closures per
-        -- jump per bike, all racing to stop the same patch.
-        if not state.rollStop then
-            roll:ChangeVolume(0, 0.15)
-            state.rollStop = CurTime() + 0.2
-        elseif CurTime() >= state.rollStop then
-            roll:Stop()
-            state.rollStop = nil
-        end
-    end
+    local rollKey = BMX.RollSoundKey(def)
+    local S = BMX.Sounds[rollKey]
+    drive(ent, state, rollKey, grounded and speed > 12 and S.vol * math.min(1, speed / 160) * vRide or nil,
+        Lerp(frac, S.pitch[1], S.pitch[2]), 0.08, 0.15)
 
     ----------------------------------------------------------------------
-    -- Skidding
+    -- Skidding: on at once (a locked wheel is heard the instant it slides),
+    -- off quickly.
     ----------------------------------------------------------------------
     S = BMX.Sounds.skid
-    local skid = channel(ent, state, "skid")
-    if grounded and ent:GetSkidding() and speed > 25 then
-        if not playing(skid) then skid:PlayEx(0, S.pitch[1]) end
-        skid:ChangeVolume(S.vol * vRide, 0.05)
-        skid:ChangePitch(Lerp(frac, S.pitch[1], S.pitch[2]), 0.08)
-        state.skidStop = nil
-    elseif playing(skid) then
-        if not state.skidStop then
-            skid:ChangeVolume(0, 0.08)
-            state.skidStop = CurTime() + 0.12
-        elseif CurTime() >= state.skidStop then
-            skid:Stop()
-            state.skidStop = nil
-        end
-    end
+    drive(ent, state, "skid", grounded and ent:GetSkidding() and speed > 25 and S.vol * vRide or nil,
+        Lerp(frac, S.pitch[1], S.pitch[2]), 0.04, 0.08)
 
     ----------------------------------------------------------------------
-    -- Freewheel ticks, while coasting
-    --
-    -- Coasting is "moving, on the ground, cranks not turning". The client has
-    -- cadence networked for the HUD, so it can tell without being told.
+    -- THE FREEWHEEL. It clicks whenever the wheel is turning faster than the
+    -- cranks are driving it (BMX.FreewheelRate): coasting, and soft-pedalling
+    -- too, at the rate the pawls really pass the ratchet's teeth -- the wheel's
+    -- turns a second against the cranks', times the hub's engagement points.
+    -- Slow, single ticks, each one when its tooth comes round (a phase, not a
+    -- timer, so the rhythm follows the wheel as it speeds up). Fast, the loop,
+    -- pitched to the same rate. ONLY A FREEWHEEL TICKS (BMX.HasFreewheel): a
+    -- fixed gear, a unicycle, a penny-farthing, a coaster hub, a motorbike and
+    -- anything pushed or skated used to tick like a BMX whenever they rolled.
     ----------------------------------------------------------------------
-    S = BMX.Sounds.tick
-    -- A FIXED GEAR HAS NO FREEWHEEL (G10): the cranks are on the wheel, so a
-    -- coasting fixie is silent where a BMX ticks.
-    local fixed = ent:Bike().drive.kind == "fixed"
-        -- A motor has no freewheel to tick (cl_motor.lua has its own sound): an engine or an
-        -- e-moto is never "coasting with the cranks still".
-        or (BMX.Motor and BMX.Motor.IsMotor(ent) and not BMX.Motor.IsAssist(ent))
-    local coasting = grounded and speed > 20 and not fixed
-        and ent:GetCadence() < cfg.Drive.maxCadence * 0.06
-
-    if coasting and vRide > 0 then
-        -- One tick per pawl. Rate follows wheel speed, which is what makes it
-        -- read as a freewheel rather than a metronome.
-        local rate = math.max(0.02, 1 / math.max(speed * 0.22, 1))
-        state.tickAt = (state.tickAt or 0) - dt
-        if state.tickAt <= 0 then
-            state.tickAt = rate
-            ent:EmitSound(S.path, S.level, Lerp(frac, S.pitch[1], S.pitch[2]), S.vol * vRide)
+    local ratio = BMX.GearRatio(ent, cfg)
+    local cadence = ent:GetCadence()
+    local rate = speed > 8 and BMX.FreewheelRate(def, speed, cfg.Wheel.radius, ratio, cadence) or 0
+    BMX.LastFreewheelRate = rate
+    if rate > 0 and rate < BUZZ_AT and vRide > 0 then
+        S = BMX.Sounds.tick
+        state.tickPhase = (state.tickPhase or 0) + rate * dt
+        if state.tickPhase >= 1 then
+            -- Never a burst after a hitch: one click, and the phase starts over.
+            state.tickPhase = math.min(state.tickPhase - 1, 0.5)
+            ent:EmitSound(BMX.SoundFile("tick"), S.level, math.random(S.pitch[1], S.pitch[2]), S.vol * vRide)
         end
     else
-        state.tickAt = 0
+        state.tickPhase = 0.9      -- the first tick of the next coast comes at once
     end
+    S = BMX.Sounds.freewheel
+    drive(ent, state, "freewheel", rate >= BUZZ_AT and S.vol * vRide or nil,
+        100 * rate / S.clickHz, 0.05, 0.06)
+
+    ----------------------------------------------------------------------
+    -- THE CHAIN, while the cranks turn (BMX.HasChain): rollers meshing on the
+    -- ring, pitched to the crank's real speed. A fixed gear's cranks turn
+    -- whenever the wheel does, pedalled or not. Louder stamping (sprinting)
+    -- than spinning.
+    ----------------------------------------------------------------------
+    local crank = cadence
+    if def.drive.kind == "fixed" then crank = math.max(crank, speed / math.max(cfg.Wheel.radius, 1) / ratio) end
+    S = BMX.Sounds.chain
+    local meshHz = crank / (2 * math.pi) * S.teeth
+    local cv = BMX.HasChain(def) and crank > 0.8 and vRide > 0
+        and S.vol * math.Clamp(crank / cfg.Drive.maxCadence, 0.35, 1) * (ent:GetSprinting() and 1.4 or 1) * vRide
+    drive(ent, state, "chain", cv or nil, 100 * meshHz / S.meshHz, 0.06, 0.1)
+
+    ----------------------------------------------------------------------
+    -- THE MECHANISM'S ONE-SHOTS, from networked state changing: a gear change
+    -- (the derailleur; a motorbike's gearbox clunks lower), the kickstand down
+    -- and up. The first look at a bike only records the state: a bike spawned
+    -- parked is not heard putting its stand down.
+    ----------------------------------------------------------------------
+    local gear = ent:GetGear()
+    if state.gear ~= nil and gear ~= state.gear and gear > 0 and BMX.Gears.Def(ent) then
+        S = BMX.Sounds.shift
+        ent:EmitSound(BMX.SoundFile("shift"), S.level,
+            def.drive.kind == "engine" and math.random(62, 70) or math.random(96, 104), S.vol * vRide)
+    end
+    state.gear = gear
+    local stand = ent:GetStandDown()
+    if state.stand ~= nil and stand ~= state.stand and BMX.HasKickstand(def) then
+        local key = stand and "stand_down" or "stand_up"
+        S = BMX.Sounds[key]
+        ent:EmitSound(S.path, S.level, math.random(96, 104), S.vol * vRide)
+    end
+    state.stand = stand
 
     ----------------------------------------------------------------------
     -- Wind. Loudness follows speed squared (BMX.WindVolume), and it is the
@@ -258,17 +297,9 @@ local function update(ent, state, dt)
     -- to a stop does not whoosh.
     ----------------------------------------------------------------------
     S = BMX.Sounds.wind
-    local wind = channel(ent, state, "wind")
-    -- Wind is measured against a bike's own top speed, so a ridden-out cruiser
-    -- and a mini both reach full whoosh at their own top.
-    local wv = IsValid(ent:GetDriver()) and BMX.WindVolume(speed, topSpeed * 1.3) * S.vol * BMX.VolWind() or 0
-    if wv > 0.01 then
-        if not playing(wind) then wind:PlayEx(0, S.pitch[1]) end
-        wind:ChangeVolume(wv, 0.15)
-        wind:ChangePitch(Lerp(frac, S.pitch[1], S.pitch[2]), 0.2)
-    elseif playing(wind) then
-        wind:Stop()
-    end
+    local wv = IsValid(ent:GetDriver()) and BMX.WindVolume(speed, WIND_FULL) * S.vol * BMX.VolWind() or 0
+    drive(ent, state, "wind", wv > 0.01 and wv or nil,
+        Lerp(math.Clamp(speed / WIND_FULL, 0, 1), S.pitch[1], S.pitch[2]), 0.15, 0.12)
 end
 
 --------------------------------------------------------------------------

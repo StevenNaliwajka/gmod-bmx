@@ -465,6 +465,28 @@ local function motoWheel(M, group, radius, o)
 end
 
 --------------------------------------------------------------------------
+-- THE FOOTPEGS, as data: each motorbike's left peg's top centre at the size it is
+-- designed at (`wb`), the right one its mirror. Here and not inside the builders
+-- because the stand-in drawing (entities/bmx_base/cl_init.lua, while a model is still
+-- building or with bmx_bike_model 0) puts its pegs, and the rider's feet, at exactly
+-- these points without building anything.
+--------------------------------------------------------------------------
+G.Pegs = {
+    dirtbike = { wb = 58, at = { -6.7, 6.4, 3.7 } },
+    emoto    = { wb = 48, at = { -5.5, 6.0, 3.1 } },
+}
+
+-- A kind's pegs at wheelbase `wb`, model space, { r = {x,y,z}, l = {x,y,z} }; nil for
+-- a kind without them.
+function G.PegsFor(kind, wb)
+    local p = G.Pegs[kind]
+    if not p then return nil end
+    local f = (wb or p.wb) / p.wb
+    local a = p.at
+    return { r = { a[1] * f, -a[2] * f, a[3] * f }, l = { a[1] * f, a[2] * f, a[3] * f } }
+end
+
+--------------------------------------------------------------------------
 -- THE DIRT BIKE: a 250 four-stroke motocrosser. Designed at wheelbase 58 on
 -- 14-radius wheels (a 21-inch front), x forward, y left, z up, axles on z = 0.
 --------------------------------------------------------------------------
@@ -833,7 +855,7 @@ local function buildDirt(opt)
     -- CONTROLS ON THE FRAME: footpegs, kickstarter, gear lever, rear brake pedal
     -- and its master cylinder.
     ----------------------------------------------------------------------
-    local PEG = V(-6.7, 6.4, 3.7)
+    local PEG = V(G.Pegs.dirtbike.at[1], G.Pegs.dirtbike.at[2], G.Pegs.dirtbike.at[3])
     for _, sd in ipairs({ 1, -1 }) do
         -- the mount from the spar
         slab(Pf, { { -7.6, 2.4 }, { -4.8, 2.6 }, { -4.6, 4.4 }, { -6.0, 4.6 }, { -7.4, 3.6 } }, V(0, 4.75 * sd, 0), X, Z, 0.45, 0.1)
@@ -1347,7 +1369,7 @@ local function buildEmoto(opt)
     ----------------------------------------------------------------------
     -- FOOTPEGS (serrated, on the frame's mounts) and the side stand's pivot
     ----------------------------------------------------------------------
-    local PEG = V(-5.5, 6.0, 3.1)
+    local PEG = V(G.Pegs.emoto.at[1], G.Pegs.emoto.at[2], G.Pegs.emoto.at[3])
     for _, sd in ipairs({ 1, -1 }) do
         footpeg(St, Std, V(PEG[1], PEG[2] * sd, PEG[3]), 4.75 * sd, 7.7 * sd, 1.9)
     end

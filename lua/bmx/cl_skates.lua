@@ -145,6 +145,62 @@ function S.StrideSwing(phase)
     return sin(f * math.pi)
 end
 
+--------------------------------------------------------------------------
+-- THE SKATES STAND ON THE GROUND. The boots hang under the ankles (BootFrame's
+-- sole is a fixed drop below the foot bone, the wheels a fixed drop below that), so
+-- where the legs put the ankles is where the wheels are. Bent knees made by lowering
+-- the pelvis, and the stride made by swinging a thigh, took the feet down with them:
+-- the wheels sank into the floor, by the bend and more at speed. So, with the rider
+-- IK on (bmx_rider_ik), each leg is put by the rider's two-bone solve (cl_rider.lua
+-- BMX.RiderSolveLimb) with its ankle exactly the skate's height over the ground the
+-- player stands on: the pelvis drop then bends the knees, and the striding foot is
+-- pushed back and out along the ground, as a skater's is, instead of lifted. Toes
+-- along the heading, the sole flat.
+--
+-- Where the feet go, the player's own space: under the hips a skate's width apart,
+-- the striding one `S.StrideFoot` further back and out at the end of its push.
+--------------------------------------------------------------------------
+S.StrideFoot = { back = 8, out = 3, lift = 0.8 }
+local IK_RANGE = 1200
+function S.FootTargets(origin, yaw, radius, stride, foot)
+    local f = Vector(cos(math.rad(yaw)), sin(math.rad(yaw)), 0)
+    local l = Vector(-f.y, f.x, 0)
+    -- the ankle over the ground by the boot's drop (BootFrame: 2.6) and the wheel
+    local lift = 2.6 + 2 * radius - 0.4
+    local out = {}
+    for _, side in ipairs({ 1, -1 }) do                  -- 1 the left foot
+        local mine = (side > 0) == (foot > 0)
+        local s = mine and (stride or 0) or 0
+        out[side > 0 and "lFoot" or "rFoot"] = origin - f * (S.StrideFoot.back * s)
+            + l * (side * (T.track + S.StrideFoot.out * s)) + Vector(0, 0, lift + S.StrideFoot.lift * s)
+    end
+    return out
+end
+
+function S.LegsOnGround(ply, stride, foot)
+    local cv = GetConVar("bmx_rider_ik")
+    if not (cv and cv:GetBool() and BMX.RiderSolveLimb and BMX.RiderLimbs) then return false end
+    if EyePos():Distance(ply:GetPos()) > IK_RANGE then return true end    -- keeps its last pose
+    ply.bmxIK = ply.bmxIK or {}
+    local yaw = ply:GetRenderAngles().y
+    local radius = BMX.ConfigFor(BMX.Vehicles[S.ID]).Wheel.radius
+    local targets = S.FootTargets(ply:GetPos(), yaw, radius, stride, foot)
+    local f = Vector(cos(math.rad(yaw)), sin(math.rad(yaw)), 0)
+    local up = Vector(0, 0, 1)
+    local pole = (f + up * 0.2):GetNormalized()
+    local toeDir = BMX.RiderFootDir and BMX.RiderFootDir(f, up, 0) or f
+    for _, limb in ipairs(BMX.RiderLimbs) do
+        local tgt = limb.leg and targets[limb.target]
+        if tgt then
+            BMX.RiderSolveLimb(ply, limb, tgt, pole)
+            local fb = ply:LookupBone(limb.eff)
+            local toe = ply:LookupBone("ValveBiped.Bip01_" .. (limb.side == 1 and "R" or "L") .. "_Toe0")
+            if fb and toe then BMX.RiderAimBone(ply, fb, fb, toe, toeDir) end
+        end
+    end
+    return true
+end
+
 hook.Add("PrePlayerDraw", "BMX.Skates.Legs", function(ply)
     if not wearing(ply) then release(ply) return end
     local P = S.Pose
@@ -154,8 +210,10 @@ hook.Add("PrePlayerDraw", "BMX.Skates.Legs", function(ply)
     if B and B.LowerPelvis then B.LowerPelvis(ply, P.pelvis + P.pelvisFast * frac) end
     local spine = ply:LookupBone(BONE.spine)
     if spine then ply:ManipulateBoneAngles(spine, Angle(0, P.spine + P.spineFast * frac, 0)) end
-    local swing = S.StrideSwing(ply:GetNWFloat("BMXSkatePhase", -1)) * P.swing
+    local stride = S.StrideSwing(ply:GetNWFloat("BMXSkatePhase", -1))
+    local swing = stride * P.swing
     local foot = ply:GetNWInt("BMXSkateFoot", 1)
+    if S.LegsOnGround(ply, stride, foot) then posed[ply] = true return end
     for _, k in ipairs({ "lThigh", "rThigh" }) do
         local b = ply:LookupBone(BONE[k])
         if b then

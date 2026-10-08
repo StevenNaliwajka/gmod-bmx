@@ -80,8 +80,31 @@ local function frame(cl, bike, ply)
     cl.env.hook.Run("PrePlayerDraw", ply)
 end
 
+-- How far what TOUCHES the bike is from its target: the ball of the foot (the
+-- toe bone, for a foot bone) and the inside of the fist (for a hand bone), not
+-- the ankle and the wrist the limbs end in (cl_rider.lua, "what touches the bike").
+local CONTACT = { ["ValveBiped.Bip01_R_Foot"] = "ValveBiped.Bip01_R_Toe0",
+                  ["ValveBiped.Bip01_L_Foot"] = "ValveBiped.Bip01_L_Toe0" }
+-- How far a pedal is from being UNDER the foot: from the ankle to the ball. The
+-- ball goes on the pedal whenever the leg can fold that far; over the top of
+-- the stroke on a low saddle the foot slides forward and the pedal is under the
+-- arch (cl_rider.lua ankleSetback), which is still a foot on its pedal.
+local function underFoot(cl, ply, side, target)
+    ply:InvalidateBoneCache(); ply:SetupBones()
+    local a = ply:GetBoneMatrix(ply:LookupBone("ValveBiped.Bip01_" .. side .. "_Foot")):GetTranslation()
+    local b = ply:GetBoneMatrix(ply:LookupBone("ValveBiped.Bip01_" .. side .. "_Toe0")):GetTranslation()
+    local g = b - a
+    local t = math.max(0, math.min(1, (target - a):Dot(g) / g:Dot(g)))
+    return (a + g * t - target):Length()
+end
+
 local function reach(cl, ply, bone, target)
-    local b = ply:LookupBone(bone)
+    local hand = bone:match("_([RL])_Hand$")
+    if hand then
+        ply:InvalidateBoneCache(); ply:SetupBones()
+        return (cl.env.BMX.RiderFistCentre(ply, hand) - target):Length()
+    end
+    local b = ply:LookupBone(CONTACT[bone] or bone)
     return (ply:GetBoneMatrix(b):GetTranslation() - target):Length()
 end
 
@@ -96,8 +119,9 @@ T.test("IK: the feet go onto the pedals and the hands onto the grips", function(
     ply:InvalidateBoneCache(); ply:SetupBones()
     local rf = reach(cl, ply, "ValveBiped.Bip01_R_Foot", t.rFoot)
     T.ok(rf < startFoot, string.format("closer than the plain pose (%.1f -> %.1f)", startFoot, rf))
-    T.between(rf, 0, 1.5, "right foot to its pedal, units")
-    T.between(reach(cl, ply, "ValveBiped.Bip01_L_Foot", t.lFoot), 0, 1.5, "left foot to its pedal")
+    T.between(rf, 0, 1.5, "the ball of the right foot to its pedal (forward), units")
+    -- the left pedal is at the back, under the saddle: the foot may have slid forward on it
+    T.between(underFoot(cl, ply, "L", t.lFoot), 0, 1.5, "left pedal under the left foot")
     T.between(reach(cl, ply, "ValveBiped.Bip01_R_Hand", t.rHandHeld or t.rHand), 0, 1.5, "right hand to its grip")
     T.between(reach(cl, ply, "ValveBiped.Bip01_L_Hand", t.lHandHeld or t.lHand), 0, 1.5, "left hand to its grip")
 end)
@@ -114,7 +138,7 @@ T.test("IK: pedalling, the feet stay on the pedals all the way round", function(
         frame(cl, bike, ply)
         if i > 5 then
             ply:InvalidateBoneCache(); ply:SetupBones()
-            worst = math.max(worst, reach(cl, ply, "ValveBiped.Bip01_R_Foot", bike.ikTargets.rFoot))
+            worst = math.max(worst, underFoot(cl, ply, "R", bike.ikTargets.rFoot))
         end
     end
     T.between(worst, 0, 3, "furthest the right foot got from its pedal over a turn, units")
@@ -190,14 +214,24 @@ T.test("IK: knees bend forward and stay above the feet, all the way round", func
     T.between(maxBend, 0, 156, "or folds past the limit, deg")
 end)
 
-T.test("IK: soles flat on the pedals, toes forward", function()
+T.test("IK: toes forward, the sole pitched as the stroke has it, the ball of the foot on the pedal", function()
     local cl, bike, ply = seated()
     for _ = 1, 40 do frame(cl, bike, ply) end
     ply:InvalidateBoneCache(); ply:SetupBones()
+    local B = cl.env.BMX
+    local fwd, up = bike:GetForward(), bike:GetUp()
     for _, s in ipairs({ "R", "L" }) do
         local d = (P(ply, "ValveBiped.Bip01_" .. s .. "_Toe0") - P(ply, "ValveBiped.Bip01_" .. s .. "_Foot")):GetNormalized()
-        T.ok(d:Dot(bike:GetForward()) > 0.9, s .. " toes point forward: " .. d:Dot(bike:GetForward()))
+        local plan = (d - up * d:Dot(up)):GetNormalized()
+        T.ok(plan:Dot(fwd) > 0.97, s .. " toes point forward: " .. plan:Dot(fwd))
+        local want = B.RiderFootDir(fwd, up, bike.ikTargets[s:lower() .. "Sole"])
+        local off = math.deg(math.acos(math.max(-1, math.min(1, d:Dot(want)))))
+        T.between(off, 0, 4, s .. " foot pitched as its crank angle wants, deg off")
     end
+    -- the ankle's stroke: heel down over the top and front, toes down through the bottom and back
+    local top, bottom = B.PedalSole(-math.pi / 4), B.PedalSole(math.pi * 3 / 4)
+    T.ok(bottom > top + 15, string.format("toes further down at the back of the stroke (%.0f) than the front (%.0f)", bottom, top))
+    T.ok(top < 0, "a heel dropped over the top: " .. top)
 end)
 
 T.test("IK: the hands close round the grips, curling the right way", function()
@@ -283,7 +317,7 @@ T.test("IK: no limb is wrung: twist stays within limits through pedalling and st
     bike:SetSteer(math.rad(10))
     for _ = 1, 20 do frame(cl, bike, ply) end
     ply:InvalidateBoneCache(); ply:SetupBones()
-    T.between(reach(cl, ply, "ValveBiped.Bip01_R_Foot", bike.ikTargets.rFoot), 0, 3, "foot on its pedal")
+    T.between(underFoot(cl, ply, "R", bike.ikTargets.rFoot), 0, 3, "foot on its pedal")
     T.between(reach(cl, ply, "ValveBiped.Bip01_R_Hand", bike.ikTargets.rHand), 0, 3, "hand on its grip")
 end)
 

@@ -4,8 +4,9 @@
     HOW A RIDER SITS ON THE BIKE (G21): seated, standing, or "attack
     position" (the crouch a BMX rider holds into a jump, weight low and
     forward). The competitor offers a sitting pose; this is a choice of three
-    per rider, and it changes ONLY the IK targets and the torso lean that
-    cl_rider.lua already solves, so there is no new animation to maintain.
+    per rider, and it changes ONLY the torso lean (and, if a row asks, the IK
+    targets) that cl_rider.lua already solves, so there is no new animation to
+    maintain. The hands stay on the grips and the feet on the pedals in all three.
 
     A STANCE IS A TABLE OF OFFSETS, not a pose. Each row names a hand or foot
     target and moves it by a vector in the bike's own space (X forward, Y
@@ -38,16 +39,21 @@ BMX.RiderStanceId = {}
 for i, n in ipairs(BMX.RiderStances) do BMX.RiderStanceId[n] = i end
 
 -- Offsets from the grip / pedal, bike space, inches at the stock wheelbase.
+--
+-- THE HANDS AND FEET STAY ON THE BIKE in every stance. Standing and attack used to
+-- move the hand targets 3 units up or 2 forward and down, and the feet most of a
+-- unit up or down: off the grips and off the pedals, which is the "hands and feet
+-- do not match the bike" a rider sees. A rider standing or in the attack position
+-- still holds the bars and stands on the pedals; what changes is the BODY over
+-- them, which is the torso's lean (the IK then brings the arms and legs to the same
+-- grips and pedals from there). The limb offsets are still honoured if a row
+-- names them (a pose that really lets go would), but no stance does.
 BMX.StanceOffsets = {
     seated   = {},
-    -- Up out of the saddle, arms a little straighter, weight on the pedals.
-    standing = { rHand = Vector(0.5, 0, 3), lHand = Vector(0.5, 0, 3),
-                 rFoot = Vector(0, 0, 0.8), lFoot = Vector(0, 0, 0.8),
-                 spineLean = -6 },
-    -- Low and forward over the bars: elbows out, chest down, heels dropped.
-    attack   = { rHand = Vector(1.5, 0, -1.5), lHand = Vector(1.5, 0, -1.5),
-                 rFoot = Vector(0, 0, -0.5), lFoot = Vector(0, 0, -0.5),
-                 spineLean = 22 },
+    -- Up out of the saddle: the torso upright and back over the pedals.
+    standing = { spineLean = -6 },
+    -- Low and forward over the bars: chest down, elbows out.
+    attack   = { spineLean = 22 },
 }
 
 local LIMB_KEYS = { "rHand", "lHand", "rFoot", "lFoot" }

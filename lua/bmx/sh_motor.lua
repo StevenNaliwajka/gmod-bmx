@@ -109,6 +109,19 @@ function M.IsMotor(thing)
         or (d.kind == "throttle" and d.battery ~= nil))
 end
 
+-- Does it have pedals at all? A throttle (the e-moto, the test cart) and an engine
+-- (the dirt bike) have footpegs and nothing to turn; an assist has the legs behind it,
+-- and an engine with `pedalStart` (the moped) has pedals because they are its starter.
+-- Every drawing of a vehicle asks this before it draws a crank: a motorbike with
+-- pedals on it was the stand-in drawing's bug, and the suite checks every path.
+function M.HasPedals(thing)
+    local d = driveOf(thing)
+    if not d then return true end
+    if d.kind == "throttle" then return false end
+    if d.kind == "engine" then return d.pedalStart ~= nil end
+    return true
+end
+
 --------------------------------------------------------------------------
 -- ASSIST (G14).
 --
@@ -453,6 +466,9 @@ DK.engine = {
 DK.throttle.regen = "number"
 DK.throttle.battery = "number"
 DK.throttle.motorRatio = "number"
+-- The loop it plays, a key in BMX.Sounds (cl_motor.lua BMX.MotorSoundKey): the moped's
+-- two-stroke is not the dirt bike's four-stroke.
+DK.engine.sound, DK.throttle.sound, DK.assist.sound = "string", "string", "string"
 
 -- The pose set a motorcycle's rider uses (cl_motor.lua fills in the pose).
 BMX.RegisterPoseSet("moto", { label = "Moto: seated forward, feet on the pegs, hands on the bars" })

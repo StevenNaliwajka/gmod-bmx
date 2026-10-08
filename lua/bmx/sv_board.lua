@@ -209,8 +209,7 @@ BMX.Drives.push = function(ent, cfg, dt, inp, st, wheel, vdef)
     -- there is nothing here for a foot to drag or turn on. The board's sync (the push
     -- phase for the rider's foot) does not run on a scooter, so it is sent from here.
     if d.footBrake == false then
-        local push = -1
-        if b.ps.kicking then push = (b.ps.phase or 0) / (d.kickInterval or T.kickInterval) end
+        local push = B.PushPhaseOf(b.ps, d.kickInterval or T.kickInterval)
         if ent.SetPushPhase and abs(ent:GetPushPhase() - push) > 0.01 then ent:SetPushPhase(push) end
         return 0
     end
@@ -367,8 +366,7 @@ local function sync(ent, st, b, now)
     end
     setf(ent.SetBoardLean, ent.GetBoardLean, b.lean, 0.004)
     setf(ent.SetCrouch, ent.GetCrouch, b.crouching and (b.crouchT / T.crouchMax) or 0, 0.02)
-    local push = -1
-    if b.ps.kicking then push = (b.ps.phase or 0) / ((ent:Bike().drive or {}).kickInterval or T.kickInterval) end
+    local push = B.PushPhaseOf(b.ps, (ent:Bike().drive or {}).kickInterval or T.kickInterval)
     setf(ent.SetPushPhase, ent.GetPushPhase, push, 0.01)
     setf(ent.SetMeter, ent.GetMeter, b.meter or 0, 0.01)
     local bits = B.PackBits(b.flipRoll or 0, b.flipYaw or 0, b.flipPitch or 0)

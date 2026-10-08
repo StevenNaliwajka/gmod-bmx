@@ -82,6 +82,7 @@ local function cranks(ent, H, hub, fwd, up, right, angle, len, q, ik, lod, col)
         local root = hub + right * (q * side)
         local pedal = root + arm
         ik[side == 1 and "rFoot" or "lFoot"] = pedal + right * (1.8 * side) + up * 0.9
+        ik[side == 1 and "rSole" or "lSole"] = BMX.PedalSole and BMX.PedalSole(t) or 0
         if lod < 2 then H.tube(root, pedal, 0.9, H.COL.part) end
         if lod == 0 then
             H.solid("box", pedal + right * (1.8 * side), fwd:AngleEx(up), Vector(3.6, 3.6, 1.0), H.COL.part, H.MAT.matte)
@@ -166,6 +167,7 @@ local function unicycleModel(ent, model, hub, fwd, up, right, spin, lod, col, ik
     BM.EndLighting()
     ik.rFoot = frameMap(tip(1)) + up * 0.9
     ik.lFoot = frameMap(tip(-1)) + up * 0.9
+    if BMX.PedalSole then ik.rSole, ik.lSole = BMX.PedalSole(spin), BMX.PedalSole(spin + math.pi) end
 end
 
 BMX.Drawers.unicycle = function(ent, H, lod, debug)
@@ -270,6 +272,7 @@ local function pennyModel(ent, model, S, ik)
     BM.EndLighting()
     ik.rFoot = forkMap(tip(1)) + upF * 0.9
     ik.lFoot = forkMap(tip(-1)) + upF * 0.9
+    if BMX.PedalSole then ik.rSole, ik.lSole = BMX.PedalSole(S.fSpin), BMX.PedalSole(S.fSpin + math.pi) end
     ik.rHand, ik.rHandA, ik.rHandB = gripOf(forkMap, L.gripR)
     ik.lHand, ik.lHandA, ik.lHandB = gripOf(forkMap, L.gripL)
 end
@@ -323,8 +326,13 @@ BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
     -- The bars, a plain bar over the crown and a stem up to it.
     local barsC = crown + up * 5 + sFwd * 1
     H.tube(crown, barsC, 1.3, H.COL.part)
-    H.tube(barsC - fAxle * 11, barsC + fAxle * 11, 1.0, H.COL.part)
-    local gripL, gripR = barsC - fAxle * 12, barsC + fAxle * 12
+    H.tube(barsC - fAxle * 12.5, barsC + fAxle * 12.5, 1.0, H.COL.part)
+    -- Rubber grips on the bar's ends, where the hands are put: the hands used to
+    -- hold the air a unit past a bar that stopped short of them.
+    local gripLA, gripRA = barsC - fAxle * 10, barsC + fAxle * 10
+    local gripL, gripR = barsC - fAxle * 12.5, barsC + fAxle * 12.5
+    H.tube(gripLA, gripL, 1.4, H.COL.tyre)
+    H.tube(gripRA, gripR, 1.4, H.COL.tyre)
 
     -- The backbone: from the crown, curving down and back to the small wheel's fork, and
     -- the saddle on it a little behind the big wheel's top.
@@ -337,10 +345,10 @@ BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
     if lod == 0 then H.joint(crown, 2.6, col) end
 
     cranks(ent, H, fPos, sFwd, up, fAxle, fSpin, 8, 4.5, ik, lod, col)
-    ik.rHand = gripR - fAxle * 1.5
-    ik.lHand = gripL + fAxle * 1.5
-    ik.rHandA, ik.rHandB = ik.rHand, gripR
-    ik.lHandA, ik.lHandB = ik.lHand, gripL
+    ik.rHand = gripRA + fAxle * 1.75
+    ik.lHand = gripLA - fAxle * 1.75
+    ik.rHandA, ik.rHandB = gripRA, gripR
+    ik.lHandA, ik.lHandB = gripLA, gripL
     ent.ikTargets = ik
     ent.crankAngle = fSpin
 end

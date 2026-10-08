@@ -114,8 +114,12 @@ B.Tune = {
     -- is 180; goofy faces the left and is 0). Nobody has watched this on a real
     -- player model; they are numbers in a table and a swap is one line.
     ----------------------------------------------------------------------
-    footFront = 4.6,
-    footBack  = -5.4,
+    -- The front foot stands just behind the front truck's bolts and the back foot
+    -- over the back truck's (the trucks are at +-7.9 on the 16-unit wheelbase, their
+    -- bolts 1.06 either side): a shoulder-wide stance, which is what a skater rides
+    -- on. The ollie moves the back foot onto the tail from here (cl_board.lua).
+    footFront = 6.2,
+    footBack  = -7.4,
     seatYaw   = { regular = 180, goofy = 0 },
     seatZ     = 2.4,
 }
@@ -197,6 +201,18 @@ function B.PushStep(ps, dt, want, speed, drive)
         end
     end
     return add, began
+end
+
+-- THE PUSH PHASE ON THE WIRE: where the rider is in the WHOLE push cycle, 0..1 of
+-- the kick interval, or -1 when not pushing. Not just the stroke: the foot that
+-- pushed still has to lift and come back to the deck after the force stops, and a
+-- phase that went to -1 at the end of the stroke snapped it home in one frame.
+function B.PushPhaseOf(ps, interval)
+    interval = interval or T.kickInterval
+    if ps and ps.dv and ps.phase and ps.phase >= 0 and ps.phase < interval then
+        return ps.phase / interval
+    end
+    return -1
 end
 
 --------------------------------------------------------------------------

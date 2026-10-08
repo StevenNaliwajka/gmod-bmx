@@ -899,10 +899,20 @@ T.test("skates client: the stride swings the striding thigh, and the swing is a 
     me:SetNWString("BMXWorn", "skates")
     me:SetNWFloat("BMXSkatePhase", 0.2)
     me:SetNWInt("BMXSkateFoot", 1)
+    -- Without the rider IK the stride is the thigh's swing alone.
+    E.GetConVar("bmx_rider_ik"):SetString("0")
     E.hook.Run("PrePlayerDraw", me)
     local lb, rb = me:LookupBone("ValveBiped.Bip01_L_Thigh"), me:LookupBone("ValveBiped.Bip01_R_Thigh")
     T.ok(me._manip and me._manip[lb] and math.abs(me._manip[lb].y) > 20, "the striding leg swings")
     T.ok(me._manip and me._manip[rb] and me._manip[rb].y == 0, "the other does not")
+    -- With it (the default) the striding foot is pushed back and out along the ground
+    -- (S.FootTargets), the other stays under the hips (tests/test_contacts.lua checks
+    -- the wheels stay on the floor).
+    E.GetConVar("bmx_rider_ik"):SetString("1")
+    local t = S.FootTargets(E.Vector(0, 0, 0), 0, 1.6, S.StrideSwing(0.2), 1)
+    T.ok(t.lFoot.x < -6 and t.lFoot.y > t.rFoot.y + 9, "the striding (left) foot back and out: " .. tostring(t.lFoot))
+    T.near(t.rFoot.x, 0, 1e-9, "the other under the hips")
+    T.near(t.lFoot.z - t.rFoot.z, S.StrideFoot.lift * S.StrideSwing(0.2), 1e-6, "on the ground, all but a lift at the end of the push")
 end)
 
 T.test("skates client: the sparks come off both boots while a grind is networked, and stop when it ends", function()

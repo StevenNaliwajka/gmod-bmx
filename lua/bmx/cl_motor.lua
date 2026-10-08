@@ -6,11 +6,10 @@
     the server already networks for the purpose (Rpm, Battery, Clutch, Assist, Gear);
     nothing here is simulation.
 
-    THE SOUNDS ARE PLACEHOLDERS, base-game paths in sh_sound.lua like every other
-    sound in the addon (docs/DESIGN.md section 8): a looping channel per vehicle
-    whose PITCH follows the networked rpm and whose volume follows how hard it is
-    working. Nobody has heard them; replacing one is the one-line edit the table
-    describes.
+    THE SOUNDS are the addon's own loops (sh_sound.lua, tools/sound/make_sounds.py):
+    a channel per vehicle whose PITCH follows the networked rpm and whose volume
+    follows how hard it is working. An engine's file was made at a known rpm, so
+    its pitch is the rpm over that: the note IS the firing rate.
 ----------------------------------------------------------------------------]]
 
 BMX = BMX or {}
@@ -52,12 +51,29 @@ function BMX.MotorHudInfo(bike)
     return out
 end
 
--- Do the cranks stand still? A motorbike's feet are on pegs: the cranks the
--- procedural bike draws are held at a fixed angle (cl_init.lua asks).
+-- Do the cranks stand still? A motorbike has none (its feet are on pegs, and every
+-- drawing leaves the cranks off: M.HasPedals). A moped's pedals are its starter: they
+-- turn with the wheel while the rider pedals it off, and once the engine has caught
+-- (the server networks rpm above nothing only then, sv_motor.lua) the freewheel lets
+-- them stop and the rider's feet rest on them, level. cl_init.lua asks every frame.
 function M.FixedCranks(bike)
+    if not M.HasPedals(bike) then return true end
     local d = bike:Bike().drive
-    if d.kind == "engine" then return d.pedalStart == nil end
-    return d.kind == "throttle" and d.battery ~= nil
+    return d.kind == "engine" and d.pedalStart ~= nil and bike.GetRpm ~= nil and bike:GetRpm() > 0
+end
+
+-- WHERE HELD CRANKS STAND: level, the nearer way round (a foot that was forward stays
+-- the forward one), eased there rather than snapped so the legs do not jump when the
+-- engine catches. `cur` is the crank angle drawn last frame. Nothing to ease without
+-- pedals: 0.
+M.CRANK_REST_RATE = 6        -- 1/s: about a third of a second to come level
+function M.RestCrank(bike, cur, dt)
+    if not M.HasPedals(bike) then return 0 end
+    cur = cur or 0
+    local level = math.floor(cur / math.pi + 0.5) * math.pi
+    local d = level - cur
+    if math.abs(d) < 1e-3 then return level end
+    return cur + d * math.min(1, M.CRANK_REST_RATE * (dt or 0))
 end
 
 --------------------------------------------------------------------------
@@ -104,8 +120,10 @@ end
 --
 --   assist / e-moto  the whine (BMX.Sounds.motor): pitch rises with the motor's rpm,
 --                    volume with how fast it is turning, silent when it is not
---   engine           the note (BMX.Sounds.engine): pitch from idle to redline, and a
---                    little louder under load; a pulled clutch lets it rev free
+--   engine           the note (BMX.Sounds.engine, or the registry's drive.sound: the
+--                    moped's engine2t): pitch is rpm / the file's baseRpm, and a
+--                    little louder under load; a pulled clutch lets it rev free.
+--                    A moped's engine is silent until the pedals have started it.
 --
 -- BMX.MotorSoundParams is pure: rpm in, pitch and volume out. The loop below only
 -- feeds it and plays the result.
@@ -114,6 +132,7 @@ function BMX.MotorSoundParams(key, rpm, redline)
     local S = BMX.Sounds[key]
     local f = math.Clamp((rpm or 0) / math.max(redline or 1, 1), 0, 1)
     local pitch = S.pitch[1] + (S.pitch[2] - S.pitch[1]) * f
+    if S.baseRpm then pitch = math.Clamp(100 * (rpm or 0) / S.baseRpm, S.pitch[1], S.pitch[2]) end
     local vol = rpm and rpm > 1 and S.vol * (0.45 + 0.55 * f) or 0
     return pitch, vol
 end
@@ -132,7 +151,14 @@ M.TopRpm = topRpm
 
 if not CLIENT then return end
 
-for _, k in ipairs({ "motor", "engine" }) do
+-- The loop a motor vehicle plays: its registry's drive.sound, else by kind.
+function BMX.MotorSoundKey(def)
+    local d = def.drive
+    if d.sound and BMX.Sounds[d.sound] then return d.sound end
+    return d.kind == "engine" and "engine" or "motor"
+end
+
+for _, k in ipairs({ "motor", "engine", "engine2t" }) do
     if BMX.Sounds[k] then util.PrecacheSound(BMX.Sounds[k].path) end
 end
 
@@ -144,14 +170,16 @@ end
 
 local function updateSound(ent, state)
     local def = ent:Bike()
-    local key = M.IsEngine(ent) and "engine" or "motor"
+    local key = BMX.MotorSoundKey(def)
     local S = BMX.Sounds[key]
     if not BMX.SoundsOn() then stopState(state) return end
     local vRide = BMX.VolRide()
     local rpm = ent:GetRpm()
     local pitch, vol = BMX.MotorSoundParams(key, rpm, topRpm(def))
-    -- An idling engine is audible; the whine is not until it spins.
-    if key == "engine" and IsValid(ent:GetDriver()) then
+    -- An idling engine is audible; the whine is not until it spins. But a moped's
+    -- engine is OFF until the pedals start it (sv_motor.lua networks 0 rpm until
+    -- then), and it used to idle the moment anyone sat on it.
+    if M.IsEngine(ent) and IsValid(ent:GetDriver()) and (rpm > 0 or not def.drive.pedalStart) then
         pitch, vol = BMX.MotorSoundParams(key, math.max(rpm, def.drive.idle), def.drive.redline)
     end
     vol = vol * vRide

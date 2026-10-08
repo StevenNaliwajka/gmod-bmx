@@ -1020,24 +1020,47 @@ end)
 -- The sound
 --------------------------------------------------------------------------
 
-T.test("sound: the motor and engine are base-game placeholder paths, and the pitch follows the rpm", function()
+T.test("sound: the motor and engines are the addon's own loops, and the pitch follows the rpm", function()
     local _, world = F.server()
     local cl = F.client(world)
     local B = cl.env.BMX
-    for _, key in ipairs({ "motor", "engine" }) do
+    for _, key in ipairs({ "motor", "engine", "engine2t" }) do
         local S = B.Sounds[key]
         T.ok(S, key .. " is in the table")
-        T.ok(S.path:match("^vehicles/[%w_/]+%.wav$"), key .. " is a base-game vehicles/ sound: " .. S.path)
+        T.ok(S.path:match("^bmx/[%w_]+%.wav$"), key .. " is the addon's own (sound/bmx/): " .. S.path)
         T.ok(not S.variants and not S.path:find("%%d"), key .. " is a loop, with no variants")
-        local lo, vlo = B.MotorSoundParams(key, 1, 1000)
-        local mid, vmid = B.MotorSoundParams(key, 500, 1000)
-        local hi, vhi = B.MotorSoundParams(key, 1000, 1000)
+        -- A loop is a WAV with a cue point: Source plays a file without one once, and stops.
+        local f = io.open("sound/" .. S.path, "rb")
+        T.ok(f ~= nil, key .. ": the file is in the repository")
+        if f then
+            local raw = f:read("*a")
+            f:close()
+            T.ok(raw:sub(1, 4) == "RIFF" and raw:find("cue ", 13, true) ~= nil, key .. ": a WAV with a loop cue")
+        end
+        -- An engine across idle-ish to redline-ish; the whine across its range.
+        local top = S.baseRpm and S.baseRpm * 2 or 1000
+        local lo, vlo = B.MotorSoundParams(key, top * 0.15, top)
+        local mid, vmid = B.MotorSoundParams(key, top * 0.5, top)
+        local hi, vhi = B.MotorSoundParams(key, top, top)
         T.ok(lo < mid and mid < hi, key .. ": pitch rises with rpm: " .. lo .. " < " .. mid .. " < " .. hi)
         T.ok(vlo < vmid and vmid < vhi, key .. ": and so does the volume")
-        T.near(hi, S.pitch[2], 1e-9, key .. ": the top of the range at the redline")
+        if S.baseRpm then
+            -- An engine's note is its firing rate: at the rpm its file was made at,
+            -- it plays at 100 %, and twice the rpm is twice the pitch.
+            T.near(B.MotorSoundParams(key, S.baseRpm, 9000), 100, 1e-9, key .. ": 100 % at its baseRpm")
+            T.near(B.MotorSoundParams(key, S.baseRpm * 2, 20000), 200, 1e-9, key .. ": and pitch is proportional to rpm")
+        else
+            T.near(hi, S.pitch[2], 1e-9, key .. ": the top of the range at the top rpm")
+        end
         local _, silent = B.MotorSoundParams(key, 0, 1000)
         T.eq(silent, 0, key .. ": silent at zero rpm")
     end
+    -- Each vehicle its own note: the dirt bike a four-stroke, the moped a two-stroke,
+    -- the e-bike and the e-moto the whine.
+    T.eq(B.MotorSoundKey(B.Bikes.dirtbike), "engine", "dirt bike: the four-stroke")
+    T.eq(B.MotorSoundKey(B.Bikes.moped), "engine2t", "moped: the two-stroke")
+    T.eq(B.MotorSoundKey(B.Bikes.ebike), "motor", "e-bike: the whine")
+    T.eq(B.MotorSoundKey(B.Bikes.emoto), "motor", "e-moto: the whine")
 end)
 
 T.test("sound: a motor vehicle plays its loop at the networked rpm, and a BMX plays none of it", function()
@@ -1084,4 +1107,18 @@ T.test("sound: a motor vehicle plays its loop at the networked rpm, and a BMX pl
     cl:run(0.3)
     local note = patch(E.BMX.Sounds.engine.path)
     T.ok(note and note.playing, "the engine note plays")
+    T.near(note.pitch, 100 * 8000 / E.BMX.Sounds.engine.baseRpm, 1, "at 8000 rpm, pitched to the rpm")
+    -- THE MOPED IS SILENT UNTIL THE PEDALS START IT: sat on, 0 rpm, it is pedalled;
+    -- it does not idle. Once it has caught, its two-stroke plays.
+    local m = scene("bmx_moped")
+    local mp = cl.makeEntity("player")
+    m:SetDriver(mp)
+    m:SetRpm(0)
+    cl:run(0.3)
+    local buzz = patch(E.BMX.Sounds.engine2t.path)
+    T.ok(not buzz or not buzz.playing, "a moped being pedalled has no engine note yet")
+    m:SetRpm(3000)
+    cl:run(0.3)
+    buzz = patch(E.BMX.Sounds.engine2t.path)
+    T.ok(buzz and buzz.playing, "and once it has caught, the two-stroke plays")
 end)

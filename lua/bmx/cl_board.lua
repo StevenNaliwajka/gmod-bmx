@@ -16,17 +16,24 @@
     THE DECK IS A SEPARATE BODY FROM THE RIDER. A flip rotates the deck about its
     own axes (the networked bytes) while the chassis, and the rider on it, stay
     put; the rider's feet are targeted at where the deck's bolts were, not where
-    they have gone, and lift a little through a flip. That is the part the other
-    skateboard addon could not animate, and it is the same trick as the bike's
-    tailwhip: the feet stay where the pedals were.
+    they have gone: they lift to let it turn, the flicking foot goes off the edge
+    the deck rolls toward, the scooping foot goes with the tail, and they come down
+    on it for the catch (B.FlipFeet). That is the part the other skateboard addon
+    could not animate, and it is the same trick as the bike's tailwhip: the feet
+    stay where the pedals were.
 
     THE RIDER stands sideways on the deck. The base pose is the stock standing
     idle, the knees bend by lowering the pelvis (calibrated once per model, as the
     fingers' curl is) with both feet pinned to the deck by the same two-bone IK the
-    bike's legs use, the arms balance, and the push is the back foot leaving the
-    deck, sweeping along the ground and coming back, driven by the server's push
-    phase and not by an animation. Nobody has watched this on a real player model:
-    every offset is a number in a table below.
+    bike's legs use, and the body leans over the toes or the heels into a carve. The
+    push turns the hips up the board (a pelvis turn, measured per model the same way)
+    while the back foot steps off over the deck's edge, sweeps back flat along the
+    ground, and is carried home outside the deck and set back on its bolts, driven by
+    the server's push phase and not by an animation; the arms swing against it. The
+    ollie's crouch sets the back foot on the tail, the pop drags the front foot up to
+    the nose, and the landing folds the knees. Nobody has watched this on a real player
+    model: every offset is a number in a table below, and the suite checks each target
+    against the deck (tests/test_board_rider.lua).
 ----------------------------------------------------------------------------]]
 
 BMX = BMX or {}
@@ -95,38 +102,356 @@ function B.Frame(s)
 end
 
 --------------------------------------------------------------------------
--- THE FEET. Board-space targets for each foot, in the CHASSIS frame (so that a
--- flip leaves them behind) and in the push cycle's. `stance` is +1 for the left
--- foot forward. Returns { front = Vector, back = Vector } in chassis-local space
--- (x forward), and the pushing foot's air/ground blend.
+-- THE FEET. Board-space targets for each foot, in a frame that has the deck's
+-- lean and its grab lift but NOT its flip: a carve tilts the deck under the feet
+-- and they go with it (or they would slide across the grip), while a flip turns
+-- the deck out from under them, which is the trick. x is along the board, y to
+-- its left, z over the axle line; the IK pins the ANKLE, which stands ANKLE over
+-- the sole, so a foot on the deck is at DECK_TOP + ANKLE.
 --
--- The push cycle (p, 0..1 through a kick interval, -1 not kicking): the back foot
--- steps off the deck to the ground beside the front foot (0..0.12 of a kick),
--- sweeps back along the ground (to 0.42), lifts and returns to its bolt (to 0.62).
+-- Every number is a guess at a real skater and nobody has watched it on a real
+-- player model: they are here, in one place, for that reason.
 --------------------------------------------------------------------------
-local FOOT_Z = 4.6                          -- the ankle over the deck's top
-local GROUND_Z = -1.3                       -- the ground, under the axle line
+local DECK_TOP  = 1.8                       -- the grip's top over the axle line (cl_geo_board.lua)
+local ANKLE     = 2.8                       -- the ankle bone over the sole
+local FOOT_Z    = DECK_TOP + ANKLE          -- an ankle standing on the deck
+local GROUND_Z  = -1.3                      -- the ground, under the axle line
+local DECK_HALF = 4.0                       -- half the deck's width
+local HEEL_IN   = 2.4                       -- the ankle sits this far from the deck's middle toward
+                                            -- the heel edge, so the toes reach the toe edge
+local TAIL_X    = 11.4                      -- the ball of the back foot on the tail, for an ollie
+local NOSE_X    = 9.8                       -- ...and where the front foot slides to as it levels it
+B.Ankle, B.FootZ, B.DeckTop = ANKLE, FOOT_Z, DECK_TOP
 
 local function ease(t) t = max(0, min(1, t)) return t * t * (3 - 2 * t) end
+local function lerp(a, b, t) return a + (b - a) * t end
+local function lerpV(a, b, t) return a + (b - a) * t end
+B.Ease = ease
 
-function B.PushFoot(p, bolt, T0)
+-- How far the deck's top stands over its flat middle at a distance x along it: flat
+-- out to the kicks, then the bend, then the straight kick (cl_geo_board.lua's deck
+-- line, 20 and 21 degrees). So a foot on the tail stands on the tail, not in it.
+local KICK_AT, KICK_BEND = 9.3, 2.6
+function B.DeckRise(x)
+    local u = abs(x)
+    if u <= KICK_AT then return 0 end
+    local A = x >= 0 and math.rad(20) or math.rad(21)
+    local Rb = KICK_BEND / A
+    local xb = Rb * sin(A)                 -- how far along x the bend reaches
+    if u <= KICK_AT + xb then
+        return Rb * (1 - cos(math.asin((u - KICK_AT) / Rb)))
+    end
+    return Rb * (1 - cos(A)) + (u - KICK_AT - xb) * math.tan(A)
+end
+
+--------------------------------------------------------------------------
+-- THE PUSH, a pure function of the phase (0..1 through a kick interval, -1 not
+-- pushing), for the board and the scooter alike. A push is four moves, and each
+-- has to be on the right surface:
+--
+--   STEP OFF  (0 .. STEP)   the foot leaves its bolt, out over the deck's edge
+--                           BEFORE it goes down, to the ground beside the front foot
+--   STROKE    (.. share)    flat on the ground, sweeping back along it to behind the
+--                           tail: this is when the server adds the speed
+--                           (kickTime of the interval), so the foot is down for all of it
+--   RECOVER   (.. HOME)     the knee lifts the foot off the ground and carries it
+--                           forward OUTSIDE the deck, then in over it and down onto
+--                           its bolt
+--   RIDE      (.. 1)        on the bolt until the next kick
+--
+-- `g` is the geometry it pushes on (board space): stand (z of an ankle standing on
+-- the deck), ground (an ankle on the ground), side (y of the planted foot), plantX,
+-- backX (where the stroke starts and ends), share (the stroke's share of the
+-- interval). Without it, the board's, for a rider facing its right. Returns the
+-- ankle's point and whether the foot is off its bolt.
+--------------------------------------------------------------------------
+local PUSH_STEP, PUSH_HOME = 0.10, 0.84
+local PUSH_LIFT = 3.0          -- how far over the deck the foot is carried back in
+
+function B.PushGeo(T0, faceY)
     T0 = T0 or T
-    if not p or p < 0 then return bolt, false end
-    local down = Vector(T0.footFront - 1, bolt.y, GROUND_Z + 2.4)
-    local back = Vector(T0.footBack - 8, bolt.y, GROUND_Z + 2.4)
-    local kickT = T0.kickTime / T0.kickInterval        -- the stroke, as a share of the interval
-    if p < 0.12 then
-        return bolt + (down - bolt) * ease(p / 0.12), true
-    elseif p < 0.12 + kickT * 0.7 then
-        return down + (back - down) * ease((p - 0.12) / (kickT * 0.7)), true
-    elseif p < 0.62 then
-        local t0 = 0.12 + kickT * 0.7
-        local t = (p - t0) / (0.62 - t0)
-        local lift = Vector(back.x, back.y, GROUND_Z + 7)
-        if t < 0.5 then return back + (lift - back) * ease(t * 2), true end
-        return lift + (bolt - lift) * ease((t - 0.5) * 2), true
+    return {
+        stand = FOOT_Z, ground = GROUND_Z + ANKLE,
+        side = (faceY or -1) * (DECK_HALF + 3.2),
+        plantX = (T0.footFront or T.footFront) - 1.2, backX = -15.0,
+        deckHalf = DECK_HALF,
+        share = (T0.kickTime or T.kickTime) / (T0.kickInterval or T.kickInterval),
+    }
+end
+
+-- The phase's marks for a geometry: the stroke is on the ground from STEP to a
+-- little past the force (so the foot never lifts while it is still pushing).
+function B.PushMarks(g)
+    local stroke = math.Clamp(g.share + 0.04, PUSH_STEP + 0.15, PUSH_HOME - 0.2)
+    return PUSH_STEP, stroke, PUSH_HOME
+end
+
+function B.PushFoot(p, bolt, T0, g)
+    if not p or p < 0 or p >= 1 then return bolt, false end
+    g = g or B.PushGeo(T0)
+    local a, b, c = B.PushMarks(g)
+    local plant = Vector(g.plantX, g.side, g.ground)
+    local back  = Vector(g.backX, g.side, g.ground)
+    if p < a then
+        -- Out first, then down: y gets most of the way before z starts to fall, and z
+        -- arcs up over the deck's edge on the way.
+        local t = p / a
+        local y = lerp(bolt.y, g.side, ease(t * 1.6))
+        local z = bolt.z + PUSH_LIFT * 0.6 * sin(math.pi * min(1, t * 1.25))
+        if t > 0.45 then z = z + (g.ground - bolt.z) * ease((t - 0.45) / 0.55) end
+        return Vector(lerp(bolt.x, plant.x, ease(t)), y, z), true
+    elseif p < b then
+        -- Flat on the ground. The sweep starts slow (the foot bites) and speeds up
+        -- as the leg straightens behind.
+        local t = (p - a) / (b - a)
+        return Vector(lerp(plant.x, back.x, t * t * (2 - t) * 0.35 + ease(t) * 0.65), g.side, g.ground), true
+    elseif p < c then
+        local t = (p - b) / (c - b)
+        local over = Vector(bolt.x - 1.0, g.side, g.stand + PUSH_LIFT)
+        if t < 0.55 then
+            -- Up and forward, still beside the deck: the knee comes up first.
+            local u = t / 0.55
+            return Vector(lerp(back.x, over.x, ease(u)), g.side, lerp(g.ground, over.z, ease(min(1, u * 1.4)))), true
+        end
+        -- In over the deck, then down onto the bolt: it is over the deck before it
+        -- is as low as the deck.
+        local u = (t - 0.55) / 0.45
+        return Vector(lerp(over.x, bolt.x, ease(u)), lerp(g.side, bolt.y, ease(min(1, u * 1.5))),
+            bolt.z + PUSH_LIFT * (1 - ease(u) ^ 2)), true
     end
     return bolt, false
+end
+
+-- How far the STANDING leg folds through a push, 0..1: the other foot has to reach
+-- the ground beside a deck a few inches up, and further behind, so the knee on the
+-- deck bends as it reaches and straightens again as the foot comes home.
+function B.PushBend(p, g)
+    if not p or p < 0 or p >= 1 then return 0 end
+    g = g or B.PushGeo()
+    local a, b, c = B.PushMarks(g)
+    if p < a then return ease(p / a) * 0.8 end
+    if p < b then return 0.8 + 0.2 * ease((p - a) / (b - a)) end
+    if p < c then return 1 - ease((p - b) / (c - b)) end
+    return 0
+end
+
+--------------------------------------------------------------------------
+-- THE FLIP'S FEET. The deck turns on its own axes while the rider stays, and the
+-- feet do what a skater's do: the flicking foot drags up the deck and off its
+-- edge the way the deck's top rolls (a kickflip's and a heelflip's go opposite
+-- ways), the scooping foot goes with the tail (a shove-it), both lift to let it
+-- turn under them, and they come down onto it for the catch.
+--
+-- `fs` is the drawn flip: roll, yaw, pitch (radians, as networked and followed) and
+-- the way each started turning (dRoll, dYaw, dPitch, +1 / -1, B.TrackFlip). Returns
+-- offsets (board space) for the popping foot and the flicking foot.
+--------------------------------------------------------------------------
+local FLIP_LIFT  = 6.0         -- how high both feet go while the deck is on its side
+local FLICK_SIDE = 4.5         -- how far off the deck's edge the flick goes
+local FLICK_FWD  = 2.5         -- ...and up it, toward the end it flicks off
+local SCOOP_SIDE = 3.8         -- the shove-it's scoop, with the tail
+
+-- out to 1 by `o` radians of the deck's turn, held to `h`, back to 0 by `e`
+local function bump(th, o, h, e)
+    if th <= 0 or th >= e then return 0 end
+    if th < o then return ease(th / o) end
+    if th < h then return 1 end
+    return 1 - ease((th - h) / (e - h))
+end
+
+-- How far the deck has turned about one axis, from where it started, the way it is
+-- going: the networked angle is a byte, 0..2pi, so a heelflip starts near 2pi.
+local function turned(a, dir)
+    if not dir or a == 0 then return 0 end
+    local TAU = math.pi * 2
+    return (dir > 0 and a or -a) % TAU
+end
+
+-- Which way each axis started turning: set when the deck leaves flat, kept until it
+-- is flat again (the server zeroes all three on the landing).
+function B.TrackFlip(st, roll, yaw, pitch)
+    local function w(a) return (a + math.pi) % (math.pi * 2) - math.pi end
+    if abs(w(roll)) < 1e-3 and abs(w(yaw)) < 1e-3 and abs(w(pitch)) < 1e-3 then
+        st.dRoll, st.dYaw, st.dPitch = nil, nil, nil
+        return st
+    end
+    if not st.dRoll and abs(w(roll)) >= 1e-3 then st.dRoll = w(roll) > 0 and 1 or -1 end
+    if not st.dYaw and abs(w(yaw)) >= 1e-3 then st.dYaw = w(yaw) > 0 and 1 or -1 end
+    if not st.dPitch and abs(w(pitch)) >= 1e-3 then st.dPitch = w(pitch) > 0 and 1 or -1 end
+    return st
+end
+
+function B.FlipFeet(fs)
+    local roll, yaw, pitch = fs.roll or 0, fs.yaw or 0, fs.pitch or 0
+    local lift = max(abs(sin(roll * 0.5)), abs(sin(pitch * 0.5)), 0.6 * abs(sin(yaw))) * FLIP_LIFT
+    local pop, flick = Vector(0, 0, lift), Vector(0, 0, lift)
+    -- The flick: the deck's top rolls toward -Y for a positive roll (B.Frame), and
+    -- the foot that flicked it leaves the same way, up toward its end of the deck.
+    local tr = turned(roll, fs.dRoll)
+    if tr > 0 then
+        local k = bump(tr, 1.2, 3.6, 5.6)
+        flick = flick + Vector(FLICK_FWD * k, -fs.dRoll * FLICK_SIDE * k, 1.5 * k)
+    end
+    -- The scoop: a positive yaw swings the tail toward -Y, and the back foot with it.
+    local ty = turned(yaw, fs.dYaw)
+    if ty > 0 then
+        local k = bump(ty, 0.8, 1.8, 2.9)
+        pop = pop + Vector(-1.5 * k, -fs.dYaw * SCOOP_SIDE * k, 0.5 * k)
+    end
+    -- The impossible wraps the deck round the back foot, which stays low with it; the
+    -- front foot gets right out of the way.
+    local tp = turned(pitch, fs.dPitch)
+    if tp > 0 then
+        local k = bump(tp, 1.0, 4.0, 5.8)
+        pop = pop - Vector(0, 0, lift * 0.6 * k)
+        flick = flick + Vector(0, 0, 4 * k)
+    end
+    return pop, flick
+end
+
+--------------------------------------------------------------------------
+-- WHERE BOTH FEET GO, a pure function of the rider's state, so the suite can check
+-- every target against the deck. `s`:
+--   stance   +1 left foot forward, -1 right
+--   push     the networked push phase (-1, or 0..1); pushW the drawn weight of the
+--            push, 0..1 (the front foot turns to point up the board while it is on)
+--   crouch   0..1, the ollie's preload (SPACE held)
+--   airT     seconds since the board left the ground, nil on it
+--   ollie    true when it left the ground from a crouch (a pop, not a roll off a drop)
+--   nollie   the pop was off the nose
+--   manual   "manual" / "nose" / nil
+--   flip     B.TrackFlip's table with roll, yaw, pitch
+-- Returns front, back (board space, the ankle), and whether the back foot is pushing.
+--------------------------------------------------------------------------
+local OLLIE_SLIDE, OLLIE_LEVEL = 0.16, 0.36       -- s after the pop: the slide, then level
+
+function B.RiderFeet(s)
+    local stance = s.stance or 1
+    local faceY = stance >= 0 and -1 or 1
+    local yIn = -faceY * HEEL_IN
+    local ff, fb = T.footFront, T.footBack
+    local front = Vector(ff, yIn, FOOT_Z)
+    local back  = Vector(fb, yIn, FOOT_Z)
+
+    -- THE OLLIE. The crouch sets it up: the back foot's ball on the tail, the front
+    -- foot back toward the middle. The pop snaps the tail, the front foot drags up
+    -- toward the nose and levels the board, and both come back over the bolts for the
+    -- landing. A nollie is the same, end for end.
+    local crouch = s.crouch or 0
+    local popFoot, slideFoot = back, front
+    local function onDeck(x, y) return Vector(x, y, FOOT_Z + B.DeckRise(x)) end
+    -- along the deck's top from one standing place to another, over the kick's bend
+    local function slide(a, b, u) return onDeck(lerp(a.x, b.x, u), lerp(a.y, b.y, u)) end
+    local sg = s.nollie and -1 or 1                  -- +1: the tail pops
+    local setPop   = onDeck(-sg * TAIL_X, yIn * 0.5)
+    local setSlide = onDeck(sg * (ff - 2.4), yIn)
+    local homePop, homeSlide = s.nollie and front or back, s.nollie and back or front
+    if s.airT and s.ollie then
+        local t = s.airT
+        if t < OLLIE_SLIDE then
+            local u = ease(t / OLLIE_SLIDE)
+            popFoot = setPop
+            slideFoot = slide(setSlide, onDeck(sg * NOSE_X, yIn), u)
+        else
+            local u = ease((t - OLLIE_SLIDE) / (OLLIE_LEVEL - OLLIE_SLIDE))
+            popFoot = slide(setPop, homePop, u)
+            slideFoot = slide(onDeck(sg * NOSE_X, yIn), homeSlide, u)
+        end
+    elseif crouch > 0 and not s.airT then
+        local u = ease(crouch * 1.6)
+        popFoot, slideFoot = slide(homePop, setPop, u), slide(homeSlide, setSlide, u)
+    else
+        popFoot, slideFoot = homePop, homeSlide
+    end
+    if s.nollie then front, back = popFoot, slideFoot else back, front = popFoot, slideFoot end
+
+    -- A MANUAL: the weight on the wheels that are down, the other foot light and
+    -- back toward the middle.
+    if not s.airT and s.manual == "manual" then
+        front = Vector(ff - 1.6, yIn, FOOT_Z)
+    elseif not s.airT and s.manual == "nose" then
+        back = Vector(fb + 1.6, yIn, FOOT_Z)
+    end
+
+    -- THE FLIP. The popping foot is the back one (the front on a nollie), the
+    -- flicking foot the other.
+    local fl = s.flip
+    if fl and (fl.dRoll or fl.dYaw or fl.dPitch) then
+        local pop, flick = B.FlipFeet(fl)
+        if s.nollie then
+            -- end for end: each foot's reach along the board is toward its own end
+            front, back = front + Vector(-pop.x, pop.y, pop.z), back + Vector(-flick.x, flick.y, flick.z)
+        else
+            back, front = back + pop, front + flick
+        end
+    end
+
+    -- THE PUSH. The front foot turns to point up the board (its ankle onto the middle
+    -- line) and stays on its bolt; the back foot does the push.
+    local pushing = false
+    local w = s.pushW or ((s.push or -1) >= 0 and 1 or 0)
+    if w > 0 then front = Vector(front.x, lerp(front.y, 0, w), front.z) end
+    if (s.push or -1) >= 0 and not s.airT then
+        back, pushing = B.PushFoot(s.push, back, T, B.PushGeo(T, faceY))
+    end
+    return front, back, pushing
+end
+
+--------------------------------------------------------------------------
+-- THE ARMS. A skater's arms are for balance: loose and a little out in front at
+-- a cruise, swung against the pushing leg, carried over the toes in a crouch, up
+-- and out in the air, out wide and see-sawing on a manual or a grind as the meter
+-- drifts. Chassis space, like the feet; `faceY` is the side the rider faces.
+-- `s`: stance, lean (the deck's, rad), pushW, push, drop (units the pelvis is down),
+-- crouch, airT, balance (the meter, -1..1, on a manual or a grind, else nil).
+-- Returns the lead hand (the nose's side) and the trailing one.
+--------------------------------------------------------------------------
+function B.RiderHands(s)
+    local stance = s.stance or 1
+    local faceY = stance >= 0 and -1 or 1
+    local lead  = Vector(12, faceY * 4, 35)
+    local trail = Vector(-12, faceY * 3, 34)
+
+    -- Into the carve: the deck's top leans toward -Y for a positive lean, and the
+    -- body and its arms go with it.
+    local lean = s.lean or 0
+    local side = Vector(0, -sin(lean) * 10, -abs(sin(lean)) * 2)
+    lead, trail = lead + side, trail + side
+
+    -- In the air: up and out, wider, the way a rider holds their balance off a pop.
+    if s.airT then
+        local k = ease(s.airT / 0.15)
+        lead = lead + Vector(4, faceY * 2, 6) * k
+        trail = trail + Vector(-4, faceY * 1, 5) * k
+    end
+
+    -- On a manual or a grind: out wide, see-sawing against the meter.
+    if s.balance then
+        local m = math.Clamp(s.balance, -1, 1)
+        lead = Vector(17, faceY * 2, 38 + 7 * m)
+        trail = Vector(-17, faceY * 2, 38 - 7 * m)
+    end
+
+    -- The push: the body has turned up the board, the arms hang by it and swing
+    -- against the pushing leg (as the foot goes back, its own side's arm comes
+    -- forward and the other goes back, as in a walk).
+    local w = s.pushW or 0
+    if w > 0 then
+        local g = B.PushGeo(T, faceY)
+        local fx = B.PushFoot(s.push or -1, Vector(T.footBack, 0, FOOT_Z), T, g).x
+        local sw = math.Clamp((g.plantX - fx) / (g.plantX - g.backX), 0, 1)
+        local pl = Vector(7 - 5 * sw, faceY * 6, 32)
+        local pt = Vector(-1 + 7 * sw, faceY * 7, 31)
+        lead, trail = lerpV(lead, pl, w), lerpV(trail, pt, w)
+    end
+
+    -- The crouch takes the shoulders down with the pelvis, and the hands forward
+    -- over the toes.
+    local drop = s.drop or 0
+    local c = s.crouch or 0
+    lead = lead + Vector(-2 * c, faceY * 3 * c, -drop)
+    trail = trail + Vector(2 * c, faceY * 3 * c, -drop)
+    return lead, trail
 end
 
 --------------------------------------------------------------------------
@@ -222,6 +547,8 @@ end
 
 local CROUCH_DEPTH = 9          -- units the pelvis drops at a full crouch
 local RIDE_BEND = 5             -- ...and at rest: riding knees are always soft
+local PUSH_DROP = 5             -- ...further on the standing leg as the other reaches the ground
+local AIR_TUCK  = 4             -- ...and in the air, the knees up under the rider
 B.RideBend = RIDE_BEND
 
 local function lowerPelvis(ply, depth)
@@ -239,21 +566,120 @@ end
 -- same calibrated nudge whoever is crouching.
 B.LowerPelvis, B.CrouchDepth = lowerPelvis, CROUCH_DEPTH
 
--- The bone offsets for the ride: the torso follows the lean and folds with the
--- crouch, the head holds the horizon. Called from the rider hook BEFORE the IK
--- solve (cl_rider.lua), which is why the pelvis is lowered from here.
-SET.rider = function(s)
-    local bike, ply = s.bike, s.ply
-    local crouch = bike and bike.GetCrouch and bike:GetCrouch() or 0
-    crouch = max(crouch, s.hop or 0)
+-- How far down the pelvis is, units, a pure function so the arms can come down with
+-- it. `s`: crouch (the ollie's preload, or a landing's absorb, 0..1), speed, pushBend
+-- (B.PushBend), air (0..1, how far into the air tuck).
+function B.BodyDrop(s)
+    local c = math.Clamp(s.crouch or 0, 0, 1)
     -- NEVER LOCKED STRAIGHT: a skater rides on soft knees, a little deeper with
     -- speed; the crouch and a hop's preload go down from there.
-    local speedBend = math.Clamp((s.speed or 0) / 300, 0, 1) * 1.2
-    local bend = RIDE_BEND + speedBend
-    if ply then lowerPelvis(ply, bend + crouch * (CROUCH_DEPTH - bend)) end
+    local bend = RIDE_BEND + math.Clamp((s.speed or 0) / 300, 0, 1) * 1.2
+    local d = bend + c * (CROUCH_DEPTH - bend)
+    d = d + (1 - c) * ((s.pushBend or 0) * PUSH_DROP + (s.air or 0) * AIR_TUCK)
+    return min(d, CROUCH_DEPTH + 2)
+end
+
+--------------------------------------------------------------------------
+-- TURNING THE HIPS, for the push. A skater pushing faces up the board, not across
+-- it: the hips come round, the pushing leg swings straight back under them and the
+-- arms swing by the body. Which way a turn of the pelvis bone goes in the world is,
+-- again, the skeleton's, so it is MEASURED once per model: each of its three angles
+-- is tried and the one that swings the line between the hips round the vertical
+-- (without tipping it) is the turn, signed so +degrees is anticlockwise seen from
+-- above. A model it cannot measure keeps square hips.
+--------------------------------------------------------------------------
+local R_THIGH, L_THIGH = "ValveBiped.Bip01_R_Thigh", "ValveBiped.Bip01_L_Thigh"
+local pelvisYaw = {}         -- model -> { k = 1|2|3 (p, y, r), gain }, or false
+local TRY_DEG = 20
+
+local function hipLine(ply)
+    local r, l = ply:LookupBone(R_THIGH), ply:LookupBone(L_THIGH)
+    local mr, ml = r and ply:GetBoneMatrix(r), l and ply:GetBoneMatrix(l)
+    if not (mr and ml) then return nil end
+    return ml:GetTranslation() - mr:GetTranslation()
+end
+
+local function angleOf(k, deg)
+    return Angle(k == 1 and deg or 0, k == 2 and deg or 0, k == 3 and deg or 0)
+end
+
+local function calibratePelvisYaw(ply, b)
+    ply:ManipulateBoneAngles(b, Angle(0, 0, 0))
+    refresh(ply)
+    local d0 = hipLine(ply)
+    if not d0 or d0:Length() < 1 then return nil end
+    local best
+    for k = 1, 3 do
+        ply:ManipulateBoneAngles(b, angleOf(k, TRY_DEG))
+        refresh(ply)
+        local d = hipLine(ply)
+        if d then
+            local yaw = math.deg(math.atan2(d0.x * d.y - d0.y * d.x, d0.x * d.x + d0.y * d.y))
+            local tilt = abs(d.z - d0.z) / d0:Length()
+            if abs(yaw) > TRY_DEG * 0.6 and tilt < 0.2 and (not best or abs(yaw) > abs(best.yaw)) then
+                best = { k = k, yaw = yaw }
+            end
+        end
+    end
+    ply:ManipulateBoneAngles(b, Angle(0, 0, 0))
+    refresh(ply)
+    if not best then return nil end
+    return { k = best.k, gain = TRY_DEG / best.yaw }
+end
+
+-- Turn the hips `deg` anticlockwise (from above) from where the pose has them. The
+-- angle is kept with the IK's (ply.bmxIK), so getting off (cl_rider.lua) puts it back.
+function B.TurnPelvis(ply, deg)
+    local b = ply:LookupBone(PELVIS)
+    if not b then return end
+    local model = ply:GetModel()
+    if pelvisYaw[model] == nil then pelvisYaw[model] = calibratePelvisYaw(ply, b) or false end
+    local c = pelvisYaw[model]
+    if not c then return end
+    ply.bmxIK = ply.bmxIK or {}
+    if abs(deg) < 0.25 then
+        if ply.bmxIK[b] then
+            ply:ManipulateBoneAngles(b, Angle(0, 0, 0))
+            ply.bmxIK[b] = nil
+        end
+        return
+    end
+    local a = angleOf(c.k, math.Clamp(deg * c.gain, -80, 80))
+    ply:ManipulateBoneAngles(b, a)
+    ply.bmxIK[b] = a
+end
+
+local PUSH_TURN = 55            -- degrees the hips come round up the board for a push
+
+-- The bone offsets for the ride: the torso follows the carve and folds with the
+-- crouch, the hips come round for a push, the head holds the horizon. Called from
+-- the rider hook BEFORE the IK solve (cl_rider.lua), which is why the pelvis is
+-- lowered and turned from here. What the drawing worked out this frame (the push's
+-- weight, the air) is on the board (bike.bmxRide, set in BMX.DrawVehicle.board).
+SET.rider = function(s)
+    local bike, ply = s.bike, s.ply
+    local R = bike and bike.bmxRide or {}
+    local crouch = bike and bike.GetCrouch and bike:GetCrouch() or 0
+    crouch = max(crouch, s.hop or 0)
+    local stance = R.stance or 1
+    local faceSign = stance >= 0 and 1 or -1
+    local w = R.pushW or 0
+    local drop = B.BodyDrop({ crouch = crouch, speed = s.speed, pushBend = R.pushBend, air = R.air })
+    if ply then
+        lowerPelvis(ply, drop)
+        B.TurnPelvis(ply, faceSign * PUSH_TURN * w)
+    end
+    -- INTO THE CARVE. A board turns by the rider's weight over the toes or the heels:
+    -- a toe-side carve folds them over their toes, a heel-side one sits them back. The
+    -- deck's top leans toward -Y for a positive lean, which is the toe side for a
+    -- rider facing -Y (regular).
     local lean = bike and bike.GetBoardLean and bike:GetBoardLean() or 0
-    local spine = crouch * 18 + math.deg(s.pitch or 0) * 0.5
-    local twist = math.deg(lean) * 0.5
+    local carve = faceSign * math.deg(lean) * 0.7 * (1 - w)
+    -- ...and on a manual or a grind, the meter: the body leans the way it is falling
+    -- and the arms (B.RiderHands) bring it back.
+    local meter = R.balance and R.balance * 6 or 0
+    local spine = crouch * 18 + math.deg(s.pitch or 0) * 0.5 + carve + w * 8 + meter
+    local twist = math.deg(lean) * 0.3
     return {
         spine = Angle(0, spine, twist),
         head  = Angle(0, -spine * 0.7, -twist * 0.5),
@@ -261,17 +687,28 @@ SET.rider = function(s)
 end
 
 --------------------------------------------------------------------------
--- THE RIDER'S IK: both feet on the bolts, hands out for balance. The solver is
--- the bike's (BMX.SolveRiderIK), handed a stand-in for the "bike" whose forward is
--- the way the RIDER faces, so the knees and toes point across the deck.
+-- THE RIDER'S IK: both feet on the deck, hands out for balance. The solver is the
+-- bike's (BMX.SolveRiderIK), handed a stand-in for the "bike" whose forward is the
+-- way the RIDER faces, so the knees and toes point across the deck. Through a push
+-- that turns up the board with the hips, so the knees and toes point the way the
+-- board goes and the pushing leg swings back under the body.
 --------------------------------------------------------------------------
+local TOE_TURN = 60             -- degrees the toes come round up the board for a push
+
+function B.FacingFor(bike, stance, pushW)
+    local up = bike:GetUp()
+    local face = bike:GetRight() * (stance >= 0 and 1 or -1)   -- GetRight() is the board's right
+    local a = math.rad(TOE_TURN) * (pushW or 0)
+    if a ~= 0 then face = (face * cos(a) + bike:GetForward() * sin(a)):GetNormalized() end
+    return face, up
+end
+
 SET.solveIK = function(ply, bike)
     local ik = bike.ikTargets
     if not ik or not BMX.SolveRiderIK then return end
     local flags = bike:GetBoardFlags()
     local stance = B.Stance(B.HasFlag(flags, "goofy"), B.HasFlag(flags, "switch"))
-    local up = bike:GetUp()
-    local face = bike:GetRight() * (stance >= 0 and 1 or -1)   -- GetRight() is the board's right
+    local face, up = B.FacingFor(bike, stance, bike.bmxRide and bike.bmxRide.pushW or 0)
     local proxy = {
         GetForward = function() return face end,
         GetUp = function() return up end,
@@ -496,27 +933,77 @@ BMX.DrawVehicle.board = function(ent, kit)
 
     ------------------------------------------------------------------------
     -- Where the rider's hands and feet belong (cl_rider.lua's IK reads
-    -- ent.ikTargets). The feet are targeted in the CHASSIS frame, so a flip
-    -- leaves them where the deck was, and lifts them through it; the pushing foot
-    -- goes to the ground; the hands are out for balance, or on the deck for a grab.
+    -- ent.ikTargets). The feet are on the deck as it leans and lifts but NOT as it
+    -- flips, so a flip leaves them and they catch it (B.RiderFeet); the pushing foot
+    -- goes to the ground; the hands balance, or go to the deck for a grab.
+    --
+    -- What the rider's pose needs and the server does not send is worked out here
+    -- from what it does (bike.bmxRide, read by SET.rider): when the board left the
+    -- ground and whether that was a pop out of a crouch, which way the flip started,
+    -- and how far round the body has turned for the push.
     ------------------------------------------------------------------------
-    local cf, cr = ent:GetForward(), ent:GetRight()
+    local now = CurTime()
+    local R = ent.bmxRide or {}
+    ent.bmxRide = R
+    local grounded = ent:GetGrounded()
+    if ent:GetCrouch() > 0.05 then R.crouchAt = now end
+    if grounded then
+        R.airAt = nil
+    elseif not R.airAt then
+        R.airAt = now
+        R.ollie = R.crouchAt ~= nil and now - R.crouchAt < 0.25
+    end
+    local airT = R.airAt and (now - R.airAt) or nil
+    local push = ent:GetPushPhase()
+    local pushing = push >= 0 and not airT
+    -- The body comes round quickly for a push and goes back slowly after the last, so
+    -- a run of kicks is one turned-up stance, not a twist and back every kick.
+    local wantW = pushing and 1 or 0
+    R.pushW = R.pushW or 0
+    R.pushW = R.pushW + math.Clamp(wantW - R.pushW, -4 * dt, 10 * dt)
+    R.stance = stance
+    R.air = airT and ease(airT / 0.15) or 0
+    R.pushBend = pushing and B.PushBend(push) or 0
+    R.balance = B.HasFlag(flags, "meter") and ent:GetMeter() or nil
+    R.flip = B.TrackFlip(R.flip or {}, df.roll, df.yaw, df.pitch)
+    R.flip.roll, R.flip.yaw, R.flip.pitch = df.roll, df.yaw, df.pitch
+
+    local front, back, offDeck = B.RiderFeet({
+        stance = stance, push = airT and -1 or push, pushW = R.pushW,
+        crouch = ent:GetCrouch(), airT = airT, ollie = R.ollie,
+        nollie = B.HasFlag(flags, "nollie"),
+        manual = B.HasFlag(flags, "manual") and "manual" or (B.HasFlag(flags, "nose") and "nose" or nil),
+        flip = R.flip,
+    })
+    -- On the deck the feet lean with it; a foot out on the ground for a push is on the
+    -- level ground instead, blending over as it steps off the deck's edge.
+    local feetFrame = B.Frame({
+        ent = ent, lean = ent:GetBoardLean(), lift = lift, liftPitch = liftPitch, ground = -(WC.radius - sag),
+    })
+    local function onDeck(v) return feetFrame.P(v) end
+    local backW = onDeck(back)
+    if offDeck then
+        local levelFrame = B.Frame({ ent = ent, lean = 0, lift = lift, liftPitch = liftPitch, ground = -(WC.radius - sag) })
+        local k = ease((abs(back.y) - HEEL_IN) / (DECK_HALF + 3.2 - HEEL_IN))
+        backW = lerpV(backW, levelFrame.P(back), k)
+    end
+    local frontW = onDeck(front)
+    local lFoot = stance >= 0 and frontW or backW
+    local rFoot = stance >= 0 and backW or frontW
+
     local function C2W(v) return ent:LocalToWorld(v) end
-    local flip = max(abs(sin(df.roll * 0.5)), abs(sin(df.yaw)), abs(sin(df.pitch * 0.5)))
-    local up = Vector(0, 0, flip * 4)
-    local frontBolt = Vector(T.footFront, 0, FOOT_Z + lift)
-    local backBolt  = Vector(T.footBack,  0, FOOT_Z + lift)
-    local pf, pushing = B.PushFoot(ent:GetPushPhase(), backBolt)
-    local feet = { front = frontBolt + up, back = pf + up }
-    local lFoot = stance >= 0 and feet.front or feet.back
-    local rFoot = stance >= 0 and feet.back or feet.front
-    local faceY = stance >= 0 and -1 or 1
-    local balance = ent:GetBoardLean() * 6
+    local hc = max(ent:GetCrouch(), ent.bmxLand or 0)
+    local lead, trail = B.RiderHands({
+        stance = stance, lean = ent:GetBoardLean(), pushW = R.pushW, push = push,
+        crouch = hc, airT = airT, balance = R.balance,
+        drop = B.BodyDrop({ crouch = hc, speed = ent.GetSpeedUPS and ent:GetSpeedUPS() or 0,
+                            pushBend = R.pushBend, air = R.air }) - RIDE_BEND,
+    })
+    -- The lead hand is on the nose's side: the left for a left-foot-forward stance.
     local ik = {
-        lFoot = C2W(lFoot), rFoot = C2W(rFoot),
-        -- Arms out along the board, a little toward the way the rider faces.
-        lHand = C2W(Vector(stance >= 0 and 13 or -13, faceY * 5, 36 + balance)),
-        rHand = C2W(Vector(stance >= 0 and -13 or 13, faceY * 5, 36 - balance)),
+        lFoot = lFoot, rFoot = rFoot,
+        lHand = C2W(stance >= 0 and lead or trail),
+        rHand = C2W(stance >= 0 and trail or lead),
     }
     BMX.ApplyPoseTargets(ik, W, function(v) return P(v) end, rows)
     ent.ikTargets = ik

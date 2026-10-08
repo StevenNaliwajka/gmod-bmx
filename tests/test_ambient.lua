@@ -401,3 +401,165 @@ T.test("water: entering at speed splashes once, wading does not", function()
     sv:run(1)
     T.eq(splashes(), 1, "not again while it stays wet")
 end)
+
+-- ------------------------------------------------------- what each vehicle sounds like
+
+T.test("sounds: only a vehicle with a freewheel ticks when it coasts", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    local B = cl.env.BMX
+    for id, want in pairs({ stock = true, road = true, dh = true, ebike = true,
+                            fixie = false, unicycle = false, penny = false, city = false,
+                            emoto = false, dirtbike = false, moped = false,
+                            skateboard = false, scooter = false, skates = false }) do
+        T.eq(B.HasFreewheel(B.Bikes[id]), want, id .. (want and " has" or " has no") .. " freewheel")
+    end
+    -- And the loop asks: a coasting skateboard used to tick like a BMX.
+    local function ticks(id)
+        local cb = cl:clientEntity(B.ClassFor(id))
+        cb:SetGrounded(true)
+        cb:SetSpeedUPS(30)          -- a slow roll: single ticks, not the buzz
+        cb:SetCadence(0)
+        local n0 = #cl.sounds
+        cl:run(1)
+        local n = 0
+        for i = n0 + 1, #cl.sounds do
+            if cl.sounds[i].ent == cb and cl.sounds[i].name:find("^bmx/tick%d%.wav$") then n = n + 1 end
+        end
+        cb:Remove()
+        return n
+    end
+    T.ok(ticks("stock") > 3, "a coasting BMX ticks")
+    T.eq(ticks("skateboard"), 0, "a coasting skateboard does not")
+    T.eq(ticks("scooter"), 0, "nor a scooter")
+end)
+
+T.test("sounds: tyres hum, urethane grinds, and decks land as wood and metal", function()
+    local sv = F.server()
+    local B = sv.env.BMX
+    T.eq(B.RollSoundKey(B.Bikes.stock), "roll", "a BMX rolls on tyres")
+    T.eq(B.RollSoundKey(B.Bikes.dirtbike), "roll", "so does a motorbike")
+    for _, id in ipairs({ "skateboard", "scooter", "skates" }) do
+        T.eq(B.RollSoundKey(B.Bikes[id]), "roll_wheel", id .. " rolls on urethane")
+    end
+    T.eq(B.LandSoundKey(B.Bikes.stock, "land_hard"), "land_hard", "a BMX lands on its tyres")
+    T.eq(B.LandSoundKey(B.Bikes.skateboard, "land_soft"), "land_wood", "a skateboard lands on its maple deck")
+    T.eq(B.LandSoundKey(B.Bikes.scooter, "land_soft"), "land_metal", "a scooter on its metal deck")
+    for _, key in ipairs({ "roll", "roll_wheel", "tick", "land_wood", "land_metal" }) do
+        T.ok(B.Sounds[key], key .. " is in the table")
+    end
+    -- The rolling loops are the addon's own, and carry a loop cue.
+    for _, key in ipairs({ "roll", "roll_wheel" }) do
+        local f = io.open("sound/" .. B.Sounds[key].path, "rb")
+        local raw = f and f:read("*a") or ""
+        if f then f:close() end
+        T.ok(raw:find("cue ", 13, true) ~= nil, key .. ": a WAV with a loop cue")
+    end
+end)
+
+T.test("bell: the ting bell, four presses, each a pair of strikes", function()
+    local sv = F.server()
+    local S = sv.env.BMX.Sounds.bell
+    T.eq(S.variants, 4, "four bells")
+    -- Bright, like the bell it is modelled on: its strongest partial is near 10 kHz,
+    -- so most of the file's sign changes come fast. A 2.3 kHz "ding" (the old
+    -- bell) crosses zero about 4,600 times a second; this one far more.
+    for i = 1, 4 do
+        local f = io.open(string.format("sound/bmx/bell%d.wav", i), "rb")
+        local raw = f:read("*a")
+        f:close()
+        local data = raw:find("data", 13, true)
+        local n, cross, prev = 0, 0, 0
+        for p = data + 8, math.min(#raw - 1, data + 8 + 2 * 22050), 2 do
+            local lo, hi = raw:byte(p, p + 1)
+            local v = hi * 256 + lo
+            if v >= 32768 then v = v - 65536 end
+            if (v > 0 and prev < 0) or (v < 0 and prev > 0) then cross = cross + 1 end
+            if v ~= 0 then prev = v end
+            n = n + 1
+        end
+        local perSecond = cross / (n / 44100)
+        T.ok(perSecond > 9000, string.format("bell%d is a bright ting: %.0f zero crossings a second", i, perSecond))
+    end
+end)
+
+T.test("sounds: the freewheel clicks at the rate its pawls really pass", function()
+    local sv = F.server()
+    local B = sv.env.BMX
+    local stock = B.Bikes.stock
+    -- 250 u/s on a 10 u wheel is 25 rad/s, 3.98 turns a second, times 36 points.
+    T.near(B.FreewheelRate(stock, 250, 10, 25 / 9, 0), 25 / (2 * math.pi) * 36, 1e-6, "coasting: wheel turns x points")
+    T.eq(B.FreewheelRate(stock, 250, 10, 25 / 9, 9), 0, "pedalling at the wheel's pace: engaged, silent")
+    local soft = B.FreewheelRate(stock, 250, 10, 25 / 9, 4)
+    T.ok(soft > 0 and soft < B.FreewheelRate(stock, 250, 10, 25 / 9, 0), "soft-pedalling: slower clicks")
+    T.ok(B.FreewheelRate(B.Bikes.dh, 250, 10, 2.78, 0) > B.FreewheelRate(stock, 250, 10, 2.78, 0),
+        "a downhill hub buzzes quicker than a BMX's")
+    T.eq(B.FreewheelRate(B.Bikes.fixie, 250, 10, 2.78, 0), 0, "a fixie has none")
+    for id, want in pairs({ stock = true, fixie = true, city = true, ebike = true, moped = true,
+                            unicycle = false, penny = false, dirtbike = false, emoto = false,
+                            skateboard = false, scooter = false, skates = false }) do
+        T.eq(B.HasChain(B.Bikes[id]), want, id .. (want and " has" or " has no") .. " chain to hear")
+    end
+    for id, want in pairs({ stock = true, city = true, dirtbike = true, unicycle = false,
+                            skateboard = false, scooter = false, skates = false }) do
+        T.eq(B.HasKickstand(B.Bikes[id]), want, id .. (want and " has" or " has no") .. " kickstand")
+    end
+end)
+
+T.test("sounds: a bike's mechanism is heard -- chain, buzz, shift, kickstand", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    local B = cl.env.BMX
+    local function patch(path)
+        for _, p in ipairs(cl.patches) do if p.path == path then return p end end
+    end
+    local function heard(cb, pat, n0)
+        local n = 0
+        for i = n0 + 1, #cl.sounds do
+            if cl.sounds[i].ent == cb and cl.sounds[i].name:find(pat) then n = n + 1 end
+        end
+        return n
+    end
+    -- Pedalling: the chain plays, pitched to the cranks; the freewheel is silent.
+    local cb = cl:clientEntity(B.ClassFor("stock"))
+    cb:SetGrounded(true)
+    cb:SetSpeedUPS(250)
+    cb:SetCadence(250 / cb:Cfg().Wheel.radius / B.GearRatio(cb, cb:Cfg()))
+    local n0 = #cl.sounds
+    cl:run(0.5)
+    local ch = patch(B.Sounds.chain.path)
+    T.ok(ch and ch.playing, "pedalling: the chain is heard")
+    T.eq(heard(cb, "^bmx/tick", n0), 0, "and the freewheel is locked")
+    local fw = patch(B.Sounds.freewheel.path)
+    T.ok(not fw or not fw.playing, "no buzz either")
+    -- Coasting fast: the chain stops, the freewheel buzzes, pitched to its rate.
+    cb:SetCadence(0)
+    cl:run(0.5)
+    T.ok(not ch.playing, "coasting: the chain stops with the cranks")
+    fw = patch(B.Sounds.freewheel.path)
+    T.ok(fw and fw.playing, "and the freewheel buzzes")
+    T.near(fw.pitch, math.min(100 * B.LastFreewheelRate / 60, 255), 1, "pitched to the click rate")
+    -- Slowing to a roll: single ticks, at the real rate.
+    cb:SetSpeedUPS(40)
+    n0 = #cl.sounds
+    cl:run(2)
+    local want = B.FreewheelRate(cb:Bike(), 40, cb:Cfg().Wheel.radius, 1, 0) * 2
+    local got = heard(cb, "^bmx/tick%d%.wav$", n0)
+    T.ok(math.abs(got - want) <= 2, string.format("slow: %d ticks in 2 s, the pawls give %.1f", got, want))
+    -- The kickstand, heard going down and up (not on the first look).
+    n0 = #cl.sounds
+    cb:SetStandDown(true)
+    cl:run(0.1)
+    cb:SetStandDown(false)
+    cl:run(0.1)
+    T.eq(heard(cb, "kickstand_down", n0), 1, "stand down, heard once")
+    T.eq(heard(cb, "kickstand_up", n0), 1, "stand up, heard once")
+    -- A road bike's derailleur, heard when the gear changes.
+    local rd = cl:clientEntity(B.ClassFor("road"))
+    rd:SetGear(4)
+    cl:run(0.1)
+    n0 = #cl.sounds
+    rd:SetGear(5)
+    cl:run(0.1)
+    T.eq(heard(rd, "^bmx/shift%d%.wav$", n0), 1, "a gear change clicks the derailleur")
+end)

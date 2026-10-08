@@ -609,6 +609,25 @@ hook.Add("Think", "BMX.BikeModelPrebuild", function()
     end
 end)
 
+-- A VEHICLE WITH NO PEDALS (sh_motor.lua Motor.HasPedals): where its footpegs are,
+-- { r = Vector, l = Vector }, in model space (the chassis' own, real units), or nil
+-- for anything with pedals. The pegs' positions belong to the model (cl_geo_moto.lua
+-- BikeGeo.PegsFor), so the stand-in drawing puts them, and the feet, exactly where
+-- the built model will; a vehicle the geometry does not know gets them beside the
+-- BMX's bottom bracket, where a footpeg would be.
+function BMX.PedallessPegs(ent)
+    if not (BMX.Motor and BMX.Motor.HasPedals) or BMX.Motor.HasPedals(ent) then return nil end
+    local bike = ent:Bike()
+    local wb = ent:Cfg().Wheel.wheelbase
+    local G = BMX.BikeGeo
+    local p = G and G.PegsFor and G.PegsFor(bike.look, wb)
+    if p then
+        return { r = Vector(p.r[1], p.r[2], p.r[3]), l = Vector(p.l[1], p.l[2], p.l[3]) }
+    end
+    local k = wb / 39
+    return { r = Vector(-4.5 * k, -6, 2.5 * k), l = Vector(-4.5 * k, 6, 2.5 * k) }
+end
+
 -- The anchors a model's layout gives (docs/MODELS.md), in model space:
 --   headT headB          the steer axis (the fork and the bars turn about it)
 --   rear front           the axles, as the model was built
@@ -716,6 +735,7 @@ function ENT:DrawDetailed(model, S)
         return (c0 or bbM) + arm + Vector(0, -lay.pedalY * side, 0)
     end
 
+    local pedalless = BMX.PedallessPegs(self)
     local paint = BMX.PaletteColor(self:GetColorIndex())
     local lod = S.lod
     local groups = model.groups
@@ -727,7 +747,8 @@ function ENT:DrawDetailed(model, S)
         BM.DrawGroup(model, "bars", matFromMap(barsDraw), paint, lod)
         BM.DrawGroup(model, "wheelR", wheelMat(swingMap, rearA, S.rSpin), paint, lod)
         BM.DrawGroup(model, "wheelF", wheelMat(lowerMap, frontA, S.fSpin), paint, lod)
-        if bbM and groups.cranks then
+        -- Never cranks on a vehicle without pedals, whatever its model carries.
+        if bbM and groups.cranks and not pedalless then
             BM.DrawGroup(model, "cranks", matFromMap(crankMapAt(bbM)), paint, lod)
             if lay.bb2 then BM.DrawGroup(model, "cranks", matFromMap(crankMapAt(lay.bb2)), paint, lod) end
             for _, c0 in ipairs(lay.bb2 and { bbM, lay.bb2 } or { bbM }) do
@@ -815,17 +836,24 @@ function ENT:DrawDetailed(model, S)
     end
     ik.rHand, ik.rHandA, ik.rHandB = grip(lay.gripR)
     ik.lHand, ik.lHandA, ik.lHandB = grip(lay.gripL)
-    if lay.pegs then
-        ik.rFoot = Pf(lay.pegs.r) + upF * (0.9 * k)
-        ik.lFoot = Pf(lay.pegs.l) + upF * (0.9 * k)
+    -- The feet: on the pegs, or on the pedals, the sole tipped as the crank's
+    -- angle has it (BMX.PedalSole, cl_rider.lua: the ankle's stroke).
+    local pegs = lay.pegs or pedalless
+    local pedalSole = BMX.PedalSole or function() return 0 end
+    if pegs then
+        ik.rFoot = Pf(pegs.r) + upF * (0.9 * k)
+        ik.lFoot = Pf(pegs.l) + upF * (0.9 * k)
+        ik.rSole, ik.lSole = BMX.PegSole or 0, BMX.PegSole or 0
     elseif bbM then
         ik.rFoot = Pf(tip(1)) + upF * (0.9 * k)
         ik.lFoot = Pf(tip(-1)) + upF * (0.9 * k)
+        ik.rSole, ik.lSole = pedalSole(crank), pedalSole(crank + math.pi)
     end
     self.ikTargets = ik
     -- A tandem's stoker: their own pedals, and bars fixed to the frame.
     if lay.bb2 then
-        local ikS = { rFoot = Pf(tip(1, lay.bb2)) + upF * (0.9 * k), lFoot = Pf(tip(-1, lay.bb2)) + upF * (0.9 * k) }
+        local ikS = { rFoot = Pf(tip(1, lay.bb2)) + upF * (0.9 * k), lFoot = Pf(tip(-1, lay.bb2)) + upF * (0.9 * k),
+                      rSole = pedalSole(crank), lSole = pedalSole(crank + math.pi) }
         if lay.gripS then ikS.rHand, ikS.lHand = Pf(lay.gripS.r), Pf(lay.gripS.l) end
         self.ikTargetsStoker = ikS
     end
@@ -833,6 +861,31 @@ function ENT:DrawDetailed(model, S)
         local p = self:LocalToWorld(v * k + S.lift0)
         return S.bodyRoll ~= 0 and rotAbout(p, S.bodyC, self:GetForward(), S.bodyRoll) or p
     end, BMX.PoseSetFor(self).poses)
+end
+
+--------------------------------------------------------------------------
+-- THE CRANK ANGLE, for the drawing and the rider's legs.
+--
+-- THE CRANKS TURN WITH THE REAR WHEEL, through the gearing: wheel still,
+-- pedals still; rolling forward (or back), pedals forward (or back). They
+-- used to follow the rider's networked cadence, which was only loosely the
+-- same thing and read as pedals with a mind of their own.
+--
+-- HELD CRANKS (cl_motor.lua FixedCranks): a motorbike has none, and an
+-- engine's ratio would spin them at 20x the wheel; a moped whose engine has
+-- caught rests its rider's feet on them, level (Motor.RestCrank eases them
+-- there). When they are let go again the wheel picks them up from where they
+-- stood, through `crankOffset`, so the legs never jump a half turn.
+--------------------------------------------------------------------------
+function ENT:CrankAngle(rSpin, C, dt)
+    local free = rSpin / BMX.GearRatio(self, C)
+    local Mo = BMX.Motor
+    if Mo and Mo.FixedCranks and Mo.FixedCranks(self) then
+        local a = Mo.RestCrank and Mo.RestCrank(self, self.crankAngle, dt) or 0
+        self.crankOffset = a - free
+        return a
+    end
+    return free + (self.crankOffset or 0)
 end
 
 function ENT:Draw()
@@ -1010,11 +1063,8 @@ function ENT:Draw()
     -- A tandem's stoker targets come only from the detailed model (DrawDetailed): a
     -- frame drawn without it must not leave last frame's world points behind.
     if not model then self.ikTargetsStoker = nil end
+    self.crankAngle = self:CrankAngle(rSpin, C, dt)
     if model then
-        self.crankAngle = rSpin / BMX.GearRatio(self, C)
-        -- A motorbike has pegs where the pedals are, and an engine's ratio would spin
-        -- the cranks at 20x the wheel (cl_motor.lua FixedCranks): hold them still.
-        if BMX.Motor and BMX.Motor.FixedCranks and BMX.Motor.FixedCranks(self) then self.crankAngle = 0 end
         self:DrawDetailed(model, {
             k = k, lift0 = lift0, fwd = fwd, up = up, right = right,
             bodyRoll = bodyRoll, bodyC = bodyC, fPos = fPos, rPos = rPos,
@@ -1178,47 +1228,67 @@ function ENT:Draw()
     self.ikTargets = ik
 
     ----------------------------------------------------------------------
-    -- Drivetrain. The cranks turn at the networked cadence, so pedalling is
-    -- visible, and coasting (the freewheel ticking) shows them still.
+    -- Drivetrain: the cranks at self.crankAngle (ENT:CrankAngle, worked out
+    -- above for both drawings), so pedalling is visible, and coasting (the
+    -- freewheel ticking) shows them still.
+    --
+    -- A VEHICLE WITHOUT PEDALS (Motor.HasPedals: the e-moto, the dirt bike)
+    -- draws its FOOTPEGS here instead, where its model has them, and the feet
+    -- go on those: no crank arms, no pedal blocks, no chainring. This drawing
+    -- is what anyone sees while the model is building, with bmx_bike_model 0
+    -- and under bmx_debug, and it used to put a BMX's cranks and pedals on a
+    -- motorbike.
     ----------------------------------------------------------------------
-    -- THE CRANKS TURN WITH THE REAR WHEEL, through the gearing: wheel still,
-    -- pedals still; rolling forward (or back), pedals forward (or back). They
-    -- used to follow the rider's networked cadence, which was only loosely the
-    -- same thing and read as pedals with a mind of their own.
-    self.crankAngle = rSpin / BMX.GearRatio(self, C)     -- the current gear's on a bike with gears
-    -- A motorbike has pegs where the pedals are, and an engine's ratio would spin the
-    -- cranks at 20x the wheel (cl_motor.lua FixedCranks): hold them still.
-    if BMX.Motor and BMX.Motor.FixedCranks and BMX.Motor.FixedCranks(self) then self.crankAngle = 0 end
-
-    local cr = rightW * (-CHAINY * k)            -- -Y local is +right world
-    local ringC = bb + cr
-    if lod < 2 then ring(ringC, fwdW, upW, RING * k, 0.6 * k, COL_CHROME, lod == 0 and 16 or 6) end
-    local cogC = rPosD + cr
-    if lod == 0 then
-        tube(ringC + upW * (RING * k), cogC + upW * (COG * k), 0.45 * k, COL_PART)   -- chain, top
-        tube(ringC - upW * (RING * k), cogC - upW * (COG * k), 0.45 * k, COL_PART)   -- chain, bottom
-    end
-
-    for _, side in ipairs({ 1, -1 }) do
-        local t = self.crankAngle + (side == 1 and 0 or math.pi)
-        local arm = (fwdW * math.cos(t) - upW * math.sin(t)) * (CRANK * k)
-        local root = bb + rightW * (Q * k * side)
-        local pedal = root + arm
-        -- THE FEET STAY WHERE THE PEDALS WERE. In a tailwhip the cranks go
-        -- round with the frame and the rider's feet do not: they leave the
-        -- pedals and meet them again at the top of the turn.
-        local arm0 = (fwd * math.cos(t) - up * math.sin(t)) * (CRANK * k)
-        local pedal0 = bb0 + right * (Q * k * side) + arm0
-        ik[side == 1 and "rFoot" or "lFoot"] = pedal0 + right * (1.8 * k * side) + up * (0.9 * k)
-        if lod < 2 then tube(root, pedal, 0.9 * k, COL_PART) end
-        -- Matte: pedals are grippy plastic and pins, not polished metal.
-        if lod == 0 then
-            solid("box", pedal + rightW * (1.8 * k * side), whipAngles,
-                Vector(3.6, 3.6, 1.0) * k, COL_PART, MAT.matte)
+    local pegs = BMX.PedallessPegs(self)
+    if pegs then
+        for _, side in ipairs({ 1, -1 }) do
+            local m = side == 1 and pegs.r or pegs.l
+            -- The peg's top, in chassis space (the model's own space is the
+            -- chassis', lifted by the sag): drawn with the frame, whip and all,
+            -- and the foot where the peg is without the whip, as for a pedal.
+            local p0 = P(m / k)
+            local p = Wh(p0)
+            local inner = p - rightW * (1.6 * k * side)
+            if lod < 2 then
+                -- the mount from the frame's centre line, and the peg itself
+                tube(Wh(P(Vector(m.x / k, 0, m.z / k + 1.2))), inner - upW * (0.4 * k), 1.1 * k, COL_PART)
+                solid("box", p - upW * (0.4 * k), whipAngles, Vector(2.0, 3.2, 0.8) * k, COL_CHROME, MAT.satin)
+            end
+            ik[side == 1 and "rFoot" or "lFoot"] = p0 + up * (0.9 * k)
+            ik[side == 1 and "rSole" or "lSole"] = BMX.PegSole or 0
         end
-    end
-    if lod == 0 then
-        tube(bb - rightW * (Q * k), bb + rightW * (Q * k), 1.3 * k, COL_PART)     -- spindle
+    else
+        local cr = rightW * (-CHAINY * k)            -- -Y local is +right world
+        local ringC = bb + cr
+        if lod < 2 then ring(ringC, fwdW, upW, RING * k, 0.6 * k, COL_CHROME, lod == 0 and 16 or 6) end
+        local cogC = rPosD + cr
+        if lod == 0 then
+            tube(ringC + upW * (RING * k), cogC + upW * (COG * k), 0.45 * k, COL_PART)   -- chain, top
+            tube(ringC - upW * (RING * k), cogC - upW * (COG * k), 0.45 * k, COL_PART)   -- chain, bottom
+        end
+
+        for _, side in ipairs({ 1, -1 }) do
+            local t = self.crankAngle + (side == 1 and 0 or math.pi)
+            local arm = (fwdW * math.cos(t) - upW * math.sin(t)) * (CRANK * k)
+            local root = bb + rightW * (Q * k * side)
+            local pedal = root + arm
+            -- THE FEET STAY WHERE THE PEDALS WERE. In a tailwhip the cranks go
+            -- round with the frame and the rider's feet do not: they leave the
+            -- pedals and meet them again at the top of the turn.
+            local arm0 = (fwd * math.cos(t) - up * math.sin(t)) * (CRANK * k)
+            local pedal0 = bb0 + right * (Q * k * side) + arm0
+            ik[side == 1 and "rFoot" or "lFoot"] = pedal0 + right * (1.8 * k * side) + up * (0.9 * k)
+            ik[side == 1 and "rSole" or "lSole"] = BMX.PedalSole and BMX.PedalSole(t) or 0
+            if lod < 2 then tube(root, pedal, 0.9 * k, COL_PART) end
+            -- Matte: pedals are grippy plastic and pins, not polished metal.
+            if lod == 0 then
+                solid("box", pedal + rightW * (1.8 * k * side), whipAngles,
+                    Vector(3.6, 3.6, 1.0) * k, COL_PART, MAT.matte)
+            end
+        end
+        if lod == 0 then
+            tube(bb - rightW * (Q * k), bb + rightW * (Q * k), 1.3 * k, COL_PART)     -- spindle
+        end
     end
 
     -- Style poses move the hands and feet off the bike's own points (an

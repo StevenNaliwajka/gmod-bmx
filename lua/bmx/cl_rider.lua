@@ -389,7 +389,7 @@ local function reachExcess(ply, targets)
         local el = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Forearm")
         local ha = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Hand")
         local key = s == "R" and "rHand" or "lHand"
-        local T = targets[key .. "Held"] or targets[key]
+        local T = targets[key .. "Wrist"] or targets[key .. "Held"] or targets[key]
         if sh and el and ha and T then
             local S, E, H = bonePos(ply, sh), bonePos(ply, el), bonePos(ply, ha)
             local arm = (E - S):Length() + (H - E):Length()
@@ -441,8 +441,97 @@ local ARM_POLE = Vector(-0.3, 1, -0.6)
 local LEG_POLE = Vector(1, 0, 0.2)
 BMX.RiderPoles = { arm = ARM_POLE, leg = LEG_POLE }
 
+--------------------------------------------------------------------------
+-- WHAT TOUCHES THE BIKE: the BALL of the foot and the inside of the fist.
+--
+-- The IK used to put the FOOT BONE on the pedal and the HAND BONE on the grip,
+-- and on ValveBiped those are the ankle and the wrist. So the pedal sat under
+-- the ankle with the toes hanging five units past it and the sole through it,
+-- and the bar ran through the wrist with the fist closed on air in front of it:
+-- the feet and hands that "did not match" the bike. A rider's contact is the
+-- ball of the foot (the Toe0 bone, at the joint of the toes) over the spindle
+-- or the peg, and the bar across the palm, inside the curled fingers.
+--
+-- THE FOOT is placed exactly: the sole's pitch is chosen (below), the
+-- ankle-to-ball length is measured off the model, so the ankle's target is the
+-- contact less that length along the chosen direction, and the foot is then
+-- turned to point that way. THE HAND is measured: where the curled fingers and
+-- the thumb close (their centroid) against the wrist, in the bike's own frame,
+-- is kept per rider and the next frame's wrist target is the grip less it. The
+-- hand is always aimed the same way in the bike's frame, so that offset holds
+-- still and a frame's lag in it is nothing.
+--------------------------------------------------------------------------
+-- A FLAT FOOT'S ankle-to-ball line slopes down this far (ValveBiped's ankle sits
+-- well above the ball of the foot), so "sole flat on the pedal" is this pitch and
+-- not level: aiming the line level, as the IK did, stood the rider on their heels.
+local FOOT_SLOPE = 25
+-- THE ANKLE'S STROKE: a rider's heel drops over the top and front of the stroke,
+-- where they push, and the toes point down through the bottom and back, where
+-- they pull through. Degrees toe-down from a flat sole: a mean and a swing, and
+-- the crank angle it peaks at (positive t is the pedal going forward and down;
+-- 0 is the right crank level forward). Pure, so the suite checks it.
+local ANKLE = { mean = 8, swing = 12, peak = 0.75 * math.pi }
+BMX.RiderAnkle = ANKLE
+function BMX.PedalSole(t)
+    return ANKLE.mean + ANKLE.swing * math.cos((t or 0) - ANKLE.peak)
+end
+-- On a footpeg the ball of the foot is on it and the heel a little up: a
+-- motorcyclist rides on the balls of their feet, ready to stand.
+BMX.PegSole = 6
+local GRIP_OFF_MAX = 6      -- units: a measured wrist-to-fist offset longer than this is wrong
+
+local function ballLength(ply, foot, toe)
+    local a, b = bonePos(ply, foot), bonePos(ply, toe)
+    return (a and b) and (b - a):Length() or 0
+end
+
+-- THE FOOT SLIDES FORWARD ON THE PEDAL WHEN THE LEG RUNS OUT OF FOLD. Over the
+-- top of the stroke on a low saddle (a BMX's), an ankle behind the pedal would
+-- sit almost under the hip, closer than a knee folded past FOOT_FOLD can bring
+-- it, and the solve then had no plane to bend in and threw the knee out to the
+-- side. A rider's foot slips forward on the pedal there, so the pedal goes under
+-- the arch: the ankle's set-back `L` is cut, down to nothing (the ankle over the
+-- pedal, as the IK always had it), until the ankle is far enough from the hip.
+local FOOT_FOLD = 135       -- degrees: the most a pedalling knee is asked to fold
+local function ankleSetback(ply, limb, T, dir, L)
+    local rb, hb, eb = ply:LookupBone(limb.root), ply:LookupBone(limb.hinge), ply:LookupBone(limb.eff)
+    local R, K, F = rb and bonePos(ply, rb), hb and bonePos(ply, hb), eb and bonePos(ply, eb)
+    if not (R and K and F) then return L end
+    local la, lb = (K - R):Length(), (F - K):Length()
+    local r = math.sqrt(la * la + lb * lb - 2 * la * lb * math.cos(math.rad(180 - FOOT_FOLD)))
+    -- |T - dir * x - R| = r, the smaller root: any set-back up to it keeps the
+    -- ankle at least r from the hip.
+    local V = T - R
+    local b = V:Dot(dir)
+    local disc = b * b - V:Dot(V) + r * r
+    if disc <= 0 then return L end
+    return math.Clamp(b - math.sqrt(disc), 0, L)
+end
+
+-- The point a closed hand holds a bar at: the curled fingers' and the thumb's
+-- centroid. nil if the model has no fingers.
+local function fistCentre(ply, s)
+    local sum, n = Vector(0, 0, 0), 0
+    for _, name in ipairs({ "Finger2", "Finger21", "Finger22", "Finger0" }) do
+        local b = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_" .. name)
+        local p = b and bonePos(ply, b)
+        if p then sum = sum + p; n = n + 1 end
+    end
+    return n >= 3 and sum / n or nil
+end
+BMX.RiderFistCentre = fistCentre
+
+-- The direction from the ankle to the ball of the foot for a sole tipped `sole`
+-- degrees toe-down, in the bike's frame.
+local function footDir(fwd, up, sole)
+    local a = math.rad(FOOT_SLOPE + (sole or 0))
+    return (fwd * math.cos(a) - up * math.sin(a)):GetNormalized()
+end
+BMX.RiderFootDir = footDir
+
 function BMX.SolveRiderIK(ply, targets, bike)
     ply.bmxIK = ply.bmxIK or {}
+    ply.bmxGripOff = ply.bmxGripOff or {}
     local fwd, up, right = bike:GetForward(), bike:GetUp(), bike:GetRight()
     local set = BMX.PoseSetFor and BMX.PoseSetFor(bike)
     local poles = set and set.poles or {}
@@ -460,19 +549,36 @@ function BMX.SolveRiderIK(ply, targets, bike)
             targets[limb.target .. "Held"] = T
         end
         if T then
+            local s = limb.side == 1 and "R" or "L"
+            local eb = ply:LookupBone(limb.eff)
+            local holding = not limb.leg and not (set and set.openHands)
+            -- Where the wrist or the ankle has to go for the fist or the ball of
+            -- the foot to be on T.
+            local W, dir
+            if limb.leg then
+                local toe = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Toe0")
+                dir = footDir(fwd, up, targets[limb.target:sub(1, 1) .. "Sole"])
+                local L = (eb and toe) and ballLength(ply, eb, toe) or 0
+                refresh(ply)
+                W = T - dir * ankleSetback(ply, limb, T, dir, L)
+            elseif holding then
+                local o = ply.bmxGripOff[limb.side]
+                W = o and (T - fwd * o.x - right * o.y - up * o.z) or T
+                targets[limb.target .. "Wrist"] = W
+            else
+                W = T
+            end
             -- Knees forward and up; elbows out, down and back (or the set's own).
             local pp = limb.leg and (poles.leg or LEG_POLE) or (poles.arm or ARM_POLE)
             local pole = fwd * pp.x + right * (pp.y * limb.side) + up * pp.z
-            solveLimb(ply, limb, T, pole:GetNormalized())
+            solveLimb(ply, limb, W, pole:GetNormalized())
 
-            local s = limb.side == 1 and "R" or "L"
-            local eb = ply:LookupBone(limb.eff)
             if limb.leg then
-                -- Toes forward, sole on the pedal.
+                -- Toes forward, the sole pitched as the stroke has it, the ball on the pedal.
                 local toe = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Toe0")
                 -- Twice: the leg solve just turned the foot with the shin.
-                if eb and toe then aim(ply, eb, eb, toe, fwd); aim(ply, eb, eb, toe, fwd) end
-            elseif set and set.openHands then
+                if eb and toe then aim(ply, eb, eb, toe, dir); aim(ply, eb, eb, toe, dir) end
+            elseif not holding then
                 -- Nothing to hold (a unicyclist's balancing arms): the hand relaxed and
                 -- open, fingers out and a little down, not a fist.
                 local knuck = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Finger2")
@@ -484,11 +590,25 @@ function BMX.SolveRiderIK(ply, targets, bike)
                 local knuck = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Finger2")
                 if eb and knuck then aim(ply, eb, eb, knuck, (fwd - up * 0.3):GetNormalized()) end
                 closeHand(ply, limb.side)
+                -- ...and where that fist is against the wrist, for the next frame.
+                refresh(ply)
+                local fc, wr = fistCentre(ply, s), eb and bonePos(ply, eb)
+                if fc and wr then
+                    local d = fc - wr
+                    if d:Length() <= GRIP_OFF_MAX then
+                        ply.bmxGripOff[limb.side] = Vector(d:Dot(fwd), d:Dot(right), d:Dot(up))
+                    end
+                end
             end
         end
     end
     spineReach(ply, targets)
 end
+
+-- The two-bone solve and the bone aim, for the other riders' poses that put a
+-- limb somewhere (the skater's feet on the ground, cl_skates.lua).
+BMX.RiderSolveLimb = solveLimb
+BMX.RiderAimBone = aim
 
 --------------------------------------------------------------------------
 -- STYLE POSES (G17): IK targets, blended.
@@ -704,6 +824,7 @@ local function clear(ply)
     end
     for b in pairs(ply.bmxIK or {}) do ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
     ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
+    ply.bmxGripOff = nil
     -- The board's crouch lowers the pelvis (cl_board.lua); put it back.
     if ply.bmxPelvis then
         ply:ManipulateBonePosition(ply.bmxPelvis, Vector(0, 0, 0))

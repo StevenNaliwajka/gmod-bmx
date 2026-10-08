@@ -1,11 +1,20 @@
 sound/bmx/ -- the addon's own sounds
 
-bell1.wav bell2.wav bell3.wav   a bicycle bell, "ring-ring"
+bell1.wav .. bell4.wav          a small lever bicycle bell, "ting-ting"
 horn1.wav horn2.wav             an electric motorbike horn
+tick1.wav .. tick3.wav          a freewheel pawl over one ratchet tooth
+engine_4t.wav                   a four-stroke single (the dirt bike), loop
+engine_2t.wav                   a 50 cc two-stroke (the moped), loop
+motor.wav                       an electric hub motor's whine, loop
+roll_tyre.wav                   bicycle tyres on tarmac, loop
+roll_wheel.wav                  urethane wheels on concrete, loop
 
 These are not recordings and contain no sampled material. Each file is
 computed from first principles (the partials of a struck steel dome; a buzzing
-diaphragm through a horn's resonance) by tools/sound/make_sounds.py in this
-repository, which regenerates them byte for byte. They are original work and
-are released under the same MIT licence as the code (see LICENSE at the root
-of the repository). You may use them for anything, with or without credit.
+diaphragm through a horn's resonance; pressure pulses through an exhaust's
+resonances; shaped noise) by tools/sound/make_sounds.py in this repository,
+which regenerates them byte for byte. The bell's partial frequencies, decay
+times and strike timing are numbers measured off a reference recording the
+owner chose; no audio from it is used. They are original work and are released
+under the same MIT licence as the code (see LICENSE at the root of the
+repository). You may use them for anything, with or without credit.

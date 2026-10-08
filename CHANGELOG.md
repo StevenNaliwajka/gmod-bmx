@@ -27,7 +27,10 @@ finished on a real server; and a bike that can ride itself.
   being kicked off it, so every bike rides up a 45 degree wedge and drops into a
   quarter pipe. Spine transfers carry you over the top, quarter-pipe coping no
   longer sticks out over the face, and the City Bike can wheelie. The Air 180
-  turns further than before but is still being reworked (next update).
+  off a quarter pipe is now a half turn about the ramp face, the way riders do
+  it, so the bike comes back down facing the wall and lands. With the swept
+  wheel on (`bmx_wheel_sweep 1`), the ground falling away past a crest no longer
+  reads as a wall that stops the bike dead.
 - **Skateboard and skates.** A quick SPACE tap always ollies, a drop-in stays on
   the quarter pipe and rides out, a bad catch bails, the skates' soul grind
   pays, and a grind or manual left alone is always lost in 2-3 s.

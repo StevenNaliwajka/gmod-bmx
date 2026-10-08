@@ -2300,21 +2300,77 @@ function(ctx)
     ctx:between(math.deg(math.abs(ctx:st().roll)), 0, 20, "roll after landing", "deg")
 end)
 
+-- board_crowd measures what the boards' own code COSTS, not how many ticks the
+-- server got. It used to count ticks per real second and want 0.8 of nominal; on the
+-- shared CI box (4 cores, other private srcds instances on it) that read 52 of 66
+-- ticks/s in pipeline 1118 with the board code unchanged, and 24-67 on the same box
+-- with three busy loops beside it: a tick count is the box's load as much as the
+-- addon's. Plain CPU time (os.clock) of the board code is not enough either: it read
+-- 6.3-11.4 ms a tick for the same 25 boards as the load came and went (shared cores
+-- and caches make the same work dearer).
+--
+-- So the boards' code -- BMX.PhysicsStep, every board's substep with its rays, and
+-- each board's Think -- is timed in CPU time, and straight after every fourth call a
+-- small fixed reference job (a ray and some float maths) is timed the same way. Each
+-- reference meets the box as the call before it did, so a contention burst slows
+-- both and the ratio stays put: 5.1-6.4 over 30 runs with three cores burning (lower,
+-- down to 2.8, when a burst caught the reference harder). Over 8.5 fails: board code
+-- a third dearer again than the worst of those. Made twice as dear (each skateboard
+-- step spinning as long again, in CPU time) it read 9.8-10.9: 5 of 5 failed. The
+-- tick rate and the process's CPU per tick are logged for a person reading the report.
 T.Case("board_crowd", { vehicle = "skateboard", timeout = 40,
-    desc = "two dozen skateboards out (parked, tipped and dropped) keep the server's tick rate" },
+    desc = "two dozen skateboards out (parked, tipped and dropped): their code's CPU per tick, against a reference job timed in the same ticks, stays under its budget; none NaNs" },
 function(ctx)
-    local want = 1 / engine.TickInterval()
-    local function tickRate(secs)
-        local n, t0 = 0, SysTime()
+    local tick = engine.TickInterval()
+    -- The reference job: a little of what a board's step does (a ray, float maths) and
+    -- no garbage (an allocation here would bill a collection to whichever step ran it).
+    -- It runs straight after every timed call, so it meets the box exactly as that
+    -- call did: a contention burst that slows a step slows its reference too.
+    local refStart, refEnd = ctx.ground + Vector(0, 0, 60), ctx.ground - Vector(0, 0, 20)
+    local refTrace = { start = refStart, endpos = refEnd, mask = MASK_SOLID }
+    -- Every fourth call, counted four times: after every call it cost the server
+    -- another 1.4 ms a tick.
+    local stepCpu, refCpu, calls = 0, 0, 0
+    local function timed(fn, ...)
+        local c = os.clock()
+        local r = fn(...)
+        local c1 = os.clock()
+        stepCpu = stepCpu + c1 - c
+        calls = calls + 1
+        if calls % 4 == 0 then
+            util.TraceLine(refTrace)
+            local a = 0
+            for i = 1, 40 do a = a + math.sin(i) * math.sqrt(i) end
+            refCpu = refCpu + (os.clock() - c1) * 4
+        end
+        return r
+    end
+    local step = BMX.PhysicsStep
+    BMX.PhysicsStep = function(...) return timed(step, ...) end
+    ctx.undo = ctx.undo or {}
+    ctx.undo[#ctx.undo + 1] = function() BMX.PhysicsStep = step end
+    -- And each board's Think (the 20 Hz housekeeping), on the entity itself.
+    local function timeThink(e)
+        local think = e.Think
+        e.Think = function(...) return timed(think, ...) end
+    end
+    timeThink(ctx.bike)
+    -- Over `secs`: ticks per real second and the process's CPU per tick (both logged
+    -- only), and the boards' code and the reference job's CPU per tick.
+    local function measure(secs)
+        local n, t0, c0 = 0, SysTime(), os.clock()
+        stepCpu, refCpu = 0, 0
         hook.Add("Tick", "BMX.Test.BoardCrowd", function() n = n + 1 end)
         ctx:wait(secs)
         hook.Remove("Tick", "BMX.Test.BoardCrowd")
-        return n / math.max(SysTime() - t0, 1e-3)
+        n = math.max(n, 1)
+        return n / math.max(SysTime() - t0, 1e-3), (os.clock() - c0) / n, stepCpu / n, refCpu / n
     end
     boardInput(ctx, {})
-    local alone = tickRate(2)
+    local aloneRate, aloneCpu, aloneStep, aloneRef = measure(2)
 
     local made = {}
+    ctx.solids = ctx.solids or {}           -- removed with the case, however it ends
     local function put(pos, ang)
         local e = ents.Create(BMX.ClassFor("skateboard"))
         if not IsValid(e) then return end
@@ -2323,6 +2379,8 @@ function(ctx)
         e:Spawn()
         e:Activate()
         made[#made + 1] = e
+        ctx.solids[#ctx.solids + 1] = e
+        timeThink(e)
     end
     local rest = BMX.RestHeight(ctx.cfg)
     for i = 1, 8 do
@@ -2331,16 +2389,17 @@ function(ctx)
         put(ctx.ground + Vector(-200 + i * 50, 420, 200 + i * 20), Angle(i * 40, i * 25, i * 60))
     end
     ctx:wait(1)
-    local crowded = tickRate(4)
-    ctx:log(string.format("%d boards: %.1f ticks/s of %.0f (alone %.1f)", #made + 1, crowded, want, alone))
+    local rate, cpu, stepc, ref = measure(4)
+    BMX.PhysicsStep = step
+    ctx:log(string.format("one board: %.1f ticks/s, CPU %.2f ms/tick (BMX step %.2f)",
+        aloneRate, aloneCpu * 1000, aloneStep * 1000))
+    ctx:log(string.format("%d boards: %.1f ticks/s of %.0f, CPU %.2f ms/tick (BMX step %.2f) of a %.2f ms tick",
+        #made + 1, rate, 1 / tick, cpu * 1000, stepc * 1000, tick * 1000))
+    ctx:log(string.format("boards' code / reference job: %.2f with 25 (reference %.3f ms/tick), %.2f with one",
+        stepc / math.max(ref, 1e-9), ref * 1000, aloneStep / math.max(aloneRef, 1e-9)))
     ctx:ok(#made == 24, "all 24 extra boards spawned")
-    -- 0.8, not 0.9: 25 boards measured 59.3 ticks/s of 66 (0.90, then 0.89 of
-    -- one board alone) on the CI box, exactly on the old edge -- a board's four
-    -- raycast wheels cost a little more than a bike's two, which held 1.00. A
-    -- tick rate under 0.8 of nominal is the failure this guards (a crowd that
-    -- visibly lags the server); 0.9 was a guess made before it was measured.
-    ctx:between(crowded / want, 0.8, 1.1, "the server keeps its tickrate with 25 boards out")
-    ctx:between(crowded / math.max(alone, 1), 0.8, 1.1, "as many ticks as with one board")
+    ctx:ok(stepc > aloneStep, "the crowd's board code was timed")
+    ctx:between(stepc / math.max(ref, 1e-9), 0, 8.5, "the boards' code per tick, in reference jobs run beside it", "x")
     local bad = 0
     for _, e in ipairs(made) do
         if not IsValid(e) then bad = bad + 1
@@ -2638,12 +2697,29 @@ function(ctx)
         return
     end
     pax.BMXScripted = true
-    pax:SetPos(ctx.ground + Vector(-40, 0, 8))
+    -- The passenger leaves the server when the case ends, however it ends (teardown runs
+    -- ctx.undo): a bot left standing on the test ground is a post later cases ride into.
+    ctx.undo = ctx.undo or {}
+    ctx.undo[#ctx.undo + 1] = function()
+        if not IsValid(pax) then return end
+        if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+        pax:Kick("BMX test: passenger done")
+    end
+    -- Off whatever it sat on FIRST, then out of the way: ExitVehicle puts a player at
+    -- the seat's exit point, so the other order can leave it standing on this run's
+    -- bike (the tandem shove, 87ac77a). Out of the way is where tandem_rides puts its
+    -- stoker: 40 u straight behind the bike is inside its rear wheel.
     if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+    ctx:wait(0.2)
+    pax:SetPos(ctx.ground + Vector(-90, 80, 8))
+    pax:SetVelocity(-pax:GetVelocity())
 
     local base = b:Cfg().Chassis.mass
     local m0 = b:GetPhysicsObject():GetMass()
     ctx:wait(0.3)
+    -- Settling after the spawn leaves it at 7-10 u/s; a passenger put down 40 u behind
+    -- it (where this case used to put one) shoved it to 180 u/s every run.
+    ctx:between(b:GetVelocity():Length(), 0, 40, "the bike was not shoved while the passenger got clear", "u/s")
     BMX.Passenger.TryBoard(b, pax, true)        -- E on the rear, without a trace to point with
     ctx:wait(0.3)
     ctx:ok(pax:InVehicle(), "the passenger is seated")
@@ -2667,7 +2743,6 @@ function(ctx)
     ctx:ok(not IsValid(b:GetDriver()), "and so is the rider")
     ctx:ok(not IsValid(b:GetPaxPegs()), "the pegs are empty")
     ctx:between(b:GetPhysicsObject():GetMass() / m0, 0.99, 1.01, "mass is back", "x")
-    if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
 end)
 
 --------------------------------------------------------------------------

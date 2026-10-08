@@ -483,10 +483,28 @@ function BMX.PitchControl(ent, phys, cfg, dt, inp, st, wheels)
     -- Just landed on the wheels: level a nose-down or nose-up touchdown about
     -- the axle it is on, so a flip landed on one wheel comes down onto both
     -- instead of going over the bars or looping out.
+    --
+    -- NEVER PAST LEVEL IN ONE SUBSTEP. The law is the PD it always was,
+    -- Kd * (want - rate) with want = -(Kp/Kd) * pitch: the rate that levels
+    -- the bike. Sized on the inertia about the axle it lands on, as if that
+    -- axle were a hinge -- but it is a strut with no travel used yet, so for
+    -- the first substeps the torque turns the FREE body, 7.3 times as hard
+    -- as asked: past level, onto the other wheel, which asked the same back
+    -- the other way. Off an 8-unit bump at 300 u/s the bike see-sawed front,
+    -- rear, front at 400, 1000, 1240 deg/s and cartwheeled (measured on a
+    -- real server). So the rate is read off the engine now, not st.pitchRate
+    -- (a substep late), and the step the free body would take is held to
+    -- half the gap to `want`: it closes on level, and never crosses it.
     if (st.recoverUntil or 0) > CurTime() and IsValid(ent:GetDriver()) and inp.pitch == 0 then
         local CR = C.Crash
-        local alpha = -CR.recoverPitchKp * st.pitch - CR.recoverPitchKd * st.pitchRate
-        torque = torque + BMX.TorqueFor(BMX.PivotInertia(ent, C, st.pitch < 0), alpha)
+        local rate = -math.rad(phys:GetAngleVelocity().y)      -- nose up, about axisR
+        local want = -CR.recoverPitchKp / CR.recoverPitchKd * st.pitch
+        local iPivot = BMX.PivotInertia(ent, C, st.pitch < 0)
+        local alpha = CR.recoverPitchKd * (want - rate)
+        local step = math.abs(alpha * iPivot / BMX.IPitch(ent) * dt)
+        local room = 0.5 * math.abs(want - rate)
+        if step > room then alpha = alpha * room / step end
+        torque = torque + BMX.TorqueFor(iPivot, alpha)
     end
 
     BMX.ApplyTorque(phys, ent, axisR, torque, dt)

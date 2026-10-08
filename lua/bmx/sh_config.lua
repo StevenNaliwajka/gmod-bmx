@@ -836,6 +836,25 @@ C.Crash = {
     tipPitch = math.rad(75),
     tipTime  = 0.15,
     tipMaxVz = 80,          -- u/s: moving vertically faster than this is flight
+
+    -- RIDING INTO SOMETHING THAT DOES NOT MOVE (a post, a goal, a kerb's face)
+    -- with a rider aboard. VPhysics stops the hull with an impulse at the box
+    -- it hit -- a wheel box, low and ahead of the mass centre -- and that
+    -- impulse levered the bike over its bars at 770 deg/s; the front strut
+    -- caught the nose at seven times its static load and threw the bike up at
+    -- 110 u/s, round 40 degrees and back down through the floor (measured on
+    -- a 12-unit pole at 300 u/s). A rider's arms take that blow. So on the
+    -- substep after such a hit (sv_physics.lua, 2c) only impactKeepSpin of the
+    -- spin the hit added is kept, no more than impactPop of upward speed is
+    -- gained, and no more than impactBounce comes back off the obstacle. Hits
+    -- whose normal is steeper than impactNormalZ are the floor's (a landing),
+    -- and below impactMinSpeed nothing is changed.
+    impactSoak     = true,
+    impactMinSpeed = 40,
+    impactNormalZ  = 0.7,
+    impactKeepSpin = 0.15,
+    impactPop      = 25,
+    impactBounce   = 30,
 }
 
 --------------------------------------------------------------------------

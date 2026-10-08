@@ -614,6 +614,7 @@ end
 --------------------------------------------------------------------------
 function ENT:PhysicsCollide(data, phys)
     local CR = self:Cfg().Crash
+    self:NoteImpact(data, CR)
     if not CR.enabled then return end
     if data.Speed < CR.maxImpactSpeed then return end
     if CurTime() - (self.spawnTime or 0) < CR.grace then return end
@@ -651,6 +652,30 @@ function ENT:PhysicsCollide(data, phys)
     -- reports several contacts in the same step, so the pending flag keeps it
     -- to one ejection.
     self:QueueCrash("impact", BMX.Clamp(data.Speed / (CR.maxImpactSpeed * 3), 0, 1))
+end
+
+-- A hit from the side on something that stays put (Crash.impactSoak): noted
+-- here, soaked on the next substep by BMX.PhysicsStep (2c). Not changed from
+-- inside the callback, for the same reason as QueueCrash below. The first
+-- contact of a step is the one kept: one hit reports several.
+function ENT:NoteImpact(data, CR)
+    if not CR.impactSoak or self.bmxImpact then return end
+    if data.Speed < (CR.impactMinSpeed or 0) then return end
+    local n = data.HitNormal
+    if not n or math.abs(n.z) > (CR.impactNormalZ or 0.7) then return end
+    if not IsValid(self:GetDriver()) then return end
+    local st = self.st
+    if not st or st.grind then return end
+    local other = data.HitEntity
+    if IsValid(other) and not other:IsWorld() then
+        if other:IsPlayer() or other:IsNPC() then return end
+        local op = data.HitObject
+        local moving = data.TheirOldVelocity and data.TheirOldVelocity:Length() > 50
+        if moving or (IsValid(op) and op:IsMotionEnabled() and op:GetMass() < 3 * self:GetPhysicsObject():GetMass()) then
+            return
+        end
+    end
+    self.bmxImpact = { normal = Vector(n.x, n.y, 0) }
 end
 
 -- A crash decided inside a physics callback (a collision, or the substep

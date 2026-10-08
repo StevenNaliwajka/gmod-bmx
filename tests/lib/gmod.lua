@@ -758,6 +758,7 @@ function M.Realm(world, which)
 
     function Ent:IsValid() return not self._removed end
     function Ent:IsPlayer() return false end
+    function Ent:IsNPC() return false end
     function Ent:EntIndex() return self._index end
     function Ent:GetClass() return self._class end
     function Ent:SetModel(m) self._model = m end
@@ -1039,6 +1040,7 @@ function M.Realm(world, which)
     function Phys:EnableDrag(b) self.drag = b end
     function Phys:SetDamping(l, a) self.linDamp, self.angDamp = l, a end
     function Phys:EnableMotion(b) self.motion = b end
+    function Phys:IsMotionEnabled() return self.motion end
     function Phys:EnableGravity(b) self.gravity = b end
     function Phys:EnableCollisions(b) self.collisions = b end
     function Phys:Wake() self.asleep = false end
@@ -1050,6 +1052,10 @@ function M.Realm(world, which)
     function Phys:SetAngleVelocity(v)
         local e, r = self.ent, math.rad
         self.w = e._f * r(v.x) + e._l * r(v.y) + e._u * r(v.z)
+    end
+    function Phys:GetAngleVelocity()
+        local e, d = self.ent, math.deg
+        return Vector(d(self.w:Dot(e._f)), d(self.w:Dot(e._l)), d(self.w:Dot(e._u)))
     end
     function Phys:GetPos() return self.ent:GetPos() end
     function Phys:SetPos(p) self.ent._pos = Vector(p) end

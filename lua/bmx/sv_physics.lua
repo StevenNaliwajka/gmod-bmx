@@ -285,6 +285,38 @@ function BMX.PhysicsStep(ent, phys, dt)
 
     estimateAngVel(ent, st, dt)
 
+    ----------------------------------------------------------------------
+    -- 2c. RODE INTO SOMETHING THAT STAYS PUT (Crash.impactSoak). The hull hit
+    -- a post, a goal or a kerb's face from the side on the last substep
+    -- (ENT:NoteImpact); VPhysics has already stopped it, and with the stop
+    -- came a lever's worth of spin and a pop off the low wheel box. Against
+    -- the motion as it was at the end of the last substep (st.preVel/preAngV,
+    -- below): most of the new spin goes, the bike gains no more than
+    -- impactPop upward and comes back off the obstacle at no more than
+    -- impactBounce. It still stops: speed INTO the obstacle is VPhysics's.
+    ----------------------------------------------------------------------
+    local imp = ent.bmxImpact
+    ent.bmxImpact = nil
+    if imp and hasDriver and st.preVel then
+        local CR = C.Crash
+        local w0, w1 = st.preAngV, phys:GetAngleVelocity()
+        phys:SetAngleVelocity(w0 + (w1 - w0) * (CR.impactKeepSpin or 0))
+        local v = phys:GetVelocity()
+        local zCap = max(st.preVel.z, 0) + (CR.impactPop or 0)
+        if v.z > zCap then v.z = zCap end
+        local nIn = imp.normal
+        if nIn:LengthSqr() > 1e-6 then
+            nIn = nIn:GetNormalized()
+            if st.preVel:Dot(nIn) < 0 then nIn = -nIn end
+            local back = -v:Dot(nIn)
+            local cap = CR.impactBounce or 0
+            if back > cap then v = v + nIn * (back - cap) end
+        end
+        if BMX.FiniteVec(v) then phys:SetVelocity(v) end
+        st.impactAt = CurTime()
+        st.impacts = (st.impacts or 0) + 1
+    end
+
     local vel   = phys:GetVelocity()
     local fwd   = ent:GetForward()
     local speed = vel:Length()
@@ -303,6 +335,7 @@ function BMX.PhysicsStep(ent, phys, dt)
         else
             BMX.EndGrind(ent, phys, C, st, "rider")
         end
+        st.preVel = nil
         phys:Wake()
         return
     end
@@ -334,6 +367,7 @@ function BMX.PhysicsStep(ent, phys, dt)
         end
     end
     if hasDriver and BMX.TryGrind and BMX.TryGrind(ent, phys, C, st, vel) then
+        st.preVel = nil
         phys:Wake()
         return
     end
@@ -784,4 +818,8 @@ function BMX.PhysicsStep(ent, phys, dt)
     -- still for two seconds and then never responds again.
     ----------------------------------------------------------------------
     phys:Wake()
+
+    -- The motion this substep leaves the bike with, every force above
+    -- applied: what an impact on the next one is measured against (2c).
+    st.preVel, st.preAngV = phys:GetVelocity(), phys:GetAngleVelocity()
 end

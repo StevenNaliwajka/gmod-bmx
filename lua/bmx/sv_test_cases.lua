@@ -1704,6 +1704,109 @@ function(ctx)
 end)
 
 --------------------------------------------------------------------------
+-- RIDING INTO THINGS (Crash.impactSoak, the landing assist's limit, the
+-- strut's first contact). A rider: "when I drive into a post/goal or bump
+-- with the bike the bike freaks out and does some weird physics thing and
+-- flings sometimes or clips through the floor". Measured here before the
+-- fix, over 66 runs of these shapes: 9 riders thrown, 10 bikes tipped, 14
+-- flung (a 12-unit pole at 300 u/s: up at 115 u/s, the mass centre 12.5
+-- units, 770 deg/s over the bars).
+--------------------------------------------------------------------------
+
+-- One run at `obstacle`: from 420 u back at `speed`, `y` to the side, the
+-- wheels already turning at road speed and nothing kept from the last run.
+-- Returns the worst upward speed and mass centre rise near it, and whether
+-- the rider is still aboard and upright 2.5 s on.
+local function rideInto(ctx, xa, y, speed)
+    local b, g = ctx.bike, ctx.ground
+    if IsValid(ctx.bot) and not IsValid(b:GetDriver()) and IsValid(b:GetPod()) then
+        ctx.bot:EnterVehicle(b:GetPod())
+        ctx:wait(0.3)
+    end
+    b.st.recoverUntil, b.st.preVel = 0, nil
+    ctx:input({ throttle = 0.5 })
+    putBike(ctx, Vector(xa - 420, g.y + y, g.z + BMX.RestHeight(ctx.cfg)), Angle(0, 0, 0),
+        Vector(speed, 0, 0))
+    for _, w in ipairs(b.wheels) do
+        w.omega = speed / w:WheelConfig(b:Cfg()).radius
+        w.lastComp, w.anchor = nil, nil
+    end
+    local phys = b:GetPhysicsObject()
+    ctx:waitUntil(function() return b:GetPos().x > xa - 110 end, 6, "the approach")
+    local com0 = phys:LocalToWorld(phys:GetMassCenter()).z
+    local up, rise, t0 = -math.huge, -math.huge, CurTime()
+    ctx:waitUntil(function()
+        up = math.max(up, phys:GetVelocity().z)
+        rise = math.max(rise, phys:LocalToWorld(phys:GetMassCenter()).z - com0)
+        return CurTime() - t0 > 2.5
+    end, 5, "the ride past it")
+    ctx:input({})
+    local upright = math.abs(b.st.roll or 0) < math.rad(30) and math.abs(b.st.pitch or 0) < math.rad(30)
+    return up, rise, IsValid(b:GetDriver()) and upright
+end
+
+T.Case("into_a_post", { timeout = 60,
+    desc = "a 12-unit pole, head-on and grazed at 150 and 300 u/s: the bike stops or glances off, not flung" },
+function(ctx)
+    local g = ctx.ground
+    local xa = g.x + 400
+    local pole = railProp(ctx, "models/hunter/blocks/cube025x2x025.mdl", Vector(xa + 6, g.y, g.z + 48), Angle(0, 0, 90))
+    local lo, hi = pole:WorldSpaceAABB()
+    pole:SetPos(pole:GetPos() + Vector(xa - lo.x, g.y - (lo.y + hi.y) * 0.5, g.z - lo.z))
+    if IsValid(pole:GetPhysicsObject()) then pole:GetPhysicsObject():SetPos(pole:GetPos()) end
+    ctx:wait(0.1)
+    for _, run in ipairs({ { 0, 300 }, { 0, 150 }, { 8, 300 }, { -8, 150 } }) do
+        local up, rise, ok = rideInto(ctx, xa, run[1], run[2])
+        local label = string.format("%d u/s, %d u to the side", run[2], run[1])
+        ctx:log(string.format("%s: up %.0f u/s, mass centre up %.1f", label, up, rise))
+        ctx:between(up, -1e9, 70, label .. ": fastest the bike went up", "u/s")
+        ctx:between(rise, -1e9, 8, label .. ": highest the mass centre went", "u")
+        ctx:ok(ok, label .. ": rider aboard and the bike upright after")
+    end
+    SafeRemoveEntity(pole)
+end)
+
+T.Case("into_a_crossbar", { timeout = 40,
+    desc = "a goal's crossbar at bar height, at 150 and 300 u/s: the bike stops under it, not flung" },
+function(ctx)
+    local g = ctx.ground
+    local xa = g.x + 400
+    local bar = railProp(ctx, "models/hunter/blocks/cube025x8x025.mdl", Vector(xa + 6, g.y, g.z + 51), Angle(0, 0, 0))
+    local lo = bar:WorldSpaceAABB()
+    bar:SetPos(bar:GetPos() + Vector(xa - lo.x, 0, g.z + 45 - lo.z))
+    if IsValid(bar:GetPhysicsObject()) then bar:GetPhysicsObject():SetPos(bar:GetPos()) end
+    ctx:wait(0.1)
+    for _, speed in ipairs({ 300, 150 }) do
+        local up, rise, ok = rideInto(ctx, xa, 0, speed)
+        ctx:log(string.format("%d u/s: up %.0f u/s, mass centre up %.1f", speed, up, rise))
+        ctx:between(up, -1e9, 70, speed .. " u/s: fastest the bike went up", "u/s")
+        ctx:between(rise, -1e9, 8, speed .. " u/s: highest the mass centre went", "u")
+        ctx:ok(ok, speed .. " u/s: rider aboard and the bike upright after")
+    end
+    SafeRemoveEntity(bar)
+end)
+
+T.Case("over_bumps", { timeout = 60,
+    desc = "an 8-unit speed bump at 300 u/s and an 18-unit, 40 degree hump at 150: ridden over, rider aboard" },
+function(ctx)
+    local g = ctx.ground
+    local xa = g.x + 400
+    -- {base width, height, top width, speed}
+    for _, s in ipairs({ { 50, 8, 20, 300 }, { 60, 18, 20, 150 } }) do
+        local w, h, top = s[1], s[2], s[3]
+        local inset = (w - top) / 2
+        T.Solid(ctx, { hull({ { xa, g.z - 2 }, { xa + w, g.z - 2 },
+            { xa + w - inset, g.z + h }, { xa + inset, g.z + h } }, -300, 300) })
+        ctx:wait(0.3)
+        local _, _, ok = rideInto(ctx, xa, 0, s[4])
+        ctx:ok(ok, string.format("%d-unit bump at %d u/s: rider aboard and the bike upright after", h, s[4]))
+        for _, e in ipairs(ctx.solids or {}) do SafeRemoveEntity(e) end
+        ctx.solids = {}
+        ctx:wait(0.2)
+    end
+end)
+
+--------------------------------------------------------------------------
 -- THE OTHER SHIPPED BIKES, held to the same bands.
 --
 -- The cruiser and the mini are the stock bike with other geometry (see

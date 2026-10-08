@@ -385,6 +385,17 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, sn
     -- the tyre rolls onto the face, so the limiter has nothing to limit.)
     local prev = self.lastComp
     self.stepBlocked = false
+    -- AND NO WHEEL COMES BACK DOWN PAST ITS TRAVEL. A wheel that was off the
+    -- ground (no `prev`), with the bike riding rather than landing, finds the
+    -- ground again within a unit or two of the end of its ray -- unless the
+    -- ground swung into the ray from the side: cresting a hump nose-down the
+    -- rear strut came back on the slope behind it 4 units past full travel,
+    -- the bump stop answered at the 309,600 ceiling and threw the bike over
+    -- its bars (measured on a real server). That much is the wheel box's to
+    -- meet, not the spring's.
+    if not prev and not self.soak and not sweepComp and comp > WC.restLength then
+        comp = WC.restLength
+    end
     if prev and not self.soak and not sweepComp then
         local rise = comp - prev
         if rise > WC.stepMax then

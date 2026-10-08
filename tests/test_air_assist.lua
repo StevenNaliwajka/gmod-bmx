@@ -110,6 +110,38 @@ T.test("vert turn: a tap of D comes round to a half turn and stops there", funct
     T.eq(#sv.errors, 0, "no errors: " .. table.concat(sv.errors, " | "))
 end)
 
+-- Off a tall park quarter pipe a vert flight is half a second: the turn has to answer
+-- the key at once (not the ground lean's third-of-a-second ramp), turn about world up
+-- and nothing else (not the roll damping's share of it), and then bring the bike over
+-- onto the face it is coming back down (the drop, Air.vertDropStart). Real server:
+-- vert_turnaround.
+T.test("vert turn: nose up off a wall, a quick D: a half turn and back over onto the face in half a second", function()
+    local sv, bike = flying("vert")
+    local E = sv.env
+    local p = bike:GetPhysicsObject()
+    p:SetAngles(E.Angle(-80, 0, 0))
+    p:SetVelocity(V(E, 30, 0, 140))
+    bike.st.angVel, bike.st.prevF = V(E, 0, 0, 0), nil
+    F.input(bike, { lean = 1 })
+    local turned
+    sv:run(0.4, function()
+        if not turned and math.abs(bike.st.vertSpin or 0) > 1.0 then
+            turned = true
+            F.input(bike, {})
+        end
+        return false
+    end)
+    T.ok(turned, "the key turned it past a radian within 0.4 s")
+    sv:run(0.3)
+    local n = face(E, 70)
+    local fall = (-(E.Vector(0, 0, 1) - n * n.z)):GetNormalized()
+    T.between(math.abs(math.deg(bike.st.vertSpin)), 130, 230, "turned about world up, deg")
+    T.ok(bike.st.vertDrop, "the drop took over on the way down")
+    T.ok(bike:GetUp():Dot(n) > 0.7, string.format("wheels to the face: up . normal = %.2f", bike:GetUp():Dot(n)))
+    T.ok(bike:GetForward():Dot(fall) > 0.7, string.format("pointing down it: forward . fall line = %.2f", bike:GetForward():Dot(fall)))
+    T.eq(#sv.errors, 0, "no errors: " .. table.concat(sv.errors, " | "))
+end)
+
 T.test("vert turn: A turns the other way, to the same half turn", function()
     local sv, bike = flying("vert")
     F.input(bike, { lean = -1 })

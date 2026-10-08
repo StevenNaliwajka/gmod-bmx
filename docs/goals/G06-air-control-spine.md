@@ -86,3 +86,33 @@ Left: run the two headless cases and tune the entry speed (430 u/s from 380 u
 back is a guess at what clears an 84 u deck); ride it to set `vertYawRate` and
 the aim gains; the bot's two tricks live; a quarter pipe in a map that is not a
 park piece is classified the same way but has not been looked at.
+
+## Status update (2026-10-08): the two cases on a real server
+
+`spine_transfer` is no longer `wip`: 20/20 on a private server on top of 39211f2 (7/10
+before it). `vert_turnaround` stays `wip` at 12/20 (CI a326eb6 / 1004: 0 of 3 each). What
+was wrong, measured per tick:
+
+- **The turn did a third of its rate.** It read the smoothed lean (a third of a second to
+  full), it applied one torque along world up to a body whose inertias differ (so it spun
+  about the frame's long axis and the nose swung off sideways), and the roll damping and
+  landing roll-levelling in `AirControl` read a turn about world up off a 70 degree wall as
+  a roll to stop. Now the key is read as pressed, the torque is the one angular acceleration
+  shared out axis by axis, and while VertAir is turning nothing else acts about world up.
+  The half turn is made: 165-200 degrees where it was 70-120.
+- **It came down on its side.** Turned, the bike is still nose-up. Past `Air.vertDropStart`
+  (100 degrees) on the way down the whole attitude is steered onto the landing one (forward
+  down the fall line, wheels to the face, `vertDropKp/Kd`), with the turn's own settle about
+  world up until `vertDropAim` (160 degrees) and the heading after.
+- **Half its speed went into the coping and the strip joints** (G27): 311 u/s up the face,
+  131 left at the lip; now 150-165 leave it.
+- **The spine transfer** blended the bike onto the way DOWN the far face from an apex short
+  of the top, and it hung on the coping. It now carries the bike across the top at
+  `spineSpeed` and lets gravity bring it down.
+
+Left, from the 10-run logs: a vert flight off the 84 u quarter pipe at 430 u/s is half a
+second, and a 180 about world up plus the nose-over is ~300 degrees of rotation; in 3-5 of
+10 the bike is still swinging round when it lands and ends across the face. Off the 70
+degree top it drifts toward the deck. (Tried and not kept: starting the heading aim at 130
+degrees of turn and a slower spine carry, both worse.) Offline: `tests/test_air_assist.lua`
+"nose up off a wall, a quick D: a half turn and back over onto the face in half a second".

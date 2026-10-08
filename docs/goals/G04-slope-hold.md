@@ -89,3 +89,28 @@ whether the anchor's lateral spring fights a leaned, braked bike at a standstill
 Tests: `tests/test_wheel_contact.lua` ("anchor: ..."), headless
 `holds_on_slope`, `parked_on_slope`, `rolls_on_gentle_slope` (and their
 `@cruiser` / `@mini` variants), written, not yet run on a server.
+
+## Status update (2026-10-08): the hold on a real server
+
+`holds_on_slope` is no longer `wip`: 10/10 on a private server, drift 0.00-0.07 u in 10 s
+on 5 and 10 degrees facing up and 20 facing down, RMS speed 0.00 u/s, and on every other
+bike (`@cruiser`, `@mini`, `@road`, `@fixie`, `@city`). CI a326eb6 had it creeping 6-35 u
+(10 degrees) and 80-500 u (20). Two causes, both measured per tick on VPhysics:
+
+- **It never caught.** A locked tyre's sliding force is capped at what nulls the slip
+  through the patch's effective mass, and with the chassis free to pitch about the patch
+  that mass is small (9-19 kg of an 86 kg bike). So the slide settled where the cap equals
+  the slope's pull: a steady 7 u/s up 10 degrees, 13 down 20, far above `stickSpeed` (2),
+  for as long as the brake was held. A front wheel locked by its brake (the rear key at a
+  standstill paddles backwards) now catches from
+  `Wheel.brakeStickSpeed` (24 u/s; a locked tyre at that speed stops in two ticks at its
+  grip, so no skid changes, and the friction circle still lets go of a catch it cannot hold).
+- **Once caught it swung.** The anchor's spring is sized on that same small mass, so
+  against the whole bike it was soft and a third damped: on 20 degrees the bike sagged 3 u
+  and swung on it at 1-3 u/s for three seconds. `sv_physics.lua` 7d now bleeds the mass
+  centre's horizontal motion while the front brake holds a stopped, ridden bike (both wheels down, a
+  patch pinned, no pedalling), as 7c does for a parked one. Pedalling, a slide (the anchor
+  let go) or a wheel off the ground is untouched.
+
+Offline: `tests/test_wheel_contact.lua` "a braked bike already sliding slowly down a slope
+is caught and held" (fails with the old catch speed).

@@ -148,6 +148,35 @@ T.test("anchor: holds at 33 ticks as well as 66", function()
     T.between(bike.st.speed, 0, 0.8, "and still")
 end)
 
+-- A brake-locked tyre sliding slowly settles where its capped slip force equals
+-- the slope's pull -- 7 u/s up 10 degrees on a real server, well above stickSpeed --
+-- so a braked wheel catches from Wheel.brakeStickSpeed; and while a brake holds a
+-- stopped, ridden bike the mass centre's motion is bled off (sv_physics.lua 7d).
+T.test("anchor: a braked bike already sliding slowly down a slope is caught and held", function()
+    local sv, world = F.server({ groundSlope = 10 })
+    local E = sv.env
+    local C = E.BMX.Config.Wheel
+    T.ok(C.brakeStickSpeed > C.stickSpeed * 5, "a braked wheel catches well above stickSpeed")
+    local bike = F.bike(sv)
+    local a = math.rad(10)
+    F.place(bike, E.Vector(0, 0, F.restHeight(sv) / math.cos(a)), E.Angle(-10, 0, 0))
+    F.scripted(sv, bike)
+    sv:run(0.3)
+    F.input(bike, { brakeFront = 1 })
+    -- sliding back down at 12 u/s, past stickSpeed, under brakeStickSpeed
+    bike:GetPhysicsObject():SetVelocity(E.Vector(-12 * math.cos(a), 0, -12 * math.sin(a)))
+    sv:run(1)
+    local held = bike.st.brakeHeld
+    local start = bike:GetPos()
+    sv:run(5)
+    T.ok(held, "the brake hold is on (7d)")
+    T.between(drift(bike:GetPos(), start), 0, 1, "drift in the 5 s after, units")
+    -- and pedalling lets go of it
+    F.input(bike, { throttle = 1 })
+    sv:run(0.5)
+    T.ok(not bike.st.brakeHeld, "pedalling is not held")
+end)
+
 T.test("anchor: it is on by default, the sweep is off, and a braked bike at speed still skids and stops", function()
     local sv = F.server()
     T.eq(sv.env.BMX.Config.Wheel.stiction, 1, "stiction on by default")

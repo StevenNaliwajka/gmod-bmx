@@ -979,11 +979,30 @@ function(ctx)
     launchAt(ctx, Vector(lo.x + 20, lo.y + 2, hi.z), 6, 0, Vector(240, 0, -30))
 
     local code, dropSide = 0, true
+    -- What else is on the ledge when the bike gets there: the edge finder reads
+    -- the top by tracing down onto it, and anything lying on it is "top".
+    local others = {}
+    for _, e in ipairs(ents.FindInBox(lo - Vector(4, 4, 0), hi + Vector(4, 4, 40))) do
+        if e ~= box and e ~= ctx.bike and not (IsValid(ctx.bike) and e:GetParent() == ctx.bike)
+            and e ~= ctx.bot and e:GetClass() ~= "prop_vehicle_prisoner_pod"
+            and (e:IsPlayer() or IsValid(e:GetPhysicsObject())) then
+            others[#others + 1] = e:GetClass() .. (e:IsPlayer() and (" " .. e:Nick()) or "")
+        end
+    end
+    if #others > 0 then ctx:log("on the ledge before the grind: " .. table.concat(others, ", ")) end
+    local worst, worstAt = -math.huge, nil
     local started, ended = watchGrind(ctx, 5, function(g)
         code = ctx.bike:GetGrind()
         local half = ctx.bike:Cfg().Wheel.wheelbase * 0.5
-        if ctx.bike:LocalToWorld(Vector(half, 0, 0)).y > lo.y then dropSide = false end
+        local over = ctx.bike:LocalToWorld(Vector(half, 0, 0)).y - lo.y
+        if over > 0 then dropSide = false end
+        if over > worst then
+            worst = over
+            worstAt = string.format("%.2f s in, yaw %.1f, grind point %.2f off the edge, along %.0f",
+                CurTime() - g.started, ctx.bike:GetAngles().y, g.point.y - lo.y, g.point.x - lo.x)
+        end
     end)
+    if worstAt then ctx:log(string.format("front axle at most %.2f u past the edge (%s)", worst, worstAt)) end
     ctx:ok(started == "peg", "locked into a peg grind: " .. tostring(started))
     ctx:ok(code == 2, "pegs on the left, the ledge's side: " .. code)
     ctx:ok(dropSide, "the wheels hung off the drop side the whole way")
@@ -1449,13 +1468,15 @@ local function heldOnSlope(ctx, deg, downhill, seconds)
     return drift, rms
 end
 
--- WORK IN PROGRESS: CI a326eb6, with the test geometry now real: a
---   front-braked bike does NOT hold on a slope. Facing up 10 degrees it
---   creeps 6-35 u in 10 s, facing down 20 degrees 80-500 u (the 5 degree
---   hold is fine, 0.1 u). The tyre model has no static friction at a
---   standstill on a grade, so this is the G04 hold feature unfinished, not
---   a wrong band. The kickstand hold (parked_on_slope) passes.
-T.Case("holds_on_slope", { wip = true, timeout = 60,
+-- (Was wip, CI a326eb6: facing up 10 degrees it crept 6-35 u in 10 s, facing
+-- down 20 degrees 80-500 u. Two things, both measured on a real server: the
+-- locked tyre settled into a steady slide at 7 / 13 u/s, above the speed the
+-- stick-slip anchor catches at (Wheel.brakeStickSpeed now catches a braked
+-- wheel from 24 u/s); and once caught the anchor's spring, sized on the 9-19
+-- kg the patch feels, swung the whole bike on it at 1-3 u/s for three seconds
+-- (sv_physics.lua 7d bleeds the mass centre's motion while a brake holds it).
+-- 10/10 on all six bikes, drift 0.00-0.07 u.)
+T.Case("holds_on_slope", { timeout = 60,
     desc = "front brake held on 5, 10 degrees (facing up) and 20 (facing down), the bike does not creep" },
 function(ctx)
     for _, c in ipairs({ { 5, false }, { 10, false }, { 20, true } }) do
@@ -1552,13 +1573,12 @@ function(ctx)
     ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
 end)
 
--- WORK IN PROGRESS: CI a326eb6: dropping in down a 75 degree, 100 u radius
---   quarter pipe from 100 u up arrives at 330-450 u/s and the bike is on
---   its side (roll 70-95 degrees) at the bottom on every bike. Either the
---   sweep's transition handling is unfinished (G05) or this drop is too
---   violent for a bike with a 4 u rest compression; it needs a look at the
---   real contact before a band is meaningful.
-T.Case("rolls_in_to_quarter", { wip = true, timeout = 30,
+-- (Was wip, CI a326eb6: on its side at the bottom on every bike. Passing on
+-- main since the riding-into-things work (04141d0, d2d700d: the hard stop and
+-- the ramp foot) and the landing assist's limit: 10/10 stock and on the
+-- cruiser, mini, fixie and city bike, real server, 2026-10-08. @road is still
+-- wip, below.)
+T.Case("rolls_in_to_quarter", { timeout = 30,
     desc = "sweep on: dropping in down a 75 degree quarter pipe and riding out of it" },
 function(ctx)
     sweepOn(ctx)
@@ -1962,21 +1982,32 @@ for _, bike in ipairs({ "cruiser", "mini", "road", "fixie", "city" }) do
                             "rolls_in_to_quarter", "into_a_wall_stops",
                             "climbs_curb_slow", "stops_at_step_then_manuals_up",
                             "curb_no_pop" }) do
-        -- WIP, ONLY ON THE CITY BIKE: a heavy (112 kg), long, upright Dutch
-        -- bike with a coaster brake and "not a bike for hopping" (sh_bikes.lua)
-        -- never lifts its front wheel under power at 140 u/s -- CI 1004:
-        -- "timed out waiting for the front wheel to lift". Whether a city bike
-        -- should wheelie at all is a G12 design question nobody has answered,
-        -- so this is listed rather than failing main; it runs by name.
-        T.Variant(name, bike, { wip = (bike == "city" and name == "wheelie")
-            -- the same unfinished features as their base cases, wip above
-            or name == "holds_on_slope" or name == "rolls_in_to_quarter"
-            -- the wheel sweep does not carry a 45 degree, 30 u wedge on the
-            -- mini (up the face but not over, 24 u of 35) the road bike or the
-            -- fixie (the strut bottoms out, 10.5-10.8 of 11.8 u); stock, cruiser
-            -- and city pass (CI a326eb6, 2649522). The sweep is default-off (bmx_wheel_sweep 0).
-            or (name == "rides_up_wedge_45" and (bike == "mini" or bike == "road" or bike == "fixie"))
-            or nil })
+        -- (wheelie@city was wip, CI 1004: the city bike's front never came up
+        -- under power -- its weight 24 u ahead of the rear axle is 1.8x the BMX's
+        -- moment, against the BMX's yank; it has its own Pitch.torque now,
+        -- sh_bikes.lua, 10/10. holds_on_slope and rolls_in_to_quarter: as their
+        -- base cases, above.)
+        --
+        -- WIP: rides_up_wedge_45 on the mini, the road bike and the fixie
+        -- (bmx_wheel_sweep, default off). Re-measured 2026-10-08 on a real
+        -- server: mini 7/12, road 7/10, fixie 5/10, every failure the same --
+        -- the wheel box meets the 45 degree face, VPhysics keeps the 0.71 of
+        -- the speed along it, and the bike reaches the top edge at 60-90 u/s and
+        -- stalls on it or rolls back. Turning the motion up the face instead
+        -- (most of the speed kept) got these three to 9-10/10 but made the
+        -- cruiser 5/10 and 2/8: a faster bike flies off the top edge and a wheel
+        -- coming down on that convex corner is pushed out of it as an obstacle
+        -- (back as much as up) and stopped dead. Rolling over a crest (G05/G16)
+        -- is the unfinished part.
+        --
+        -- WIP: rolls_in_to_quarter on the road bike: 25/30 on a real server
+        -- (2026-10-08), and the five it lost all the same -- turned over on the
+        -- way down (roll 164) and the rider thrown. The other five bikes are
+        -- 10/10. The road bike's tall, narrow, long frame on a 75 degree face
+        -- is the part not looked at.
+        T.Variant(name, bike, { wip = ((name == "rides_up_wedge_45"
+            and (bike == "mini" or bike == "road" or bike == "fixie"))
+            or (name == "rolls_in_to_quarter" and bike == "road")) or nil })
     end
 end
 
@@ -2842,6 +2873,17 @@ end
 --   'vert' but turns 86-90 degrees where a half turn (130-230) is the
 --   trick, and comes down at roll 73. Bot/air control routine (G06)
 --   unfinished.
+--   2026-10-08, real server: 12/20 (was 0/3). The turn now makes its half
+--   turn (165-200 degrees: the key is read as pressed, the torque is an
+--   acceleration about world up axis by axis, and nothing else in air control
+--   damps that axis), the bike comes over onto the face (Air.vertDropStart),
+--   and it leaves the coping at 150-165 u/s instead of 130 (the park quarter
+--   pipe's coping no longer overhangs the face, its strip joints are buried).
+--   Left: the flight off an 84 u quarter pipe at 430 u/s is half a second, a
+--   180 about world up plus the nose-over is ~300 degrees of rotation in it,
+--   and in 3-5 of 10 the bike is still swinging about world up when it lands
+--   and ends facing across the face (forward x > -0.3); off a 70 degree top
+--   it also drifts toward the deck, now and then onto it.
 T.Case("vert_turnaround", { wip = true, timeout = 40,
     desc = "up a tall park quarter pipe with D tapped in the air: classified vert, turned round about world up, lands facing down the ramp and is still ridden" },
 function(ctx)
@@ -2880,11 +2922,13 @@ function(ctx)
     ctx:between(math.deg(math.abs(ctx:st().roll or 0)), 0, 35, "roll after the landing", "deg")
 end)
 
--- WORK IN PROGRESS: CI a326eb6: leaves the coping and sees the far face,
---   but no Spine Transfer is paid and it times out waiting to come down (it
---   passed once, in 1004, so the routine is flaky as well as unfinished).
---   G06.
-T.Case("spine_transfer", { wip = true, timeout = 40,
+-- (Was wip, CI a326eb6: it saw the far face but no Spine Transfer was paid and
+-- it never came down. The transfer blended the bike onto the way DOWN the far
+-- face from its apex short of the top, and it hung on the spine's coping; it
+-- now carries it across the top (Air.spineSpeed) and gravity brings it down.
+-- With the vert turn's fixes (sv_air.lua) and 39211f2's tail guard: 20/20 on a
+-- real server, 2026-10-08.)
+T.Case("spine_transfer", { timeout = 40,
     desc = "over a park spine with a fresh W at the top: the far face is seen, the velocity carried onto it, Spine Transfer scored, and it lands on the far side" },
 function(ctx)
     local g = ctx.ground

@@ -184,6 +184,23 @@ T.test("city: LMB does nothing on the ground, even with bmx_fixie_frontbrake 1",
     T.eq(e.input.brakeRear, 1, "S is the brake")
 end)
 
+-- The headless wheelie@city was wip because the front never came up under power on a
+-- real server: the BMX's yank against a bike whose weight sits 1.8x further out over
+-- the rear axle. The city bike's Pitch.torque is the BMX's scaled by that moment.
+T.test("city: the rider's yank is the BMX's against the city bike's own nose-down moment", function()
+    local sv = F.server()
+    local B = sv.env.BMX
+    local function ratio(id)
+        local c = B.ConfigFor(B.Bikes[id])
+        local ahead = c.Chassis.massCenterExpected.x + c.Wheel.wheelbase * 0.5
+        return c.Pitch.torque / (c.Chassis.mass * 600 * ahead), c.Pitch.torque
+    end
+    local rb, tb = ratio("bmx")
+    local rc, tc = ratio("city")
+    T.ok(tc > tb * 1.5, string.format("the city bike's yank is bigger: %.0f against %.0f", tc, tb))
+    T.between(rc / rb, 0.95, 1.1, "its share of the moment against the BMX's")
+end)
+
 T.test("city: parked, it stands on its kickstand, and a bell rings", function()
     local sv = F.server()
     local B = sv.env.BMX

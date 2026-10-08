@@ -122,9 +122,9 @@ end
 -- `prof` is a convex polygon in (x, z), extruded from y0 to y1. `only` is a
 -- set of edge numbers to draw (edge i runs prof[i] -> prof[i+1]); by default
 -- every edge that is not on the floor. The end caps are drawn unless nocaps.
-local function prism(G, prof, y0, y1, key, only, nocaps)
+local function prism(G, prof, y0, y1, key, only, nocaps, hullProf)
     local pts = {}
-    for _, p in ipairs(prof) do
+    for _, p in ipairs(hullProf or prof) do
         pts[#pts + 1] = { p[1], y0, p[2] }
         pts[#pts + 1] = { p[1], y1, p[2] }
     end
@@ -197,12 +197,38 @@ local function tag(G, kind, a, b) G.grind[#G.grind + 1] = { kind = kind, a = a, 
 -- a strip of hulls: each segment dropped to the floor. Only the surface and
 -- the two side caps are drawn: the strips' faces against each other are never
 -- seen.
+--
+-- AT A CONCAVE JOINT (the surface turning up, as all through a transition) each
+-- strip's HULL runs on past it along its own line, SEAM_BURY units, under the
+-- other one's surface. Butted end to end, the two hulls' faces met in a plane
+-- square to the floor whose top edge was the riding surface itself, and a wheel
+-- box sliding over the joint caught that edge: a hit with a horizontal normal
+-- halfway up a quarter pipe, and the bike stopped short or was popped off the
+-- face (park quarter pipe and spine, real server). Buried, the joint is only
+-- the crease between two planes. Not at a convex joint (a spine's top, a
+-- lip), where running on would stand proud of the next surface. What is drawn
+-- is unchanged.
+local SEAM_BURY = 3
+local function slopeOf(a, b) return (b[2] - a[2]) / (b[1] - a[1]) end
 local function strips(G, line, y0, y1, defaultKey)
     for i = 1, #line - 1 do
         local a, b = line[i], line[i + 1]
         if abs(b[1] - a[1]) > EPS then
+            local k = slopeOf(a, b)
+            local u = 1 / math.sqrt(1 + k * k)                 -- x per unit along the line
+            local back, fwd = 0, 0
+            local p = line[i - 1]
+            if p and abs(a[1] - p[1]) > EPS and k > slopeOf(p, a) + 1e-3 then back = SEAM_BURY * u end
+            local q = line[i + 2]
+            if q and abs(q[1] - b[1]) > EPS and slopeOf(b, q) > k + 1e-3 then fwd = SEAM_BURY * u end
+            local hull
+            if back > 0 or fwd > 0 then
+                local xa, xb = a[1] - back, b[1] + fwd
+                local za, zb = max(a[2] - k * back, 0), max(b[2] + k * fwd, 0)
+                hull = { { xa, 0 }, { xb, 0 }, { xb, zb }, { xa, za } }
+            end
             prism(G, { { a[1], 0 }, { b[1], 0 }, { b[1], b[2] }, { a[1], a[2] } }, y0, y1,
-                a[3] or defaultKey, { [3] = true })
+                a[3] or defaultKey, { [3] = true }, nil, hull)
         end
     end
 end
@@ -264,7 +290,15 @@ shape("launch", "Launch ramp", nil, function(G, f)
 end)
 
 -- The coping on a lip at x (a pipe a hand's width over the deck), tagged.
-local function coping(G, x, y0, y1, H)
+-- ON THE DECK SIDE of a lip (`onDeck`), its face flush with the transition's
+-- top: centred on the lip it stood 2 u out over the face, and a wheel box
+-- riding up a tall quarter pipe caught its underside -- a ledge across the
+-- face, n = (1, 0, 0) -- and lost half its speed into it on the way past
+-- (the front at the lip, then the rear: 311 u/s up the face, 131 left in
+-- the air, real server). A tyre rolls over a pipe; a box cannot. A spine's
+-- coping is centred on its 4 u top already, flush both sides.
+local function coping(G, x, y0, y1, H, onDeck)
+    if onDeck then x = x + 2 end
     bar(G, { x, y0, H + 3 }, { x, y1, H + 3 }, 4, 9, "coping")
     tag(G, "coping", { x, y0, H + 3 }, { x, y1, H + 3 })
 end
@@ -278,7 +312,7 @@ shape("quarterpipe", "Quarter pipe", HEIGHT_NAMES, function(G, f, v)
     for i = 1, #line - 2 do line[i][3] = "wood" end
     strips(G, line, -W / 2, W / 2, "wood")
     wall(G, xl + deck, -W / 2, W / 2, H, "deck")
-    coping(G, xl, -W / 2, W / 2, H)
+    coping(G, xl, -W / 2, W / 2, H, true)
 end)
 
 shape("spine", "Spine", HEIGHT_NAMES, function(G, f, v)
@@ -480,7 +514,7 @@ shape("dropin", "Drop-in deck", HEIGHT_NAMES, function(G, f, v)
     -- back down to the floor at 22 degrees, so a rider can roll up to the deck
     line[#line + 1] = { xt + H / math.tan(rad(22)), 0 }
     strips(G, line, -W / 2, W / 2, "wood")
-    coping(G, xl, -W / 2, W / 2, H)
+    coping(G, xl, -W / 2, W / 2, H, true)
 end)
 
 --------------------------------------------------------------------------

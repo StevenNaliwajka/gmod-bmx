@@ -90,6 +90,19 @@ floor, plus two case fixes (G13, G15, G24 status). With the board and skates wor
 `@road`, `@fixie` and `@city`; `rides_up_wedge_45` on `@mini`, `@road` and `@fixie`;
 `wheelie@city`; `vert_turnaround` and `spine_transfer`.
 
+**Bike wips closed 2026-10-08.** `holds_on_slope` (stock and all five variants),
+`rolls_in_to_quarter` (stock, `@cruiser`, `@mini`, `@fixie`, `@city`), `wheelie@city` and
+`spine_transfer` run now, each 10/10 (spine 20/20) on a private server (G04, G05, G06, G12
+status). The fixes: a braked wheel's anchor catches from 24 u/s and a brake-held bike's mass
+centre is held (G04); the city bike's own yank (G12); the vert turn about world up, the drop
+back in and the spine carry (G06); the park quarter pipe's coping and strip joints (G27).
+That leaves **5 `wip`**: `rides_up_wedge_45` `@mini`/`@road`/`@fixie` (5-7/10, a stall on the
+wedge's top edge, G05), `rolls_in_to_quarter@road` (25/30, turns over on the way down) and
+`vert_turnaround` (12/20, from 0/3: lands still swinging round, G06). The full headless suite
+on a private server: 191 passed, 0 failed, 5 wip. `grind_ledge` (red once, pipeline 1112) did
+not fail in 46 targeted runs; it failed once as `grind_ledge@fixie` in a full-suite run and
+not in the next. Its log now says where the front axle got to and what else was on the ledge.
+
 **Where assets live (owner, 2026-10-07):** every BMX *vehicle* asset (vehicle
 code, models, materials, sounds, and anything a bike, board, scooter, skate or
 motor vehicle needs to be drawn or heard) goes in **this addon**,

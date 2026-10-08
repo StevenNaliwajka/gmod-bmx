@@ -266,6 +266,17 @@ C.Wheel = {
     stickSpeed     = 2,
     stickFreq      = 25,
     stickCooldown  = 0.25,
+    -- ...but a front wheel locked by its BRAKE catches from brakeStickSpeed. The
+    -- sliding tyre's force is capped at the one that nulls the slip through
+    -- the patch's effective mass, and with the chassis free to pitch about
+    -- the patch that mass is small (19 kg of an 86 kg bike, front wheel), so
+    -- a braked bike on a slope did not slow to stickSpeed at all: it settled
+    -- into a steady slide where that cap equals gravity's pull, 7 u/s facing
+    -- up 10 degrees and 13 facing down 20, and slid on for as long as the
+    -- brake was held (holds_on_slope, real server). A locked tyre at 24 u/s
+    -- stops in two ticks at its grip, so catching it there changes no skid;
+    -- the friction circle still lets go of a catch it cannot hold.
+    brakeStickSpeed = 24,
 
     -- SWEPT CONTACT (sv_wheel.lua, "swept wheel"; BMX.SweepContact). The single
     -- downward ray cannot see a face in front of the tyre, so a wheel at the
@@ -716,6 +727,15 @@ C.Air = {
     vertAimMax  = math.rad(100),
     vertAimKp   = 18,
     vertAimKd   = 5,
+    -- ...and once the turn is past vertDropStart on the way down, the whole
+    -- attitude is steered onto the landing one (forward down the fall line,
+    -- wheels to the face), vertDropKp / vertDropKd per radian and per rad/s:
+    -- about 12 rad/s, zeta 0.9, a hundred degrees of nose-over in a quarter of
+    -- a second, which is what is left of a flight off a tall quarter pipe.
+    vertDropStart = math.rad(100),
+    vertDropAim   = math.rad(160),
+    vertDropKp    = 150,
+    vertDropKd    = 22,
 
     -- SPINE TRANSFER. Looked for near the apex (|vz| under spineApexVz): a
     -- surface leaning the other way within spineReach units over the coping and

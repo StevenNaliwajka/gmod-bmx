@@ -78,3 +78,13 @@ written, **not run** (no server here). Not merged, not on the Workshop.
   threshold against VPhysics's contact noise, which the plant does not have: if the prop
   comes out on a gentle ride on a real server, that is the number to raise (`hold` in the
   registration).
+
+## Status update (2026-10-08): the city bike wheelies
+
+`wheelie@city` is no longer `wip`: 10/10 on a private server, the front up at 24 degrees
+after 1.2 s with the rear down the whole hold. CI 1004 had "timed out waiting for the front
+wheel to lift": the rider's yank back (`Pitch.torque`, 1,050,000) was the BMX's, against a
+bike whose weight sits 24 u ahead of its rear axle (112 kg * 600 * 24 = 1.61M of nose-down
+moment, the BMX's is 0.90M), and the front tyre still carried 8,000-11,000 at full power.
+The city bike's `Pitch.torque` is 1,870,000, the BMX's scaled by that moment: a heavy bike
+is slow to wheelie, not unable to (`tests/test_citybike.lua`).

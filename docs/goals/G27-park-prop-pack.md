@@ -98,3 +98,18 @@ Not done: G05, G06 and G16 cases still build their own terrain (the pieces are
 there to switch to); no icons in the spawn menu (no model to render); no
 per-piece colour; a preset is built at one height, so on uneven ground it
 floats or sinks in places.
+
+## Status update (2026-10-08): two collision fixes from the real server
+
+- **The coping sat 2 u out over the face** (centred on the lip). A wheel box riding up a
+  tall quarter pipe caught its underside (a hit with n = (1, 0, 0)) and lost half its speed
+  there. It now sits on the deck, flush with the transition's top (quarter pipe, drop-in);
+  the grind line is still the bar's middle. The spine's was already flush.
+- **The strips' ends.** A transition's eight strips were hulls butted end to end, and the
+  side face where two met had its top edge on the riding surface: a box sliding over the
+  joint caught it. At every concave joint each strip's hull now runs on 3 u under the next
+  one's surface (`SEAM_BURY`); what is drawn is unchanged.
+
+With both, a bike leaves the tall quarter pipe at 150-165 u/s instead of 130.
+`park_quarterpipe_ride_up` 10/10. Offline: `tests/test_park.lua` "every concave joint is
+buried" and "a lip's coping sits on the deck" (each fails on the old geometry).

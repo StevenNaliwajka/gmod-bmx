@@ -105,3 +105,16 @@ trace a wheel. The default stays off until it has been ridden.
 Tests: `tests/test_wheel_contact.lua` ("sweep: ..." solver tests on a wedge,
 steps and a wall; "sweep (plant): ..." closed-loop on the plant), headless
 `rides_up_wedge_45`, `rolls_in_to_quarter`, `into_a_wall_stops` (+ variants).
+
+## Status update (2026-10-08)
+
+`rolls_in_to_quarter` is no longer `wip`: 10/10 on the stock bike, the cruiser, the mini,
+the fixie and the city bike on a private server; it was passing on main since the
+riding-into-things work (04141d0, d2d700d). `@road` stays `wip`: 25/30, the five lost all
+turned over on the way down (roll 164). `rides_up_wedge_45` on `@mini`, `@road` and `@fixie` stays `wip`:
+5-7/10 each, every failure the same stall on the top edge (the wheel box meets the 45
+degree face, VPhysics keeps the 0.71 of the speed along it, the bike reaches the top at
+60-90 u/s). Turning the motion up the face instead (keeping most of the speed) got those
+three to 9-10/10 and broke the cruiser (5/10, 2/8): faster, a bike flies off the top edge,
+and a wheel coming down on that convex corner is pushed out of it as an obstacle and
+stopped dead. Rolling over a crest is what is left; it was not shipped.

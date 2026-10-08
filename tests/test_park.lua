@@ -170,6 +170,64 @@ T.test("park: the quarter pipes' heights are 36, 56 and 84 and the lip is where 
     end
 end)
 
+-- A wheel box sliding up a transition caught the top edge of the next strip's
+-- side face wherever two strips were butted end to end (sh_park.lua, strips:
+-- SEAM_BURY), and the coping hung 2 u out over the face (coping: onDeck). Both
+-- cost a bike most of its speed up a tall park quarter pipe on a real server.
+T.test("park: up a transition no strip's end is at the riding surface: every concave joint is buried", function()
+    local _, _, P = server()
+    local checked = 0
+    for _, id in ipairs({ "quarterpipe", "spine", "dropin", "launch" }) do
+        local def = P.Shapes[id]
+        for v = 1, (def.variants and #def.variants or 1) do
+            for sz = 1, #P.SIZES do
+                local b = P.Build(id, { sz, v })
+                for hi, h in ipairs(b.hulls) do
+                    for _, f in ipairs(facesOf(b)[hi]) do
+                        if math.abs(f.n[3]) < 1e-6 and math.abs(f.n[1]) > 0.999 then
+                            local x = f.d / f.n[1]
+                            local top = -math.huge
+                            for _, k in ipairs(f.idx) do top = math.max(top, h[k].z) end
+                            local s = topAt(b, x, 0)
+                            local sl, sr = topAt(b, x - 1, 0), topAt(b, x + 1, 0)
+                            -- a joint in the riding surface, the surface turning up there
+                            if top > 1 and s - top < 0.05 and math.abs(sl - s) < 4 and math.abs(sr - s) < 4
+                                and (sr - s) > (s - sl) + 0.01 then
+                                T.ok(false, string.format("%s: a strip's end at x %.1f is the riding surface (top %.2f)",
+                                    name(id, sz, v), x, top))
+                            end
+                            checked = checked + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    T.ok(checked > 50, "looked at the strips' end faces: " .. checked)
+end)
+
+T.test("park: a lip's coping sits on the deck, nothing over the face in front of it", function()
+    local _, _, P = server()
+    for _, id in ipairs({ "quarterpipe", "dropin" }) do
+        for v, h in ipairs({ 36, 56, 84 }) do
+            local b = P.Build(id, { 2, v })
+            local cop
+            for _, g in ipairs(b.grind) do if g.kind == "coping" then cop = g end end
+            T.ok(cop ~= nil, id .. " " .. v .. " has coping")
+            if cop then
+                -- where the 70 degree curve meets the deck (sh_park.lua, arcLine)
+                local R = h / (1 - math.cos(math.rad(70)))
+                local lip = b.mins.x + R * math.sin(math.rad(70))
+                local front = topAt(b, lip - 0.5, 0)
+                T.ok(front < h, string.format("%s %d: half a unit in front of the lip it is still the face (%.1f), not the coping",
+                    id, v, front))
+                T.near(topAt(b, lip + 0.5, 0), h + 3, 0.05, id .. " " .. v .. ": the coping starts at the lip")
+                T.near(cop.a.x, lip + 2, 0.05, id .. " " .. v .. ": its grind line is the bar's middle")
+            end
+        end
+    end
+end)
+
 --------------------------------------------------------------------------
 -- Grind tags. sv_grind.lua finds a rail by tracing down round a point and
 -- reading what it sees (C.Grind: pipeMaxWidth, drop, topTol, edgeCheck). The

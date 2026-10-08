@@ -817,6 +817,41 @@ function BMX.PhysicsStep(ent, phys, dt)
     end
 
     ----------------------------------------------------------------------
+    -- 7d. HELD ON THE BRAKE: a rider stopped with a brake locked and its
+    -- contact patch pinned (the stick-slip anchor, Wheel:Simulate), both
+    -- wheels down, no pedalling either way. Static friction again, and for the reason 7c
+    -- gives: the anchor's spring is sized on the mass the PATCH feels, which
+    -- with the chassis free to pitch about it is a fraction of the bike (9 kg
+    -- of 86 on the front, facing down 20 degrees). Against the whole bike that
+    -- spring is soft and a third damped: the bike sagged 3 u and swung on it
+    -- for three seconds at 1-3 u/s, and on 10 degrees facing up it never
+    -- caught at all (holds_on_slope, real server). So the horizontal motion is
+    -- bled off at the mass centre while the anchor holds; the anchor's own
+    -- friction limit still decides whether it holds, and a bike that slides
+    -- (anchor let go) or is ridden off is untouched.
+    ----------------------------------------------------------------------
+    -- THE FRONT BRAKE, not merely a pinned patch: S at a standstill is the
+    -- paddle-backwards key (drivetrain), and holding that bike still is
+    -- holding the rider's feet (tests/test_sim.lua, "S at a standstill").
+    if hasDriver and inp.throttle <= 0 and (inp.brakeRear or 0) <= 0 and brakeFront > 0
+        and speed < (C.Wheel.brakeStickSpeed or 0) then
+        local pinned, down = false, true
+        for _, w in ipairs(wheels) do
+            if w.anchor then pinned = true end
+            if not w.onGround then down = false end
+        end
+        if pinned and down then
+            local vNow = phys:GetVelocity()
+            phys:ApplyForceCenter(Vector(vNow.x, vNow.y, 0) * -phys:GetMass())
+            st.brakeHeld = true
+        else
+            st.brakeHeld = nil
+        end
+    else
+        st.brakeHeld = nil
+    end
+
+    ----------------------------------------------------------------------
     -- 7b. Bunny hop
     ----------------------------------------------------------------------
     local H = C.Hop

@@ -575,6 +575,14 @@ BMX.RegisterBike("fixie", {
 --                               its floor a hand over the wheel. Props up to 12 kg ride
 --                               in it (sv_basket.lua)
 --   seats = { child = {} }      no pegs: a Dutch bike carries a child on the back
+--   Pitch.torque 1,870,000      the rider's yank back, sized like the BMX's against the
+--                               nose-down moment it has to beat: the weight times its
+--                               reach ahead of the rear axle, 112 * 600 * 24 = 1.61M
+--                               against the BMX's 86 * 600 * 17.5 = 0.90M, so the
+--                               BMX's 1,050,000 times 1.78. With the BMX's figure the
+--                               front never came up under full power (front tyre still
+--                               carrying 8,000-11,000 at 140-220 u/s, real server):
+--                               a heavy bike is slow to wheelie, not unable to
 BMX.RegisterBike("city", {
     look        = "city",          -- its model (docs/MODELS.md)
     printName   = "City Bike",
@@ -592,6 +600,7 @@ BMX.RegisterBike("city", {
         Drive   = { maxCadence = 9.5, gearRatio = 2.0, crankTorque = 360000, dragArea = 0.0065 },
         Hop     = { popSpeed = 150 },
         Balance = { maxLean = math.rad(34) },
+        Pitch   = { torque = 1870000 },
     },
 })
 

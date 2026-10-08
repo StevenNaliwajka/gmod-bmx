@@ -517,12 +517,13 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, sn
     -- tyre force reacts into the brake and through it into the chassis, rather
     -- than spinning the wheel. Detected the same way the brake itself decides,
     -- so the two can never disagree.
-    local locked = false
+    local locked, braked = false, false
     if brakeTorque > 0 then
         local dOmega = brakeTorque / WI * dt
         if abs(omegaFree) <= dOmega then
             omegaFree = 0                 -- locked: the slip becomes -vFwd,
             locked    = true              -- the tyre saturates, and you skid
+            braked    = true
         else
             omegaFree = omegaFree - dOmega * (omegaFree > 0 and 1 or -1)
         end
@@ -651,7 +652,10 @@ function Wheel:Simulate(ent, phys, cfg, dt, driveTorque, brakeTorque, filter, sn
     local anchored = false
     if stick and locked then
         local vPatch = sqrt(vFwd * vFwd + vLat * vLat)
-        if not self.anchor and now >= self.anchorFree and vPatch < WC.stickSpeed then
+        -- (The FRONT brake's: at a standstill the rear key is the paddle-backwards
+        -- key, and a rear patch pinned from walking pace fought the paddling.)
+        local catch = (braked and self.isFront) and (WC.brakeStickSpeed or WC.stickSpeed) or WC.stickSpeed
+        if not self.anchor and now >= self.anchorFree and vPatch < catch then
             self.anchor = Vector(contact)
         end
         if self.anchor then

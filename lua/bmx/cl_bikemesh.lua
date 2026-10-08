@@ -282,10 +282,23 @@ local function toVectors(t)
 end
 BM.LayoutVectors = toVectors
 
+-- THE BUILD IS ALMOST ALL GARBAGE, AND THE COLLECTOR MUST KEEP UP WITH IT. One
+-- model's source geometry and vertex tables are 100-250 MB of short-lived Lua
+-- tables, of which a few hundred KB survive (the meshes are engine objects). Left
+-- to LuaJIT's own pace, the heap grew by roughly that much for EVERY model a client
+-- built, and a 32-bit client (GMod's default branch, about 4 GB of address space,
+-- half of it the game) aborted after seeing ten or so vehicle kinds: measured
+-- 2026-10-08 on a test client, 2.6 GB -> 4.0 GB over ten vehicles, then "Aborted".
+-- So each part's source vertices are dropped as soon as they are meshes, the
+-- collector is stepped at every slice, and a finished model is followed by one
+-- full collection (BM.Get). The heap then stays near ONE build's working set.
+local GC_STEP = 400          -- collectgarbage("step") size per slice
+
 local function buildJob(key, opt)
     return coroutine.create(function()
         local G = BMX.BikeGeo
         local M = G.Build(opt)
+        collectgarbage("step", GC_STEP)
         coroutine.yield()
         local layout = toVectors(M.layout or {})
         local out = { groups = {}, layout = layout, stats = G.Stats(M) }
@@ -321,13 +334,20 @@ local function buildJob(key, opt)
                     }
                     if #verts >= MAX_TRIS * 3 then flush() end
                     work = work + 1
-                    if work >= 1500 then work = 0 coroutine.yield() end
+                    if work >= 1500 then
+                        work = 0
+                        collectgarbage("step", GC_STEP)
+                        coroutine.yield()
+                    end
                 end
                 flush()
+                b.v = nil            -- this part's source vertices are meshes now
                 list[#list + 1] = entry
             end
+            M.groups[gname] = nil
             out.groups[gname] = list
         end
+        M = nil
         return out
     end)
 end
@@ -374,6 +394,9 @@ function BM.Get(k, radius, kind, opt)
         if coroutine.status(m.job) == "dead" then
             res.ready = true
             models[key] = res
+            -- Give back the build's garbage now, once, rather than letting the
+            -- next build stack on top of it (see GC_STEP).
+            collectgarbage("collect")
             return res
         end
     end

@@ -488,3 +488,22 @@ T.test("contacts: the skates' wheels are on the floor, standing, striding, and h
     me:SetNWString("BMXWorn", "")
     E.hook.Run("PrePlayerDraw", me)
 end)
+
+-- A MODEL BUILD MUST GIVE ITS GARBAGE BACK. One build is 100-250 MB of short-lived
+-- tables; a client that carried each build's heap into the next aborted at the
+-- 32-bit address-space ceiling after about ten vehicle kinds (2026-10-08). After a
+-- build completes, the heap is back near where it started.
+T.test("memory: building a vehicle's model leaves the Lua heap where it was", function()
+    local w = world()
+    local s = scene("dirtbike")
+    w.E.BMX.BikeMesh.Clear()          -- built afresh, not taken from an earlier test
+    collectgarbage("collect")
+    local before = collectgarbage("count") / 1024
+    for _ = 1, 8000 do
+        draw(s)
+        if model(s) then break end
+    end
+    T.ok(model(s), "the dirt bike's model was built")
+    local after = collectgarbage("count") / 1024
+    T.ok(after - before < 40, string.format("heap %.0f MB -> %.0f MB after the build (a build is ~200 MB of garbage)", before, after))
+end)

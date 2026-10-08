@@ -82,6 +82,15 @@ game client: the IK poses, the board rider, the replay stand-ins, the menus and
 the 3D2D signs all need eyes. Feel tuning (`docs/TUNING.md`) needs a person on
 the test server.
 
+**Vehicle wips closed 2026-10-08.** `tandem_rides`, `dirtbike_lands_big_jump`,
+`scooter_tailwhip_lands`, `climbs_curb_slow@scooter` and `curb_no_pop@scooter` run now. Each
+passed 10/10 on a private server. The fixes were the tandem's brake and the scooter's wheel-box
+floor, plus two case fixes (G13, G15, G24 status). That leaves 22 `wip` of 195 cases:
+`holds_on_slope` and `rolls_in_to_quarter`, on the stock bike and on `@cruiser`, `@mini`,
+`@road`, `@fixie` and `@city`; `rides_up_wedge_45` on `@mini`, `@road` and `@fixie`;
+`wheelie@city`; `board_ollie_height`, `board_bails_on_bad_catch` and
+`board_drops_in_to_quarter`; `vert_turnaround`, `spine_transfer` and `skates_soul_grind`.
+
 **Where assets live (owner, 2026-10-07):** every BMX *vehicle* asset (vehicle
 code, models, materials, sounds, and anything a bike, board, scooter, skate or
 motor vehicle needs to be drawn or heard) goes in **this addon**,

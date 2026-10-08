@@ -81,6 +81,9 @@ C.Chassis = {
     -- See BMX.CollisionBoxes: the body box is SHIFTED so the whole shape's
     -- mass centre stays at massCenterExpected.
     wheelHullHalfWidth = 1.6,
+    -- false = the derived floor above. A vehicle whose sag takes much of its travel
+    -- sets its own (the scooter, sh_scooter.lua), so the square box clears a curb.
+    wheelHullBottom = false,
 
     -- AND THE BARS. They reach 14.5 units out each side, against 4 for the
     -- body box, so a bike lying on its side put its lower bar end 10 units

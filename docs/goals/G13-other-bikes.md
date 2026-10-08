@@ -103,3 +103,19 @@ pass; the four headless cases are **written and not run** (no server here).
   across it is placed by constants, not measured against a real car. A locked bike is welded to
   the world where it stands, so a map with moving geometry under it will move it. No unlock
   by key/code, no rack for non-bike props.
+
+## Status update (2026-10-08): the tandem on a real server
+
+`tandem_rides` is no longer `wip` and passes on VPhysics (gm_flatgrass, 10/10 on a private
+server). CI a326eb6 had read "alone 179, both 157, D does not turn it"; the drive and the
+steering were never the problem:
+
+- **The case:** the stoker bot left over from the previous run was put down on top of the new
+  tandem by `ExitVehicle` and shoved it to 150 u/s before the "alone" launch. It now gets off
+  first, and both launches start from a standstill: alone ~90 u/s after 2 s, both ~155.
+- **The vehicle:** a pedalling stoker (141,700 of wheel torque) out-pushed the captain's
+  95,000 rear brake, so a stop rolled 870 units and the turn ran off the test ground. Now the
+  captain's brake cuts the stoker's push (`BMX.Tandem.Push`, a timing chain's worth of
+  "the captain calls the stop") and the tandem's only brake is 150,000, sized for two riders.
+  Offline: `tests/test_oddbikes.lua` "the captain's brake stops the stoker's push".
+- The captain's D turns it about 112 degrees in 1.5 s at 110 u/s with both aboard.

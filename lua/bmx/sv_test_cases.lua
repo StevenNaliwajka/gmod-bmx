@@ -3235,13 +3235,13 @@ function(ctx)
     ctx:between(math.deg(plain), -5, 14, "pitch on a plain launch", "deg")
 end)
 
--- WORK IN PROGRESS: CI 2649522: dropped 250 u the dirt bike lands cleanly
--- (no crash, both wheels down, roll 0) but the deepest suspension compression
--- read is 2.9 u of 12.0 travel against the 4.8..26.4 band -- the landing hardly
--- uses its travel. Either the dirt bike's spring is too stiff for its mass
--- (first cut) or the per-tick sample misses the substep peak; it needs a look
--- at the suspension before the band can be judged.
-T.Case("dirtbike_lands_big_jump", { wip = true, vehicle = "dirtbike", timeout = 30,
+-- (Was wip, CI 2649522: "deepest compression 2.9 of 12.0". The suspension was fine;
+-- the reading stopped too soon. Air mode ends on the very tick a wheel touches, when
+-- the strut has only just met the ground, so the sample ended at the static sag. Read
+-- through the settle, the landing takes 11.6 of the 12 units (measured on gm_flatgrass,
+-- 4 runs, 11.6..11.7): the soak's 250 u/s into the long travel, all of it used and
+-- the bump stop not reached.)
+T.Case("dirtbike_lands_big_jump", { vehicle = "dirtbike", timeout = 30,
     desc = "the dirt bike dropped 250 units lands on its wheels, uses its travel and keeps its rider" },
 function(ctx)
     local b = ctx.bike
@@ -3268,7 +3268,11 @@ function(ctx)
         deepest = math.max(deepest, f.compression or 0, r.compression or 0)
         return ctx:st().grounded and not ctx:st().airMode
     end, 4, "the landing")
-    ctx:wait(1.2)
+    local t0 = CurTime()
+    ctx:waitUntil(function()
+        deepest = math.max(deepest, f.compression or 0, r.compression or 0)
+        return CurTime() - t0 >= 1.2
+    end, 3, "the landing to settle")
     hook.Remove("BMX_Crash", "BMX.TestBigJump")
 
     ctx:log(string.format("deepest compression %.1f of %.1f travel, roll %.0f deg", deepest, ctx.cfg.Wheel.restLength,
@@ -3412,10 +3416,9 @@ function(ctx)
     scooterInput(ctx, {})
 end)
 
--- WORK IN PROGRESS: Scooter G26 first cut: written without a server;
---   revisit once its speed reading is verified (CI a326eb6 only reached the
---   nil fwdSpeed read, now fixed, so its real outcome is not yet known).
-T.Case("scooter_tailwhip_lands", { wip = true, vehicle = "scooter", timeout = 45,
+-- (Was wip, "written without a server": first run on one 2026-10-08, the deck goes
+-- 5.3 rad round, finishes, lands and pays a Tailwhip.)
+T.Case("scooter_tailwhip_lands", { vehicle = "scooter", timeout = 45,
     desc = "the scooter: a hop, then LMB + A held for half a second in the air: the deck goes round the bars, finishes by itself, lands, and pays a Tailwhip" },
 function(ctx)
     local b = ctx.bike
@@ -3494,11 +3497,11 @@ end)
 for _, name in ipairs({ "rest", "parked_on_stand", "fallen_is_picked_up", "lean_steers", "lean_tracks_target",
                         "bunny_hop", "air_mode", "crash_ejects", "into_a_wall_stops", "climbs_curb_slow",
                         "curb_no_pop" }) do
-    -- The scooter's two curb cases are the scooter's feature (G26, first cut):
-    -- it does not get its rear wheel over a curb at kicking speed, rides a little
-    -- low on top (2.8 u against 3.4..6.9), and its rider comes off in curb_no_pop
-    -- (CI a326eb6). Listed, not run, until the scooter's curb behaviour is done.
-    T.Variant(name, "scooter", { wip = (name == "climbs_curb_slow" or name == "curb_no_pop") or nil })
+    -- (The two curb cases were wip from CI a326eb6: rear wheel not over, 2.8 u low on
+    -- top, rider off in curb_no_pop. Since the impact fixes (04141d0, d2d700d: the
+    -- strut's fresh contact capped at its travel, side hits soaked) both pass: ride
+    -- height on top 4.8..5.0, peak 0.8..0.9 g.)
+    T.Variant(name, "scooter")
 end
 
 --------------------------------------------------------------------------

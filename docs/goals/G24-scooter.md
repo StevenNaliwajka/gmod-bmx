@@ -56,3 +56,20 @@ Workshop. Nothing about the bike or the board changed: their tests pass unchange
 **Tests.** `tests/test_scooter.lua` (30): the registration, the input map and decode, the keys that pick each grind and the rule for each contact (below the hull's boxes, the peg wheel clear of the ledge), the bri flip merge, rides on the plant (kick to speed, coast, the fender brake, both carves, a hop), the tailwhip completing by itself on the scooter and paying 600, a barspin, "Tailwhip to Barspin", a bail on a half whip, a bri flip, the 50-50 / smith / feeble locks, no lock across a rail, the drawing (feet and hands, a whip, a barspin, every pose) and the headless bookkeeping.
 
 **What the plant could not say, the biggest feel risks:** whether `steerRate 15` is twitchy or just wrong, the fender brake's stop against a real tyre, the standing rider's pose and seat height, and the grinds' pose against real VPhysics hulls (the plant is a box world).
+
+## Status update (2026-10-08): on a real server
+
+`scooter_tailwhip_lands`, `climbs_curb_slow@scooter` and `curb_no_pop@scooter` are no longer
+`wip`; each passed 10/10 on a private gm_flatgrass server. The other 13 scooter cases (its own 4
+and 9 shared riding cases) pass too.
+
+- **Tailwhip:** it needed no change. The deck goes 5.3 to 5.5 rad round, finishes by itself,
+  lands and pays "Tailwhip".
+- **Curbs: one vehicle fix.** The wheel boxes' floor was derived as -(radius - travel) = -1.
+  The sag (2.07) takes half the 4-unit travel, so that floor rode 1.93 u off the ground, which
+  is under a 0.4-radius curb (2.0). At kicking speed (W kicks it to ~150 u/s, whatever the 53
+  u/s the case starts at), the square front box hit the curb's face. It stopped the scooter
+  dead, nose down 30 degrees, in 3 runs of 10. `Chassis.wheelHullBottom = 0` (a new base-config
+  key, `false` = derived) puts the floor on the axle line, 2.93 u up. The box still meets the
+  ground only past the travel, after the bump stop. Now the ride height on top of the curb is
+  4.7 to 5.2 u, `curb_no_pop` peaks at 0.75 to 0.92 g, and the rider stays aboard.

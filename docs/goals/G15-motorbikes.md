@@ -73,3 +73,12 @@ Riding, FMX poses and the moped are built and tested on the offline plant; the h
 - **Out of scope / left**: Trials mode, checkpoints and dab/fault counting belong to the game-mode repo
   (gmod-bmx-mode); a classic motorbike; real models (G20); tuning by feel; the headless cases have not met VPhysics
   (the clutch/wheel coupling in particular is a plant result).
+
+## Status update (2026-10-08): the big jump on a real server
+
+`dirtbike_lands_big_jump` is no longer `wip` and passes on VPhysics (gm_flatgrass, 10/10 on a
+private server). The "2.9 of 12 units" CI 2649522 read was the measurement, not the spring: air
+mode ends on the very tick a wheel touches, and the case stopped sampling there, at the static
+sag. Read through the settle, a 250-unit drop takes 11.6 of the 12 units (the landing soak's
+250 u/s into the travel, the bump stop not reached), lands on both wheels, roll 0, rider aboard.
+No suspension numbers changed. `dirtbike_wheelie_on_clutch_pop` was already running.

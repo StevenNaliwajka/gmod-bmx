@@ -302,6 +302,14 @@ BMX.RegisterBike("scooter", {
             hullMin = Vector(-12, -3, 2), hullMax = Vector(8, 3, 50),
             massCenterExpected = Vector(-2, 0, 26),
             wheelHullHalfWidth = 1.2,
+            -- THE WHEEL BOXES' FLOOR ON THE AXLE LINE, not the derived -(5 - 4) = -1. A
+            -- box is square: its front is a wall, and with the sag (2.07) taking half the
+            -- travel the derived floor rode 1.93 u off the ground, under a 0.4-radius curb
+            -- (2.0). The front box hit the curb's face at kicking speed (150 u/s) and
+            -- stopped the scooter dead, nose down 30 degrees, 3 runs in 10 on a real
+            -- server. At 0 it rides 2.93 u up, and still meets the ground only past the
+            -- travel, after the bump stop: the hard stop it is there to be.
+            wheelHullBottom = 0,
             pegHullHalfWidth   = 4.2,
             -- The bars: 35 up, 22 across, 4.8 behind the head tube's top.
             barHullCentre = Vector((WHEELBASE / 2 - 4.8) / K, 0, T.barHeight / K),

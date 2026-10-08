@@ -5,6 +5,42 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.2.0 -- not yet on the Workshop
+
+Crashes that should not happen, gone; the board, skates, tandem and scooter
+finished on a real server; and a bike that can ride itself.
+
+- **Auto ride.** Press **O** (or `bmx_autoride`, or the button in the /bike
+  window) and the bike rides itself with the trick bot's brain when the BMX (Mode)
+  gamemode is running; any ride key takes it back on the same keypress.
+  `bmx_autoride_key`, `bmx_autoride_allow`; hooks `BMX_AutoRideStart/Stop`.
+- **No more flings.** Riding into a post, a goal or a bump stops the bike or
+  rides it over instead of throwing it, cartwheeling it or sinking it into the
+  floor. A quarter pipe ridden straight up rolls back down instead of looping
+  you over backwards. On one wheel without asking for it, the rider leans the
+  bike back down instead of going over the bars or the back.
+- **Kerbs are kerbs.** A kerb or planter built from a frozen prop or entity no
+  longer slides out from under a bike.
+- **Holds on a hill.** Brake on a 10 or 20 degree slope and the bike stays put
+  instead of creeping.
+- **Ramps and vert.** A wheel at a ramp's top edge rolls over it instead of
+  being kicked off it, so every bike rides up a 45 degree wedge and drops into a
+  quarter pipe. Spine transfers carry you over the top, quarter-pipe coping no
+  longer sticks out over the face, and the City Bike can wheelie. The Air 180
+  turns further than before but is still being reworked (next update).
+- **Skateboard and skates.** A quick SPACE tap always ollies, a drop-in stays on
+  the quarter pipe and rides out, a bad catch bails, the skates' soul grind
+  pays, and a grind or manual left alone is always lost in 2-3 s.
+- **Tandem.** The captain's brake stops the stoker's pedalling and is strong
+  enough for two.
+- **Scooter** rides up a curb at kicking speed.
+- **Bike rental.** A free vending machine (`bmx_rental`): press E, click a
+  picture, ride. Idle rentals go back after 120 s.
+- **Sound and look.** A real "ting" bell, a full set of bike sounds per vehicle,
+  no pedals on motorbikes, hands and feet on the bars and pedals, no flash of
+  the simple bike while a model builds, and model builds no longer run the
+  client out of memory.
+
 ## 1.1.1 -- on the Workshop 2026-10-07
 
 A small update on top of 1.1.0, from riding every vehicle in game.

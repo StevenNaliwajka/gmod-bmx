@@ -2345,9 +2345,11 @@ end)
 -- small fixed reference job (a ray and some float maths) is timed the same way. Each
 -- reference meets the box as the call before it did, so a contention burst slows
 -- both and the ratio stays put: 5.1-6.4 over 30 runs with three cores burning (lower,
--- down to 2.8, when a burst caught the reference harder). Over 8.5 fails: board code
--- a third dearer again than the worst of those. Made twice as dear (each skateboard
--- step spinning as long again, in CPU time) it read 9.8-10.9: 5 of 5 failed. The
+-- down to 2.8, when a burst caught the reference harder) on a private sandbox server,
+-- and 8.1 on the CI's own server (pipeline 1120: its boards' step was dearer, 11 ms a
+-- tick against 8, the reference not). Over 12 fails: half as dear again as the CI's
+-- reading. Made twice as dear (each skateboard step spinning as long again, in CPU
+-- time) it read 9.8-10.9 on the private server, so ~16 on the CI's. The
 -- tick rate and the process's CPU per tick are logged for a person reading the report.
 T.Case("board_crowd", { vehicle = "skateboard", timeout = 40,
     desc = "two dozen skateboards out (parked, tipped and dropped): their code's CPU per tick, against a reference job timed in the same ticks, stays under its budget; none NaNs" },
@@ -2430,7 +2432,7 @@ function(ctx)
         stepc / math.max(ref, 1e-9), ref * 1000, aloneStep / math.max(aloneRef, 1e-9)))
     ctx:ok(#made == 24, "all 24 extra boards spawned")
     ctx:ok(stepc > aloneStep, "the crowd's board code was timed")
-    ctx:between(stepc / math.max(ref, 1e-9), 0, 8.5, "the boards' code per tick, in reference jobs run beside it", "x")
+    ctx:between(stepc / math.max(ref, 1e-9), 0, 12, "the boards' code per tick, in reference jobs run beside it", "x")
     local bad = 0
     for _, e in ipairs(made) do
         if not IsValid(e) then bad = bad + 1

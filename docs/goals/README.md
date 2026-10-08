@@ -71,10 +71,10 @@ On by default but new: `bmx_wheel_stiction` (G04), `bmx_air_assist` (G06),
 citing the CI run that showed the feature unfinished. That list is the next
 work: slope hold creeps on 10 and 20 degrees, the 75 degree drop-in on a bike,
 the `@mini`/`@road`/`@fixie` 45 degree wedge, the city wheelie, Air 180 / Spine
-Transfer, tandem steering and torque, scooter tailwhip and curbs, and the dirt
-bike's suspension on a big drop. **Done 2026-10-08** (no longer `wip`, see the
-G23 and G25 updates): the board's tap-ollie height, bad-catch bail and 75 degree
-drop-in, and the skates' soul grind paying the wrong trick. The offline suite
+Transfer. **Done 2026-10-08** (no longer `wip`, see the G13, G15, G23, G24 and
+G25 updates): the board's tap-ollie height, bad-catch bail and 75 degree drop-in,
+the skates' soul grind paying the wrong trick, tandem steering and torque,
+scooter tailwhip and curbs, and the dirt bike's suspension on a big drop. The offline suite
 now passes on every `BMX_TEST_SEED` (the board's balance meter no longer
 depends on its starting phase). The bot cases moved to
 `gmod-bmx-mode`, which has no headless CI yet. Nothing has been looked at in a
@@ -85,11 +85,10 @@ the test server.
 **Vehicle wips closed 2026-10-08.** `tandem_rides`, `dirtbike_lands_big_jump`,
 `scooter_tailwhip_lands`, `climbs_curb_slow@scooter` and `curb_no_pop@scooter` run now. Each
 passed 10/10 on a private server. The fixes were the tandem's brake and the scooter's wheel-box
-floor, plus two case fixes (G13, G15, G24 status). That leaves 22 `wip` of 195 cases:
+floor, plus two case fixes (G13, G15, G24 status). With the board and skates work, that leaves 18 `wip` of 196 cases:
 `holds_on_slope` and `rolls_in_to_quarter`, on the stock bike and on `@cruiser`, `@mini`,
 `@road`, `@fixie` and `@city`; `rides_up_wedge_45` on `@mini`, `@road` and `@fixie`;
-`wheelie@city`; `board_ollie_height`, `board_bails_on_bad_catch` and
-`board_drops_in_to_quarter`; `vert_turnaround`, `spine_transfer` and `skates_soul_grind`.
+`wheelie@city`; `vert_turnaround` and `spine_transfer`.
 
 **Where assets live (owner, 2026-10-07):** every BMX *vehicle* asset (vehicle
 code, models, materials, sounds, and anything a bike, board, scooter, skate or

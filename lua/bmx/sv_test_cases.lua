@@ -3103,7 +3103,12 @@ function(ctx)
     ctx:ok(IsValid(b:GetDriver()) and b:GetPaxPegs() == pax, "both still aboard")
     b.input.paxThrottle = 0
     ctx:input({})
+    -- The stoker leaves the server, not just the seat: a bot left standing on the test
+    -- ground is a post every later case can ride into (lean_tracks_target@scooter
+    -- circled into it and stopped dead, 0/3 after this case and 3/3 without it).
+    -- ensurePaxBot makes a new one when a case wants one.
     if IsValid(pax:GetVehicle()) then pax:ExitVehicle() end
+    pax:Kick("BMX test: stoker done")
 end)
 
 --------------------------------------------------------------------------

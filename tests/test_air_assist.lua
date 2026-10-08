@@ -1,6 +1,6 @@
 --[[--------------------------------------------------------------------------
     Air control off a vert ramp (G06): what the takeoff was, the turn about
-    world up that settles on a half turn, the landing aim, the spine transfer.
+    the ramp face's normal that settles on a half turn, the landing aim, the spine transfer.
 
     The classifier and the spine finder are pure (sv_launch.lua), so they get
     synthetic normals and a made-up profile. The turn and the transfer are
@@ -111,7 +111,7 @@ T.test("vert turn: a tap of D comes round to a half turn and stops there", funct
 end)
 
 -- Off a tall park quarter pipe a vert flight is half a second: the turn has to answer
--- the key at once (not the ground lean's third-of-a-second ramp), turn about world up
+-- the key at once (not the ground lean's third-of-a-second ramp), turn about its axis
 -- and nothing else (not the roll damping's share of it), and then bring the bike over
 -- onto the face it is coming back down (the drop, Air.vertDropStart). Real server:
 -- vert_turnaround.
@@ -135,7 +135,7 @@ T.test("vert turn: nose up off a wall, a quick D: a half turn and back over onto
     sv:run(0.3)
     local n = face(E, 70)
     local fall = (-(E.Vector(0, 0, 1) - n * n.z)):GetNormalized()
-    T.between(math.abs(math.deg(bike.st.vertSpin)), 130, 230, "turned about world up, deg")
+    T.between(math.abs(math.deg(bike.st.vertSpin)), 130, 230, "turned about the face's normal, deg")
     T.ok(bike.st.vertDrop, "the drop took over on the way down")
     T.ok(bike:GetUp():Dot(n) > 0.7, string.format("wheels to the face: up . normal = %.2f", bike:GetUp():Dot(n)))
     T.ok(bike:GetForward():Dot(fall) > 0.7, string.format("pointing down it: forward . fall line = %.2f", bike:GetForward():Dot(fall)))
@@ -152,7 +152,10 @@ T.test("vert turn: A turns the other way, to the same half turn", function()
 end)
 
 T.test("vert turn: held, it goes on past a half turn", function()
+    -- going up for the whole of it, so it is the settle that is measured and not
+    -- the landing aim, which takes over coming down
     local sv, bike = flying("vert")
+    bike:GetPhysicsObject():SetVelocity(sv.env.Vector(0, 0, 1800))
     F.input(bike, { lean = 1 })
     sv:run(1.4)
     T.ok(math.abs(bike.st.vertSpin) > math.pi * 1.5, "well past 180 with the key held: " .. math.deg(bike.st.vertSpin))
@@ -197,14 +200,28 @@ T.test("air assist 0: A/D roll off vert too, and nothing is turned or paid", fun
 end)
 
 T.test("vert landing aim: coming down turned part way round, it is aimed down the ramp it left", function()
-    local sv, bike = flying("vert", { yaw = 150, height = 9000 })
-    bike:GetPhysicsObject():SetVelocity(sv.env.Vector(0, 0, -250))
+    -- Wheels to the face it left (up along its normal), turned 60 degrees short of
+    -- the fall line about that normal, coming down: the aim turns it the rest of the
+    -- way about the same axis the turn is made about (sv_air.lua).
+    local sv, bike = flying("vert", { height = 9000 })
+    local E = sv.env
+    local n = face(E, 70)
+    local fall = (-(E.Vector(0, 0, 1) - n * n.z)):GetNormalized()
+    local side = n:Cross(fall)
+    local a = math.rad(60)
+    local f0 = fall * math.cos(a) + side * math.sin(a)
+    local p = bike:GetPhysicsObject()
+    p:SetAngles(f0:AngleEx(n))
+    p:SetVelocity(E.Vector(0, 0, -250))
+    p:SetAngleVelocity(E.Vector(0, 0, 0))
+    bike.st.angVel, bike.st.prevF = E.Vector(0, 0, 0), nil
     bike.st.vertSpin = 0
     F.input(bike, {})
     sv:run(1.8)
-    -- The face it left leans back toward -x, so down it is 180.
-    local err = math.abs(math.abs(heading(bike)) - 180)
-    T.ok(err < 12, "within 12 degrees of the fall line: " .. heading(bike))
+    local f = bike:GetForward()
+    f = (f - n * f:Dot(n)):GetNormalized()
+    local err = math.deg(math.acos(math.max(-1, math.min(1, f:Dot(fall)))))
+    T.ok(err < 12, "within 12 degrees of the fall line, about the face's normal: " .. err)
 end)
 
 T.test("vert landing aim: a bike left facing the wall is the rider's to turn, not the assist's", function()

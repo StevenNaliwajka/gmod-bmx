@@ -30,7 +30,7 @@ local TAU = math.pi * 2
 -- it, so hands off it came down onto a 30-degree transition 27 degrees off
 -- it, and onto a 25-degree bank 21 off. Measured in tests/test_landing.lua.
 --------------------------------------------------------------------------
-function BMX.LandingNormal(ent, phys, cfg)
+function BMX.LandingNormal(ent, phys, cfg, minZ)
     local A = cfg.Air
     local vel = phys:GetVelocity()
     local g = physenv.GetGravity()
@@ -43,7 +43,7 @@ function BMX.LandingNormal(ent, phys, cfg)
         local tr = util.TraceLine({ start = prev, endpos = p, filter = ent.traceFilter,
             mask = MASK_SOLID })
         if tr.Hit and not tr.StartSolid then
-            if tr.HitNormal.z >= A.landMinNormalZ then return tr.HitNormal end
+            if tr.HitNormal.z >= (minZ or A.landMinNormalZ) then return tr.HitNormal end
             return nil
         end
         prev = p
@@ -58,16 +58,21 @@ end
 --
 -- THE TURN. Riding a bowl or a vert ramp should flow: up, round, back down,
 -- without a perfect hand-timed 180 every time. A/D (no RMB) turn the bike about
--- WORLD up at up to Air.vertYawRate; let go and a PD settles the heading on the
--- nearest half turn (a tap under Air.vertMin settles back where it started).
--- The heading is st.vertSpin, integrated from the angular velocity about world
--- up, and scored as "Air 180" with points that grow with the height of the
--- flight (BMX.ScoreAir). Held past a half turn it keeps turning: the assist
--- completes a turn, it does not cap one.
+-- the RAMP FACE'S NORMAL -- the wall it left, st.launchNormal -- at up to
+-- Air.vertYawRate; let go and a PD settles it on the nearest half turn (a tap
+-- under Air.vertMin settles back where it started). The turn is st.vertSpin,
+-- integrated from the angular velocity about that axis (st.vertAxis), and
+-- scored as "Air 180" with points that grow with the height of the flight
+-- (BMX.ScoreAir). Held past a half turn it keeps turning: the assist completes
+-- a turn, it does not cap one.
 --
--- WORLD UP, not the bike's: off a 70-degree wall the bike is nose-up, so
--- turning about world up is mostly a ROLL of the frame about its long axis, and
--- yaw about the bike's own up axis would swing the nose sideways instead.
+-- THE WALL'S NORMAL, the way a rider turns an air (owner, 2026-10-08): the bike
+-- leaves the face with its wheels to it, and one half turn about the face's
+-- normal brings it back down nose-first with its wheels still to the face. It
+-- used to turn about WORLD up, which off a 70-degree wall left the bike
+-- nose-up with its wheels away from the face, to be pitched over a further
+-- 140 degrees before it could land: ~300 degrees of rotation in a flight half
+-- a second long, and the bike landed still turning (vert_turnaround 5-7/10).
 --
 -- THE LANDING AIM. Coming down, with no key held, a bike within vertAimMax of
 -- the fall line of the surface it is about to land on (BMX.LandingNormal) is
@@ -90,14 +95,18 @@ function BMX.VertAir(ent, phys, cfg, dt, inp, st, w)
     local com = phys:LocalToWorld(phys:GetMassCenter())
     st.airPeakZ = max(st.airPeakZ or com.z, com.z)
 
-    -- The heading, about world up. Integrated here (not read off the yaw spin)
-    -- because spinYaw is about the BIKE's up axis, which is the wrong one here.
-    local wUp = w:Dot(vector_up)
+    -- The turn's axis: the face it left, fixed for the flight.
+    if not st.vertAxis then
+        local n = st.launchNormal
+        st.vertAxis = (n and n:LengthSqr() > 0.01) and n:GetNormalized() or Vector(0, 0, 1)
+    end
+    local axis = st.vertAxis
+    local wUp = w:Dot(axis)
     st.vertSpin = (st.vertSpin or 0) + wUp * dt
 
-    -- How much of world up each principal axis carries (see the torque below).
+    -- How much of the axis each principal axis carries (see the torque below).
     local fwd, right, up = ent:GetForward(), ent:GetRight(), ent:GetUp()
-    local fx, fy, fz = fwd.z, right.z, up.z
+    local fx, fy, fz = fwd:Dot(axis), right:Dot(axis), up:Dot(axis)
 
     -- THE KEY AS PRESSED, not the smoothed lean. The smoothing (sh_lean.lua,
     -- a third of a second to full) is the ground lean's: it stands in for a
@@ -142,47 +151,54 @@ function BMX.VertAir(ent, phys, cfg, dt, inp, st, w)
     -- part, but the line it falls along is the whole face's.
     local ref = st.landRef or st.launchNormal
     if not held and settled and vel.z < 0 and ref and not inp.wheelieMod then
-        local fall = Vector(ref.x, ref.y, 0)
+        -- Both in the plane the turn turns in (square to its axis): the fall
+        -- line of the surface, and where the bike points.
+        local rn = ref:GetNormalized()
+        local fall = -(vector_up - rn * rn.z)
+        fall = fall - axis * fall:Dot(axis)
         local fl = fall:Length()
-        local fh = Vector(fwd.x, fwd.y, 0)
+        local fh = fwd - axis * fwd:Dot(axis)
         local hl = fh:Length()
         if fl > 0.1 and hl > 0.3 then
-            local err = BMX.SignedAngle(fh / hl, fall / fl, vector_up)
+            local err = BMX.SignedAngle(fh / hl, fall / fl, axis)
             if abs(err) <= A.vertAimMax then
                 alpha = A.vertAimKp * err - A.vertAimKd * wUp
             end
         end
     end
-    -- THE DROP BACK IN. Turned past vertDropStart and coming down, the bike is
-    -- still nose-up off the wall: the half turn about world up leaves it facing
-    -- back the way it came but pointing at the sky, and it has to come over
-    -- onto the face -- forward down the fall line, wheels to the face -- in what
-    -- is left of a flight that is 0.5 s long off a tall park quarter pipe.
-    -- Levelled toward world up by the plain air assist it came down flat or on
-    -- its side and threw the rider (vert_turnaround, real server). So from here
-    -- the whole attitude is steered onto the landing one, on all three axes,
-    -- and the rest of air control stands aside ("all").
-    local dropRef, dropAll = st.landRef or st.launchNormal, false
+    -- THE DROP BACK IN. Turned past vertDropStart and coming down, the whole
+    -- attitude is steered onto the landing one -- forward down the fall line,
+    -- wheels to the face -- on all three axes, and the rest of air control
+    -- stands aside ("all"). The half turn about the face's normal does most of
+    -- it; this squares up what the flight's own rotation (the transition's
+    -- pitch rate at takeoff) and an unsettled turn leave.
+    -- WHAT IT WILL LAND ON, steep or not: the face below along the flight's path
+    -- (a quarter pipe's upper face is past LandingNormal's usual 60 degrees), else
+    -- the plain landing reference, else the face it left. The face it left can be
+    -- the coping's square front, which would have it come down vertical.
+    st.dropTick = (st.dropTick or 0) + 1
+    if vel.z < 0 and st.dropTick % 3 == 1 then
+        st.dropRef = BMX.LandingNormal(ent, phys, cfg, A.vertDropMinNormalZ or A.landMinNormalZ) or st.dropRef
+    end
+    local dropRef, dropAll = st.dropRef or st.landRef or st.launchNormal, false
     if not held and vel.z < 0 and dropRef and A.vertDropStart and not st.spineBlend
         and abs(st.vertSpin) >= A.vertDropStart and not inp.wheelieMod then
         local n = dropRef:GetNormalized()
         local fall = -(vector_up - n * n.z)
         if fall:LengthSqr() > 0.01 then
             fall:Normalize()
-            -- About world up: the turn's own settle until the half turn is
+            -- About the turn's axis: the turn's own settle until the half turn is
             -- nearly done (vertDropAim), so it is finished as a turn and not cut
-            -- short down the quickest way to the face; then the attitude
-            -- error's world-up part, which brings the heading onto the fall
-            -- line. The settle is measured in turned angle, and kept on to the
-            -- end it swung a bike already lying on the face round across it.
+            -- short; then the attitude error's part about that axis, which
+            -- brings the nose onto the fall line.
             local eFull = (fwd:Cross(fall) + up:Cross(n)) * 0.5
-            local wf = w - vector_up * w:Dot(vector_up)
-            local e = eFull - vector_up * eFull:Dot(vector_up)
+            local wf = w - axis * w:Dot(axis)
+            local e = eFull - axis * eFull:Dot(axis)
             local aUp = alpha or 0
             if abs(st.vertSpin) >= (A.vertDropAim or math.huge) then
-                aUp = A.vertDropKp * eFull:Dot(vector_up) - A.vertDropKd * w:Dot(vector_up)
+                aUp = A.vertDropKp * eFull:Dot(axis) - A.vertDropKd * w:Dot(axis)
             end
-            local av = e * A.vertDropKp - wf * A.vertDropKd + vector_up * aUp
+            local av = e * A.vertDropKp - wf * A.vertDropKd + axis * aUp
             BMX.ApplyTorque(phys, ent, fwd,   BMX.TorqueFor(BMX.IRoll(ent),  av:Dot(fwd)),   dt)
             BMX.ApplyTorque(phys, ent, right, BMX.TorqueFor(BMX.IPitch(ent), av:Dot(right)), dt)
             BMX.ApplyTorque(phys, ent, up,    BMX.TorqueFor(BMX.IYaw(ent),   av:Dot(up)),    dt)
@@ -192,18 +208,34 @@ function BMX.VertAir(ent, phys, cfg, dt, inp, st, w)
         end
     end
     if alpha then
-        -- AN ACCELERATION ABOUT WORLD UP, axis by axis. One torque along world
-        -- up turns a body whose three inertias differ about some other axis:
-        -- leaning toward its long one, the cheapest, so the bike spun about
-        -- its own frame more than about the vertical, and came round with its
-        -- nose swung off to the side (forward 50-60 degrees off the ramp's
-        -- fall line after a measured 180, real server). Each principal axis
-        -- gets its own share of the one angular acceleration instead.
+        -- AN ACCELERATION ABOUT THE TURN'S AXIS, axis by axis. One torque along
+        -- it turns a body whose three inertias differ about some other axis,
+        -- leaning toward its cheapest; each principal axis gets its own share
+        -- of the one angular acceleration instead.
         BMX.ApplyTorque(phys, ent, fwd,   BMX.TorqueFor(BMX.IRoll(ent),  alpha * fx), dt)
         BMX.ApplyTorque(phys, ent, right, BMX.TorqueFor(BMX.IPitch(ent), alpha * fy), dt)
         BMX.ApplyTorque(phys, ent, up,    BMX.TorqueFor(BMX.IYaw(ent),   alpha * fz), dt)
     end
     local ownsTurn = dropAll and "all" or alpha ~= nil
+
+    -- BACK OVER THE FACE. A rider turning an air pulls the bike back in over
+    -- the ramp; leaving a park quarter pipe's 70-degree top the bike carries
+    -- 40 u/s toward the deck, which in the half second of the flight is 20 u
+    -- past the lip, and the half turn brought it down nose-first onto the
+    -- deck's edge and stuck it there (vert_turnaround, real server). So once a
+    -- turn is under way (held or settling) the motion out from the face,
+    -- along the face's normal and level, is blended to Air.vertReturn over
+    -- Air.vertReturnTime. Only on a turn: a straight air goes where it goes.
+    if (st.vertTurning or st.vertTarget) and A.vertReturn then
+        local h = Vector(axis.x, axis.y, 0)
+        if h:LengthSqr() > 0.04 then
+            h:Normalize()
+            local cur = vel:Dot(h)
+            local k = min(1, dt / max(A.vertReturnTime or 0.3, dt))
+            local dv = (A.vertReturn - cur) * k
+            if dv > 0 then phys:ApplyForceCenter(h * (dv * phys:GetMass())) end
+        end
+    end
 
     ----------------------------------------------------------------------
     -- Spine transfer.
@@ -388,20 +420,19 @@ function BMX.AirControl(ent, phys, cfg, dt, inp, st)
         end
     end
 
-    -- THE TURN OWNS WORLD UP. While VertAir is turning the bike about world up
-    -- (held, settling on the half turn, or aiming the landing), nothing else
-    -- here may act about that axis: off a 70-degree wall a turn about world up
-    -- is mostly a ROLL of the frame, and the roll damping and the landing's
-    -- roll levelling both read it as a roll to stop. They held a full D to
-    -- about half of vertYawRate and the Air 180 came down at 70-120 degrees,
-    -- on its side (vert_turnaround, real server). So their share along world
-    -- up is taken out; what they do about the other two axes stays.
+    -- THE TURN OWNS ITS AXIS. While VertAir is turning the bike (held,
+    -- settling on the half turn, or aiming the landing), nothing else here may
+    -- act about that axis: the roll damping and the landing's levelling read
+    -- the turn as something to stop, and held a full D to about half of
+    -- vertYawRate (vert_turnaround, real server). So their share along it is
+    -- taken out; what they do about the other two axes stays.
     local owns = vert and BMX.VertAir(ent, phys, C, dt, inp, st, w)
     if owns == "all" then
         aPitch, aRoll, aYaw = 0, 0, 0
     elseif owns then
+        local ax = st.vertAxis or vector_up
         local a = right * aPitch + fwd * aRoll + up * aYaw
-        a = a - vector_up * a:Dot(vector_up)
+        a = a - ax * a:Dot(ax)
         aPitch, aRoll, aYaw = a:Dot(right), a:Dot(fwd), a:Dot(up)
     end
 
@@ -435,7 +466,7 @@ function BMX.AirReset(st)
     -- Vert flights (VertAir): nothing carried over from the last air.
     st.vertSpin, st.vertTarget, st.vertTurning, st.vertDir = 0, nil, false, nil
     st.spineTarget, st.spineSeen, st.spineBlend, st.spineDone = nil, nil, nil, nil
-    st.vertDrop = nil
+    st.vertDrop, st.vertAxis, st.dropRef, st.dropTick = nil, nil, nil, 0
     st.spineW, st.spineWPress, st.spineTick = false, nil, 0
     st.airPeakZ, st.launchKind = nil, nil
     if BMX.TricksReset then BMX.TricksReset(st) end     -- sv_tricks.lua
@@ -464,11 +495,11 @@ function BMX.ScoreAir(st)
         end
     end
 
-    -- THE VERT TRICKS (G06, VertAir above). Air 180: a half turn about world up
-    -- off a vert wall, per half turn, worth more the higher the flight. Spine
-    -- Transfer: the velocity was carried over onto the far face. Neither
-    -- is in the rotation table: the heading they count is about WORLD up, not an
-    -- axis of the bike.
+    -- THE VERT TRICKS (G06, VertAir above). Air 180: a half turn about the ramp
+    -- face's normal off a vert wall, per half turn, worth more the higher the
+    -- flight. Spine Transfer: the velocity was carried over onto the far face.
+    -- Neither is in the rotation table: the turn they count is about the face's
+    -- normal (st.vertAxis), not an axis of the bike.
     if st.launchKind == "vert" and st.vertSpin and BMX.VehicleAllows(st.def, "air180") then
         local A = BMX.Config.Air
         local n = floor(abs(st.vertSpin) / math.pi + 0.25)

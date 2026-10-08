@@ -2903,26 +2903,14 @@ local function rideOffPiece(ctx, xa, back, speed, seconds, each)
     return flew, landed
 end
 
--- WORK IN PROGRESS (stopped on, see docs/goals/G06): CI a326eb6 and 1004: flies off the quarter pipe as
---   'vert' but turns 86-90 degrees where a half turn (130-230) is the
---   trick, and comes down at roll 73. Bot/air control routine (G06)
---   unfinished.
---   2026-10-08, real server: 12/20 (was 0/3). The turn now makes its half
---   turn (165-200 degrees: the key is read as pressed, the torque is an
---   acceleration about world up axis by axis, and nothing else in air control
---   damps that axis), the bike comes over onto the face (Air.vertDropStart),
---   and it leaves the coping at 150-165 u/s instead of 130 (the park quarter
---   pipe's coping no longer overhangs the face, its strip joints are buried).
---   Left: the flight off an 84 u quarter pipe at 430 u/s is half a second, a
---   180 about world up plus the nose-over is ~300 degrees of rotation in it,
---   and in 3-5 of 10 the bike is still swinging about world up when it lands
---   and ends facing across the face (forward x > -0.3); off a 70 degree top
---   it also drifts toward the deck, now and then onto it. The tip rule no
---   longer throws the rider at the apex (sv_physics.lua 6a): no crash in the
---   air in the last 30 rides, 5-7/10 still. What is left is the turn's axis --
---   docs/goals/G06, "Stopped".
-T.Case("vert_turnaround", { wip = true, timeout = 40,
-    desc = "up a tall park quarter pipe with D tapped in the air: classified vert, turned round about world up, lands facing down the ramp and is still ridden" },
+-- (Was wip, CI a326eb6 and 1004: turned 86-90 degrees and came down at roll
+-- 73. The owner's decision, 2026-10-08: an Air 180 turns about the ramp face's
+-- normal, as a rider's does, and is measured about it (st.vertSpin about
+-- st.vertAxis). With the turn about the wall, the bike pulled back in over the
+-- face (Air.vertReturn), the drop aimed at the face below and the heading
+-- squared up after landing: see docs/goals/G06.)
+T.Case("vert_turnaround", { timeout = 40,
+    desc = "up a tall park quarter pipe with D tapped in the air: classified vert, turned a half turn about the face's normal, lands facing down the ramp and is still ridden" },
 function(ctx)
     local g = ctx.ground
     local b = BMX.Park.Build("quarterpipe", { 2, 3 })       -- the tall one: an 84 u deck

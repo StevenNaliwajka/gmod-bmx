@@ -22,9 +22,12 @@ scored trick.
 
 - **Quarter-pipe detect:** at takeoff, if the launch surface normal is over
   60° from up and the velocity is mostly up, the bike is "on vert".
-- **Vert turn:** on vert, A/D (no RMB) turns the bike round about world up
-  (a "180 / revert"), and the landing assist aims it back into the ramp. It's
-  scored as "Air 180" and its points scale with the height.
+- **Vert turn:** on vert, A/D (no RMB) turns the bike round about the ramp
+  face's normal -- the wall it left -- the way a rider turns an air: one half
+  turn, and the wheels come back down to the face (owner, 2026-10-08; it was
+  "about world up"). The landing assist aims it back into the ramp. It's scored
+  as "Air 180" when that turn reaches a half turn, and its points scale with the
+  height.
 - **Spine transfer:** above the coping with a back-to-back quarter pipe
   behind it (detected by a trace from the apex), a fresh W press carries the
   bike over the spine. It's scored as "Spine Transfer", and the combo stays
@@ -36,9 +39,10 @@ scored trick.
 
 - In `sv_launch.lua` (which already decides what a takeoff was), classify the
   launch as `ramp`, `vert` or `flat` and put it on `st.launchKind`.
-- In `sv_air.lua`, branch the A/D mapping on `launchKind`: `vert` → yaw
-  about world up, with a PD that settles at 180° unless the input is still
-  held.
+- In `sv_air.lua`, branch the A/D mapping on `launchKind`: `vert` → a turn
+  about the launch face's normal (`st.vertAxis`), with a PD that settles at
+  180° unless the input is still held. `st.vertSpin` is the angle turned about
+  that axis, and is what the Air 180 is scored and tested on.
 - Spine: at the apex, trace backwards and down from the coping. If a surface
   with a mirrored normal is within 64 u, set `st.spineTarget` and, on W, blend
   the velocity direction towards it over 0.3 s.
@@ -67,7 +71,7 @@ real server.**
 | Done when | State |
 |---|---|
 | Quarter-pipe detect | **Done.** `BMX.Launch.Classify(normal, vel, cfg)` (`sv_launch.lua`): `vert` when the surface left is over `Air.vertAngle` (60 deg) from level and `vz / speed >= Air.vertUp` (0.5); `ramp` from `Air.rampAngle` (10 deg); else `flat`. `sv_physics.lua` remembers the last grounded normal (`st.launchNormal`) and sets `st.launchKind` when air mode engages. |
-| Vert turn | **Done.** `BMX.VertAir` (`sv_air.lua`): A/D (no RMB, not under a whip, bar or pose) turn about WORLD up at up to `Air.vertYawRate`; on release a PD settles on the nearest half turn (a tap under `Air.vertMin` settles back to nothing); held, it keeps turning. D is clockwise. The heading is `st.vertSpin`. Scored on landing as **Air 180**, `Air.vertBase + Air.vertPerUnit * height` per half turn. |
+| Vert turn | **Done.** `BMX.VertAir` (`sv_air.lua`): A/D (no RMB, not under a whip, bar or pose) turn about WORLD up (since 2026-10-08: about the ramp face's normal, see the end) at up to `Air.vertYawRate`; on release a PD settles on the nearest half turn (a tap under `Air.vertMin` settles back to nothing); held, it keeps turning. D is clockwise. The heading is `st.vertSpin`. Scored on landing as **Air 180**, `Air.vertBase + Air.vertPerUnit * height` per half turn. |
 | Landing aim | **Done**, on vert only: descending with no key held and within `Air.vertAimMax` (100 deg) of the fall line (the landing surface's, else the face left), a PD turns the bike to face down the ramp. Never during the turn; a bike left facing the wall is the rider's to turn. |
 | Spine transfer | **Done.** `BMX.Launch.FindSpine` near the apex (`|vz| < Air.spineApexVz`): the first ground within `Air.spineReach` (64 u) over the coping, below the bike, whose normal mirrors the launch face's (`Air.spineMirror`) becomes `st.spineTarget`. A fresh W press within `Air.spineWindow` blends the velocity down that face over `Air.spineBlend` (0.3 s, at least `Air.spineSpeed`); W also pitches the bike over. Scored as **Spine Transfer** (`Air.spinePoints`); it is an ordinary trick, so the combo stays open across it. |
 | Barrel roll off vert | **Unchanged**: A/D roll everywhere that is not vert, and with RMB held they are still the 360. |
@@ -117,7 +121,32 @@ degree top it drifts toward the deck. (Tried and not kept: starting the heading 
 degrees of turn and a slower spine carry, both worse.) Offline: `tests/test_air_assist.lua`
 "nose up off a wall, a quick D: a half turn and back over onto the face in half a second".
 
-## Stopped (2026-10-08): `vert_turnaround` needs a design decision
+## Done (2026-10-08): the Air 180 turns about the wall
+
+The owner decided the question below: the turn is about the ramp face's normal.
+`vert_turnaround` is no longer `wip`. What it took, on a real server:
+
+- **The axis.** `st.vertAxis` is the face the bike left (`st.launchNormal`), fixed
+  for the flight; the key's servo, the half-turn settle, the landing aim and the
+  drop all work about it, and `st.vertSpin` is the angle turned about it. One
+  half turn about the wall's normal takes the bike from nose-up, wheels to the
+  wall, to nose-down, wheels still to the wall: a third of the rotation the world-
+  up turn plus nose-over needed.
+- **Back over the face.** Off the 70 degree top the bike carries ~40 u/s toward
+  the deck, 20 u past the lip in the half second of flight, and the turned bike
+  came down nose-first onto the deck's edge. On a turn the motion out from the
+  face, level along its normal, is blended to `Air.vertReturn` (30 u/s) over
+  `vertReturnTime`: a rider pulling the bike back in over the ramp.
+- **What it lands on.** The drop aims at the face below along the flight's path,
+  up to 80 degrees steep (`vertDropMinNormalZ`); the face it left can be the
+  coping's square front, which would have had it come down vertical.
+- **Squared up on the face.** Landing still turning 2-3 rad/s, the bike turned
+  across the face as it rode down. For the landing's recovery the heading is
+  steered onto the ground's fall line (`vertLandKp/Kd`, `sv_physics.lua` 6).
+
+`tests/test_air_assist.lua` measures the landing aim about the face's normal now.
+
+## Stopped (2026-10-08, superseded above): `vert_turnaround` needs a design decision
 
 `vert_turnaround` stays `wip` at 5-7/10 (30 more rides on a private server). One more real
 fix went in: the tip rule (`sv_physics.lua` 6a) no longer throws the rider at the apex of a

@@ -715,7 +715,7 @@ C.Air = {
     vertUp    = 0.5,
     rampAngle = math.rad(10),
 
-    -- On vert A/D turn the bike about WORLD up at up to vertYawRate rad/s (a
+    -- On vert A/D turn the bike about the RAMP FACE'S normal at up to vertYawRate rad/s (a
     -- half turn in ~0.5 s), and a PD settles the heading on a half turn when the
     -- key is let go: vertKp / vertKd as angular acceleration per radian and per
     -- rad/s (zeta ~0.9). A turn under vertMin is a tap and settles back to
@@ -738,7 +738,17 @@ C.Air = {
     -- wheels to the face), vertDropKp / vertDropKd per radian and per rad/s:
     -- about 12 rad/s, zeta 0.9, a hundred degrees of nose-over in a quarter of
     -- a second, which is what is left of a flight off a tall quarter pipe.
+    -- On a turn the motion out from the face (level, along its normal) is
+    -- blended to vertReturn u/s over vertReturnTime, so it comes back down over
+    -- the ramp and not onto the deck.
+    vertReturn     = 30,
+    vertReturnTime = 0.25,
     vertDropStart = math.rad(100),
+    vertDropMinNormalZ = 0.17,   -- the drop aims at faces up to 80 degrees steep
+    -- Landed off a vert air, for the landing's recovery the heading is steered
+    -- onto the ground's fall line (sv_physics.lua, 6), per radian and per rad/s.
+    vertLandKp = 60,
+    vertLandKd = 12,
     vertDropAim   = math.rad(160),
     vertDropKp    = 150,
     vertDropKd    = 22,

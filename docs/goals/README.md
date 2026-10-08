@@ -111,6 +111,11 @@ decision about the Air 180's axis (G06 "Stopped"). The bike `crowd` case no long
 the server's ticks: it times the bikes' code against a reference job, as `board_crowd` does
 (limit 10; 5.2-6.6 with and without three busy cores, 10.9-12.4 made twice as dear).
 
+**Air 180 about the wall (owner, 2026-10-08).** The owner decided G06's open question: an
+Air 180 turns about the ramp face's normal, as a rider's does, and is measured about it.
+`vert_turnaround` runs now (19/20 on a private server; spine_transfer 9/10, the quarter-pipe,
+wedge and drop-in cases 10/10). **No `wip` left.**
+
 **Where assets live (owner, 2026-10-07):** every BMX *vehicle* asset (vehicle
 code, models, materials, sounds, and anything a bike, board, scooter, skate or
 motor vehicle needs to be drawn or heard) goes in **this addon**,

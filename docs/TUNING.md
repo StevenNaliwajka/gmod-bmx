@@ -142,9 +142,11 @@ about 1.6 revolutions per second, so a backflip takes roughly 0.6 seconds. Tune
 against a jump you can actually reach on your test map.
 
 Off a vert wall (`Air.vertAngle`, 60 degrees, left going mostly up) A/D turn
-the bike about world up instead: `Air.vertYawRate` is how fast, `vertKp` and
-`vertKd` the PD that settles it on a half turn, `vertAimKp`/`vertAimMax` the
-landing aim, `spine*` the spine transfer. `bmx_air_assist 0` removes all of it.
+the bike about the ramp face's normal instead (an Air 180): `Air.vertYawRate` is
+how fast, `vertKp` and `vertKd` the PD that settles it on a half turn, `vertReturn`
+how hard it is pulled back in over the face, `vertDrop*` the drop back in,
+`vertAimKp`/`vertAimMax` the landing aim and `vertLandKp/Kd` squaring it up on the
+face after, `spine*` the spine transfer. `bmx_air_assist 0` removes all of it.
 
 `bmx_autolevel 0` removes the descending-only roll assist. Do this once to feel
 how much of the forgiveness is coming from it, then set it where you want the

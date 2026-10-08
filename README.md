@@ -184,9 +184,10 @@ tricks working and tricks being an accident:
   off until it has been ridden on your server.
 - **Off a vertical ramp the air helps you turn round.** Go up a quarter pipe
   (or a bowl wall) steeper than 60 degrees and tap `A` or `D` in the air: the
-  bike comes round about the vertical to a half turn, scored as **Air 180**
-  (worth more the higher you are), and a landing that is part way round is aimed
-  back down the ramp. Hold the key and it keeps turning. Over a spine or two
+  bike turns about the wall, as a rider turns an air, to a half turn and back
+  down nose-first with its wheels to the ramp, scored as **Air 180** (worth more
+  the higher you are), and a landing that is part way round is aimed back down
+  the ramp. Hold the key and it keeps turning. Over a spine or two
   back-to-back quarter pipes, a fresh `W` press at the top carries you over onto
   the far face: a **Spine Transfer**, and your combo stays alive. Anywhere that
   is not vert, `A` and `D` are still the barrel roll. `bmx_air_assist 0` turns

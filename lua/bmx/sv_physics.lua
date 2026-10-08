@@ -642,6 +642,31 @@ function BMX.PhysicsStep(ent, phys, dt)
         mode.Ground(ent, phys, C, dt, inp, st, wheels, st.groundNormal, speed)
         mode.Pitch(ent, phys, C, dt, inp, st, wheels)
 
+        -- BACK DOWN THE RAMP AFTER A VERT AIR (G06). Down off an Air 180 the bike
+        -- lands on a 60-70 degree face still turning a little (2-3 rad/s about its
+        -- own up, measured at touchdown), and on that face the turn carried it
+        -- across the ramp: 70-80 degrees off the fall line half a second later
+        -- (vert_turnaround, real server). For the landing's recovery a rider
+        -- squares it up, so the heading is steered onto the ground's fall line,
+        -- about the ground's normal, as the air's landing aim did in the air.
+        local A = C.Air
+        if hasDriver and st.launchKind == "vert" and (st.recoverUntil or 0) > CurTime()
+            and A.vertLandKp and ent:Bike().family == "bike" and (not BMX.AirAssistOn or BMX.AirAssistOn()) then
+            local n = st.groundNormal
+            local fall = -(vector_up - n * n.z)
+            local fp = fwd - n * fwd:Dot(n)
+            if fall:LengthSqr() > 0.01 and fp:LengthSqr() > 0.01 then
+                local err = BMX.SignedAngle(fp:GetNormalized(), fall:GetNormalized(), n)
+                if abs(err) <= A.vertAimMax then
+                    local a = A.vertLandKp * err - A.vertLandKd * st.angVel:Dot(n)
+                    local r, u = ent:GetRight(), ent:GetUp()
+                    BMX.ApplyTorque(phys, ent, fwd, BMX.TorqueFor(BMX.IRoll(ent),  a * fwd:Dot(n)), dt)
+                    BMX.ApplyTorque(phys, ent, r,   BMX.TorqueFor(BMX.IPitch(ent), a * r:Dot(n)),   dt)
+                    BMX.ApplyTorque(phys, ent, u,   BMX.TorqueFor(BMX.IYaw(ent),   a * u:Dot(n)),   dt)
+                end
+            end
+        end
+
         -- STEER BY FUNCTION. A wheel whose `steer` is a function takes its angle
         -- from it every grounded substep, after the balance has run (so it may
         -- read the roll it just produced): a board's truck lean, a cart's

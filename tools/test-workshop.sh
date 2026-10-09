@@ -124,11 +124,17 @@ for key in $(grep -o 'IN_[A-Z0-9]*' "$ROOT/lua/bmx/sv_input.lua" | sort -u); do
   line="${KEYLINE[$key]:-}"
   ok '[ -n "$line" ] && grep -qF -- "$line" <<<"$CONTROLS"' "the description's controls cover $key (${line:-UNMAPPED: add it to this test})"
 done
+# Auto ride is a key of its own (sh_autoride.lua, not sv_input.lua): O by default.
+ok 'grep -qE "^A\.DEFAULT_KEY = 25 .*KEY_O" "$ROOT/lua/bmx/sh_autoride.lua" && grep -qF "[td]O[/td]" <<<"$CONTROLS"' \
+   "the description's controls cover auto ride's default key (O)"
 
-# What 1.1.0 brings, named on the page. The tandem, the motor vehicles and the
-# server settings are left off it on purpose (aa3ba8c, f4180d2): README has those.
-for name in "Cruiser" "Mini" "Road Bike" "Fixie" "City Bike" "Downhill" "Unicycle" "Penny-Farthing" \
-            "skateboard" "kick scooter" "inline skates" "Combos" "child seat" "Bike rack and lock" "bell"; do
+# What the released version has, named on the page (the 1.1.0 page was still
+# up after 1.2.0 shipped). The server settings stay off it on purpose
+# (f4180d2): README has those.
+for name in "Cruiser" "Mini" "Road Bike" "Fixie" "City Bike" "Downhill" "Tandem" "Unicycle" "Penny-Farthing" \
+            "skateboard" "kick scooter" "inline skates" "E-Bike" "E-Moto" "Dirt Bike" "Moped" \
+            "Auto ride" "Bike rental" "Combos" "child seat" "Bike rack and lock" "bell" \
+            "BMX (Mode)" "Petopia BMX Fall"; do
   ok 'grep -qF "$name" "$ROOT/workshop/description.bbcode"' "the Workshop description mentions $name"
 done
 for cv in bmx_max_per_player bmx_scoring bmx_combos bmx_stick_deadzone; do

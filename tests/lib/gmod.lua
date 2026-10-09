@@ -226,6 +226,10 @@ function M.Realm(world, which)
     local R = {
         world = world, name = which,
         errors = {},        -- every ErrorNoHalt, so a test can assert on none
+        -- Every player put in or taken out of a vehicle from INSIDE a physics
+        -- callback: srcds answers that with "Changing collision rules within a
+        -- callback is likely to cause crashes!" (inPhysics marks the callback).
+        callbackCollisionChanges = {},
         log    = {},        -- every MsgN
         sounds = {},        -- every EmitSound: { ent, name, level, pitch, vol }
         lines  = 0,         -- render.DrawLine calls this frame
@@ -1341,12 +1345,18 @@ function M.Realm(world, which)
     function Ply:InVehicle() return env.IsValid(self._vehicle) end
     function Ply:EnterVehicle(veh)
         if not env.IsValid(veh) or env.IsValid(veh._driver) then return end
+        if R.inPhysics then
+            R.callbackCollisionChanges[#R.callbackCollisionChanges + 1] = { ply = self, what = "enter" }
+        end
         self._vehicle, veh._driver = veh, self
         env.hook.Run("PlayerEnteredVehicle", self, veh, 0)
     end
     function Ply:ExitVehicle()
         local veh = self._vehicle
         if not veh then return end
+        if R.inPhysics then
+            R.callbackCollisionChanges[#R.callbackCollisionChanges + 1] = { ply = self, what = "exit" }
+        end
         env.hook.Run("PlayerLeaveVehicle", self, veh)
         self._vehicle, veh._driver = nil, nil
     end
@@ -1792,10 +1802,14 @@ function M.Realm(world, which)
         for _, e in ipairs(self.ents) do
             local p = rawget(e, "_phys")
             if not e._removed and p then
+                -- The motion controller and the collision report are both
+                -- VPhysics callbacks in the engine (see callbackCollisionChanges).
+                self.inPhysics = true
                 if e._controlled and e.PhysicsSimulate and p.motion then
                     e:PhysicsSimulate(p, dt)
                 end
                 if not e._removed then integrate(p, dt) end
+                self.inPhysics = false
             end
         end
         self:runTimers()

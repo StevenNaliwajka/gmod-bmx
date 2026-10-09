@@ -427,8 +427,13 @@ function ENT:OnLanded(tricks, front, rear)
         hook.Run("BMX_TricksBailed", self, self:GetDriver(), tricks)
     end
 
+    -- QUEUED, like every other crash: OnLanded runs inside PhysicsSimulate
+    -- (sv_physics.lua), and Crash takes the rider out of the seat. Called
+    -- straight from here, a bad landing changed the player's collision rules
+    -- inside VPhysics -- the live server logged "player[1]: Changing collision
+    -- rules within a callback is likely to cause crashes!" for each one.
     if crashed then
-        self:Crash(reason, severity)
+        self:QueueCrash(reason, severity)
     else
         -- Landed on the wheels: help it back up (Crash.recoverTime).
         self.st.recoverUntil = CurTime() + self:Cfg().Crash.recoverTime

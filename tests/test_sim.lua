@@ -710,6 +710,31 @@ T.test("upside down is not a landing on the wheels: that one still throws you", 
     T.ok(not on, "thrown")
 end)
 
+-- A BAD LANDING THROWS YOU AFTER THE PHYSICS STEP, NOT INSIDE IT. OnLanded runs
+-- in PhysicsSimulate, and taking the rider out of the seat there is the
+-- engine's "Changing collision rules within a callback is likely to cause
+-- crashes!": the live server logged one for every bad landing until the crash
+-- was queued (ENT:QueueCrash) like every other.
+T.test("a bad landing throws the rider outside the physics callback", function()
+    local sv, bike = ridden()
+    local E = sv.env
+    sv:run(0.7)
+    F.input(bike, {})
+    -- Whatever else it is, the next landing is a faulted one (a pose still held).
+    local fault = E.BMX.LandingFault
+    E.BMX.LandingFault = function(st) fault(st) return "pose", 0.6 end
+    bike.st.airMode = true
+    F.place(bike, E.Vector(0, 0, F.restHeight(sv) + 60), E.Angle(0, 0, 0))
+    bike:GetPhysicsObject():SetVelocity(E.Vector(300, 0, -200))
+    local why
+    E.hook.Add("BMX_Crash", "t", function(b, p, reason) why = reason end)
+    sv:run(2)
+    E.BMX.LandingFault = fault
+    T.eq(why, "pose", "the landing was judged a crash")
+    T.ok(not E.IsValid(bike:GetDriver()), "and the rider was thrown")
+    T.eq(#sv.callbackCollisionChanges, 0, "never from inside PhysicsSimulate or PhysicsCollide")
+end)
+
 T.test("the tip-over rule waits for the bike to be at rest, not falling past it", function()
     local sv, bike = ridden()
     local E = sv.env

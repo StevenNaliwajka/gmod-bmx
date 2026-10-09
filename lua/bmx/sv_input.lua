@@ -241,8 +241,20 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
     end
     if inp.airLatch and fsign ~= inp.airLatch then inp.airLatch = nil end
     if inp.airLatchSide and ssign ~= inp.airLatchSide then inp.airLatchSide = nil end
+    -- OFF THE LIP, AIR MODE NOT ON YET. Air mode engages Air.engageDelay after
+    -- the wheels leave, and these ticks are not ground commands: recorded as
+    -- one, a W let go at the lip and pressed again inside that window was
+    -- "held at takeoff" and ignored for the whole jump, while the bot (which
+    -- writes its input past this function) flipped. So the key from the last
+    -- ground tick is kept, and let go of here it is let go of.
+    local leaving = not airborne and bike.st and (bike.st.airSince or 0) > 0
     if not airborne then
-        inp.groundFwd, inp.groundSide = fsign, ssign
+        if leaving then
+            if fsign ~= inp.groundFwd then inp.groundFwd = 0 end
+            if ssign ~= inp.groundSide then inp.groundSide = 0 end
+        else
+            inp.groundFwd, inp.groundSide = fsign, ssign
+        end
         inp.airLatchSide = nil
     end
     inp.wasAirborne = airborne

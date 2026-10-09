@@ -245,6 +245,42 @@ T.test("a key pressed only after takeoff works at once", function()
     T.eq(bike.input.pitchTarget, -1, "switching keys counts as a fresh press")
 end)
 
+-- Air mode engages Air.engageDelay after the wheels leave (st.airSince > 0,
+-- st.airMode still false). Those ticks are not ground commands.
+T.test("W let go at the lip and pressed again before air mode engages is a fresh press", function()
+    local _, bike, _, send = rig()
+    send(IN.FORWARD)                                 -- pedalling up the ramp
+    bike.st.airSince = 0.03                          -- off the lip, air mode not on yet
+    send(0)                                          -- let go...
+    send(IN.FORWARD)                                 -- ...and pressed again
+    bike.st.airMode = true
+    send(IN.FORWARD)
+    T.eq(bike.input.pitchTarget, -1, "a front flip")
+end)
+
+T.test("a key first pressed before air mode engages is fresh", function()
+    local _, bike, _, send = rig()
+    send(0)
+    bike.st.airSince = 0.03
+    send(IN.FORWARD)
+    bike.st.airMode = true
+    send(IN.FORWARD)
+    T.eq(bike.input.pitchTarget, -1, "W: a front flip")
+    send(IN.MOVELEFT)
+    T.eq(bike.input.leanTarget, -1, "and A first pressed there rolls")
+end)
+
+T.test("W held through the engage delay is still held at takeoff", function()
+    local _, bike, _, send = rig()
+    send(IN.FORWARD + IN.MOVERIGHT)
+    bike.st.airSince = 0.03
+    send(IN.FORWARD + IN.MOVERIGHT)
+    bike.st.airMode = true
+    send(IN.FORWARD + IN.MOVERIGHT)
+    T.eq(bike.input.pitchTarget, 0, "no front flip")
+    T.eq(bike.input.leanTarget, 0, "no barrel roll")
+end)
+
 --------------------------------------------------------------------------
 -- The gamepad deadzone (bmx_stick_deadzone)
 --------------------------------------------------------------------------
@@ -380,4 +416,32 @@ T.test("ride: carving with A held through a hop lands on the wheels, not the sid
     T.ok(flew, "it left the ground")
     T.between(math.deg(worst), 0, 45, "worst roll in the air, degrees")
     T.ok(sv.env.IsValid(bike:GetDriver()), "and the rider is still on")
+end)
+
+-- The trick bot (BMX (Mode), sv_bot.lua) writes bike.input past this decode,
+-- so it never met the engage-delay window above: off this same launch it
+-- lands a front flip. A rider on the keys must be able to as well.
+T.test("ride: W let go at the lip and pressed again at once is a front flip, as the bot's is", function()
+    local sv, bike, ply = rig()
+    local E = sv.env
+    local landed, crash
+    E.hook.Add("BMX_TricksLanded", "test", function(_, _, tricks) landed = tricks end)
+    E.hook.Add("BMX_Crash", "test", function(_, _, reason) crash = reason end)
+    rideWith(sv, ply, function() return IN.FORWARD end, 1.3)   -- pedalling up to the lip
+    -- Off a 26-degree kicker's lip, hopped (BMX (Mode)'s test_bot.lua launch).
+    F.place(bike, E.Vector(0, 0, sv.world.groundZ + 105), E.Angle(-26, 0, 0))
+    bike:GetPhysicsObject():SetVelocity(E.Vector(300, 0, 360))
+    bike.st.grounded = false
+    local t0, was = sv.world.time, false
+    rideWith(sv, ply, function(t) return t - t0 >= 0.03 and IN.FORWARD or 0 end, 5, function()
+        if bike.st.airMode then was = true end
+        return was and bike.st.grounded and not bike.st.airMode
+    end)
+    sv:run(0.5)
+    local flip
+    for _, t in ipairs(landed or {}) do if t.name == "Frontflip" then flip = t end end
+    T.ok(was, "it flew")
+    T.ok(flip, "a front flip was scored")
+    T.eq(crash, nil, "and landed: " .. tostring(crash))
+    T.ok(E.IsValid(bike:GetDriver()), "the rider is still on")
 end)

@@ -51,6 +51,27 @@ centre of mass -- rather than from any source image, which is the cheapest way
 to keep the no-ripped-assets rule (`docs/DESIGN.md` section 8) true of the
 artwork as well as the addon. Change the wheelbase and the icon changes with it.
 
+## The gallery
+
+`workshop/gallery/` is the page's gallery, in file-name order; each file must
+be a JPEG, PNG or GIF under 1 MB (`tools/workshop_sync.py` checks). The renders
+in it are made from the vehicles' and park pieces' own code, offline, the same
+way the icon is:
+
+```
+tools/bike/gallery.sh            # -> dist/gallery/shots, ~10 min with JOBS=2
+```
+
+It exports every model (`tools/bike/export.lua`, `export_park.lua`), lays out
+the shot list (`tools/bike/gallery_scenes.py`: every vehicle together, each
+family with its names, turntables, the 14 paints, a drivetrain close-up, two
+ready-made parks) and renders it (`tools/bike/showcase.py`). Copy the shots
+the page should show into `workshop/gallery/` under a numbered name. Re-run it
+when a model changes, so the pictures stay true to the game.
+
+The in-game shots (the front flip GIF, the lineup by the ramp) come from the
+test server (`tools/ride/shoot.sh`), which needs a connected client.
+
 ## Publishing
 
 The Workshop item belongs to the Steam account **ConvexBurrito5**. Uploading

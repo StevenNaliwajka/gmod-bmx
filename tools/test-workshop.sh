@@ -96,6 +96,14 @@ ok 'python3 -c "import json,sys; d=json.load(open(sys.argv[1]))[\"description\"]
 ok 'grep -qF "[url=https://github.com/StevenNaliwajka/gmod-bmx/issues]" "$ROOT/workshop/description.bbcode"' \
    "the Workshop page links the GitHub issues"
 ok 'grep -q "workshop/description.bbcode" "$ROOT/tools/package-workshop.sh"' "the kit ships the page text, ready to paste"
+# THE GALLERY. Every picture in workshop/gallery/ goes on the page in file-name
+# order (tools/workshop_sync.py), and Steam refuses a preview of 1 MB or more.
+for g in "$ROOT"/workshop/gallery/*; do
+  n="$(basename "$g")"
+  ok '[[ "$n" =~ ^[0-9][0-9]-[a-z0-9-]+\.(jpg|png|gif)$ ]]' "gallery $n is numbered and a JPEG, PNG or GIF"
+  ok '[ "$(wc -c < "$g")" -lt 1048576 ]' "gallery $n is under 1 MB"
+done
+
 # STEAM'S TABLES. Steam turns every line break inside a [table] into an empty
 # row, so a table goes on one line; a key written as a bare [ or ] reads as a
 # tag and breaks its row (and [noparse] round one does not close: it swallowed

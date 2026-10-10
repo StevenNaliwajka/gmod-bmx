@@ -22,6 +22,7 @@ mistake it for a real one of its kind at a glance in game, it is not done.
     entities/bmx_base/cl_init.lua  DrawDetailed: places each group of a bike-
                                shaped model by one matrix
     tools/bike/export.lua, preview.py   render any kind offline (below)
+    tools/bike/showcase.py, gallery.sh  the Workshop gallery's renders
 
 A kind registers itself:
 
@@ -150,6 +151,10 @@ and `tyretext`.
 `tools/bike/sizes.lua` holds each kind's registry size for this. Look at every
 view before calling a model done; compare with the BMX
 (`lua5.1 tools/bike/export.lua > /tmp/bmx.txt`).
+
+For the Workshop gallery, `tools/bike/showcase.py` renders scenes of several
+models at once (and turntable GIFs) in the same look; `tools/bike/gallery.sh`
+renders the whole shot list (docs/PUBLISHING.md, "The gallery").
 
 In game, `tools/ride/shoot.sh <id>` photographs it ridden, and
 `tools/icons/shoot.sh bmx_<id>` re-shoots its spawn-menu picture (every menu

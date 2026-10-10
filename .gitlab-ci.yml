@@ -67,10 +67,30 @@ variables:
 # describes neither commit.
 stages: [validate, deploy-dev, headless, deploy-prod, publish]
 
+# ---------------------------------------------------------------------------
+# WHICH RUNNER. The shared template defaults every job to `deploy`, which only
+# the estate runner (homelab-cicd) carries -- and it takes PROTECTED refs only,
+# because it holds root deploy keys on the management VLAN. A branch pipeline
+# therefore waited forever (stuck_pending_no_matching_runners, 2026-10-09).
+# Unprotected refs run on the gmod org's own runner instead: a GROUP runner on
+# the CI box itself (VM 110149, tag `gmod`, MGMT Hosting/gmod-branch-runner.sh),
+# which holds no estate keys. Protected refs keep the estate runner unchanged.
+workflow:
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
+      variables: { RUNNER_TAG: deploy }
+    - when: always
+      variables: { RUNNER_TAG: gmod }
+
+default:
+  tags: [$RUNNER_TAG]
+
 headless:
   stage: headless
   tags: [deploy]
   resource_group: gmod-dev
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
   # Above bmx-test's own ceiling (BMX_RUN_MAX 2700 s) plus boot, deploy and the
   # two server restarts, so the script's clear "no results after Ns" error fires
   # before GitLab's blunt kill. It was 40m when the suite was a few dozen cases.
@@ -95,6 +115,20 @@ headless:
       # first. Only a commit that is not on the box yet is checked out.
       $SSH "$EXEC 'git config --global --add safe.directory ${APP_DIR} && cd ${APP_DIR} && git fetch -q origin && if [ \"\$(git rev-parse HEAD)\" = \"${CI_COMMIT_SHA}\" ] && git diff --quiet HEAD; then echo \"already at ${CI_COMMIT_SHORT_SHA}: no reinstall, no restart\"; else git checkout -f ${CI_COMMIT_SHA} && bash install.sh; fi'"
       $SSH "$EXEC '/usr/local/bin/bmx-test'"
+
+# The same borrow for an unprotected ref, run ON the box by the gmod runner:
+# bmx-branch-test does exactly the two steps above (check this commit out unless
+# it is already there, install, run bmx-test) and is the only command the runner
+# may sudo. Same resource_group, so it never interleaves with a main run.
+headless:branch:
+  stage: headless
+  tags: [gmod]
+  resource_group: gmod-dev
+  timeout: 60m
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED != "true"
+  script:
+    - sudo -n /usr/local/bin/bmx-branch-test "$CI_COMMIT_SHA"
 
 # ---------------------------------------------------------------------------
 # THE PUBLIC GITHUB COPY, where players file issues. Every main pipeline pushes

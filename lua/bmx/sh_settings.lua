@@ -54,6 +54,11 @@ S.Categories = S.Categories or { client = {}, server = {} }
 -- both ends agree. Part of the wire format: add to the end only.
 S.OP_SET, S.OP_RESET, S.OP_RESET_ALL = 0, 1, 2
 
+-- The CAMI privilege for changing the server rows (sh_permissions.lua). Shared:
+-- the server checks it on every request (sv_settings.lua) and the client asks
+-- it to decide whether the Server panel is locked (cl_options.lua).
+S.PRIV = "BMX - Change Server Settings"
+
 --------------------------------------------------------------------------
 -- Categories. THE EXTENSION POINT for the menu's grouping: each is a heading
 -- on its panel, in the order they were added.

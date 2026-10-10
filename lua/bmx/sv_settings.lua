@@ -37,7 +37,6 @@ BMX = BMX or {}
 local S = BMX.Settings
 
 S.ServerFile = "bmx/server.json"
-S.PRIV = "BMX - Change Server Settings"
 
 util.AddNetworkString("bmx_setting")
 

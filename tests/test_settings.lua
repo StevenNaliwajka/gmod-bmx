@@ -6,8 +6,9 @@
     What these protect: a setting with no help text or no range, a setting the
     menu forgot, a default that drifted from its convar, a player changing the
     server's settings without permission, and a saved file that does not come
-    back the way it went out. The panels themselves are not built here (there
-    is no vgui offline); everything they call is.
+    back the way it went out. There is no vgui offline, so the panels are
+    built against stand-in controls: that catches a build that throws, not a
+    layout that looks wrong.
 ----------------------------------------------------------------------------]]
 
 local F = require("lib.fixture")
@@ -259,6 +260,58 @@ T.test("settings: the Options menu registers a Rider and a Server panel", functi
     T.eq(added[1][2], "BMX", "in the BMX category")
     T.eq(added[1][4], "Rider", "Rider")
     T.eq(added[2][4], "Server", "Server")
+end)
+
+-- A stand-in for any Derma control: every method exists, does nothing, and
+-- returns another stand-in, so a panel's build function runs to the end.
+local function anyPanel()
+    return setmetatable({}, {
+        __index = function(t, k) local v = anyPanel() rawset(t, k, v) return v end,
+        __call = function() return anyPanel() end,
+    })
+end
+
+-- The DForm a build function is handed, keeping what it was told.
+local function fakeForm()
+    local form = { helps = {}, items = 0 }
+    function form:ClearControls() end
+    function form:Help(text) self.helps[#self.helps + 1] = text return anyPanel() end
+    function form:ControlHelp() end
+    function form:AddItem() self.items = self.items + 1 end
+    function form:Button()
+        self.button = { enabled = true }
+        function self.button:SetEnabled(on) self.enabled = on end
+        return self.button
+    end
+    return form
+end
+
+-- The Workshop report of 2026-10: the Server panel threw on every client
+-- because the privilege's name was set in sv_settings.lua only.
+T.test("settings: both panels build on the client, the Server one locked unless allowed", function()
+    local sv, cl = both()
+    local build = {}
+    cl.env.spawnmenu = { AddToolMenuOption = function(tab, cat, class, name, cmd, config, fn)
+        build[name] = fn
+    end }
+    cl.env.vgui = { Create = function() return anyPanel() end }
+    cl.env.hook.Run("PopulateToolMenu")
+    T.eq(cl.env.BMX.Settings.PRIV, PRIV, "the client knows the privilege's name")
+
+    for _, who in ipairs({ { "Rider", {}, true }, { "Boss", { superadmin = true }, false } }) do
+        cl.localPlayer = cl:player(who[1], who[2])
+        for _, name in ipairs({ "Rider", "Server" }) do
+            local form = fakeForm()
+            local ok, err = pcall(build[name], form)
+            T.ok(ok, name .. " panel builds for " .. who[1] .. ": " .. tostring(err))
+            T.ok(form.items > 0, name .. " panel has controls for " .. who[1])
+            local locked = name == "Server" and who[3]
+            T.eq(form.button.enabled, not locked, name .. " panel's reset button for " .. who[1])
+            T.eq(#form.helps > 0 and form.helps[1]:find(PRIV, 1, true) ~= nil, locked,
+                name .. " panel says why it is locked, for " .. who[1])
+        end
+    end
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
 end)
 
 T.test("settings: bmx_reset_client puts every Rider setting back", function()

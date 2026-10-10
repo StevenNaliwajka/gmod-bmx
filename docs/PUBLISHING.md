@@ -82,7 +82,9 @@ test server (`tools/ride/shoot.sh`), which needs a connected client.
 The Workshop item belongs to the Steam account **ConvexBurrito5**. Uploading
 is done by `gmpublish`, which ships with Garry's Mod (`bin\gmpublish.exe` on
 Windows) and uploads as whichever account the running Steam client is signed
-into -- so it runs on the publisher's own PC, never on a server and never in CI.
+into -- so it runs where that client is, never on a server and never in CI. The
+standard route is the gmod-marionette VM, driven from the desktop (see "The
+standard route" below).
 
 Build the kit:
 
@@ -120,6 +122,7 @@ it once the upload is done):
 
 | Version | Kit built | From commit | Uploaded |
 |---|---|---|---|
+| 1.2.1 | 2026-10-10 | b67c8f2 (tools/workshop_marionette.sh's steps, run by hand from the desktop: the first upload from the marionette) | 2026-10-10 16:46 UTC; page text unchanged, the same 20 gallery pictures re-sent |
 | page only | n/a | 81c23d9 | page only, 2026-10-10: 1.2.0 text and 20-picture gallery from 81c23d9 |
 | 1.2.0 | 2026-10-08 | a5e785b (tools/workshop_sync.py, from Linux; with BMX (Mode) 51d9a47 and Petopia BMX Fall 40ef174) | 2026-10-08, page text and gallery unchanged |
 | 1.1.1 | 2026-10-07 | 932dc8c (tools/workshop_sync.py, from Linux) | 2026-10-07, with the gallery |
@@ -155,12 +158,46 @@ Items: BMX 3814420080, Petopia BMX Fall 3815469993, BMX (Mode) 3815470101
 (each repo's `workshop/workshop-id.txt`). Tools in `~/sdk/gmod-tools` (gmad,
 libsteam_api.so from a GMod dedicated server's bin/linux64).
 
+## The standard route: tools/workshop_marionette.sh
+
+**Owner's decision, 2026-10-10: Workshop uploads go from the desktop through the
+gmod-marionette VM (119158).** Its Steam client is signed in as ConvexBurrito5.
+It is kept in offline mode so its game client can join the LAN test server, and
+it goes online only while an upload runs. The decision to publish is still the
+owner's; this is only how it gets done.
+
+    tools/workshop_marionette.sh bmx --ref <sha> --dry-run           # pack and check on the desktop, nothing else
+    tools/workshop_marionette.sh bmx --ref <sha> --note "what changed"
+    tools/workshop_marionette.sh bmx --page-only                     # text, tags, icon, gallery
+
+The arguments are `tools/workshop_sync.py`'s. Run it from the desktop's main
+checkout (`/home/gmod/GMod/gmod-bmx`), because it copies the item repos as they
+are there, and the gallery comes from the working tree. In order, it:
+
+1. Does the dry run on the desktop. With `--dry-run` it stops there.
+2. Refuses while ConvexBurrito5 is in a game. An upload starts a Garry's Mod
+   session, and Steam would sign one of the two out.
+3. Asks (unless `--yes`), then borrows sen4's GPU for the marionette
+   (`webdesk-guest gpu-claim`). **That shuts down win11-marionette, another
+   org's desktop, while it is held**, so the claim lasts minutes, not hours.
+4. Copies gmad, libsteam_api.so and the repos to `~/GMod` on the marionette.
+5. Switches Steam online (`WantsOfflineMode 0` in `loginusers.vdf`, restart,
+   wait for the logon), uploads, and switches it back offline.
+6. Releases the GPU. Going back offline and releasing the GPU also happen on a
+   failure or Ctrl-C.
+
+If it stops with a WARNING, finish by hand: set `WantsOfflineMode` back to 1 on
+the marionette (`~/.steam/steam/config/loginusers.vdf`, with Steam stopped:
+`systemctl --user stop steam`), then run `webdesk-guest gpu-release 119158`.
+
 ## Releasing an update (when the owner says go)
 
 1. `CHANGELOG.md`: the top entry is the version going out; change its
    "not yet on the Workshop" line to the date it went out.
-2. `tools/package-workshop.sh`, then `update.bat` (or `./publish.sh update
-   "what changed"`) on the publisher's PC, signed in as ConvexBurrito5.
+2. From the desktop: `tools/workshop_marionette.sh bmx --ref <sha> --note
+   "what changed"` (the standard route, below; `--dry-run` first). If the
+   marionette cannot be had, the owner's own PC: `tools/workshop_sync.py`, or
+   `tools/package-workshop.sh` then `update.bat` / `./publish.sh update`.
 3. Open the item page and check the title ("BMX") and the description.
    `gmpublish update` uploads the addon, not the page, so if the page still
    shows the old text, paste in `description.bbcode` from the kit (the page

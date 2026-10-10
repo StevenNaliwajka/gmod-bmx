@@ -62,14 +62,14 @@ way the icon is:
 tools/bike/gallery.sh            # -> dist/gallery/shots, ~30 min with JOBS=2
 ```
 
-It exports every model (`tools/bike/export.lua`, `export_park.lua`), lays out
-the shot list (`tools/bike/gallery_scenes.py`: every vehicle together and
-named, each family as a still and as a turntable GIF with its names, the 14
-paints, a drivetrain close-up, two ready-made parks and an orbit of one, and
-an extras sheet: the bike rack rendered from its own drawing code
-(`export_rack.lua`) beside the lock, filmer camera and rental machine, which
-have no code-built model and are shown by their spawn-menu pictures,
-`extras_sheet.py`) and renders it (`tools/bike/showcase.py`). Copy the shots
+It exports every model (`tools/bike/export.lua`, `export_park.lua`,
+`export_rack.lua`), lays out the shot list (`tools/bike/gallery_scenes.py`:
+every vehicle together and named, each family as a still and as a turntable
+GIF with its names, the 14 paints, a drivetrain close-up, two ready-made parks
+and an orbit of one) and renders it (`tools/bike/showcase.py`). Last it makes
+the extras sheet (`extras_sheet.py`): the bike rack rendered from its own
+drawing code, beside the lock, filmer camera and rental machine, which use
+base-game models and so are shown by their spawn-menu pictures. Copy the shots
 the page should show into `workshop/gallery/` under a numbered name. Re-run it
 when a model changes, so the pictures stay true to the game.
 

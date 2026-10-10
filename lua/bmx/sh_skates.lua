@@ -357,7 +357,9 @@ function S.Decode(ply, w, cmd)
     local i = w.input
 
     local dz = BMX.Clamp(info(ply, "bmx_stick_deadzone", 0.1), 0, 0.9)
-    local fwd = BMX.StickDeadzone and BMX.StickDeadzone(axis(cmd:GetForwardMove(), "sv_forwardspeed", 400), dz) or 0
+    -- BMX.Lean.Deadzone, not sv_input.lua's BMX.StickDeadzone: this runs in the client's
+    -- prediction too (cl_skates.lua), where the server's name does not exist.
+    local fwd = BMX.Lean.Deadzone(axis(cmd:GetForwardMove(), "sv_forwardspeed", 400), dz)
     if fwd == 0 then
         if down("forward") then fwd = 1 elseif down("back") then fwd = -1 end
     end

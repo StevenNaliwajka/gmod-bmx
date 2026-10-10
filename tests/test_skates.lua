@@ -863,6 +863,28 @@ T.test("skates client: the local player's movement is predicted with the same st
     T.eq(me:GetFriction(), 1, "off the skates the friction is back")
 end)
 
+-- S.Decode once read sv_input.lua's BMX.StickDeadzone, which the client does not
+-- have, so the prediction took a gamepad's half stick for no stick at all.
+T.test("skates client: a gamepad stick is decoded the same by the prediction as by the server", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local function decode(R, fwd)
+        local E = R.env
+        local c = {}
+        function c:GetButtons() return 0 end
+        function c:GetForwardMove() return fwd end
+        function c:GetViewAngles() return E.Angle(0, 0, 0) end
+        local w = { input = {} }
+        E.BMX.Skates.Decode(R:player("Pad"), w, c)
+        return w.input.fwd
+    end
+    local want = (0.5 - 0.1) / (1 - 0.1)        -- half the stick, past the default 0.1 dead zone
+    T.near(decode(sv, 200), want, 1e-9, "the server reads half a stick")
+    T.near(decode(cl, 200), want, 1e-9, "and so does the client's prediction")
+    T.eq(decode(cl, 20), 0, "inside the dead zone it is no stick, on the client too")
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
 T.test("skates client: the boots are placed under the foot, the wheels in a line, and the draw runs to the end", function()
     local cl, me, E = cscene()
     local S = E.BMX.Skates

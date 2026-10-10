@@ -20,3 +20,13 @@ The stage is open floor (`RIDESTUDIO.FLOOR`, petopia_bmx_fall's park by default)
 the vehicle faces the longest clear run from there. Worn vehicles (the skates) are
 put on the bot instead of spawned. A changelevel drops the client half: run it
 again, the script re-sends it every time.
+
+**A clear view.** On a map with walls and a Lua-drawn city (petopia_bmx_fall) fixed
+camera offsets landed behind brickwork and trees: half of the first real-client run's
+front and close-up shots showed no rider. So for the shoot the client turns the map's
+city, trees and falling leaves off (`bmx_city_draw`, `bmx_city_plants`,
+`bmx_city_leaves`, put back afterwards with the other studio settings), and every
+camera is checked for a clear line to its subject: blocked, it swings round the vehicle
+in 30 degree steps to the nearest clear spot at the same distance, or else moves in to
+just short of what is in the way. Each moved camera is reported in the server log
+(`[ride] client diag: stock_front: swung 30`).

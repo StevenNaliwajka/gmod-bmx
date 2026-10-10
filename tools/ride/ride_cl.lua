@@ -30,11 +30,18 @@ end
 -- simple bike, bmx_bike_model 0 turns the model off) are set for the shoot and put
 -- back exactly as they were when it ends; what they were is reported, so a surprise
 -- setting is visible in the server log.
+--
+-- AND THE MAP'S CITY GOES DARK FOR IT (petopia_bmx_fall's buildings, trees and
+-- falling leaves, drawn by its Lua, so no trace can see them): the first run through
+-- a real client (2026-10-10) had half its front and close-up shots full of brickwork
+-- and leaves. A setting the map does not have is skipped (GetConVar is nil).
+local STUDIO = { bmx_debug = "0", bmx_bike_model = "1", bmx_lod_scale = "0",
+                 bmx_city_draw = "0", bmx_city_plants = "0", bmx_city_leaves = "0" }
 local saved
 local function studioSettings()
     if saved then return end
     saved = {}
-    for name, want in pairs({ bmx_debug = "0", bmx_bike_model = "1", bmx_lod_scale = "0" }) do
+    for name, want in pairs(STUDIO) do
         local cv = GetConVar(name)
         if cv then
             saved[name] = cv:GetString()
@@ -72,6 +79,34 @@ RIDESTUDIO_VIEWS = RIDESTUDIO_VIEWS or {
     { name = "bell",   lpos = Vector(20, 16, 36), lat = Vector(9, 2.7, 24.5), fov = 34, ring = true },
 }
 
+-- A CAMERA WITH A VIEW. The cameras are placed round the vehicle, not round the map,
+-- so on a park with walls a fixed offset can land behind one. Each is checked for a
+-- clear line to what it looks at (the world and solid props; the vehicle, its seats
+-- and the players are not in the way) and, if blocked, swung round the vehicle in
+-- steps to the nearest clear spot at the same distance; failing that, pulled in to
+-- just short of whatever is in the way. Returns the position and what was done.
+local SWING = { 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180 }
+local function clearView(at, pos, ent)
+    local function hitFrac(p)
+        local tr = util.TraceLine({ start = at, endpos = p, mask = MASK_VISIBLE,
+            filter = function(e)
+                return not (e == ent or e:IsPlayer() or (IsValid(e:GetParent()) and e:GetParent() == ent))
+            end })
+        return tr.Hit and tr.Fraction or 1
+    end
+    local best, bestFrac = pos, hitFrac(pos)
+    if bestFrac >= 1 then return pos, nil end
+    local off = pos - at
+    for _, d in ipairs(SWING) do
+        local o = Vector(off)
+        o:Rotate(Angle(0, d, 0))
+        local f = hitFrac(at + o)
+        if f >= 1 then return at + o, "swung " .. d end
+        if f > bestFrac then best, bestFrac = at + o, f end
+    end
+    return at + (best - at) * math.max(0.35, bestFrac - 0.05), "pulled in"
+end
+
 local function shoot(id, ent, rider)
     local views = RIDESTUDIO_VIEWS
     local size = 70
@@ -98,6 +133,11 @@ local function shoot(id, ent, rider)
                 else
                     at = base + u * (size * v.at)
                     pos = base + f * (v.pos.x * size) - r * (v.pos.y * size) + u * (v.pos.z * size)
+                    local moved
+                    pos, moved = clearView(at, pos, ent)
+                    if moved then
+                        net.Start("ridestudio_diag") net.WriteString(id .. "_" .. v.name .. ": " .. moved) net.SendToServer()
+                    end
                 end
                 if v.ring then ent.bellRungAt = CurTime() - 0.055 end
                 local ang = (at - pos):Angle()
@@ -142,7 +182,7 @@ local function sequence(id, ent, n, dt)
             local ya = Angle(0, yaw0, 0)
             local f, r, u = ya:Forward(), ya:Right(), Vector(0, 0, 1)
             local at = base + u * (size * 0.42)
-            local pos = base + f * (0.25 * size) + r * (1.5 * size) + u * (0.5 * size)
+            local pos = clearView(at, base + f * (0.25 * size) + r * (1.5 * size) + u * (0.5 * size), ent)
             render.PushRenderTarget(rt)
             render.Clear(0, 0, 0, 255, true, true)
             render.RenderView({ origin = pos, angles = (at - pos):Angle(), x = 0, y = 0, w = W, h = H, fov = 46,

@@ -30,6 +30,8 @@ echo "▶ workshop kit"
 # runs on the publisher's PC, at the moment an update reaches subscribers.
 ./tools/test-workshop.sh
 
+echo "▶ bmx-test keeps a wedged run's console"
+bash tools/server/test-bmx-test-evidence.sh
 echo "▶ shell syntax"
 for f in install.sh ci-test.sh tools/*.sh tools/server/*.sh tools/server/bmx-test; do
   [ -f "$f" ] || continue

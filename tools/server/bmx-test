@@ -89,6 +89,21 @@ done
 say() { echo "  $*"; }
 die() { echo "bmx-test: $*" >&2; exit 2; }
 
+# A WEDGE MUST LEAVE EVIDENCE. The exit trap restarts the server onto the play map, and
+# srcds -condebug rewrites console.log on every start, so the console of a stalled run
+# (Lua errors, the last thing the suite printed) used to vanish with it -- two branch
+# wedges on 2026-10-10 left nothing to read. Keep a copy and print its tail into the
+# job log before dying.
+evidence() {
+  local keep="${BMX_EVIDENCE_DIR:-/var/log/bmx-test}" f
+  mkdir -p "$keep" 2>/dev/null || return 0
+  f="$keep/wedge-$(date -u +%Y%m%dT%H%M%SZ).log"
+  cp -f "$CONSOLE" "$f" 2>/dev/null || return 0
+  ls -1t "$keep"/wedge-*.log 2>/dev/null | tail -n +11 | xargs -r rm -f
+  echo "bmx-test: server console saved to $f; its last 60 lines:" >&2
+  tail -n 60 "$f" >&2
+}
+
 [ -d "$ADDON_DIR" ] || die "no addon checkout at $ADDON_DIR"
 [ -f "$RCON" ]      || die "no RCON client at $RCON (the recipe installs it)"
 
@@ -243,10 +258,12 @@ until [ -f "$RESULTS" ]; do
     fi
   fi
   if [ "$since_change" -ge "$RUN_STALL" ]; then
+    evidence
     die "no progress for ${RUN_STALL}s (last progress: ${last:-none}); the suite is wedged.
        journalctl -u $UNIT."
   fi
   if [ "$waited" -ge "$budget" ]; then
+    evidence
     die "no results after ${budget}s (last progress: ${last:-none}).
        The suite was started but did not finish. journalctl -u $UNIT."
   fi

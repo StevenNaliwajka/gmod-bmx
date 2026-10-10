@@ -39,6 +39,7 @@ V = {  # key: file, label, paint (each vehicle's registry colorIndex, BMX.Palett
     "street_plaza": ("preset_street_plaza.txt", "Street plaza", None),
     "vert_ramp": ("preset_vert_ramp.txt", "Vert ramp", None),
     "dirt_line": ("preset_dirt_line.txt", "Dirt line", None),
+    "rack": ("rack.txt", "Bike Rack", None),           # tools/bike/export_rack.lua
 }
 
 FOOT = {}
@@ -160,6 +161,8 @@ write("turn-motor", {"size": [640, 360], "ss": 2, "camera": dict(cam, el=30, fit
 write("turn-park", {"size": [640, 360], "ss": 2, "camera": dict(cam, el=32, fit=0.96, lift=0.2),
                     "turntable": {"frames": 36, "degrees": 360, "ms": 90},
                     "models": [model("vert_ramp", [0, 0], label=False)]})
+write("rack", {"size": [632, 600], "ss": 2, "camera": dict(cam, az=-40, el=24, fit=0.86, lift=0.3),
+               "models": [model("rack", [0, 0], label=False)] + row(["bmx"], AZ, 0, label=False, shift=62)})
 write("icon-turn", {"size": [512, 512], "ss": 2, "camera": dict(cam, el=16, fit=0.94),
                     "turntable": {"frames": 30, "degrees": 360, "ms": 70},
                     "models": [model("bmx", [0, 0], label=False)]})

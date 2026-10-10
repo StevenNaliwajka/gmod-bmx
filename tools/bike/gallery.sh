@@ -23,6 +23,7 @@ echo "exporting models into $OUT/models"
 for k in road fixie city dh tandem unicycle penny ebike emoto dirtbike moped skateboard scooter skates; do
     "$LUA" tools/bike/export.lua kind=$k > "$OUT/models/$k.txt" 2>/dev/null
 done
+"$LUA" tools/bike/export_rack.lua > "$OUT/models/rack.txt" 2>/dev/null
 for p in street_plaza vert_ramp dirt_line; do
     "$LUA" tools/bike/export_park.lua preset $p > "$OUT/models/preset_$p.txt" 2>/dev/null
 done
@@ -35,3 +36,6 @@ ls "$OUT"/scenes/*.json | xargs -P "${JOBS:-2}" -I{} bash -c '
     n=$(basename "{}" .json); ext=jpg
     grep -q "\"turntable\"" "{}" && ext=gif
     python3 tools/bike/showcase.py "{}" "'"$OUT"'/shots/$n.$ext" | tail -n1'
+
+echo "the extras sheet"
+python3 tools/bike/extras_sheet.py "$OUT/shots/rack.jpg" "$OUT/shots/extras.jpg"

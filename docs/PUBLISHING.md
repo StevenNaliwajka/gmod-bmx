@@ -59,13 +59,14 @@ in it are made from the vehicles' and park pieces' own code, offline, the same
 way the icon is:
 
 ```
-tools/bike/gallery.sh            # -> dist/gallery/shots, ~10 min with JOBS=2
+tools/bike/gallery.sh            # -> dist/gallery/shots, ~30 min with JOBS=2
 ```
 
 It exports every model (`tools/bike/export.lua`, `export_park.lua`), lays out
-the shot list (`tools/bike/gallery_scenes.py`: every vehicle together, each
-family with its names, turntables, the 14 paints, a drivetrain close-up, two
-ready-made parks) and renders it (`tools/bike/showcase.py`). Copy the shots
+the shot list (`tools/bike/gallery_scenes.py`: every vehicle together and
+named, each family as a still and as a turntable GIF with its names, the 14
+paints, a drivetrain close-up, two ready-made parks and an orbit of one) and
+renders it (`tools/bike/showcase.py`). Copy the shots
 the page should show into `workshop/gallery/` under a numbered name. Re-run it
 when a model changes, so the pictures stay true to the game.
 

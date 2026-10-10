@@ -21,7 +21,7 @@
 #       fit is how much of the frame the scene fills (0.9)
 #   turntable: {frames, degrees, ms}  a GIF of every model spinning in place
 #   paints: {model, cols, rows, title} a sheet: one model in every palette paint
-#   labels: true                      each model's label under it
+#   labels: true                      each model's label under it (label_px, label_drop to tune)
 #   caption: "text"                   a line at the top left
 # Needs numpy and Pillow.
 import sys, os, re, json, math
@@ -414,12 +414,12 @@ def pill(draw, cx, cy, text, px):
     draw.text((cx - tw / 2 - x0, cy - th / 2 - y0), text, font=f, fill=(236, 240, 244, 255))
 
 
-def annotate(im, labels, caption, W, H):
+def annotate(im, labels, caption, W, H, label_px=None):
     if not labels and not caption:
         return im
     over = Image.new("RGBA", im.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(over)
-    px = max(12, round(H * 0.026))
+    px = label_px or max(12, round(H * 0.026))
     for x, y, text in labels:
         pill(d, min(max(x, px * 4), W - px * 4), y, text, px)
     if caption:                                  # a dark bar, readable over any picture
@@ -515,13 +515,21 @@ def render(spec, base_dir, out):
         labels = []
         if labels_on:
             for it in items:
-                if it["label"] and it["above"]:          # over the top of it (a back row)
-                    sx, sy, _ = project(np.array([[it["at"][0], it["at"][1], it["top"]]]), cam)
+                if not it["label"]:
+                    continue
+                # A turning model sweeps a circle: put its label past the circle's
+                # near edge (or over its far top), not where the model will swing.
+                reach = it["r"] if turn else 0.0
+                toward = -cam["fwd"][:2] / (np.linalg.norm(cam["fwd"][:2]) + 1e-9)
+                if it["above"]:                          # over the top of it (a back row)
+                    p = [it["at"][0] - toward[0] * reach, it["at"][1] - toward[1] * reach, it["top"]]
+                    sx, sy, _ = project(np.array([p]), cam)
                     labels.append((sx[0] / SS, max(H * 0.05, sy[0] / SS - H * 0.06), it["label"]))
-                elif it["label"]:
-                    sx, sy, _ = project(np.array([[it["at"][0], it["at"][1], 0.0]]), cam)
-                    labels.append((sx[0] / SS, min(H - H * 0.05, sy[0] / SS + H * 0.075), it["label"]))
-        images.append(annotate(im, labels, spec.get("caption"), W, H))
+                else:
+                    p = [it["at"][0] + toward[0] * reach, it["at"][1] + toward[1] * reach, 0.0]
+                    sx, sy, _ = project(np.array([p]), cam)
+                    labels.append((sx[0] / SS, min(H - H * 0.05, sy[0] / SS + H * spec.get("label_drop", 0.075)), it["label"]))
+        images.append(annotate(im, labels, spec.get("caption"), W, H, spec.get("label_px")))
         print("frame %d/%d" % (fi + 1, frames), flush=True)
     save(images, out, turn)
 

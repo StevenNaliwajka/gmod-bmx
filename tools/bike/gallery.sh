@@ -30,7 +30,7 @@ done
 echo "laying out the shots"
 python3 tools/bike/gallery_scenes.py "$OUT" 2>/dev/null
 
-echo "rendering (${JOBS:-2} at a time; a still is ~1 min, a turntable ~5)"
+echo "rendering (${JOBS:-2} at a time; a still is ~1 min, a turntable ~3-8)"
 ls "$OUT"/scenes/*.json | xargs -P "${JOBS:-2}" -I{} bash -c '
     n=$(basename "{}" .json); ext=jpg
     grep -q "\"turntable\"" "{}" && ext=gif

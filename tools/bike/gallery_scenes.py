@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # The Workshop gallery's shot list, as tools/bike/showcase.py scenes: every
-# vehicle together, each family on its own sheet, turntables, the paints, a
-# close-up and two ready-made parks. Rows are laid out across the frame from
+# vehicle together and named, each family on its own sheet and turning, the
+# paints, a close-up, two ready-made parks and an orbit of one. Rows are laid out across the frame from
 # each model's real footprint, so nothing overlaps whatever its size.
 #
 #   python3 tools/bike/gallery_scenes.py OUT     reads OUT/models/*.txt, writes OUT/scenes/*.json
@@ -89,6 +89,24 @@ def row(keys, az, gap, depth=0.0, yaw=0, label=True, shift=0.0, above=False):
     return out
 
 
+def spin_row(keys, az, gap, depth=0.0, label=True, above=False, shift=0.0):
+    """A row spaced for turning in place: each model gets its whole circle."""
+    a = math.radians(az)
+    d = np.array([math.cos(a), math.sin(a)])
+    u = np.array([-math.sin(a), math.cos(a)])
+    xs, cur = [], 0.0
+    for k in keys:
+        r = np.linalg.norm(FOOT[k], axis=1).max()
+        xs.append(cur + r)
+        cur += 2 * r + gap
+    total = cur - gap
+    out = []
+    for k, x in zip(keys, xs):
+        m = model(k, u * (x - total / 2 + shift) - d * depth, 0, label, above)
+        out += pair(m) if k == "skates" else [m]
+    return out
+
+
 def write(name, spec):
     os.makedirs(os.path.join(OUT, "scenes"), exist_ok=True)
     json.dump(spec, open(os.path.join(OUT, "scenes", name + ".json"), "w"), indent=1)
@@ -98,10 +116,10 @@ AZ, EL = -53, 15
 cam = {"az": AZ, "el": EL, "fov": 32, "fit": 0.9}
 
 write("garage", {"size": [1280, 720], "ss": 2, "camera": dict(cam, el=27, fit=0.95, lift=0.25),
-                 "caption": "17 rides, every one built in code",
-                 "models": row(["dirtbike", "emoto", "city", "tandem", "road"], AZ, 10, depth=190, label=False)
-                 + row(["penny", "dh", "cruiser", "ebike", "moped", "fixie"], AZ, 12, depth=95, label=False)
-                 + row(["unicycle", "mini", "bmx", "scooter", "skateboard", "skates"], AZ, 16, depth=0, label=False)})
+                 "caption": "17 rides, every one built in code", "labels": True, "label_px": 13, "label_drop": 0.04,
+                 "models": row(["dirtbike", "emoto", "city", "tandem", "road"], AZ, 10, depth=190)
+                 + row(["penny", "dh", "cruiser", "ebike", "moped", "fixie"], AZ, 12, depth=95)
+                 + row(["unicycle", "mini", "bmx", "scooter", "skateboard", "skates"], AZ, 16, depth=0)})
 write("family", {"size": [1280, 720], "ss": 2, "camera": dict(cam, fit=0.86), "labels": True,
                  "caption": "The BMX family: 24, 20 and 16 inch wheels",
                  "models": row(["cruiser", "bmx", "mini"], AZ, 14)})
@@ -128,6 +146,20 @@ write("turn-dirtbike", {"size": [640, 360], "ss": 2, "camera": dict(cam, el=14, 
 write("turn-boards", {"size": [640, 360], "ss": 2, "camera": dict(cam, el=22, fit=0.92),
                       "turntable": {"frames": 30, "degrees": 360, "ms": 70},
                       "models": row(["scooter", "skateboard", "skates"], AZ, 16, label=False)})
+TURN = {"frames": 30, "degrees": 360, "ms": 70}
+write("turn-family", {"size": [640, 360], "ss": 2, "camera": dict(cam, el=18, fit=0.94), "turntable": TURN,
+                      "labels": True, "models": spin_row(["cruiser", "bmx", "mini"], AZ, 4)})
+write("turn-street", {"size": [640, 360], "ss": 2, "camera": dict(cam, el=30, fit=0.9, lift=0.6), "turntable": TURN,
+                      "labels": True, "models": spin_row(["city", "tandem"], AZ, 6, depth=100, above=True, shift=-20)
+                      + spin_row(["road", "fixie"], AZ, 6, shift=20)})
+write("turn-odd", {"size": [640, 360], "ss": 2, "camera": dict(cam, el=18, fit=0.94), "turntable": TURN,
+                   "labels": True, "models": spin_row(["dh", "unicycle", "penny"], AZ, 4)})
+write("turn-motor", {"size": [640, 360], "ss": 2, "camera": dict(cam, el=30, fit=0.9, lift=0.6), "turntable": TURN,
+                     "labels": True, "models": spin_row(["emoto", "dirtbike"], AZ, 6, depth=100, above=True, shift=-20)
+                     + spin_row(["ebike", "moped"], AZ, 6, shift=20)})
+write("turn-park", {"size": [640, 360], "ss": 2, "camera": dict(cam, el=32, fit=0.96, lift=0.2),
+                    "turntable": {"frames": 36, "degrees": 360, "ms": 90},
+                    "models": [model("vert_ramp", [0, 0], label=False)]})
 write("icon-turn", {"size": [512, 512], "ss": 2, "camera": dict(cam, el=16, fit=0.94),
                     "turntable": {"frames": 30, "degrees": 360, "ms": 70},
                     "models": [model("bmx", [0, 0], label=False)]})

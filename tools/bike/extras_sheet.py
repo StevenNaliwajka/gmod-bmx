@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# The gallery's "extras" picture: the bike rack rendered from its own code
-# (tools/bike/export_rack.lua through showcase.py) beside cards for the things
-# with no code-built model to render -- the Bike Lock, the Filmer Camera and the
-# rental machine -- each shown with the addon's own spawn-menu pictures
+# The gallery's "extras" picture. The bike rack and the bike lock are drawn in
+# code, so they are rendered (tools/bike/export_drawn.lua through showcase.py);
+# the Filmer Camera and the rental machine are base-game models, nothing to
+# render offline, so their cards show the addon's own spawn-menu pictures
 # (materials/entities/*.png, shot in game by tools/icons/shoot.sh).
 #
-#   python3 tools/bike/extras_sheet.py rack.jpg out.jpg
+#   python3 tools/bike/extras_sheet.py rack.jpg lock.jpg out.jpg
 import sys, os
 from PIL import Image, ImageDraw
 
@@ -63,34 +63,35 @@ def card(sheet, box, title, body, pics, pic_px):
             sheet.alpha_composite(icon(name, px), (x0 + 14 + c * (px + gap), y + 6 + r * (px + gap)))
 
 
-def main(rack_path, out):
+def render_card(sheet, path, x, y, label, top=False):
+    """A render as a rounded card, so its own backdrop reads as a frame, its name on it."""
+    im = Image.open(path).convert("RGBA")
+    mask = Image.new("L", im.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, im.width - 1, im.height - 1), radius=10, fill=255)
+    im.putalpha(mask)
+    sheet.alpha_composite(im, (x, y))
+    S.pill(ImageDraw.Draw(sheet), x + im.width / 2, y + (24 if top else im.height - 24), label, 16)
+
+
+def main(rack_path, lock_path, out):
     sheet = Image.new("RGBA", (W, H))
     top, bot = (204, 211, 222), (165, 170, 178)
     for yy in range(H):                          # the studio backdrop the renders use
         t = yy / (H - 1)
         sheet.paste(tuple(round(top[i] + (bot[i] - top[i]) * t) for i in range(3)) + (255,), (0, yy, W, yy + 1))
-    rack = Image.open(rack_path).convert("RGBA")
-    mask = Image.new("L", rack.size, 0)          # a rounded card, so the render's own backdrop reads as a frame
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, rack.width - 1, rack.height - 1), radius=10, fill=255)
-    rack.putalpha(mask)
-    rx, ry = 24, H - rack.height - 24
-    sheet.alpha_composite(rack, (rx, ry))
-    d = ImageDraw.Draw(sheet)
-    S.pill(d, rx + rack.width / 2, ry + rack.height - 30, "Bike Rack: welds to a car, carries two bikes", 17)
+    render_card(sheet, rack_path, 24, 92, "Bike Rack: welds to a car, carries two bikes")
+    render_card(sheet, lock_path, 24, 400, "Bike Lock: only you, or an admin, can open it", top=True)   # the padlock is low
     cx0, cx1 = 680, W - 24
-    card(sheet, (cx0, 96, cx1, 216), "Bike Lock",
-         "Lock a parked bike to the ground. Only you, or an admin, can unlock it, and it says who locked it.",
-         ["weapon_bmx_lock"], 96)
-    card(sheet, (cx0, 228, cx1, 348), "Filmer Camera",
+    card(sheet, (cx0, 92, cx1, 232), "Filmer Camera",
          "For admins: put one by a line and look through it. It pans after the rider like a person holding it.",
-         ["bmx_filmer_cam"], 96)
-    card(sheet, (cx0, 360, cx1, H - 24), "Bike Rental",
+         ["bmx_filmer_cam"], 104)
+    card(sheet, (cx0, 244, cx1, H - 24), "Bike Rental",
          "A free vending machine: press E, click a picture, ride. These are its pictures, one for every ride.",
-         RIDES, 64)
+         RIDES, 80)
     im = S.annotate(sheet.convert("RGB"), [], "Extras: a rack, a lock, a filming camera and a free rental", W, H)
     im.save(out, quality=90, optimize=True, progressive=True, subsampling=0)
     print("wrote", out, os.path.getsize(out), "bytes")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], sys.argv[3])

@@ -95,16 +95,23 @@ M.BONES = {
     { B .. "L_Thigh",    B .. "Pelvis",    Vector(0, 4, 0),    Angle(40, 0, 0) },
     { B .. "L_Calf",     B .. "L_Thigh",   Vector(17, 0, 0),   Angle(70, 0, 0) },
     { B .. "L_Foot",     B .. "L_Calf",    Vector(16, 0, 0),   Angle(-60, 0, 0) },
-    { B .. "Spine2",     B .. "Pelvis",    Vector(0, 0, 12),   Angle(-90, 0, 0) },
+    -- THE SPINE BENDS FORWARD ABOUT ITS OWN Z, as ValveBiped's does (it is a
+    -- Character Studio Biped: Z bends a spine link, X twists it, Y leans it to
+    -- the side) and as cl_rider.lua's Angle(0, lean, 0) assumes. Spine2 points
+    -- UP (its local +X) with +Y forward and +Z to the rider's left. It used to
+    -- be a plain pitch, which left the side axis on Y, so every "forward" lean
+    -- bent the rider to the LEFT -- +20 put the head 4 units left, not 4
+    -- forward -- and the IK, solved in each bone's own frame, could not tell.
+    { B .. "Spine2",     B .. "Pelvis",    Vector(0, 0, 12),   Angle(-90, 0, -90) },
     { B .. "Head1",      B .. "Spine2",    Vector(12, 0, 0),   Angle(0, 0, 0) },
     -- The arms hang off the SPINE, as ValveBiped's do (through the clavicles),
-    -- so twisting the spine carries the shoulders round. Spine2 points UP
-    -- (its local +X), its local -Z faces forward; so a shoulder 18 up and 7
-    -- out is (6, -7, 0) from it, and "forward and 30 down" is pitch 120.
-    { B .. "R_UpperArm", B .. "Spine2",    Vector(6, -7, 0),   Angle(120, 0, 0) },
+    -- so twisting the spine carries the shoulders round. A shoulder 18 up and 7
+    -- out is (6, 0, -7) from Spine2, and the arm's rest is "forward and 30
+    -- down" in a frame of its own unchanged by Spine2's axes: (0, 120, 90).
+    { B .. "R_UpperArm", B .. "Spine2",    Vector(6, 0, -7),   Angle(0, 120, 90) },
     { B .. "R_Forearm",  B .. "R_UpperArm", Vector(12, 0, 0),  Angle(-20, 0, 0) },
     { B .. "R_Hand",     B .. "R_Forearm", Vector(11, 0, 0),   Angle(0, 0, 0) },
-    { B .. "L_UpperArm", B .. "Spine2",    Vector(6, 7, 0),    Angle(120, 0, 0) },
+    { B .. "L_UpperArm", B .. "Spine2",    Vector(6, 0, 7),    Angle(0, 120, 90) },
     { B .. "L_Forearm",  B .. "L_UpperArm", Vector(12, 0, 0),  Angle(-20, 0, 0) },
     { B .. "L_Hand",     B .. "L_Forearm", Vector(11, 0, 0),   Angle(0, 0, 0) },
 }

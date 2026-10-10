@@ -34,6 +34,7 @@ _G.T = require("lib.t")
 local F  = require("lib.fixture")
 local SK = require("lib.skeleton")
 local J  = require("lib.json")
+local MF = require("lib.meshfake")
 
 local wantIds = arg[1] and arg[1] ~= "" and arg[1] ~= "all" and arg[1] or nil
 local FRAMES  = tonumber(arg[2] or "") or 12
@@ -41,32 +42,15 @@ local SPEED   = tonumber(arg[3] or "") or 0
 local STANCE  = arg[4] or "seated"
 local WARMUP, SETTLE = 40, 4
 
---------------------------------------------------------------------------
--- THE SPINE BENDS FORWARD ABOUT ITS OWN Z, as ValveBiped's does (it is a
--- Character Studio Biped: Z bends a spine link, X twists it, Y leans it
--- sideways), and as cl_rider.lua assumes: its spine and head offsets are
--- Angle(0, lean, 0). The offline suite's stand-in (tests/lib/skeleton.lua)
--- reaches Spine2 with a plain pitch, which leaves the SIDE axis on its local Y,
--- so there every "forward" lean is a bend to the rider's left: +20 puts the
--- head 4 units left instead of 4 forward. The IK is solved in each bone's own
--- frame and cannot tell, so the suite passes either way; a picture can.
---
--- So by default the picture's Spine2 is turned about its length to Biped's
--- axes (X up, Y forward, Z left), its shoulders moved to match: the same rest
--- pose to the unit, with the side axis where the engine's is.
--- BMX_RIDER_SKELETON=standin draws the suite's skeleton exactly as it is.
---------------------------------------------------------------------------
-if os.getenv("BMX_RIDER_SKELETON") ~= "standin" then
-    local VA = require("lib.vecang")
-    local function row(n) return SK.BONES[SK.INDEX["ValveBiped.Bip01_" .. n]] end
-    row("Spine2")[4] = VA.Angle(-90, 0, -90)
-    row("R_UpperArm")[3], row("R_UpperArm")[4] = VA.Vector(6, 0, -7), VA.Angle(0, 120, 0)
-    row("L_UpperArm")[3], row("L_UpperArm")[4] = VA.Vector(6, 0, 7), VA.Angle(0, 120, 0)
-end
-
 local sv, world = F.server()
 local cl = F.client(world)
 local E, B = cl.env, cl.env.BMX
+-- THE DETAILED MODELS, which is what players see (bmx_bike_model 1): built and
+-- "drawn" through the suite's fake mesh API, so the grips and pedals the riders
+-- reach for are the models' own. Without it the simple bike of beams stands in,
+-- whose grips and pedals are near but not the same, and a tandem's stoker has
+-- none at all (they come only from its model).
+MF.enable(cl)
 
 local function vec(v) return { v.x, v.y, v.z } end
 
@@ -93,9 +77,10 @@ local function seat(id)
     local ply = cl:player("Rider_" .. id)
     ply._vehicle = pod
     bike:SetDriver(ply)
-    local C = bike:Cfg().Chassis
-    if C.seatOffset then pod:SetPos(bike:LocalToWorld(C.seatOffset)) end
-    if C.seatAngles then pod:SetAngles(bike:LocalToWorldAngles(C.seatAngles)) end
+    -- Where ENT:BuildPod puts it: the seat as the registry resolves it.
+    local seat = B.SeatFor(B.Vehicles[id], bike:Cfg(), "rider")
+    if seat and seat.offset then pod:SetPos(bike:LocalToWorld(seat.offset)) end
+    if seat and seat.angles then pod:SetAngles(bike:LocalToWorldAngles(seat.angles)) end
     return bike, ply, pod
 end
 
@@ -103,12 +88,18 @@ end
 -- tests/test_rider.lua measures it: the inside of the fist to the grip it holds,
 -- and the pedal to the sole between the ankle and the ball of the foot (over
 -- the top of a low saddle's stroke the foot slides forward and the pedal is
--- under the arch, which is still a foot on its pedal).
-local function miss(ply, key, ik)
+-- under the arch, which is still a foot on its pedal). A pose set with open
+-- hands (the unicycle's arms out for balance) holds nothing: there the hand
+-- itself goes to the target, and a fist's centre is the wrong thing to measure.
+local function miss(ply, key, ik, open)
     ply:InvalidateBoneCache(); ply:SetupBones()
     local side = key:sub(1, 1):upper()
     if key:find("Hand") then
         local t = ik[key .. "Held"] or ik[key]
+        if t and open then
+            local h = ply:LookupBone("ValveBiped.Bip01_" .. side .. "_Hand")
+            return h and (ply:GetBoneMatrix(h):GetTranslation() - t):Length()
+        end
         local c = t and B.RiderFistCentre and B.RiderFistCentre(ply, side)
         return c and (c - t):Length()
     end
@@ -124,6 +115,21 @@ end
 
 local function sample(id)
     local bike, ply, pod = seat(id)
+    -- A TANDEM'S STOKER: the pegs seat, when it pedals (sh_bikes.lua), posed by
+    -- cl_passenger.lua on the bike's second cranks and bars (ikTargetsStoker).
+    -- Resolved as the server builds it (BMX.SeatFor fills the angles the
+    -- registry leaves out: without them the stoker sat facing the bike's side).
+    local pegs = B.SeatFor(B.Vehicles[id], bike:Cfg(), "pegs")
+    local stoker, stokerPod
+    if pegs and pegs.pedals and pegs.offset then
+        stokerPod = cl.makeEntity("prop_vehicle_prisoner_pod")
+        stokerPod:SetParent(bike)
+        stokerPod:SetPos(bike:LocalToWorld(pegs.offset))
+        if pegs.angles then stokerPod:SetAngles(bike:LocalToWorldAngles(pegs.angles)) end
+        stoker = cl:player("Stoker_" .. id)
+        stoker._vehicle = stokerPod
+        bike._nw.PaxPegs = stoker
+    end
     local crank = 0
     -- The cranks at each sample, not wherever the rear wheel's spin puts them.
     bike.CrankAngle = function() return crank end
@@ -132,10 +138,13 @@ local function sample(id)
     local top = B.Gears and B.Gears.TopCeiling and B.Gears.TopCeiling(bike, bike:Cfg()) or 0
     local function frame()
         bike:SetSpeedUPS(SPEED * top)
-        bike:Draw()
+        MF.draw(cl, bike)
         E.hook.Run("PrePlayerDraw", ply)
+        if stoker then E.hook.Run("PrePlayerDraw", stoker) end
     end
+    local model = MF.ready(cl, bike)
     for _ = 1, WARMUP do frame() end
+    local set = B.PoseSetFor and B.PoseSetFor(bike) or {}
 
     -- The wheels where cl_init.lua draws them at rest: the axle line lifted
     -- by the static sag.
@@ -152,32 +161,43 @@ local function sample(id)
         rear = vec(bike:LocalToWorld(E.Vector(-half, 0, sag))),
         ground = world.groundZ,
         origin = vec(bike:GetPos()), seat = vec(pod:GetPos()),
+        stokerSeat = stokerPod and vec(stokerPod:GetPos()) or nil,
+        model = model,         -- false: drawn as the simple bike (no model of its own)
         frames = {},
     }
-    for i = 0, FRAMES - 1 do
-        crank = i / FRAMES * 2 * math.pi
-        for _ = 1, SETTLE do frame() end
-        ply:InvalidateBoneCache(); ply:SetupBones()
+    -- One rider's bones, the targets they were given, and how far each hand and
+    -- foot is from its own.
+    local function snapshot(p, ik, open)
+        p:InvalidateBoneCache(); p:SetupBones()
         local bones = {}
         for _, b in ipairs(SK.BONES) do
-            local bi = ply:LookupBone(b[1])
-            if bi then bones[b[1]:gsub("^ValveBiped%.Bip01_", "")] = vec(ply:GetBoneMatrix(bi):GetTranslation()) end
+            local bi = p:LookupBone(b[1])
+            if bi then bones[b[1]:gsub("^ValveBiped%.Bip01_", "")] = vec(p:GetBoneMatrix(bi):GetTranslation()) end
         end
         local targets, reach = {}, {}
-        for k, v in pairs(bike.ikTargets or {}) do
+        for k, v in pairs(ik or {}) do
             if type(v) == "table" and v.x then targets[k] = vec(v) end
         end
         for _, k in ipairs({ "rHand", "lHand", "rFoot", "lFoot" }) do
-            reach[k] = bike.ikTargets and miss(ply, k, bike.ikTargets)
+            reach[k] = ik and miss(p, k, ik, open)
         end
-        out.frames[#out.frames + 1] = { crank = math.deg(crank), bones = bones,
-                                        targets = targets, reach = reach }
+        return bones, targets, reach
+    end
+    for i = 0, FRAMES - 1 do
+        crank = i / FRAMES * 2 * math.pi
+        for _ = 1, SETTLE do frame() end
+        local bones, targets, reach = snapshot(ply, bike.ikTargets, set.openHands)
+        local f = { crank = math.deg(crank), bones = bones, targets = targets, reach = reach }
+        if stoker then
+            local sb, st, sr = snapshot(stoker, bike.ikTargetsStoker, false)
+            f.stoker = { bones = sb, targets = st, reach = sr }
+        end
+        out.frames[#out.frames + 1] = f
     end
     return out
 end
 
 local result = { frames = FRAMES, speed = SPEED, stance = STANCE,
-                 skeleton = os.getenv("BMX_RIDER_SKELETON") == "standin" and "standin" or "biped",
                  parents = {}, vehicles = {}, errors = {} }
 for _, b in ipairs(SK.BONES) do
     if b[2] then

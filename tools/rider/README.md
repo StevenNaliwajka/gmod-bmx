@@ -21,25 +21,29 @@ then the front. A red ring marks a hand or foot more than 3 units off its grip o
 pedal (the offline suite's band for a foot over a whole stroke). `out/<id>.gif` is
 the stroke on a loop, and `out/report.txt` the worst miss per limb.
 
-Every vehicle takes ~10 s (its detailed model is built, as a client does), so `all`
+Every vehicle takes ~15 s (its detailed model is built, as a client does), so `all`
 is a few minutes; name the ones you are working on.
+
+**The tandem** shows both riders: the stoker on their own pedals and bars, with a
+row of their own in the report. **Open hands** (the unicycle's arms out for
+balance) hold nothing, so for them the hand itself is measured to its target; for
+everyone else it is the inside of the fist to the grip, as `tests/test_rider.lua`
+measures it. A vehicle with no model of its own is drawn as the simple bike and
+marked `*` in the report.
 
 ## What it is and is not
 
 It boots the offline suite's client realm (`tests/lib/gmod.lua`) and seats its
 stand-in skeleton (`tests/lib/skeleton.lua`: ValveBiped's bones at a standard
-player's lengths) on each bike, as `tests/test_rider.lua` does, then draws the bike
-and runs `PrePlayerDraw` frame by frame. So the pose sets, the IK, the stances, and
+player's lengths) on each bike where `ENT:BuildPod` would (`BMX.SeatFor`), as
+`tests/test_rider.lua` does, then draws the bike's detailed model through the
+suite's fake mesh (`tests/lib/meshfake.lua`) and runs `PrePlayerDraw` frame by
+frame. So the pose sets, the IK, the stances, and
 the grips and pedals the bike reports are all the shipped code's. A real player
 model's mesh is not: for that, `tools/ride/shoot.sh` photographs a ridden bike
 through a connected client.
 
-**The spine.** `cl_rider.lua` bends the spine and head forward with
-`Angle(0, lean, 0)`, about the bone's own Z, which is ValveBiped's bend axis (it is
-a Character Studio Biped). The suite's stand-in reaches `Spine2` with a plain pitch,
-which leaves its side axis on Y, so there a forward lean comes out as a bend to the
-rider's left (+20 degrees: the head 4 units left instead of 4 forward). The IK is
-solved in each bone's own frame and cannot tell, so the suite passes either way. By
-default this tool turns `Spine2` about its length to Biped's axes (the same rest
-pose to the unit); `BMX_RIDER_SKELETON=standin` draws the suite's skeleton exactly
-as it is.
+**The spine** bends forward about its own Z, as ValveBiped's does and as
+`cl_rider.lua` assumes. The stand-in used to have its side axis there instead, so
+every forward lean was drawn (and tested) as a bend to the rider's left; that was
+found with this tool and fixed in `tests/lib/skeleton.lua`.

@@ -32,7 +32,7 @@ T.test("rider preview: the stock bike's rider through a stroke, hands and feet o
     end
 end)
 
-T.test("rider preview: at speed the rider tucks FORWARD, not to the side (Biped spine axes)", function()
+T.test("rider preview: at speed the rider tucks FORWARD, not to the side (the spine bends about its Z)", function()
     local slow = export("stock 1 0").vehicles[1].frames[1].bones.Head1
     local fast = export("stock 1 1").vehicles[1].frames[1].bones.Head1
     T.ok(fast[1] - slow[1] > 2, string.format("the head forward: %.1f -> %.1f", slow[1], fast[1]))

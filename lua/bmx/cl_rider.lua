@@ -880,17 +880,24 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
         bike     = bike,
         ply      = ply,
     })
-    if useIK and (ply.bmxSpineTwist or ply.bmxSpineLean) then
-        pose.spine = Angle(pose.spine.p, pose.spine.y + (ply.bmxSpineLean or 0),
-            ply.bmxSpineTwist or 0)
-    end
     -- A style pose folds and twists the torso too (BMX.RiderPoses).
     local poseLean, poseTwist = BMX.PoseBody(bike.poseW, set.poses)
     -- ...and so does the rider's chosen stance (sh_stance.lua, G21).
     poseLean = poseLean + (BMX.StanceLean and BMX.StanceLean(ply) or 0)
-    if poseLean ~= 0 or poseTwist ~= 0 then
-        pose.spine = Angle(pose.spine.p, pose.spine.y + poseLean, pose.spine.r + poseTwist)
+    -- A pose set may cap how far the CHOSEN lean folds the torso (`maxLean`,
+    -- degrees). The tuck, the set's own lean, a style pose and the stance
+    -- otherwise just add up: on a motorbike at full speed in the attack stance
+    -- they came to 62 degrees, the head below the bars (seen with tools/rider).
+    -- The IK's own lean toward grips out of reach (spineReach) goes on after
+    -- the cap, so a capped rider still gets their hands to the bars.
+    local lean = pose.spine.y + poseLean
+    if set.maxLean and lean > set.maxLean then lean = set.maxLean end
+    local twist = pose.spine.r + poseTwist
+    if useIK and (ply.bmxSpineTwist or ply.bmxSpineLean) then
+        lean = lean + (ply.bmxSpineLean or 0)
+        twist = (ply.bmxSpineTwist or 0) + poseTwist
     end
+    pose.spine = Angle(pose.spine.p, lean, twist)
     for key, ang in pairs(pose) do
         -- With IK on, the limbs are the solver's; the pose keeps the body.
         if not (useIK and LIMB_KEYS[key]) then

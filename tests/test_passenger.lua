@@ -558,6 +558,51 @@ T.test("client: a passenger is posed as one: leaning on the rider, not holding t
     T.eq(#cl.errors, 0, "and the rider draws too: " .. table.concat(cl.errors, " | "))
 end)
 
+-- A TANDEM'S STOKER gets their hands onto their own bars and their feet onto their
+-- own pedals, as the captain does. Drawn through the model, since the stoker's bars
+-- and pedals come only from it (tests/lib/meshfake.lua); the seats where
+-- ENT:BuildPod puts them -- a stoker's pod left unturned faces the bike's side, and
+-- the IK then reaches the bars only by wringing the torso round.
+T.test("client: a tandem's stoker gets their hands onto their own bars", function()
+    local MF = require("lib.meshfake")
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local E, B = cl.env, cl.env.BMX
+    MF.enable(cl)
+    local cb = cl:clientEntity("bmx_tandem")
+    cb:SetPos(E.Vector(0, 0, F.restHeight(sv)))
+    -- Both seats where ENT:BuildPod puts them (BMX.SeatFor fills in the angles).
+    local front = B.SeatFor(B.Vehicles.tandem, cb:Cfg(), "rider")
+    local back = B.SeatFor(B.Vehicles.tandem, cb:Cfg(), "pegs")
+    local pod1 = cl.makeEntity("prop_vehicle_prisoner_pod")
+    local pod2 = cl.makeEntity("prop_vehicle_prisoner_pod")
+    pod1:SetParent(cb)
+    pod2:SetParent(cb)
+    pod1:SetPos(cb:LocalToWorld(front.offset))
+    pod1:SetAngles(cb:LocalToWorldAngles(front.angles))
+    pod2:SetPos(cb:LocalToWorld(back.offset))
+    pod2:SetAngles(cb:LocalToWorldAngles(back.angles))
+    cb:SetPod(pod1)
+    local rider, stoker = cl:player("Captain"), cl:player("Stoker")
+    rider._vehicle, stoker._vehicle = pod1, pod2
+    cb:SetDriver(rider)
+    cb._nw.PaxPegs = stoker
+    T.ok(MF.ready(cl, cb), "the model builds")
+    for _ = 1, 40 do
+        MF.draw(cl, cb)
+        E.hook.Run("PrePlayerDraw", rider)
+        E.hook.Run("PrePlayerDraw", stoker)
+    end
+    local stk = cb.ikTargetsStoker
+    T.ok(stk and stk.rHand and stk.lHand, "the stoker's bars")
+    for _, side in ipairs({ "R", "L" }) do
+        local key = side == "R" and "rHand" or "lHand"
+        local d = (B.RiderFistCentre(stoker, side) - (stk[key .. "Held"] or stk[key])):Length()
+        T.between(d, 0, 3, key .. " to the stoker's grip, units")
+    end
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
 T.test("client: a passenger looks where they like: the chase camera leaves their view to the pod", function()
     local sv, world = F.server()
     local cl, cb, rider, pax = clientScene(world)

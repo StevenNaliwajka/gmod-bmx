@@ -61,8 +61,9 @@ class View:
 def bounds(v, kind):
     hs, zs = [], [v["ground"]]
     for f in v["frames"]:
-        for n, p in f["bones"].items():
-            hs.append(p[0] if kind == "side" else p[1]); zs.append(p[2])
+        for bones in [f["bones"]] + ([f["stoker"]["bones"]] if "stoker" in f else []):
+            for n, p in bones.items():
+                hs.append(p[0] if kind == "side" else p[1]); zs.append(p[2])
     for w, r in ((v["front"], v["frontRadius"]), (v["rear"], v["radius"])):
         h = w[0] if kind == "side" else w[1]
         hs += [h - r, h + r]; zs.append(w[2] + r)
@@ -97,8 +98,14 @@ def draw_panel(d, v, f, view):
         if crank:
             d.line([view(crank), view(bar)], fill=BIKE, width=2)
 
+    draw_rider(d, view, f["bones"], T, f["reach"])
+    if "stoker" in f:          # a tandem's second rider, on their own bars and pedals
+        st = f["stoker"]
+        draw_rider(d, view, st["bones"], st["targets"], st["reach"])
+
+
+def draw_rider(d, view, B, T, reach):
     # The rider, far side first so the near limbs draw over it.
-    B = f["bones"]
     segs = []
     for n, p in B.items():
         par = parents.get(n)
@@ -120,7 +127,7 @@ def draw_panel(d, v, f, view):
         if not t:
             continue
         c = view(t)
-        miss = f["reach"].get(k)
+        miss = reach.get(k)
         r = 2.5
         d.ellipse([c[0] - r, c[1] - r, c[0] + r, c[1] + r], fill=col)
         if miss is not None and miss > MISS:
@@ -128,8 +135,10 @@ def draw_panel(d, v, f, view):
             d.ellipse([c[0] - r, c[1] - r, c[0] + r, c[1] + r], outline=BAD, width=2)
 
 
-def worst(v):
-    return {k: max((fr["reach"].get(k) or 0) for fr in v["frames"])
+def worst(v, who=None):
+    def reach(fr):
+        return (fr[who]["reach"] if who else fr["reach"])
+    return {k: max((reach(fr).get(k) or 0) for fr in v["frames"])
             for k in ("rHand", "lHand", "rFoot", "lFoot")}
 
 
@@ -164,6 +173,11 @@ for r, v in enumerate(vehicles):
     label(d, (8, y + 24), "pose set: " + v["pose"], BIKE)
     for i, k in enumerate(("rHand", "lHand", "rFoot", "lFoot")):
         label(d, (8, y + 44 + i * 13), "%s %.1f" % (k, w[k]), BAD if w[k] > MISS else BIKE)
+    if v["frames"] and "stoker" in v["frames"][0]:
+        ws = worst(v, "stoker")
+        label(d, (8, y + 100), "stoker", BIKE)
+        for i, k in enumerate(("rHand", "lHand", "rFoot", "lFoot")):
+            label(d, (8, y + 114 + i * 13), "%s %.1f" % (k, ws[k]), BAD if ws[k] > MISS else BIKE)
     sb, fb = bounds(v, "side"), bounds(v, "front")
     for c, deg in enumerate(PHASES):
         draw_panel(d, v, frame_at(v, deg), View("side", sb, (LW + c * PW, y, PW, PH)))
@@ -191,8 +205,14 @@ lines = ["worst distance from each hand / foot to its grip / pedal over a crank 
 lines.append("%-12s %-9s %7s %7s %7s %7s" % ("vehicle", "pose", "rHand", "lHand", "rFoot", "lFoot"))
 for v in vehicles:
     w = worst(v)
-    lines.append("%-12s %-9s " % (v["id"], v["pose"]) +
-                 " ".join(("%6.1f%s" % (w[k], "!" if w[k] > MISS else " ")) for k in ("rHand", "lHand", "rFoot", "lFoot")))
+    rows = [(v["id"] + ("" if v.get("model", True) else "*"), w)]
+    if v["frames"] and "stoker" in v["frames"][0]:
+        rows.append(("  stoker", worst(v, "stoker")))
+    for name, ww in rows:
+        lines.append("%-12s %-9s " % (name, v["pose"]) +
+                     " ".join(("%6.1f%s" % (ww[k], "!" if ww[k] > MISS else " ")) for k in ("rHand", "lHand", "rFoot", "lFoot")))
+if any(not v.get("model", True) for v in vehicles):
+    lines.append("* no model of its own: drawn as the simple bike, whose grips and pedals stand in")
 for k, e in sorted(data.get("errors", {}).items()):
     lines.append("%-12s ERROR %s" % (k, e.splitlines()[0][:150]))
 open(os.path.join(out, "report.txt"), "w").write("\n".join(lines) + "\n")

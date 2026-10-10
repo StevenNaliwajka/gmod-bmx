@@ -497,6 +497,39 @@ T.test("hud: the e-bike shows its level and its charge, the dirt bike its rpm, g
     T.ok(not cl.env.BMX.Motor.FixedCranks(e) and not cl.env.BMX.Motor.FixedCranks(cl:clientEntity("bmx_moped")), "an e-bike and a moped pedal")
 end)
 
+-- THE ATTACK STANCE AT FULL SPEED is a crouch over the tank, not the head on the
+-- bars: the tuck, the moto set's lean and the stance's added up to 62 degrees.
+-- The set caps the CHOSEN lean (maxLean); the IK's own lean toward grips out of
+-- reach still goes on top (ply.bmxSpineLean), so the hands stay on the bars.
+T.test("pose: a motorbike rider's chosen lean stops at the pose set's cap", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    local B = cl.env.BMX
+    local bike = cl:clientEntity("bmx_emoto")
+    local pod = cl.makeEntity("prop_vehicle_prisoner_pod")
+    pod:SetParent(bike)
+    bike:SetPod(pod)
+    local ply = cl:player("Rider")
+    ply._vehicle = pod
+    bike:SetDriver(ply)
+    local C = bike:Cfg().Chassis
+    pod:SetPos(bike:LocalToWorld(C.seatOffset))
+    if C.seatAngles then pod:SetAngles(bike:LocalToWorldAngles(C.seatAngles)) end
+    ply:SetNWInt("BMXStance", B.RiderStanceId.attack)
+    local top = B.Gears.TopCeiling(bike, bike:Cfg())
+    bike:SetSpeedUPS(top)
+    for _ = 1, 30 do
+        bike:Draw()
+        cl.env.hook.Run("PrePlayerDraw", ply)
+    end
+    local cap = B.PoseSets.moto.maxLean
+    local added = B.PoseSets.moto.rider({ crank = 0, speed = top, topSpeed = top, sprint = false,
+        hop = 0, pitch = 0, steer = 0, leanFwd = 0 }).spine.y + B.StanceLean(ply)
+    T.ok(added > cap + 10, string.format("the leans add up past the cap: %.0f", added))
+    local chosen = ply._bones["ValveBiped.Bip01_Spine2"].y - (ply.bmxSpineLean or 0)
+    T.near(chosen, cap, 1e-6, "full speed in the attack stance folds to the cap")
+end)
+
 --------------------------------------------------------------------------
 -- The e-moto
 --------------------------------------------------------------------------

@@ -92,7 +92,13 @@ BMX.RiderPoses.cliffhanger = { rFoot = Vector(12, -6, 33), lFoot = Vector(12, 6,
 -- THE ATTACK POSITION, seated: torso forward over the tank, head up, elbows up and
 -- out, knees in against the tank, both legs alike (there are no pedals: the BMX's
 -- pedalling swing at a still crank is asymmetric, one knee open and one closed).
-local MOTO = { lean = 14, leanFast = 8, thigh = -10, calf = 18 }
+-- maxLean: the most the rider's CHOSEN lean folds the torso (cl_rider.lua): the
+-- tuck, this lean and the attack stance came to 62 degrees at full speed, the head
+-- down near the bars. Measured on the models with tools/rider at full speed in the
+-- attack stance, 45 lifts the dirt bike's head to 7.7 u over its grips (4.9
+-- uncapped) and the e-moto's to 10.0 (7.1), the hands still on them: a crouch over
+-- the tank. The IK still leans further for grips out of reach.
+local MOTO = { lean = 14, leanFast = 8, thigh = -10, calf = 18, maxLean = 45 }
 BMX.MotoPose = MOTO
 if BMX.PoseSets and BMX.PoseSets.moto then
     BMX.PoseSets.moto.rider = function(s)
@@ -111,6 +117,7 @@ if BMX.PoseSets and BMX.PoseSets.moto then
         pose.rCalf, pose.lCalf = Angle(0, ca, 0), Angle(0, ca, 0)
         return pose
     end
+    BMX.PoseSets.moto.maxLean = MOTO.maxLean
     BMX.PoseSets.moto.poles = { arm = Vector(-0.15, 1, 0.45), leg = Vector(1, -0.3, 0.25) }
     BMX.PoseSets.moto.poses = BMX.RiderPoses
 end

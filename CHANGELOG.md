@@ -5,6 +5,25 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.2.1 -- not yet on the Workshop
+
+Fixes for 1.2.0, two of them from players' reports.
+
+- **The Server settings page opens again** (spawn menu > Options > BMX >
+  Server). In 1.2.0 it showed an error and no settings for everyone, in
+  singleplayer and on servers alike. It now shows every server setting, and
+  says why they are greyed out if you are not allowed to change them.
+- **A gamepad on skates.** Your own game now reads a part-pushed stick the way
+  the server does. It used to read it as no stick at all, so the server kept
+  correcting where you were.
+- **A bad landing no longer trips the game's "Changing collision rules within
+  a callback" warning**, which can crash a server: the rider is thrown just
+  after the physics step instead of in the middle of it.
+- **A front flip on the keys** works the way the trick bot does one: let go of
+  W at the lip and press it again as you leave the ramp.
+- A motorbike rider in the attack stance at full speed leans forward at most
+  45 degrees (it added up to 62), hands still on the bars.
+
 ## 1.2.0 -- on the Workshop 2026-10-08
 
 Crashes that should not happen, gone; the board, skates, tandem and scooter

@@ -122,6 +122,7 @@ it once the upload is done):
 
 | Version | Kit built | From commit | Uploaded |
 |---|---|---|---|
+| 1.3.1 | 2026-10-11 | c2b5f25 (tools/workshop_marionette.sh bmx --ref c2b5f25; main pipeline 1185 green; live on Petopia from 14:04 UTC) | 2026-10-11 14:07 UTC; page text unchanged, the same 20 gallery pictures re-sent |
 | 1.3.0 | 2026-10-11 | 482e836 (tools/workshop_marionette.sh bmx --ref 482e836; main pipeline 1179 green, 196/196 headless; live on Petopia from 09:36 UTC) | 2026-10-11 09:39 UTC; page text unchanged, the same 20 gallery pictures re-sent |
 | 1.2.1 | 2026-10-10 | b67c8f2 (tools/workshop_marionette.sh's steps, run by hand from the desktop: the first upload from the marionette) | 2026-10-10 16:46 UTC; page text unchanged, the same 20 gallery pictures re-sent |
 | page only | n/a | 81c23d9 | page only, 2026-10-10: 1.2.0 text and 20-picture gallery from 81c23d9 |

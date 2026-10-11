@@ -184,3 +184,26 @@ w = "S.String"
         "comments and strings are not code")
     T.eq(select(2, kept:gsub("\n", "")), 7, "line breaks are kept")
 end)
+
+
+-- A dedicated server's client sees a replicated convar only if its own Lua created
+-- it too (tests/lib/gmod.lua, measured on a real client). Every BMX one was made on
+-- the server only, so on every dedicated server the client read nil: the Server
+-- settings panel showed the defaults instead of what the server runs, and the
+-- client drew, predicted and judged the bell from defaults.
+T.test("realms: every replicated convar the server creates, the client creates too", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local E = sv.env
+    local missing, n = {}, 0
+    for name, flags in pairs(sv.createdConVars) do
+        if E.bit.band(flags, E.FCVAR_REPLICATED) ~= 0 and name:sub(1, 4) == "bmx_" then
+            n = n + 1
+            local c = cl.createdConVars[name]
+            if not c or E.bit.band(c, E.FCVAR_REPLICATED) == 0 then missing[#missing + 1] = name end
+        end
+    end
+    table.sort(missing)
+    T.ok(n >= 30, "the server makes plenty: " .. n)
+    T.eq(#missing, 0, "made on the client too: missing " .. table.concat(missing, ", "))
+end)

@@ -396,12 +396,17 @@ function M.Realm(world, which)
 
     env.concommand = { Add = function(name, fn) R.commands[name] = fn end }
 
+    -- ONE STORE FOR BOTH REALMS, as in singleplayer, where the client and the server
+    -- are one process. On a dedicated server they are not: a client sees a
+    -- replicated convar only if its own Lua created it too (measured on a real
+    -- client, 2026-10-11: GetConVar("bmx_crank") was nil there until the client
+    -- created it, then it carried the server's value and followed its changes;
+    -- creating it was no error). So what each realm CREATES is recorded
+    -- (R.createdConVars, name -> flags), and tests/test_realms.lua holds the
+    -- client to creating every replicated convar the server does.
+    R.createdConVars = {}
     function env.CreateConVar(name, default, flags, help)
-        if not SERVER and flags and bitlib.band(flags, env.FCVAR_REPLICATED) ~= 0 then
-            -- The engine's rule, and the reason sh_config only creates these
-            -- on the server. Enforced so a regression of that guard fails here.
-            error("CreateConVar(" .. name .. ") with FCVAR_REPLICATED on the client")
-        end
+        R.createdConVars[name] = flags or 0
         if not world.convars[name] then
             world.convars[name] = newConVar(name, default, flags, help)
             world.convars[name].world = world

@@ -113,6 +113,16 @@ function S.Add(row)
         S.List[#S.List + 1] = row
     end
     S.ByName[row.name] = row
+    -- A SERVER ROW'S CONVAR ON THE CLIENT TOO. On a dedicated server a client sees
+    -- a replicated convar only if its own Lua creates it as well; it then carries
+    -- the server's value and follows its changes (measured on a real client,
+    -- 2026-10-11). Made on the server only, every one of these read nil on the
+    -- client: the Server settings panel showed the defaults, not what the server
+    -- runs. REPLICATED alone here: the client keeps no copy of its own (no
+    -- archive), it only mirrors. In singleplayer this is the server's own convar.
+    if CLIENT and row.scope == "server" then
+        CreateConVar(row.name, S.ToConVar(row, row.default), FCVAR_REPLICATED, row.help)
+    end
     return row
 end
 

@@ -1179,17 +1179,18 @@ C.ConVars = {
 -- DEGREES and stored in radians, because typing 42 in a console is humane and
 -- typing 0.733 is not.
 --
--- These are REPLICATED, which means only the server may create them: calling
--- CreateConVar with FCVAR_REPLICATED on a client is an error. The client
--- receives them automatically and reads them through GetConVar like any other.
+-- These are REPLICATED, and made on BOTH realms. This used to say only the
+-- server may create them and the client receives them automatically: on a real
+-- client (2026-10-11) GetConVar("bmx_crank") was nil, so a server's tuning never
+-- reached the client's drawing, HUD or prediction. Created on the client too
+-- (REPLICATED alone: it mirrors, it keeps nothing of its own), it carries the
+-- server's value and follows every change. tests/test_realms.lua holds the client
+-- to every replicated convar the server makes.
 function BMX.SetupConVars()
-    if not SERVER then return end
-
+    local flags = SERVER and bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY) or FCVAR_REPLICATED
     for _, row in ipairs(C.ConVars) do
         local name, default, path = row[1], row[2], row[3]
-        CreateConVar(name, tostring(default),
-            bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED, FCVAR_NOTIFY),
-            "BMX tuning: " .. path)
+        CreateConVar(name, tostring(default), flags, "BMX tuning: " .. path)
     end
 end
 

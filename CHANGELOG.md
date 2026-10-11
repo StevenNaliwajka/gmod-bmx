@@ -34,6 +34,11 @@ for servers.
 - **TTT and other round-based gamemodes:** a crash no longer takes a traitor's
   credits and equipment (the crash is the shove there, not the ragdoll), and dead
   players and spectators can no longer spawn bikes or park pieces into a round.
+- **The Server settings page shows what the server really runs.** On a
+  dedicated server it showed every setting at its default, whatever the server
+  had saved, and players' games never saw a server's settings at all (the bell
+  switch, the e-bike limit, the tuning sliders...). They do now. Singleplayer
+  was always right.
 - **For server owners:** the rental machine now asks for the "BMX - Spawn Motor
   Vehicles" privilege before handing out a motorbike or e-bike, as the spawn menu
   does; `bmx_selftest` is for the server console or a superadmin; the bike colour

@@ -13,8 +13,11 @@
     bike's own simulation or a stray prop does will move it.
 
     WHO MAY DO WHAT.
-      lock        anybody with the weapon, to a bike that is parked, standing on the world,
-                  not on a rack and not already locked
+      lock        the bike's owner (BMXOwner: who spawned or rented it), or anybody if
+                  it has none (a map's), or anyone with "BMX - Unlock Any Lock"; and only
+                  a bike that is parked, standing on the world, not on a rack and not
+                  already locked. (Anybody could lock anybody's bike until 1.3.1, which
+                  left the owner unable to ride, carry or remove their own bike.)
       unlock      the player who locked it, or anyone with the CAMI privilege
                   "BMX - Unlock Any Lock" (admins, by default; sh_permissions.lua). The
                   server console may do anything.
@@ -73,6 +76,10 @@ end
 -- May this player lock this bike? (ok, why).
 function L.CanLock(bike, ply)
     if not IsValid(bike) or not bike.IsBMX then return false, "that is not a bike" end
+    local owner = bike.BMXOwner
+    if IsValid(ply) and IsValid(owner) and owner ~= ply and not BMX.Can(ply, L.PRIV) then
+        return false, "it is " .. owner:Nick() .. "'s bike"
+    end
     if BMX.VehicleEnabled and not BMX.VehicleEnabled("stock") then return false, "bikes are switched off on this server" end
     if L.Of(bike) then return false, "it is already locked" end
     if IsValid(bike:GetDriver()) then return false, "somebody is riding it" end

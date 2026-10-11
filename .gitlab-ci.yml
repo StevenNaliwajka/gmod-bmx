@@ -130,6 +130,14 @@ headless:branch:
   script:
     - sudo -n /usr/local/bin/bmx-branch-test "$CI_COMMIT_SHA"
 
+# deploy-dev (the shared template's) restarts the same server, so it takes the same
+# lock: without it a main pipeline's deploy restarted the box in the middle of a
+# branch's headless:branch run, and that run wedged (pipeline 1174, 2026-10-11: its
+# console showed main's version loading half way through the branch's suite). Only
+# this key is added; the rest of the job is the template's.
+deploy-dev:
+  resource_group: gmod-dev
+
 # ---------------------------------------------------------------------------
 # THE PUBLIC GITHUB COPY, where players file issues. Every main pipeline pushes
 # main there through tools/publish-github.sh, which strips Claude/Anthropic

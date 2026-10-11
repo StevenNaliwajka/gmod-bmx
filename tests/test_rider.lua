@@ -505,3 +505,36 @@ T.test("the back curves: the lean is shared down the spine, the lower links a li
     T.ok(low < mid and mid < top, "less low down")
     T.near(low + mid + top, E.BMX.RiderSpineLean(ply), 1e-9, "and they add up to the pose's lean")
 end)
+
+
+-- A rider looks through a corner: the head turns a little way into the turn the bike
+-- is making, the same way whichever way it turns, eased, and comes back straight.
+T.test("the head looks into the turn, left and right, and back to the road", function()
+    local cl, bike, ply = seated()
+    local E = cl.env
+    E.GetConVar("bmx_rider_ik"):SetString("0")
+    local head = ply:LookupBone("ValveBiped.Bip01_Head1")
+    local spine = ply:LookupBone("ValveBiped.Bip01_Spine2")
+    -- against the rider's own chest (the stand-in's seat is not parented to the bike)
+    local function faceSide()
+        ply:InvalidateBoneCache(); ply:SetupBones()
+        local face = ply:GetBoneMatrix(head):GetRight()       -- the head's -Y: where the face points
+        return face:Dot(ply:GetBoneMatrix(spine):GetUp())     -- Spine2's +Z is the rider's left
+    end
+    for _ = 1, 20 do frame(cl, bike, ply) end
+    T.near(faceSide(), 0, 0.05, "riding straight: eyes ahead")
+    local function turn(degPerSec)
+        for _ = 1, 40 do
+            local a = bike:GetAngles()
+            bike:SetAngles(E.Angle(a.p, a.y + degPerSec * E.FrameTime(), a.r))
+            frame(cl, bike, ply)
+        end
+        return faceSide()
+    end
+    local left = turn(90)
+    T.ok(left > 0.12, "turning left, the face turns left: " .. left)
+    local right = turn(-90)
+    T.ok(right < -0.12, "turning right, it turns right: " .. right)
+    T.ok(math.abs(turn(0)) < 0.05, "straight again, eyes ahead")
+    T.ok(turn(2000) < math.sin(math.rad(30)) + 0.05, "a fast spin turns it no further than the most")
+end)

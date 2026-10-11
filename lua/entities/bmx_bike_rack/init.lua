@@ -45,7 +45,7 @@ function ENT:SpawnFunction(ply, tr, class)
     end
     ent:Spawn()
     ent:Activate()
-    if car then BMX.Rack.Attach(ent, car) end
+    if car then BMX.Rack.Attach(ent, car, ply) end
     return ent
 end
 

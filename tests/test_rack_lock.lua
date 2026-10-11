@@ -490,6 +490,53 @@ T.test("rack: a racked bike that is removed frees its slot, and the rack is draw
     T.eq(rack:GetLoaded(), 0, "and the rack is drawn empty")
 end)
 
+-- A rack was a way round prop protection: by somebody's car it rode off welded to it,
+-- by somebody's bike it drove off with it. Whose: CPPI if there is one, else the spawner.
+T.test("rack: it loads your own bike or nobody's, and welds to your own car or nobody's; an admin may do either", function()
+    local sv, rack, bikeAt = scene()
+    local E, R = sv.env, sv.env.BMX.Rack
+    local me, other, admin = sv:player("Me"), sv:player("Other"), sv:player("Admin")
+    admin._admin = true
+    local theirs = bikeAt(0)
+    theirs.BMXOwner = other
+    T.eq(R.NearestLoadable(rack, nil, me), nil, "somebody else's bike is not mine to load")
+    local ok, why = R.Load(rack, theirs, me)
+    T.ok(not ok and why:find("somebody else"), "and says so: " .. tostring(why))
+    T.ok(R.Load(rack, theirs, other), "its owner loads it")
+    R.Release(theirs)
+    T.ok(R.Load(rack, theirs, admin), "an admin may")
+    R.Release(theirs)
+    T.ok(R.Load(rack, theirs), "and the console")
+    R.Release(theirs)
+    theirs.BMXOwner = nil
+    T.ok(R.Load(rack, theirs, me), "nobody's bike: anybody's")
+    R.Release(theirs)
+
+    local car = E.ents.Create("prop_vehicle_jeep")
+    car:SetPos(E.Vector(0, 120, 30))
+    car:Spawn()
+    car.GetCreator = function() return other end
+    local okA, whyA = R.Attach(rack, car, me)
+    T.ok(not okA and whyA:find("somebody else"), "not onto somebody else's car: " .. tostring(whyA))
+    T.ok(R.Attach(rack, car, other), "onto its owner's")
+    R.Detach(rack)
+    car.CPPICanTool = function(_, ply, mode) return ply == me and mode == "weld" end
+    T.ok(R.Attach(rack, car, me), "the prop protection's answer wins when there is one")
+end)
+
+T.test("lock: you lock your own bike or nobody's; an admin may lock anybody's", function()
+    local sv, bike, owner, other, admin = lockScene()
+    local L = sv.env.BMX.Lock
+    bike.BMXOwner = owner
+    local ok, why = L.CanLock(bike, other)
+    T.ok(not ok and why:find("Owner"), "not somebody else's: " .. tostring(why))
+    T.ok(L.CanLock(bike, owner), "your own")
+    T.ok(L.CanLock(bike, admin), "an admin, anybody's")
+    T.ok(L.CanLock(bike, nil), "the console")
+    bike.BMXOwner = nil
+    T.ok(L.CanLock(bike, other), "a bike nobody owns, anybody")
+end)
+
 T.test("lock: bmx_allow_bikes 0 switches it off with the rest of the bikes", function()
     local sv, bike, owner = lockScene()
     local E, L = sv.env, sv.env.BMX.Lock

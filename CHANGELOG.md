@@ -5,6 +5,16 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.3.1 -- not yet on the Workshop
+
+- **Riders look through corners.** The head turns a little way into the turn
+  the bike is making, and over the shoulder into a spin, then back to the road.
+- **Your bike is yours.** A bike rack only loads your own bike (or one nobody
+  owns), and only welds to your own car or one nobody owns, so it is no longer a
+  way round prop protection. The bike lock only locks your own bike (or one
+  nobody owns): somebody else could lock yours and leave you unable to ride or
+  move it. Admins (the "BMX - Unlock Any Lock" privilege) may do either.
+
 ## 1.3.0 -- on the Workshop 2026-10-11
 
 No more freeze on spawn, riders that move like riders, and a round of fixes

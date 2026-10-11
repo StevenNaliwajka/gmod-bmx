@@ -25,6 +25,13 @@
     refused with a reason. A bike that is ridden, locked, fallen or already on a rack is
     refused too.
 
+    WHOSE (1.3.1). A rack loads a bike its user may move and welds to a car its user may
+    weld to: their own, nobody's, or anybody's for a player with "BMX - Unlock Any Lock"
+    (an admin by default). Without that, a rack was a way round prop protection: put one
+    by somebody's car and it rode off welded to it; put one by somebody's bike and drive
+    off with it. Whose a car is: the prop protection's answer (CPPI) when the server has
+    one, else the player who spawned it (Entity:GetCreator); a bike's is BMXOwner.
+
     Every function returns (ok, why): the entity and the tests ask the same ones.
 ----------------------------------------------------------------------------]]
 
@@ -77,8 +84,35 @@ end
 --------------------------------------------------------------------------
 -- THE CARRIER: welding a rack to it.
 --------------------------------------------------------------------------
-function R.Attach(rack, carrier)
+-- Who owns `ent` (a player), or nil for nobody.
+function R.OwnerOf(ent)
+    if not IsValid(ent) then return nil end
+    if ent.BMXOwner ~= nil then return IsValid(ent.BMXOwner) and ent.BMXOwner or nil end
+    for _, get in ipairs({ "CPPIGetOwner", "GetCreator" }) do
+        local o = ent[get] and ent[get](ent)
+        if IsValid(o) and o.IsPlayer and o:IsPlayer() then return o end
+    end
+    return nil
+end
+
+-- May `ply` move `ent` with the rack (its own, nobody's, or an admin)? nil = the console.
+function R.MayHandle(ply, ent)
+    if ply == nil or not IsValid(ply) then return true end
+    local o = R.OwnerOf(ent)
+    if not o or o == ply then return true end
+    return BMX.Can(ply, "BMX - Unlock Any Lock")
+end
+
+-- May `ply` weld a rack to `car`? The prop protection decides when there is one.
+function R.MayWeldTo(ply, car)
+    if ply == nil or not IsValid(ply) then return true end
+    if car.CPPICanTool then return car:CPPICanTool(ply, "weld") and true or false end
+    return R.MayHandle(ply, car)
+end
+
+function R.Attach(rack, carrier, ply)
     if not IsValid(rack) or not R.IsCarrier(carrier) then return false, "that is not a vehicle" end
+    if not R.MayWeldTo(ply, carrier) then return false, "that is somebody else's vehicle" end
     R.Detach(rack)
     local weld = constraint.Weld(rack, carrier, 0, 0, 0, true, false)
     if not weld then return false, "could not weld" end
@@ -127,8 +161,9 @@ end
 
 -- May this bike go on this rack? Not if the rack is full, the bike has somebody on it,
 -- is locked, is already racked, or is not a bike of ours.
-function R.CanLoad(rack, bike)
+function R.CanLoad(rack, bike, ply)
     if not IsValid(rack) or not IsValid(bike) or not bike.IsBMX then return false, "that is not a bike" end
+    if not R.MayHandle(ply, bike) then return false, "that is somebody else's bike" end
     if bike.BMXRack then return false, "that bike is already on a rack" end
     if IsValid(bike:GetDriver()) then return false, "somebody is riding it" end
     if BMX.Lock and BMX.Lock.Of(bike) then return false, "that bike is locked" end
@@ -137,8 +172,8 @@ function R.CanLoad(rack, bike)
 end
 
 -- Put a bike on the rack, in the first free slot.
-function R.Load(rack, bike)
-    local ok, why = R.CanLoad(rack, bike)
+function R.Load(rack, bike, ply)
+    local ok, why = R.CanLoad(rack, bike, ply)
     if not ok then return false, why end
     local i = R.FreeSlot(rack)
     local pos, ang = R.SlotPos(rack, i)
@@ -193,11 +228,11 @@ function R.ReleaseAll(rack, ply)
 end
 
 -- The loose bike nearest the rack, within range, that could go on it.
-function R.NearestLoadable(rack, range)
+function R.NearestLoadable(rack, range, ply)
     local best, bestD = nil, range or R.LoadRange
     for _, id in ipairs(BMX.VehicleIDs()) do
         for _, e in ipairs(ents.FindByClass(BMX.ClassFor(id))) do
-            if R.CanLoad(rack, e) then
+            if R.CanLoad(rack, e, ply) then
                 local d = e:GetPos():Distance(rack:GetPos())
                 if d <= bestD then best, bestD = e, d end
             end
@@ -212,11 +247,11 @@ function R.Use(rack, ply)
     if not R.AccessoriesEnabled() then return "off" end
     if not IsValid(rack.carrier) then
         local car = R.FindCarrier(rack:GetPos())
-        if car and R.Attach(rack, car) then return "attached" end
+        if car and R.Attach(rack, car, ply) then return "attached" end
     end
-    local loose = R.NearestLoadable(rack)
+    local loose = R.NearestLoadable(rack, nil, ply)
     if loose then
-        local ok = R.Load(rack, loose)
+        local ok = R.Load(rack, loose, ply)
         if ok then return "loaded" end
     end
     for i = R.Capacity, 1, -1 do

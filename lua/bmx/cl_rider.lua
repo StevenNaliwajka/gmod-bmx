@@ -177,9 +177,16 @@ local SMOOTH = {
     air     = 0.25,   -- the head dropping in the air and coming up after
     pedal   = 0.2,    -- how hard the legs work, from the cranks' speed
     reach   = 0.08,   -- the IK's own lean and twist toward grips out of reach
+    look    = 0.15,   -- the head turning into a corner
 }
 BMX.RiderSmooth = SMOOTH
 local PEDAL_FULL = 7        -- rad/s of crank: a rider working (about 67 rpm)
+-- WHERE THE RIDER LOOKS: into the turn the bike is making, a little way, as a rider
+-- looks through a corner; over the shoulder into a spin. Degrees of head twist per
+-- degree a second of the bike's yaw, and the most. A positive twist turns the face
+-- left on ValveBiped's head (its length points up; the roll is right-handed), and a
+-- positive yaw rate is a left turn, so the two need no sign between them.
+local LOOK_GAIN, LOOK_MAX = 0.12, 28
 
 -- A critically damped spring (the Game Programming Gems 4 form): x and its rate v
 -- toward `target` with time `tau`, exact enough at any dt and never unstable.
@@ -1034,6 +1041,10 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     local stance = follow(st, "stance", BMX.StanceLean and BMX.StanceLean(ply) or 0, SMOOTH.stance, dt)
     local stand = follow(st, "stand", (stanceName == "standing" or stanceName == "attack") and 1 or 0,
         SMOOTH.stance, dt)
+    local yaw = bike:GetAngles().y
+    local yawRate = (st.yaw and dt > 0) and math.AngleDifference(yaw, st.yaw) / dt or 0
+    st.yaw = yaw
+    local look = follow(st, "look", math.Clamp(yawRate * LOOK_GAIN, -LOOK_MAX, LOOK_MAX), SMOOTH.look, dt)
 
     local set = BMX.PoseSetFor(bike)
     local pose = set.rider({
@@ -1082,8 +1093,9 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     -- The neck holds the horizon against what was added to the set's own lean
     -- (the stance, a style pose, the IK's reach), as each set's head does
     -- against its own: the eyes stay up the road.
+    -- ...and turns into the corner (`look`, above).
     if pose.head then
-        pose.head = Angle(pose.head.p, pose.head.y - (lean - setLean) * HEAD_HOLD, pose.head.r)
+        pose.head = Angle(pose.head.p, pose.head.y - (lean - setLean) * HEAD_HOLD, pose.head.r + look)
     end
     -- The chosen lean shared down the back; Spine2 keeps the rest of it, the
     -- IK's reach and the twist.

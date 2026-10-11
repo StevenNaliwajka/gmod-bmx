@@ -2969,13 +2969,29 @@ local function spineRun(ctx, speed)
     if not parkPiece(ctx, "spine", { 2, 3 }, Vector(xa + b.hl, g.y, g.z), 0) then return end
     ctx:wait(0.3)
 
-    local paid = {}
+    local paid, crash, touch = {}, nil, nil
     hook.Add("BMX_TricksLanded", "BMX.TestSpine", function(e, d, tricks)
         if e ~= ctx.bike then return end
         for _, t in ipairs(tricks) do paid[#paid + 1] = t.name end
     end)
-    local kind, seen, pressedAt
+    hook.Add("BMX_Crashed", "BMX.TestSpine", function(e, ply, reason, severity)
+        if e ~= ctx.bike or crash then return end
+        local _, pitch = BMX.Attitude(e, vector_up)
+        crash = string.format("%s (severity %.2f) at x %.0f z %.0f, %.0f u/s, pitch %.0f deg",
+            tostring(reason), severity or 0, e:GetPos().x, e:GetPos().z - ctx.ground.z,
+            e:GetVelocity():Length(), math.deg(pitch))
+    end)
+    local kind, seen, pressedAt, flewYet
     local flew, landed = rideOffPiece(ctx, xa, 380, speed, 12, function(st)
+        if st.airMode then flewYet = true end
+        -- where it first came down: the first grounded tick after leaving the coping
+        if flewYet and not touch and (st.grounded or ctx.bike.bmxTouchdown) then
+            local _, pitch = BMX.Attitude(ctx.bike, vector_up)
+            touch = string.format("x %.0f z %.0f, %.0f u/s (%.0f down), pitch %.0f deg",
+                ctx.bike:GetPos().x, ctx.bike:GetPos().z - ctx.ground.z, ctx.bike:GetVelocity():Length(),
+                -ctx.bike:GetVelocity().z, math.deg(pitch))
+            ctx.spineTouchX = ctx.bike:GetPos().x
+        end
         if not st.airMode then return end
         kind = kind or st.launchKind
         seen = seen or st.spineTarget ~= nil
@@ -2985,6 +3001,8 @@ local function spineRun(ctx, speed)
     end)
     ctx:input({})
     hook.Remove("BMX_TricksLanded", "BMX.TestSpine")
+    hook.Remove("BMX_Crashed", "BMX.TestSpine")
+    ctx:log("first touched down at " .. tostring(touch) .. "; crash: " .. tostring(crash))
     local aim = ctx:st().spineAim
     ctx:log(string.format("flew %s, kind %s, far face seen %s, paid %s, landed at x %.0f (spine from %.0f to %.0f; aimed at x %s)",
         tostring(flew), tostring(kind), tostring(seen), table.concat(paid, ", "),
@@ -2997,9 +3015,11 @@ local function spineRun(ctx, speed)
     local got = false
     for _, n in ipairs(paid) do if n == "Spine Transfer" then got = true end end
     ctx:ok(got, "Spine Transfer was scored")
-    -- On the far side of the spine, and on its face: not past the foot onto the floor.
-    ctx:ok(ctx.bike:GetPos().x > xa + b.hl, "landed on the far face, past the coping")
-    ctx:ok(ctx.bike:GetPos().x < xa + 2 * b.hl + 24, "and not past its foot onto the floor")
+    -- It came down ON the far face: past the coping, short of its foot. (Where it is
+    -- once air mode lets go is further on: it has rolled down the face by then.)
+    local tx = ctx.spineTouchX or ctx.bike:GetPos().x
+    ctx:ok(tx > xa + b.hl, "touched down past the coping: x " .. math.floor(tx))
+    ctx:ok(tx < xa + 2 * b.hl, "on the far face, not past its foot onto the floor: x " .. math.floor(tx))
     ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
 end
 

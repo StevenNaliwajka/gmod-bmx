@@ -140,6 +140,13 @@ and `tyretext`.
 - Under ~90k triangles a kind (the BMX is 79k), and it must build offline in
   under 2 s (`lua5.1 tools/bike/export.lua kind=<name>` prints both).
 - Small parts (bolts, pins, cable ends, nipples) in `detail` buckets.
+- **It is built a slice at a time** while the game runs (`cl_bikemesh.lua`): every
+  triangle made through `G.prim.tri` (and everything built on it) counts toward
+  the next pause, so a builder gives way on its own. A loop that copies or walks
+  many triangles WITHOUT making them through `tri` (a mirrored part, a rescale, a
+  merge of one model into another) must count them with `G.prim.spent(n)`, or it
+  is one long frame: the first spawn of the vehicle freezes the game for it.
+  `tests/test_geo_moto.lua` measures the longest slice in Lua instructions.
 
 ## Looking at it
 

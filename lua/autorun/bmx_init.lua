@@ -32,7 +32,7 @@
 if SERVER then AddCSLuaFile() end
 
 BMX = BMX or {}
-BMX.Version = "1.2.1"
+BMX.Version = "1.3.0"
 
 local SHARED = {
     "bmx/sh_config.lua",

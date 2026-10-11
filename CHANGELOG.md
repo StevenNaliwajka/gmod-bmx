@@ -5,6 +5,46 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.3.0 -- not yet on the Workshop
+
+No more freeze on spawn, riders that move like riders, and a round of fixes
+for servers.
+
+- **No more freeze when you spawn a vehicle.** The first time you spawned each
+  kind, the game stopped for up to a second while its model was built (players
+  reported it: "my frames go down the drain when I spawn something"). It is
+  built a little at a time now, with the simple bike shown meanwhile, as before.
+- **Riders look up the road.** On real player models every rider's head was
+  nodded down onto their chest, looking at the ground. The head now holds the
+  horizon however far the rider tucks, and drops in the air to spot the landing.
+- **Smooth, not snapped.** Sprinting, changing stance, leaning forward, a hop
+  and a landing used to jump the body into place in a single frame. Each eases
+  in and out now, the same at any frame rate. Trick poses (no-hander, superman,
+  X-up...) ease in and out too.
+- **A back that bends.** Leaning forward curves the whole back instead of
+  folding it at the shoulder blades.
+- **Pedals that coast.** The legs used to keep pedalling down every hill and
+  spin in the air with the back wheel. Now they pedal when you pedal; let go and
+  the pedals come level and stay, ready for a jump. Out of the saddle
+  (standing, attack, sprinting) the shoulders rock with each stroke. A fixie,
+  a unicycle and a penny-farthing still turn with the wheel, as real ones do.
+- **Riders across the park keep pedalling** instead of freezing mid-stroke.
+- **Singleplayer: the gear keys, L (cinematic camera) and the replay keys work.**
+  They did nothing in singleplayer before.
+- **TTT and other round-based gamemodes:** a crash no longer takes a traitor's
+  credits and equipment (the crash is the shove there, not the ragdoll), and dead
+  players and spectators can no longer spawn bikes or park pieces into a round.
+- **For server owners:** the rental machine now asks for the "BMX - Spawn Motor
+  Vehicles" privilege before handing out a motorbike or e-bike, as the spawn menu
+  does; `bmx_selftest` is for the server console or a superadmin; the bike colour
+  menu has the same short cooldown as K; a client can no longer pass "nan" for
+  `cl_interp` to stretch the lag compensation (`bmx_lagcomp 1` only).
+- Skates no longer stop you moving in noclip or on a ladder.
+- A copied or saved bike rack no longer drags the original's bikes off with it,
+  and a copied locked bike comes back unlocked instead of welded down for good.
+- The board's kick and the bike's forward lean were sent to clients in the same
+  networked slot, so each could overwrite the other; they have one each now.
+
 ## 1.2.1 -- on the Workshop 2026-10-10
 
 Fixes for 1.2.0, two of them from players' reports.

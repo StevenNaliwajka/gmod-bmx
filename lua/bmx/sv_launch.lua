@@ -458,19 +458,21 @@ function L.SpineAim(sp, n1, cfg, opts)
     local len = h:Length()
     if len < 1e-3 then return nil end
     h = h / len
-    local pts, lastZ = { sp.pos }, sp.pos.z
+    local pts, normals, lastZ = { sp.pos }, { sp.normal }, sp.pos.z
     for d = 8, A.spineDrop, 8 do
         local q = sp.pos + h * d
-        local z = trace(q, opts.filter)
+        local z, n = trace(q, opts.filter)
         if not z or z >= lastZ - 0.5 then break end
         pts[#pts + 1] = Vector(q.x, q.y, z)
+        normals[#normals + 1] = n or sp.normal
         lastZ = z
     end
     local foot = pts[#pts]
     local midZ = (sp.pos.z + foot.z) * 0.5
-    local aim = foot
-    for _, q in ipairs(pts) do
-        if q.z <= midZ then aim = q break end
+    local k = #pts
+    for i, q in ipairs(pts) do
+        if q.z <= midZ then k = i break end
     end
-    return { pos = aim, top = sp.pos, foot = foot }
+    -- `normal`: the face there, which the landing is pitched onto (sv_air.lua)
+    return { pos = pts[k], normal = normals[k], top = sp.pos, foot = foot }
 end

@@ -359,6 +359,31 @@ T.test("spine transfer: the aimed speed comes down on the target, however high t
     T.eq(E.BMX.SpineSpeed(E.Vector(0, 0, 0), 10, E.Vector(40, 0, 100), g), nil, "a target above the flight's reach: no speed")
 end)
 
+-- Up a quarter pipe the bike leaves pointing at the sky; to ride down the far side
+-- it has to come over ~140 degrees, and a short W did not always do it: it met the
+-- far face tail first, nose up, and looped out. Over the top and falling, the
+-- transfer steers it onto the face it was aimed at.
+T.test("spine transfer: coming down, the bike is pitched over onto the far face, nose down its fall line", function()
+    local sv, bike = flying("vert", { height = 6000 })
+    local E = sv.env
+    local p = bike:GetPhysicsObject()
+    -- the moment the transfer's blend has finished: over the top, nose still up 60
+    F.place(bike, bike:GetPos(), E.Angle(-60, 0, 0))
+    p:SetVelocity(V(E, 80, 0, -40))
+    p:SetAngleVelocity(V(E, 0, 0, 0))
+    bike.st.angVel, bike.st.prevF = V(E, 0, 0, 0), nil
+    local far = E.Vector(math.sin(math.rad(45)), 0, math.cos(math.rad(45)))      -- a 45 degree face falling away along +x
+    bike.st.spineDone, bike.st.spineBlend = true, nil
+    bike.st.spineAim = { pos = bike:GetPos() + V(E, 60, 0, -200), normal = far }
+    F.input(bike, {})
+    T.ok(bike:GetForward().z > 0.8, "nose up to start with")
+    sv:run(0.6)
+    local fall = V(E, math.cos(math.rad(45)), 0, -math.sin(math.rad(45)))
+    T.ok(bike.st.spineLanding, "the spine's landing took the attitude")
+    T.ok(bike:GetForward():Dot(fall) > 0.94, "nose down the far face's fall line: " .. bike:GetForward():Dot(fall))
+    T.ok(bike:GetUp():Dot(far) > 0.9, "wheels to the face")
+end)
+
 T.test("spine transfer: no press, no transfer", function()
     local sv, bike = flying("vert", { height = 6000 })
     local E = sv.env

@@ -2991,6 +2991,7 @@ local function spineRun(ctx, speed)
                 ctx.bike:GetPos().x, ctx.bike:GetPos().z - ctx.ground.z, ctx.bike:GetVelocity():Length(),
                 -ctx.bike:GetVelocity().z, math.deg(pitch))
             ctx.spineTouchX = ctx.bike:GetPos().x
+            ctx.spineLog = st.spineLog
         end
         if not st.airMode then return end
         kind = kind or st.launchKind
@@ -3003,6 +3004,7 @@ local function spineRun(ctx, speed)
     hook.Remove("BMX_TricksLanded", "BMX.TestSpine")
     hook.Remove("BMX_Crashed", "BMX.TestSpine")
     ctx:log("first touched down at " .. tostring(touch) .. "; crash: " .. tostring(crash))
+    ctx:log("transfer: " .. tostring(ctx:st().spineLog or ctx.spineLog))
     local aim = ctx:st().spineAim
     ctx:log(string.format("flew %s, kind %s, far face seen %s, paid %s, landed at x %.0f (spine from %.0f to %.0f; aimed at x %s)",
         tostring(flew), tostring(kind), tostring(seen), table.concat(paid, ", "),

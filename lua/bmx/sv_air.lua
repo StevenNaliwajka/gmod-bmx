@@ -207,6 +207,30 @@ function BMX.VertAir(ent, phys, cfg, dt, inp, st, w)
             dropAll = true
         end
     end
+    -- THE SPINE'S LANDING. Over the top and coming down, the bike is steered onto
+    -- the far face it was aimed at -- forward down that face's fall line, wheels
+    -- to it -- as the drop back in above steers a turned bike onto its face. Up a
+    -- quarter pipe the bike leaves pointing at the sky and has to come over
+    -- ~140 degrees to ride down the other side, and only the W press turned it:
+    -- a press long enough to start the transfer was not always long enough to
+    -- pitch it over, and it met the face tail first, nose up 50 degrees, and
+    -- looped out ("tipped", spine_transfer on real servers about one run in seven).
+    local sa = st.spineDone and not st.spineBlend and vel.z < 0 and st.spineAim
+    if sa and sa.normal and not dropAll and not inp.wheelieMod then
+        local n = sa.normal:GetNormalized()
+        local fall = -(vector_up - n * n.z)
+        if fall:LengthSqr() > 0.01 then
+            fall:Normalize()
+            local e = (fwd:Cross(fall) + up:Cross(n)) * 0.5
+            local av = e * A.vertDropKp - w * A.vertDropKd
+            BMX.ApplyTorque(phys, ent, fwd,   BMX.TorqueFor(BMX.IRoll(ent),  av:Dot(fwd)),   dt)
+            BMX.ApplyTorque(phys, ent, right, BMX.TorqueFor(BMX.IPitch(ent), av:Dot(right)), dt)
+            BMX.ApplyTorque(phys, ent, up,    BMX.TorqueFor(BMX.IYaw(ent),   av:Dot(up)),    dt)
+            st.spineLanding = true
+            alpha = nil
+            dropAll = true
+        end
+    end
     if alpha then
         -- AN ACCELERATION ABOUT THE TURN'S AXIS, axis by axis. One torque along
         -- it turns a body whose three inertias differ about some other axis,
@@ -299,11 +323,17 @@ function BMX.VertAir(ent, phys, cfg, dt, inp, st, w)
             want = sp.dir * max(vel:Length(), A.spineSpeed)
         end
         want = aimed or want
+        -- what the transfer did, for the headless case's log
+        local function note(tag)
+            st.spineLog = (st.spineLog or "") .. string.format("%s com(%.0f,%.0f) v(%.0f,%.0f) want %.0f; ",
+                tag, com.x, com.z, vel:Dot(across), vel.z, want and Vector(want.x, want.y, 0):Length() or -1)
+        end
+        if st.spineBlend == 0 then note("start") end
         local k = min(1, dt / max(A.spineBlend - st.spineBlend, dt))
         local dv = (want - vel) * k
         if BMX.FiniteVec(dv) then phys:ApplyForceCenter(dv * phys:GetMass()) end
         st.spineBlend = st.spineBlend + dt
-        if st.spineBlend >= A.spineBlend then st.spineBlend = nil end
+        if st.spineBlend >= A.spineBlend then st.spineBlend = nil note("end") end
     end
     return ownsTurn
 end
@@ -504,7 +534,8 @@ function BMX.AirReset(st)
     st.airTime   = 0
     -- Vert flights (VertAir): nothing carried over from the last air.
     st.vertSpin, st.vertTarget, st.vertTurning, st.vertDir = 0, nil, false, nil
-    st.spineTarget, st.spineSeen, st.spineBlend, st.spineDone, st.spineAim = nil, nil, nil, nil, nil
+    st.spineTarget, st.spineSeen, st.spineBlend, st.spineDone, st.spineAim, st.spineLog = nil, nil, nil, nil, nil, nil
+    st.spineLanding = nil
     st.vertDrop, st.vertAxis, st.dropRef, st.dropTick = nil, nil, nil, 0
     st.spineW, st.spineWPress, st.spineTick = false, nil, 0
     st.airPeakZ, st.launchKind = nil, nil

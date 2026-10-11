@@ -9,6 +9,9 @@ a Workshop update goes out only when the owner says so.
 
 - **Riders look through corners.** The head turns a little way into the turn
   the bike is making, and over the shoulder into a spin, then back to the road.
+- **Spine transfers land.** About one in seven came down on the far side tail
+  first and threw the rider, or overshot onto the floor. The transfer now aims
+  half way down the far face and pitches the bike over onto it as it comes down.
 - **Your bike is yours.** A bike rack only loads your own bike (or one nobody
   owns), and only welds to your own car or one nobody owns, so it is no longer a
   way round prop protection. The bike lock only locks your own bike (or one

@@ -836,7 +836,8 @@ concommand.Add("bmx_test_abort", function(ply)
     MsgN("[BMX] run aborted")
 end)
 
-concommand.Add("bmx_test_list", function()
+concommand.Add("bmx_test_list", function(ply)
+    if IsValid(ply) and not ply:IsSuperAdmin() then return end      -- as bmx_test: two hundred console lines a call
     MsgN("[BMX] cases:")
     for _, n in ipairs(T.order) do
         MsgN(string.format("   %-18s %s", n, T.cases[n].desc))

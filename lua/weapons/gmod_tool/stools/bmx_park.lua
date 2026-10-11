@@ -40,10 +40,14 @@ if CLIENT then
 end
 
 local function options(self)
+    -- Quarter turns, 0-3: the setting is the client's to send, and "nan" or a huge
+    -- number went on into the piece's angles.
+    local q = self:GetClientNumber("rot", 0)
+    if q ~= q or q == math.huge or q == -math.huge then q = 0 end
     return {
         snap = self:GetClientNumber("snap", 1) ~= 0,
         slide = self:GetClientNumber("slide", 0) ~= 0,
-        rot = self:GetClientNumber("rot", 0) * 90,
+        rot = (math.floor(q + 0.5) % 4) * 90,
         yaw = self:GetOwner():EyeAngles().y,
     }
 end

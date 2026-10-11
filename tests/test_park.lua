@@ -687,6 +687,17 @@ T.test("park: the tool places a piece at the aim, snaps to the one it is aimed a
     T.ok(tool:Reload({ Entity = b }), "reload removes a piece")
     T.ok(b._removed, "gone")
     T.eq(tool:Reload({ Entity = E.NULL }), false, "and nothing else")
+
+    -- the turn is the client's to send: nan or a huge number is no turn, not a broken angle
+    E.GetConVar("bmx_park_max"):SetInt(120)
+    for _, bad in ipairs({ "nan", "inf", "1e300", "-7" }) do
+        cv.rot = bad
+        T.ok(tool:LeftClick({ HitPos = E.Vector(-2000, 400, 0), Entity = E.NULL }), "placed with bmx_park_rot " .. bad)
+        local last = P.All()[#P.All()]
+        local ang = last:GetAngles()
+        T.ok(ang.y == ang.y and math.abs(ang.y) <= 360, "a real angle with bmx_park_rot " .. bad .. ": " .. tostring(ang.y))
+        last:Remove()
+    end
 end)
 
 T.test("park: the headless suite has a case on a park quarter pipe and one on a park rail", function()

@@ -33,7 +33,7 @@ local Pm = G.prim
 local sweep, lathe, plate, ringPlate, box = Pm.sweep, Pm.lathe, Pm.plate, Pm.ringPlate, Pm.box
 local roundRect, circle, bez3, spline = Pm.roundRect, Pm.circle, Pm.bez3, Pm.spline
 local tri, quad, grid, cap, bead = Pm.tri, Pm.quad, Pm.grid, Pm.cap, Pm.bead
-local earclip, area2, newModel = Pm.earclip, Pm.area2, Pm.newModel
+local earclip, area2, newModel, spent = Pm.earclip, Pm.area2, Pm.newModel, Pm.spent
 
 local sqrt, sin, cos, pi, abs = math.sqrt, math.sin, math.cos, math.pi, math.abs
 local max, min, floor = math.max, math.min, math.floor
@@ -232,6 +232,7 @@ local function mirrorInto(M, Mx, from, to)
             end
             t[#t + 1] = m(a); t[#t + 1] = m(e); t[#t + 1] = m(c)
             d.tris = d.tris + 1
+            spent(1)
         end
     end
 end
@@ -243,6 +244,7 @@ local function scaleGroups(M, f)
         if name ~= "wheelF" and name ~= "wheelR" then
             for _, b in ipairs(M.groups[name]) do
                 for _, vt in ipairs(b.v) do vt.p = mul(vt.p, f) end
+                spent(b.tris)
             end
         end
     end

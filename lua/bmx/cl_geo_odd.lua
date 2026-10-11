@@ -33,7 +33,7 @@ local TAU = pi * 2
 local Pm = G.prim
 local sweep, lathe, plate, ringPlate, box = Pm.sweep, Pm.lathe, Pm.plate, Pm.ringPlate, Pm.box
 local roundRect, circle, bez3, spline = Pm.roundRect, Pm.circle, Pm.bez3, Pm.spline
-local grid, cap, bead, quad, tri = Pm.grid, Pm.cap, Pm.bead, Pm.quad, Pm.tri
+local grid, cap, bead, quad, tri, spent = Pm.grid, Pm.cap, Pm.bead, Pm.quad, Pm.tri, Pm.spent
 local Vv = G.vec
 local V, add, sub, mul, dot, cross = Vv.V, Vv.add, Vv.sub, Vv.mul, Vv.dot, Vv.cross
 local len, norm, lerp, rot, madd, perp = Vv.len, Vv.norm, Vv.lerp, Vv.rot, Vv.madd, Vv.perp
@@ -222,8 +222,9 @@ end
 local function merge(M, to, S, from, f, fn)
     for _, b in ipairs(S.groups[from] or {}) do
         local dst = M:bucket(to, b.mat, b.detail)
-        for _, vt in ipairs(b.v) do
+        for i, vt in ipairs(b.v) do
             dst.v[#dst.v + 1] = { p = f(vt.p), n = fn and fn(vt.n) or vt.n, u = vt.u, v = vt.v }
+            if i % 3 == 0 then spent(1) end
         end
         dst.tris = dst.tris + b.tris
     end

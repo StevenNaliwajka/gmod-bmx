@@ -147,6 +147,38 @@ T.test("bike model: the builder needs nothing from the game", function()
     T.eq(a.total, b.total, "deterministic")
 end)
 
+-- A build in a coroutine, as the client runs it: how many resumes it took, and
+-- the most work one did and the whole build's, in thousands of Lua instructions
+-- (a count hook: the same on every machine, and blind to the collector).
+local function sliced(G, opt, named)
+    local co = coroutine.create(function()
+        if named then G.YieldIn(coroutine.running()) end
+        return G.Build(opt)
+    end)
+    local k, n, worst, total, M = 0, 0, 0, 0, nil
+    debug.sethook(co, function() k = k + 1 end, "", 1000)
+    repeat
+        k = 0
+        local ok, res = coroutine.resume(co)
+        assert(ok, res)
+        n, worst, total, M = n + 1, math.max(worst, k), total + k, res
+    until coroutine.status(co) == "dead"
+    return M, n, worst, total
+end
+
+-- Player report, 2026-10-09: "my frames whenever I spawn something really go
+-- down the drain". The first spawn of each vehicle built its whole model in ONE
+-- resume of the client's build coroutine, 0.2-1.3 s of Lua in one frame.
+T.test("bike model: the build gives way every few hundred triangles, so a first spawn does not freeze the game", function()
+    local M, n, worst, total = sliced(G, { k = 1, radius = 10 }, true)
+    local tris = G.Stats(M).total
+    T.eq(tris, G.Stats(stock).total, "the same model, built in slices")
+    T.ok(n >= tris / 256, string.format("gives way every <= 256 triangles: %d resumes, %d triangles", n, tris))
+    T.ok(worst < total / 20, string.format("no slice near the whole build: %dk of %dk instructions", worst, total))
+    local _, plain = sliced(G, { k = 1, radius = 10 }, false)
+    T.eq(plain, 1, "a coroutine that did not ask (a tool's) builds straight through")
+end)
+
 --------------------------------------------------------------------------
 -- DRAWING, with a fake mesh API
 --------------------------------------------------------------------------
@@ -329,6 +361,46 @@ T.test("bike model (client): while a new size's model builds, the bike keeps its
     T.eq(#S.cl.groups, 0, "a destroyed model is never drawn")
     T.ok(#S.cl.drawnCS > 10, "the simple bike stands in")
     T.ok(ready(S), "and the model is built again")
+end)
+
+-- The build's garbage is 100-250 MB, so a model is not ready until it has been
+-- collected (one build's garbage at a time, cl_bikemesh.lua GC_STEP). It used to
+-- be collectgarbage("collect"): the client's whole Lua heap walked in one frame
+-- at the end of every build, a second hitch after the build's own.
+T.test("bike model (client): a build's garbage is collected in steps before the model is ready, never all at once", function()
+    local s = scene()
+    enableMeshes(s)
+    local E = s.cl.env
+    local BM = E.BMX.BikeMesh
+    BM.Clear()
+    local had = rawget(E, "collectgarbage")
+    local collects, steps, cycleEnds = 0, 0, false
+    E.collectgarbage = function(opt, n)
+        if opt == "collect" then collects = collects + 1 end
+        if opt == "step" then
+            steps = steps + 1
+            collectgarbage("step", n)
+            return cycleEnds
+        end
+        return collectgarbage(opt, n)
+    end
+    local ok, err = pcall(function()
+        -- 3000 steps: the meshes' slices (~160) and then the wait, well short of
+        -- GC_MAX_STEPS, however fast this machine steps
+        local a
+        for _ = 1, 50000 do a = BM.Get(1, 10) if a or steps >= 3000 then break end end
+        T.ok(steps >= 3000, "built, and waiting: " .. steps .. " steps")
+        T.eq(a, nil, "not ready while the collector has not been round")
+        local before = steps
+        cycleEnds = true
+        for _ = 1, 50 do a = BM.Get(1, 10) if a then break end end
+        T.ok(a, "ready once it has")
+        T.eq(steps - before, 2, "two cycles, a step at a time")
+        T.eq(collects, 0, "never a full collection in one frame")
+    end)
+    E.collectgarbage = had
+    BM.Clear()
+    if not ok then error(err, 0) end
 end)
 
 T.test("bike model (client): a bike's model is built before it is ever drawn", function()

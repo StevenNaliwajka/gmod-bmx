@@ -7,10 +7,14 @@
     this file only knows how to put triangles on screen.
 
     BUILT ONCE PER SIZE, over several frames. A model is ~70k triangles and
-    costs a few hundred milliseconds to build in Lua, so it is built in a
-    coroutine a slice a frame, keyed by the bike's scale and wheel radius;
-    every bike of that size shares it. Until it is ready the old primitive
-    bike is drawn, so a first spawn never hitches and never shows nothing.
+    costs up to a second to build in Lua, so it is built in a coroutine a
+    slice a frame (bmx_bike_build_ms), keyed by the bike's scale and wheel
+    radius; every bike of that size shares it. The geometry gives way every
+    few hundred triangles (cl_bikegeo.lua G.YieldIn), the meshes every 1500
+    vertices, and the build's garbage is collected in steps before the model
+    counts as built (GC_STEP). Until it is
+    ready the old primitive bike is drawn, so a first spawn does not hitch
+    and never shows nothing.
 
     MATERIALS are VertexLitGeneric made here: a white base, a flat normal map
     (render targets, cleared once -- nothing shipped) so Phong works, and
@@ -290,16 +294,31 @@ BM.LayoutVectors = toVectors
 -- half of it the game) aborted after seeing ten or so vehicle kinds: measured
 -- 2026-10-08 on a test client, 2.6 GB -> 4.0 GB over ten vehicles, then "Aborted".
 -- So each part's source vertices are dropped as soon as they are meshes, the
--- collector is stepped at every slice, and a finished model is followed by one
--- full collection (BM.Get). The heap then stays near ONE build's working set.
-local GC_STEP = 400          -- collectgarbage("step") size per slice
+-- collector is stepped at every mesh slice, and a model is not ready until the
+-- collector has been round twice since its build let go of everything. The heap
+-- then stays near ONE build's working set.
+--
+-- In STEPS, not collectgarbage("collect"). A full collection walks the client's
+-- whole Lua heap, every addon's, in one frame: that was a hitch at the end of
+-- every build, as long as the heap is big. Two cycles, because the first one may
+-- have marked the build's tables while they were still in use.
+local GC_STEP = 400          -- collectgarbage("step") size per mesh slice
+local GC_CYCLES = 2          -- full cycles a finished build waits for
+local GC_MAX_STEPS = 20000   -- ...or this many steps (a collector somebody stopped)
+
+local function pause()
+    collectgarbage("step", GC_STEP)
+    coroutine.yield()
+end
 
 local function buildJob(key, opt)
     return coroutine.create(function()
         local G = BMX.BikeGeo
+        -- The geometry yields every few hundred triangles; the collector keeps
+        -- its own pace there (a step that often costs more than the slice).
+        G.YieldIn(coroutine.running())
         local M = G.Build(opt)
-        collectgarbage("step", GC_STEP)
-        coroutine.yield()
+        pause()
         local layout = toVectors(M.layout or {})
         local out = { groups = {}, layout = layout, stats = G.Stats(M) }
         local fmt = BM.Material("black")
@@ -336,8 +355,7 @@ local function buildJob(key, opt)
                     work = work + 1
                     if work >= 1500 then
                         work = 0
-                        collectgarbage("step", GC_STEP)
-                        coroutine.yield()
+                        pause()
                     end
                 end
                 flush()
@@ -348,6 +366,15 @@ local function buildJob(key, opt)
             out.groups[gname] = list
         end
         M = nil
+        -- Its garbage back before it counts as built (see GC_STEP).
+        local cycles = 0
+        for _ = 1, GC_MAX_STEPS do
+            if collectgarbage("step", GC_STEP) then
+                cycles = cycles + 1
+                if cycles >= GC_CYCLES then break end
+            end
+            coroutine.yield()
+        end
         return out
     end)
 end
@@ -394,9 +421,6 @@ function BM.Get(k, radius, kind, opt)
         if coroutine.status(m.job) == "dead" then
             res.ready = true
             models[key] = res
-            -- Give back the build's garbage now, once, rather than letting the
-            -- next build stack on top of it (see GC_STEP).
-            collectgarbage("collect")
             return res
         end
     end

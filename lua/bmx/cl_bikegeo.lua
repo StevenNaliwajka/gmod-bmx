@@ -101,10 +101,41 @@ function Model:bucket(group, mat, detail)
     return b
 end
 
+-- BUILT IN SLICES. A whole model is 0.2-1.3 s of Lua, and the client builds
+-- it while the game runs (cl_bikemesh.lua, a few ms a frame), so the builder
+-- itself must give way: built in one go, the first spawn of each vehicle froze
+-- the game for that long. Every triangle comes through tri(), so tri() counts
+-- them and every SLICE_TRIS calls the pause of the coroutine it runs in --
+-- only one named with G.YieldIn, so a tool or a test that calls G.Build
+-- directly builds straight through, as before.
+local SLICE_TRIS = 128
+local pauses = setmetatable({}, { __mode = "k" })
+local sinceSlice = 0
+
+-- Inside coroutine `co`, G.Build calls pause() (default coroutine.yield) every
+-- SLICE_TRIS triangles.
+function G.YieldIn(co, pause) pauses[co] = pause or coroutine.yield end
+
+local function slice()
+    sinceSlice = 0
+    local co = coroutine.running()
+    local pause = co and pauses[co]
+    if pause then pause() end
+end
+
+-- Work that walks triangles without making them (a mirrored copy, a rescale)
+-- counts them here, so it gives way too.
+local function spent(n)
+    sinceSlice = sinceSlice + n
+    if sinceSlice >= SLICE_TRIS then slice() end
+end
+
 -- One triangle, wound counter-clockwise seen from where its normals point
 -- (right-handed): if the given order disagrees with the normals, it is
 -- swapped, so no primitive has to get winding right by hand.
 local function tri(B, pa, pb, pc, na, nb, nc, ua, va, ub, vb, uc, vc)
+    sinceSlice = sinceSlice + 1
+    if sinceSlice >= SLICE_TRIS then slice() end
     local g = cross(sub(pb, pa), sub(pc, pa))
     local s = { na[1] + nb[1] + nc[1], na[2] + nb[2] + nc[2], na[3] + nb[3] + nc[3] }
     local t = B.v
@@ -514,7 +545,8 @@ end
 G.prim = { sweep = sweep, lathe = lathe, plate = plate, ringPlate = ringPlate,
            box = box, roundRect = roundRect, circle = circle, bez3 = bez3,
            spline = spline, tri = tri, quad = quad, grid = grid, cap = cap,
-           bead = bead, earclip = earclip, area2 = area2, newModel = newModel }
+           bead = bead, earclip = earclip, area2 = area2, newModel = newModel,
+           spent = spent }
 G.vec.madd, G.vec.perp = madd, perp
 
 --------------------------------------------------------------------------
@@ -1589,6 +1621,7 @@ local function scaleModel(M, k)
     for _, name in ipairs(M.order) do
         for _, b in ipairs(M.groups[name]) do
             for _, vt in ipairs(b.v) do vt.p = mul(vt.p, k) end
+            spent(b.tris)
         end
     end
 end

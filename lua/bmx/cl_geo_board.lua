@@ -67,7 +67,7 @@ local len, norm, lerp, rot = Vv.len, Vv.norm, Vv.lerp, Vv.rot
 local Pm = G.prim
 local sweep, lathe, plate, box, cap = Pm.sweep, Pm.lathe, Pm.plate, Pm.box, Pm.cap
 local roundRect, circle, bez3, spline = Pm.roundRect, Pm.circle, Pm.bez3, Pm.spline
-local tri, quad, earclip = Pm.tri, Pm.quad, Pm.earclip
+local tri, quad, earclip, spent = Pm.tri, Pm.quad, Pm.earclip, Pm.spent
 
 local function smooth(t) t = max(0, min(1, t)) return t * t * (3 - 2 * t) end
 
@@ -133,6 +133,7 @@ local function slab(M, group, st, opt)
             put(at(y, z), "side", (s.h - z) / (2 * max(s.h, 1e-6)))
         end
         rings[i] = ring
+        spent(#ring)              -- a ring is about a triangle's work a point
     end
     -- the fraction of a side segment is fixed by its two ends at a full station
     local ref = st[opt.ref or max(1, floor(#st / 2))]
@@ -174,6 +175,7 @@ local function slab(M, group, st, opt)
             end
             N[i][j] = nn
         end
+        spent(m)
     end
     local roleOf = opt.role or function() return opt.mat or "paint" end
     local segRole, segDet = {}, {}

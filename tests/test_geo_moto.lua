@@ -310,3 +310,31 @@ T.test("moto models: the builders need nothing from the game, and build the same
     for _, bk in ipairs(c.groups.wheelF) do for _, v in ipairs(bk.v) do rmax = math.max(rmax, math.sqrt(v.p[1] ^ 2 + v.p[3] ^ 2)) end end
     T.between(rmax, 12.9, 13.12, "its front wheel at its radius")
 end)
+
+-- The client builds a model in a coroutine, a few ms a frame (cl_bikemesh.lua), so
+-- the builder gives way every few hundred triangles (cl_bikegeo.lua G.YieldIn).
+-- A mirrored part (the motorbikes' rear wheel) is built into a scratch model and
+-- copied across, making no triangle of its own: the copy counts them as it goes,
+-- or it was one slice five times the longest other. Measured in Lua instructions
+-- (a count hook), the same on every machine and blind to the collector.
+T.test("moto models: a build gives way every few hundred triangles, the mirrored wheel's copy too", function()
+    local _, S = model("dirtbike")
+    local opt = { kind = "dirtbike", wheelbase = S.wheelbase, radius = S.radius, seat = S.seat,
+                  restLength = S.restLength, k = S.wheelbase / 39 }
+    local co = coroutine.create(function()
+        G.YieldIn(coroutine.running())
+        return G.Build(opt)
+    end)
+    local k, n, worst, total, M = 0, 0, 0, 0, nil
+    debug.sethook(co, function() k = k + 1 end, "", 1000)
+    repeat
+        k = 0
+        local ok, res = coroutine.resume(co)
+        assert(ok, res)
+        n, worst, total, M = n + 1, math.max(worst, k), total + k, res
+    until coroutine.status(co) == "dead"
+    local tris = G.Stats(M).total
+    T.eq(tris, G.Stats(model("dirtbike")).total, "the same model, built in slices")
+    T.ok(n >= tris / 256, string.format("%d resumes for %d triangles", n, tris))
+    T.ok(worst < total / 40, string.format("no long slice: %dk of %dk instructions", worst, total))
+end)

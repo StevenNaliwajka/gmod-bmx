@@ -494,7 +494,8 @@ end
 -- the pose (tuck, lean) rewrites the spine's angle every frame.
 --------------------------------------------------------------------------
 local SPINE_TWIST = 40     -- degrees either way, about the spine's length
-local SPINE_LEAN  = 30     -- degrees of extra lean toward the bars
+local SPINE_LEAN  = 40     -- degrees of extra lean toward the bars (30 left a dirt bike's
+                           -- rider at walking pace, bars turned, two units short of one)
 local SPINE_STEP  = 4      -- degrees a frame, at 60 frames a second
 -- Out of reach above REACH_OUT, home below REACH_IN, held between: one line
 -- for both had the torso lean in one frame and ease back the next, at the

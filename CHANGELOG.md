@@ -24,9 +24,12 @@ a real player model's skeleton:
   is there.
 - **The bike shown while a new model loads fits its rider.** For the few
   seconds a vehicle's model takes to build the first time, a simple bike stands
-  in. On the tandem it was a stretched BMX the riders' feet did not reach; it is
-  now a tandem of two ordinary bike cockpits, one under each rider. On the city
-  bike the hands now hold its swept-back grips.
+  in. On every vehicle longer than a BMX it was a BMX stretched to the length,
+  with a saddle, pedals and bars a rider could not reach: the tandem's riders'
+  feet hung off the pedals, and turning the dirt bike or the city bike took the
+  hands off the bars. It is now an ordinary-sized bike cockpit under the rider
+  (two on the tandem, one under each), joined to the real wheels. The city
+  bike's hands hold its swept-back grips.
 
 ## 1.3.2 -- on the Workshop 2026-10-11
 

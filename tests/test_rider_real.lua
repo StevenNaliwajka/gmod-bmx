@@ -166,10 +166,15 @@ T.test("real skeleton: the dirt bike's rider on its model, the hands on the grip
     fits("dirtbike, full lock right", (ride("dirtbike", { speed = 10, steer = -30 })))
 end)
 
-T.test("real skeleton: while a model builds, the riders fit the simple bike drawn meanwhile (the tandem's two included)", function()
+T.test("real skeleton: while a model builds, the riders fit the simple bike drawn meanwhile (the tandem's two included), riding straight and turning", function()
     for _, id in ipairs(SIMPLE_BIKES) do
         local motor = id == "dirtbike" or id == "moped"
         fits(id .. " (simple)", (ride(id, { simple = true, speed = motor and 40 or (id == "penny" or id == "unicycle") and 100 or 150 })), OPEN_HANDS[id])
+    end
+    -- turning slowly, the far grip swung forward: the stretched simple bike's wide bars
+    -- were out of reach (the dirt bike's by 3.7 units, the city bike's by 1.1)
+    for _, id in ipairs({ "dirtbike", "city", "moped" }) do
+        fits(id .. " (simple), turning", (ride(id, { simple = true, speed = 20, steer = 25 })))
     end
 end)
 

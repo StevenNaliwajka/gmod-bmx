@@ -570,6 +570,16 @@ end
 -- is still being built (a few ms a frame: BMX.BikeMesh.Get) or when it has none.
 -- Calling it advances the build, so anything that wants the model ready (the icon
 -- and ride studios) can pump it.
+-- Is this vehicle's simple bike (drawn while its model builds, and with no model) the
+-- stock frame at the stock size round the rider's seat, rather than the stock frame
+-- stretched to the wheelbase? For every vehicle longer than the BMX that the bike's own
+-- drawing draws (cl_init.lua, below): a stretched cockpit is out of a rider's reach.
+function BMX.SimpleAtSeat(ent)
+    local bike = ent.Bike and ent:Bike()
+    if not bike or bike.drawer or bike.hasModel or (bike.family and bike.family ~= "bike" and bike.family ~= "moto") then return false end
+    return ent:Cfg().Wheel.wheelbase / 39 > 1.1
+end
+
 function BMX.BikeModelFor(ent)
     local bike = ent.Bike and ent:Bike()
     if not bike or bike.hasModel or bike.wheelModel or not bike.look or not BMX.BikeMesh then return nil end
@@ -1035,7 +1045,7 @@ function ENT:Draw()
     local sag = math.Clamp(C.Chassis.mass * g * 0.5 / WC.spring, 0, WC.restLength)
     local lift0 = Vector(0, 0, sag)
     local bodyC = self:LocalToWorld(Vector(0, 0, 10 * k))
-    local simpleAt = Vector(0, 0, 0)        -- (see `simpleAtSeat`, below)
+    local simpleAt = Vector(0, 0, 0)        -- (see BMX.SimpleAtSeat, below)
     local function P(v)
         local p = self:LocalToWorld(v * k + simpleAt + lift0)
         return bodyRoll ~= 0 and rotAbout(p, bodyC, fwd, bodyRoll) or p
@@ -1112,14 +1122,18 @@ function ENT:Draw()
 
     if bike.hasModel then return end
 
-    -- A LONG VEHICLE'S SIMPLE BIKE (`simpleAtSeat` in its registration: the tandem's).
-    -- The simple bike is the stock frame scaled to the wheelbase, which for a tandem
-    -- (x1.8) put its saddle 28 units behind the captain and its pedals out of their
-    -- legs' reach: the feet hung six units off them for the seconds the model took to
-    -- build (measured on kleiner's skeleton, 2026-10-11). For such a vehicle it is the
-    -- stock frame at the stock size with its saddle where the rider sits, and long stays
-    -- out to the wheels: a rider fits it as they fit the BMX.
-    if bike.simpleAtSeat then
+    -- A LONG VEHICLE'S SIMPLE BIKE (BMX.SimpleAtSeat). The simple bike is the stock
+    -- frame scaled to the wheelbase, which for a tandem (x1.8) put its saddle 28 units
+    -- behind the captain and its pedals out of their legs' reach (the feet hung six
+    -- units off them for the seconds the model took to build), and for a dirt bike
+    -- (x1.5) made bars 43 units wide that the hands came off as they turned (3.7 units,
+    -- the reach lean at its limit; measured on kleiner's skeleton, 2026-10-11). For a
+    -- vehicle longer than the BMX it is the stock frame at the stock size with its
+    -- saddle where the rider sits, and long stays out to the wheels: a rider fits it
+    -- as they fit the BMX.
+    local anchored = BMX.SimpleAtSeat(self)
+    local kWheel = k                    -- the vehicle's own scale, for its model's parts
+    if anchored then
         k = 1
         simpleAt = C.Chassis.seatOffset - FRAME.seat
         headT, headB = P(FRAME.headT), P(FRAME.headB)
@@ -1287,15 +1301,21 @@ function ENT:Draw()
             -- The peg's top, in chassis space (the model's own space is the
             -- chassis', lifted by the sag): drawn with the frame, whip and all,
             -- and the foot where the peg is without the whip, as for a pedal.
-            local p0 = P(m / k)
+            -- (The model's own pegs, in chassis space: not moved with a seat-anchored
+            -- frame, so the feet do not move when the model is ready.)
+            local function Pc(v)
+                local q = self:LocalToWorld(v + lift0)
+                return bodyRoll ~= 0 and rotAbout(q, bodyC, fwd, bodyRoll) or q
+            end
+            local p0 = Pc(m)
             local p = Wh(p0)
-            local inner = p - rightW * (1.6 * k * side)
+            local inner = p - rightW * (1.6 * kWheel * side)
             if lod < 2 then
                 -- the mount from the frame's centre line, and the peg itself
-                tube(Wh(P(Vector(m.x / k, 0, m.z / k + 1.2))), inner - upW * (0.4 * k), 1.1 * k, COL_PART)
-                solid("box", p - upW * (0.4 * k), whipAngles, Vector(2.0, 3.2, 0.8) * k, COL_CHROME, MAT.satin)
+                tube(Wh(Pc(Vector(m.x, 0, m.z + 1.2 * kWheel))), inner - upW * (0.4 * kWheel), 1.1 * kWheel, COL_PART)
+                solid("box", p - upW * (0.4 * kWheel), whipAngles, Vector(2.0, 3.2, 0.8) * kWheel, COL_CHROME, MAT.satin)
             end
-            ik[side == 1 and "rFoot" or "lFoot"] = p0 + up * (0.9 * k)
+            ik[side == 1 and "rFoot" or "lFoot"] = p0 + up * (0.9 * kWheel)
             ik[side == 1 and "rSole" or "lSole"] = BMX.PegSole or 0
         end
     else
@@ -1337,7 +1357,7 @@ function ENT:Draw()
     -- stoker's seat, the bars on a stem back from the captain's seat tube. Without it
     -- the stoker's limbs went to a passenger's places (the captain's shoulders, pegs at
     -- the rear axle) out of reach until the model was built.
-    local seat2 = bike.simpleAtSeat and not pegs and BMX.SeatFor and BMX.SeatFor(bike, C, "pegs")
+    local seat2 = anchored and not pegs and BMX.SeatFor and BMX.SeatFor(bike, C, "pegs")
     if seat2 and bike.seats and bike.seats.pegs and bike.seats.pegs.pedals then
         local d = self:LocalToWorld(seat2.offset - C.Chassis.seatOffset) - self:GetPos()
         local function S2(v) return Wh(P(v) + d) end

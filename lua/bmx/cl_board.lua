@@ -713,6 +713,7 @@ SET.solveIK = function(ply, bike)
         GetForward = function() return face end,
         GetUp = function() return up end,
         GetRight = function() return face:Cross(up):GetNormalized() end,
+        bmxPoseSet = SET,
     }
     BMX.SolveRiderIK(ply, ik, proxy)
 end
@@ -1006,6 +1007,10 @@ BMX.DrawVehicle.board = function(ent, kit)
         rHand = C2W(stance >= 0 and trail or lead),
     }
     BMX.ApplyPoseTargets(ik, W, function(v) return P(v) end, rows)
+    -- Arms out for balance are open hands, and the torso does not reach for them; a
+    -- grab closes a hand on the deck (cl_rider.lua). Without this the arms counted as
+    -- holding bars, and the reach for them bent every skater 30 degrees over.
+    ik.openHands = not (W and next(W) ~= nil)
     ent.ikTargets = ik
 
     if debug then

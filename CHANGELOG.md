@@ -28,6 +28,14 @@ player model riding each vehicle in turn, frame by frame:
   model builds, the simple bike is drawn; when the model appeared every grip and
   pedal moved at once and the riders' hands and feet jumped up to ten units in
   one frame. They now ease across in a fifth of a second.
+- **Skaters stand up.** A skater's arms out for balance were treated as hands
+  on handlebars: fists closed, and the body bent 30 degrees over trying to reach
+  them. The hands are open now and the body is the skater's own; a grab still
+  closes a hand on the deck.
+- **No one-frame flicker off the bars.** At the bottom of a scooter kick or on a
+  hard landing the hands came off the bars for a single frame, by up to eight
+  units. The hand is placed again in the same frame when the body moves that
+  fast.
 
 ## 1.3.1 -- on the Workshop 2026-10-11
 

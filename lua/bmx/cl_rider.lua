@@ -611,6 +611,7 @@ end
 -- motorcyclist rides on the balls of their feet, ready to stand.
 BMX.PegSole = 6
 local GRIP_OFF_MAX = 6      -- units: a measured wrist-to-fist offset longer than this is wrong
+local GRIP_RESOLVE = 1      -- units: a fist this far from where it was used is solved for again
 
 local function ballLength(ply, foot, toe)
     local a, b = bonePos(ply, foot), bonePos(ply, toe)
@@ -692,35 +693,32 @@ local function toesFor(ply, limb, T, fwd, up, sole, L)
     return hi
 end
 
--- A TARGET THAT JUMPS IS EASED ACROSS, NOT SNAPPED TO. While a vehicle's model is
--- still being built it is drawn as the simple bike, scaled, whose grips and pedals
--- are not the model's; when the model is ready they move at once, and on a real
--- client both riders of a tandem threw their hands and feet 7 to 10 units in one
--- frame (2026-10-11). A limb's target that moves much further in one frame than it
--- did in the last (JUMP_RATIO times, and more than JUMP_MIN plus what JUMP_SPEED
--- covers in the frame -- a pedal or a kicking foot never does) is followed across
--- the gap over JUMP_TIME, eased, from where the limb was. Kept in the vehicle's own
--- frame (about the player), so riding along is not a jump. A rider not solved for a
--- while (far off, or just got on) starts afresh.
-local JUMP_MIN, JUMP_SPEED, JUMP_RATIO, JUMP_TIME = 5, 60, 3, 0.2
-BMX.RiderJump = { min = JUMP_MIN, speed = JUMP_SPEED, ratio = JUMP_RATIO, time = JUMP_TIME }
+-- WHEN THE TARGETS COME FROM SOMEWHERE ELSE, THE LIMBS EASE ACROSS. While a
+-- vehicle's model is still being built it is drawn as the simple bike, scaled, whose
+-- grips and pedals are not the model's; when the model is ready they all move at once,
+-- and on a real client both riders of a tandem threw their hands and feet 7 to 10
+-- units in one frame (2026-10-11). Each drawing names what it is (`src` on its target
+-- table: "model", "simple", a passenger's "pegs"...); when that changes, each limb is
+-- followed across from where it was over JUMP_TIME, eased. Only then: telling a jump
+-- by its size alone also caught a kicking foot and the pedals at a hard landing on a
+-- 20 fps client, and dragged them a fifth of a second behind. Kept in the vehicle's
+-- own frame (about the player), so riding along is not a jump. A rider not solved for
+-- a while (far off, or just got on) starts afresh.
+local JUMP_TIME = 0.2
+BMX.RiderJump = { time = JUMP_TIME }
 local function smooth01(t) return t * t * (3 - 2 * t) end
-local function followTarget(ply, key, T, o, fwd, right, up, now, dt)
+local function followTarget(ply, key, T, src, o, fwd, right, up, now, dt)
     local d = T - o
     local loc = Vector(d:Dot(fwd), d:Dot(right), d:Dot(up))
     local J = ply.bmxIKJump or {}
     ply.bmxIKJump = J
     local s = J[key]
     if not s or now - s.time > 0.5 or now < s.time then
-        J[key] = { loc = loc, shown = loc, step = 0, time = now }
+        J[key] = { loc = loc, shown = loc, time = now, src = src }
         return T
     end
-    local step = (loc - s.loc):Length()
-    if step > JUMP_MIN + JUMP_SPEED * dt and step > JUMP_RATIO * s.step then
-        s.from, s.t = s.shown, 0
-    else
-        s.step = step
-    end
+    if src ~= nil and s.src ~= nil and src ~= s.src then s.from, s.t = s.shown, 0 end
+    if src ~= nil then s.src = src end
     s.loc, s.time = loc, now
     local shown = loc
     if s.from then
@@ -740,8 +738,13 @@ function BMX.SolveRiderIK(ply, targets, bike)
     ply.bmxIK = ply.bmxIK or {}
     ply.bmxGripOff = ply.bmxGripOff or {}
     local fwd, up, right = bike:GetForward(), bike:GetUp(), bike:GetRight()
-    local set = BMX.PoseSetFor and BMX.PoseSetFor(bike)
+    -- (A stand-in for the bike, the board's, names its pose set itself.)
+    local set = bike.bmxPoseSet or (BMX.PoseSetFor and BMX.PoseSetFor(bike))
     local poles = set and set.poles or {}
+    -- Hands that hold nothing (a unicyclist's arms, a skater's between grabs): the
+    -- drawing may say so frame by frame, else the set does.
+    local openHands = targets.openHands
+    if openHands == nil then openHands = (set and set.openHands) or false end
     -- (The frame's time for the easing, the clock only to tell a rider not solved for a
     -- while: a paused game's clock stands still, and so would a jump's easing.)
     local origin, now, frameDt = ply:GetPos(), CurTime(), FrameTime()
@@ -758,11 +761,11 @@ function BMX.SolveRiderIK(ply, targets, bike)
             T = A + g * t
             targets[limb.target .. "Held"] = T
         end
-        if T then T = followTarget(ply, limb.target, T, origin, fwd, right, up, now, frameDt) end
+        if T then T = followTarget(ply, limb.target, T, targets.src, origin, fwd, right, up, now, frameDt) end
         if T then
             local s = limb.side == 1 and "R" or "L"
             local eb = ply:LookupBone(limb.eff)
-            local holding = not limb.leg and not (set and set.openHands)
+            local holding = not limb.leg and not openHands
             -- Where the wrist or the ankle has to go for the fist or the ball of
             -- the foot to be on T.
             local W, dir
@@ -783,8 +786,8 @@ function BMX.SolveRiderIK(ply, targets, bike)
             end
             -- Knees forward and up; elbows out, down and back (or the set's own).
             local pp = limb.leg and (poles.leg or LEG_POLE) or (poles.arm or ARM_POLE)
-            local pole = fwd * pp.x + right * (pp.y * limb.side) + up * pp.z
-            solveLimb(ply, limb, W, pole:GetNormalized())
+            local pole = (fwd * pp.x + right * (pp.y * limb.side) + up * pp.z):GetNormalized()
+            solveLimb(ply, limb, W, pole)
 
             if limb.leg then
                 -- Toes forward, the sole pitched as the stroke has it, the ball on the pedal.
@@ -799,23 +802,43 @@ function BMX.SolveRiderIK(ply, targets, bike)
                     aim(ply, eb, eb, knuck, (right * limb.side + fwd * 0.35 - up * 0.45):GetNormalized())
                 end
             else
-                -- Knuckles forward over the bar, then the fingers closed round it.
+                -- Knuckles forward over the bar, then the fingers closed round it, and
+                -- where that fist is against the wrist, for the next frame. THE FIST IS
+                -- WHERE THE LAST FRAME'S WAS against the wrist, and the forearm's roll
+                -- turns it: when the body moved a lot in a frame (the bottom of a scooter
+                -- kick, a hard landing) it had moved, and the fist was off the bar by up
+                -- to 8 units for that frame on a real client (2026-10-11). So when the
+                -- measured offset is GRIP_RESOLVE off the one used, the arm is solved
+                -- again with it, once.
                 local knuck = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Finger2")
-                if eb and knuck then aim(ply, eb, eb, knuck, (fwd - up * 0.3):GetNormalized()) end
-                closeHand(ply, limb.side)
-                -- ...and where that fist is against the wrist, for the next frame.
-                refresh(ply)
-                local fc, wr = fistCentre(ply, s), eb and bonePos(ply, eb)
-                if fc and wr then
+                for pass = 1, 2 do
+                    if eb and knuck then aim(ply, eb, eb, knuck, (fwd - up * 0.3):GetNormalized()) end
+                    closeHand(ply, limb.side)
+                    refresh(ply)
+                    local fc, wr = fistCentre(ply, s), eb and bonePos(ply, eb)
+                    if not (fc and wr) then break end
                     local d = fc - wr
-                    if d:Length() <= GRIP_OFF_MAX then
-                        ply.bmxGripOff[limb.side] = Vector(d:Dot(fwd), d:Dot(right), d:Dot(up))
-                    end
+                    if d:Length() > GRIP_OFF_MAX then break end
+                    local n = Vector(d:Dot(fwd), d:Dot(right), d:Dot(up))
+                    local o = ply.bmxGripOff[limb.side]
+                    ply.bmxGripOff[limb.side] = n
+                    if pass == 2 or not o or (n - o):Length() < GRIP_RESOLVE then break end
+                    W = T - fwd * n.x - right * n.y - up * n.z
+                    targets[limb.target .. "Wrist"] = W
+                    solveLimb(ply, limb, W, pole)
                 end
             end
         end
     end
-    spineReach(ply, targets)
+    -- The torso reaches for what the HANDS HOLD. A set whose hands are open (a
+    -- unicyclist's or a skater's balancing arms) has nothing to reach for: the board's
+    -- arms out to the side wound it to its whole 30 degrees, and every skater rode
+    -- hunched over (2026-10-11). An old reach eases off.
+    if openHands then
+        ply.bmxSpineLean, ply.bmxSpineTwist = ply.bmxSpineLean and 0, ply.bmxSpineTwist and 0
+    else
+        spineReach(ply, targets)
+    end
 end
 
 -- The two-bone solve and the bone aim, for the other riders' poses that put a

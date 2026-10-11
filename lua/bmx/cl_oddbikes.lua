@@ -221,6 +221,7 @@ BMX.Drawers.unicycle = function(ent, H, lod, debug)
     ik.lHand = hand(-1)
     ik.rHandA, ik.rHandB = ik.rHand, ik.rHand
     ik.lHandA, ik.lHandB = ik.lHand, ik.lHand
+    ik.src = model and "model" or "simple"      -- (the limbs ease across a change: cl_rider.lua)
     ent.ikTargets = ik
     ent.crankAngle = spin
 end
@@ -307,6 +308,7 @@ BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
     if model then
         pennyModel(ent, model, { up = up, right = right, sag = sag, fPos = fPos, rPos = rPos, steer = steer,
                                  fSpin = fSpin, rSpin = rSpin, col = col, lod = lod }, ik)
+        ik.src = "model"        -- (the limbs ease across a change: cl_rider.lua)
         ent.ikTargets = ik
         ent.crankAngle = fSpin
         return
@@ -349,6 +351,7 @@ BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
     ik.lHand = gripLA - fAxle * 1.75
     ik.rHandA, ik.rHandB = gripRA, gripR
     ik.lHandA, ik.lHandB = gripLA, gripL
+    ik.src = "simple"
     ent.ikTargets = ik
     ent.crankAngle = fSpin
 end

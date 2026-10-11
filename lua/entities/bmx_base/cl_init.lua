@@ -849,11 +849,13 @@ function ENT:DrawDetailed(model, S)
         ik.lFoot = Pf(tip(-1)) + upF * (0.9 * k)
         ik.rSole, ik.lSole = pedalSole(crank), pedalSole(crank + math.pi)
     end
+    -- What drew them (the riders' limbs ease across when this changes: cl_rider.lua).
+    ik.src = "model"
     self.ikTargets = ik
     -- A tandem's stoker: their own pedals, and bars fixed to the frame.
     if lay.bb2 then
         local ikS = { rFoot = Pf(tip(1, lay.bb2)) + upF * (0.9 * k), lFoot = Pf(tip(-1, lay.bb2)) + upF * (0.9 * k),
-                      rSole = pedalSole(crank), lSole = pedalSole(crank + math.pi) }
+                      rSole = pedalSole(crank), lSole = pedalSole(crank + math.pi), src = "model" }
         if lay.gripS then ikS.rHand, ikS.lHand = Pf(lay.gripS.r), Pf(lay.gripS.l) end
         self.ikTargetsStoker = ikS
     end
@@ -1239,7 +1241,7 @@ function ENT:Draw()
     local gripDirR, gripDirL = (hgR - hbR):GetNormalized(), (hgL - hbL):GetNormalized()
     local ik = { rHand = hbR + gripDirR * (1.75 * k), lHand = hbL + gripDirL * (1.75 * k),
                  rHandA = hbR, rHandB = hgR,
-                 lHandA = hbL, lHandB = hgL }
+                 lHandA = hbL, lHandB = hgL, src = "simple" }
     self.ikTargets = ik
 
     ----------------------------------------------------------------------

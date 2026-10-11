@@ -61,7 +61,9 @@ function BMX.PassengerTargets(ply, bike, kind, rider)
     local C = bike:Cfg()
     local half = C.Wheel.wheelbase * 0.5
     local so = C.Chassis.seatOffset
-    local t = {}
+    -- (Named, so a stoker whose own bars appear once the tandem's model is built eases
+    -- over to them from these: cl_rider.lua.)
+    local t = { src = kind or "pegs" }
 
     -- Hands: the rider's shoulders, or their expected place.
     for _, s in ipairs({ "r", "l" }) do

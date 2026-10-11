@@ -571,10 +571,12 @@ T.test("IK: a pedal a stretch away: the toes point and the ball of the foot reac
     T.ok(pitch < 25 + 10 + B.RiderToeReach + 2, "no further than the ankle goes")
 end)
 
--- A TARGET THAT JUMPS IS EASED ACROSS (cl_rider.lua, followTarget): a vehicle's model
--- finishing its build moves every grip and pedal at once, and the hands followed in one
--- frame. Now the hand is part way the frame after, and there within JUMP_TIME.
-T.test("IK: a grip that jumps is followed across, not snapped to, and a steady one exactly", function()
+-- WHEN THE TARGETS COME FROM SOMEWHERE ELSE, THE LIMBS EASE ACROSS (cl_rider.lua,
+-- followTarget): a vehicle's model finishing its build moves every grip and pedal at
+-- once, and the hands followed in one frame. A move of the same size from the same
+-- drawing (a kicking foot, a landing's pedals) is followed at once: easing those too
+-- left a scooter's kicking foot 10 units behind on a 20 fps client.
+T.test("IK: a grip that moves when the drawing changes is eased across; the same move from the same drawing is followed at once", function()
     local cl, bike, ply = seated()
     local E, B = cl.env, cl.env.BMX
     for _ = 1, 40 do frame(cl, bike, ply) end
@@ -582,25 +584,54 @@ T.test("IK: a grip that jumps is followed across, not snapped to, and a steady o
     local base = { rHand = bike.ikTargets.rHand, lHand = bike.ikTargets.lHand,
                    rFoot = bike.ikTargets.rFoot, lFoot = bike.ikTargets.lFoot,
                    rSole = bike.ikTargets.rSole, lSole = bike.ikTargets.lSole }
-    local function solve(shift, n)
-        local t = {}
+    local function solve(shift, src, n)
+        local t = { src = src }
         for k, v in pairs(base) do t[k] = v end
         t.rHand, t.lHand = base.rHand + fwd * shift, base.lHand + fwd * shift
         for _ = 1, n do B.SolveRiderIK(ply, t, bike) end
         ply:InvalidateBoneCache(); ply:SetupBones()
         return (B.RiderFistCentre(ply, "R") - t.rHand):Length(), (B.RiderFistCentre(ply, "R") - base.rHand):Length()
     end
-    local atNew = solve(0, 30)
-    T.between(atNew, 0, 1.5, "settled on the grip")
-    -- 8 units toward the rider in one frame: a jump
+    T.between(solve(0, "simple", 30), 0, 1.5, "settled on the grip")
+    -- the model is built: its grip is 8 units toward the rider
     local frames = math.ceil(B.RiderJump.time / E.FrameTime())
-    local toNew = solve(-8, 1)
+    local toNew = solve(-8, "model", 1)
     T.ok(toNew > 6, string.format("the frame after, not there yet (it eases in): %.1f from the new grip", toNew))
-    local midNew, midOld = solve(-8, math.floor(frames / 2) - 1)
+    local midNew, midOld = solve(-8, "model", math.floor(frames / 2) - 1)
     T.ok(midNew > 2 and midOld > 2, string.format("half way through, between the two: %.1f from the new, %.1f from the old", midNew, midOld))
-    T.between(solve(-8, frames), 0, 1.5, "and on the new grip within the easing time")
-    -- small steady steps (a turning bar) are followed as they come
+    T.between(solve(-8, "model", frames), 0, 1.5, "and on the new grip within the easing time")
+    -- the same drawing moving it as far in one frame: followed at once
+    T.between(solve(0, "model", 1), 0, 1.5, "a move from the same drawing is followed the same frame")
     local worst = 0
-    for i = 1, 20 do worst = math.max(worst, (solve(-8 + i * 0.3, 1))) end
+    for i = 1, 20 do worst = math.max(worst, (solve(-i * 0.3, "model", 1))) end
     T.between(worst, 0, 1.5, "a grip moving steadily is held all the way")
+end)
+
+-- THE FIST ON THE BAR IN THE FRAME THE BODY MOVES (cl_rider.lua, GRIP_RESOLVE). The
+-- wrist's target is the grip less where the fist was against the wrist LAST frame; a
+-- body that moves a long way in one frame (the bottom of a scooter kick, a hard
+-- landing) rolls the forearm and moves the fist, and on a real client it was off the
+-- bar by up to 8 units for that frame. The arm is solved again when the fist moved.
+-- (The stand-in's forearm barely rolls, so here this pins that a lurch leaves the
+-- fist on the bar and the second pass does no harm; the real model is where the
+-- offset moved, and the sweep on a client is the check for that.)
+T.test("IK: the body lurches in one frame and the fist is still on the grip that frame", function()
+    local cl, bike, ply = seated()
+    local E, B = cl.env, cl.env.BMX
+    for _ = 1, 40 do frame(cl, bike, ply) end
+    local t = {}
+    for k, v in pairs(bike.ikTargets) do t[k] = v end
+    local spine = ply:LookupBone("ValveBiped.Bip01_Spine2")
+    local worst = 0
+    for _, lurch in ipairs({ 35, -10, 30, 0 }) do
+        local a = ply:GetManipulateBoneAngles(spine)
+        ply:ManipulateBoneAngles(spine, E.Angle(a.p, lurch, a.r))
+        B.SolveRiderIK(ply, t, bike)
+        ply:InvalidateBoneCache(); ply:SetupBones()
+        for _, s in ipairs({ "R", "L" }) do
+            local key = s == "R" and "rHand" or "lHand"
+            worst = math.max(worst, (B.RiderFistCentre(ply, s) - (t[key .. "Held"] or t[key])):Length())
+        end
+    end
+    T.between(worst, 0, 1.5, "the fist off its grip in the frame of a lurch, at worst, units")
 end)

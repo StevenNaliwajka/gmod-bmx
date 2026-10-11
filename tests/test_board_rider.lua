@@ -288,3 +288,39 @@ T.test("board hips: a push turns the hips and the toes up the board, measured on
     T.ok(f1:Dot(bike:GetForward()) > 0.8, "pushing, up it: " .. f1:Dot(bike:GetForward()))
     T.ok(f1:Dot(f0) > 0.3, "turned from the side the rider faces, not from behind")
 end)
+
+-- A SKATER'S ARMS ARE OUT FOR BALANCE, NOT HOLDING ANYTHING. The solver took them for
+-- hands on bars: fists closed, and the torso bent over to reach them -- its whole 30
+-- degrees on a real client, every skater hunched (2026-10-11). Here the arms' targets
+-- are put further out than the stand-in reaches: the hands stay open and the torso is
+-- the pose's, not leaned after them.
+T.test("board arms: open hands out for balance, and the torso does not bend over to reach them", function()
+    local sv, cl, E, B = client()
+    local bike = cl:clientEntity("bmx_skateboard")
+    bike:SetPos(E.Vector(0, 0, 1.3))
+    bike:SetGrounded(true)
+    bike:SetPushPhase(-1)
+    local pod = cl.makeEntity("prop_vehicle_prisoner_pod")
+    pod:SetParent(bike)
+    bike:SetPod(pod)
+    local ply = cl:player("Rider")
+    ply._vehicle = pod
+    bike:SetDriver(ply)
+    cl.localPlayer = sv:player("Looker")
+    cl.eyePos = bike:GetPos() + E.Vector(150, 0, 40)      -- near enough to be solved
+    for _ = 1, 40 do
+        bike:Draw()
+        local ik = bike.ikTargets
+        for _, k in ipairs({ "rHand", "lHand" }) do
+            if ik[k] then ik[k] = ik[k] + (ik[k] - ply:GetPos()):GetNormalized() * 10 end
+        end
+        E.hook.Run("PrePlayerDraw", ply)
+    end
+    local solved = 0
+    for _ in pairs(ply.bmxIK or {}) do solved = solved + 1 end
+    T.ok(solved > 8, "the skater's IK ran: " .. solved .. " bones")
+    T.ok((ply.bmxSpineLean or 0) == 0 and (ply.bmxSpineLeanShown or 0) < 0.5,
+        string.format("no reach lean: decided %s, shown %s", tostring(ply.bmxSpineLean), tostring(ply.bmxSpineLeanShown)))
+    T.ok(bike.ikTargets.openHands == true, "the board says its hands are open")
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)

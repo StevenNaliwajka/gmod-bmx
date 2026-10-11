@@ -17,6 +17,11 @@ a real player model's skeleton:
   upright between kicks with the bars at arm's length, so as each kick ended the
   hands came off them and the body pumped back and forth chasing them. Riders
   now stand leaned over the bars, as on a real scooter.
+- **Hands don't slip off the bars when the body moves fast.** At lower frame
+  rates a fast move -- dropping into a scooter kick, the pop of a hop -- left a
+  hand up to eight units off the bar for a frame, because each joint could only
+  turn so far per frame. The arm and the wrist now keep turning until the hand
+  is there.
 - **The bike shown while a new model loads fits its rider.** For the few
   seconds a vehicle's model takes to build the first time, a simple bike stands
   in. On the tandem it was a stretched BMX the riders' feet did not reach; it is

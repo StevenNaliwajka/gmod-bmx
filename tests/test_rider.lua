@@ -115,7 +115,8 @@ end
 T.test("IK: the feet go onto the pedals and the hands onto the grips", function()
     local cl, bike, ply = seated()
     bike:SetCadence(0)
-    frame(cl, bike, ply)
+    -- the plain pose: the bike drawn (its targets), the rider not yet solved
+    bike:Draw()
     local t = bike.ikTargets
     local startFoot = reach(cl, ply, "ValveBiped.Bip01_R_Foot", t.rFoot)
     for _ = 1, 40 do frame(cl, bike, ply) end

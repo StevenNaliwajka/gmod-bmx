@@ -173,7 +173,8 @@ T.test("contacts: a vehicle without pedals never draws a crank or a pedal: stand
             draw(s)
             E.GetConVar("bmx_debug"):SetInt(0)
             if not s.def.drawer then
-                local n = crankParts(w.cl, s.k)
+                -- (a seat-anchored stand-in, the tandem's, is drawn at the stock size)
+                local n = crankParts(w.cl, s.def.simpleAtSeat and 1 or s.k)
                 if pedals then
                     T.ok(n.arm >= 2 and n.pedal >= 2, id .. " " .. mode .. ": cranks and pedals drawn (" .. n.arm .. ", " .. n.pedal .. ")")
                 else
@@ -292,20 +293,17 @@ T.test("contacts: the stand-in drawing puts the feet on ITS pedals, or on the mo
             T.between((ik.rFoot - withModel.rFoot):Length(), 0, 0.05, id .. " stand-in: the right foot on the model's peg")
             T.between((ik.lFoot - withModel.lFoot):Length(), 0, 0.05, id .. " stand-in: the left foot on the model's peg")
         else
-            local _, pedals = crankParts(w.cl, s.def.drawer and 1 or s.k)
-            local lift = s.def.drawer and 0.9 or 0.9 * s.k
+            local kd = (s.def.drawer or s.def.simpleAtSeat) and 1 or s.k
+            local _, pedals = crankParts(w.cl, kd)
+            local lift = 0.9 * kd
             for _, f in ipairs({ "rFoot", "lFoot" }) do
                 local _, d = nearest(pedals, ik[f] - up * lift)
                 T.between(d, 0, 0.05, id .. " stand-in: " .. f .. " on a drawn pedal")
             end
             -- and within a short step of where the model will have them
-            -- and within a short step of where the model will have them. (Not the
-            -- tandem's: its stand-in is the BMX's frame drawn long, with one crank
-            -- set under a captain who sits far forward of it; the model is ready
-            -- in a few frames.)
-            if id ~= "tandem" then
-                T.between((ik.rFoot - withModel.rFoot):Length(), 0, 3, id .. " stand-in: the right foot near the model's pedal")
-            end
+            -- and within a short step of where the model will have them (the
+            -- tandem's too, now its stand-in's cranks are under its captain's saddle)
+            T.between((ik.rFoot - withModel.rFoot):Length(), 0, 3, id .. " stand-in: the right foot near the model's pedal")
         end
         setModel(true)
     end

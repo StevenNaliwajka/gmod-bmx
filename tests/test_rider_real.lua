@@ -175,8 +175,9 @@ end)
 
 -- A KICK SCOOTER'S RIDER, standing, through whole kicks at 20 and at 60 frames a second:
 -- the hands stay on the grips while the body drops into the kick and rises out of it.
-T.test("real skeleton: a scooter rider's hands stay on the bars through the kick, at 20 and 60 fps", function()
-    for _, fps in ipairs({ 20, 60 }) do
+T.test("real skeleton: a scooter rider's hands stay on the bars through the kick, at 20 and 60 fps, and kicking hard", function()
+    for _, run in ipairs({ { 20, 1 }, { 60, 1 }, { 20, 2.2 } }) do
+        local fps, kicks = run[1], run[2]
         local sv, world = F.server()
         local cl = F.client(world)
         local E, B = cl.env, cl.env.BMX
@@ -197,7 +198,9 @@ T.test("real skeleton: a scooter rider's hands stay on the bars through the kick
         world.dt = 1 / fps
         local worst, reach = 0, 0
         for i = 1, fps * 2 do
-            local ph = (i % fps) / fps            -- a kick a second
+            -- a kick a second; kicking hard, more than two (the body drops into each
+            -- kick in a frame or two at 20 fps, as a client measured)
+            local ph = (i * kicks % fps) / fps
             ent:SetPushPhase(ph < 0.95 and ph or -1)
             frame()
             if i > fps then
@@ -206,8 +209,9 @@ T.test("real skeleton: a scooter rider's hands stay on the bars through the kick
                 reach = math.max(reach, ply.bmxSpineLeanShown or 0)
             end
         end
-        T.between(worst, 0, fps < 30 and 1.0 or 0.4, fps .. " fps: the fists off the grips through the kick, units at worst")
-        T.between(reach, 0, 16, fps .. " fps: the torso stood over the bars, not wound to its reach limit chasing them, degrees")
+        local label = fps .. " fps" .. (kicks > 1 and ", kicking hard" or "")
+        T.between(worst, 0, fps < 30 and 1.0 or 0.4, label .. ": the fists off the grips through the kick, units at worst")
+        T.between(reach, 0, 16, label .. ": the torso stood over the bars, not wound to its reach limit chasing them, degrees")
         T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
     end
 end)

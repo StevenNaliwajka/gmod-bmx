@@ -376,11 +376,27 @@ end
 -- at the top of the pedal stroke, where a pole with too much "up" in it had
 -- lifted it into the rider.
 --------------------------------------------------------------------------
+-- A FAST BODY NEEDS MORE THAN TWO PASSES. Each aim turns a joint at most MAX_STEP,
+-- so two passes a frame let a limb swing 50 degrees: when the body moved further than
+-- that in one frame -- the pelvis dropping 7 units into a scooter kick, the pop of a
+-- hop, on a 20 fps client -- the hand was left up to 8 units off the bar for that
+-- frame (2026-10-11). It goes on, up to SOLVE_PASSES, while the end of the limb is
+-- still SOLVE_CLOSE off where it is going; an ordinary frame is done in one or two.
+local SOLVE_PASSES, SOLVE_CLOSE = 5, 0.25
 local function solveLimb(ply, limb, T, pole)
     local rb, hb, eb = ply:LookupBone(limb.root), ply:LookupBone(limb.hinge),
         ply:LookupBone(limb.eff)
     if not (rb and hb and eb) then return end
-    for _ = 1, 2 do
+    for pass = 1, SOLVE_PASSES do
+        if pass > 2 then
+            refresh(ply)
+            local R0, F0 = bonePos(ply, rb), bonePos(ply, eb)
+            local want = T - R0
+            local reach = want:Length()
+            local la = (bonePos(ply, hb) - R0):Length() + (F0 - bonePos(ply, hb)):Length()
+            if reach > 1e-3 then want = R0 + want / reach * math.min(reach, la * 0.999) end
+            if (F0 - want):Length() < SOLVE_CLOSE then break end
+        end
         refresh(ply)
         local R, K, F = bonePos(ply, rb), bonePos(ply, hb), bonePos(ply, eb)
         local la, lb = (K - R):Length(), (F - K):Length()
@@ -818,10 +834,21 @@ function BMX.SolveRiderIK(ply, targets, bike)
                 -- kick, a hard landing) it had moved, and the fist was off the bar by up
                 -- to 8 units for that frame on a real client (2026-10-11). So when the
                 -- measured offset is GRIP_RESOLVE off the one used, the arm is solved
-                -- again with it, once.
+                -- again with it, once. The knuckles are aimed until they point where they
+                -- go (each aim turns the wrist at most MAX_STEP: after a big swing of the
+                -- forearm one was not enough, and the fist was still turned off the bar).
                 local knuck = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Finger2")
+                local kdir = (fwd - up * 0.3):GetNormalized()
+                local function aimKnuckles()
+                    if not (eb and knuck) then return end
+                    for _ = 1, 4 do
+                        aim(ply, eb, eb, knuck, kdir)
+                        local d = (bonePos(ply, knuck) - bonePos(ply, eb)):GetNormalized()
+                        if d:Dot(kdir) > 0.998 then break end
+                    end
+                end
                 for pass = 1, 2 do
-                    if eb and knuck then aim(ply, eb, eb, knuck, (fwd - up * 0.3):GetNormalized()) end
+                    aimKnuckles()
                     closeHand(ply, limb.side)
                     refresh(ply)
                     local fc, wr = fistCentre(ply, s), eb and bonePos(ply, eb)

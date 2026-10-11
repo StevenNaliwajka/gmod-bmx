@@ -550,6 +550,21 @@ local function spineReach(ply, targets)
     refresh(ply)
 end
 
+-- What spineReach decided, FOLLOWED (SMOOTH.reach): the lean and twist a pose adds to
+-- Spine2 this frame, degrees, and what spineReach's next trials take as already shown.
+-- The rider's pose and a passenger's (cl_passenger.lua) both put it on, or the torso a
+-- passenger's IK asked for was never drawn: a tandem's stoker, 4 units short of their
+-- bars, had spineReach wound to its limits (30 degrees of lean, 40 of twist) judging
+-- trials against a pose that never had either (seen on a real client, 2026-10-11).
+function BMX.RiderReachFollow(ply, dt)
+    if not (ply.bmxSpineTwist or ply.bmxSpineLean) then return 0, 0 end
+    local rs = ply.bmxReachSm or {}
+    ply.bmxReachSm = rs
+    ply.bmxSpineLeanShown = follow(rs, "lean", ply.bmxSpineLean or 0, SMOOTH.reach, dt)
+    ply.bmxSpineTwistShown = follow(rs, "twist", ply.bmxSpineTwist or 0, SMOOTH.reach, dt)
+    return ply.bmxSpineLeanShown, ply.bmxSpineTwistShown
+end
+
 -- WHICH WAY THE ELBOWS AND KNEES POINT, in the bike's own frame: x forward, y out to
 -- the limb's own side, z up. A cyclist's elbows hang out, down and back and the knees
 -- go forward; a motocross rider's elbows are UP and out and the knees grip the tank.
@@ -646,12 +661,90 @@ local function footDir(fwd, up, sole)
 end
 BMX.RiderFootDir = footDir
 
+-- THE TOES POINT WHEN THE PEDAL IS A STRETCH AWAY. At the bottom of the stroke on a
+-- tall bike (a penny-farthing's hub, a shorter model on any bike) the ankle that the
+-- stroke's sole puts behind the pedal can be past the leg's length, and the solve
+-- stood the leg straight with the foot off the pedal: two units at the bottom of
+-- every stroke on a real penny (2026-10-11). A rider's ankle extends there before
+-- the foot leaves the pedal. This is the least extra toe-down, up to TOE_REACH
+-- degrees, that brings the ankle within the leg's length (or as close as pointing
+-- them can): nothing on a bike that fits, and it comes and goes with the pedal.
+local TOE_REACH = 35
+BMX.RiderToeReach = TOE_REACH
+local function toesFor(ply, limb, T, fwd, up, sole, L)
+    local rb, hb, eb = ply:LookupBone(limb.root), ply:LookupBone(limb.hinge), ply:LookupBone(limb.eff)
+    local R, K, F = rb and bonePos(ply, rb), hb and bonePos(ply, hb), eb and bonePos(ply, eb)
+    if not (R and K and F) or L <= 0 then return 0 end
+    local reach = ((K - R):Length() + (F - K):Length()) * 0.995
+    local function far(e) return (T - footDir(fwd, up, sole + e) * L - R):Length() > reach end
+    if not far(0) then return 0 end
+    -- Pointing helps only until the foot lies along the line from the hip: past that
+    -- the ankle swings away again. Between, the distance falls the whole way.
+    local d = T - R
+    local best = math.deg(math.atan2(-d:Dot(up), d:Dot(fwd))) - FOOT_SLOPE - sole
+    local hi = math.Clamp(best, 0, TOE_REACH)
+    if hi <= 0 or far(hi) then return hi end
+    local lo = 0
+    for _ = 1, 10 do
+        local mid = (lo + hi) * 0.5
+        if far(mid) then lo = mid else hi = mid end
+    end
+    return hi
+end
+
+-- A TARGET THAT JUMPS IS EASED ACROSS, NOT SNAPPED TO. While a vehicle's model is
+-- still being built it is drawn as the simple bike, scaled, whose grips and pedals
+-- are not the model's; when the model is ready they move at once, and on a real
+-- client both riders of a tandem threw their hands and feet 7 to 10 units in one
+-- frame (2026-10-11). A limb's target that moves much further in one frame than it
+-- did in the last (JUMP_RATIO times, and more than JUMP_MIN plus what JUMP_SPEED
+-- covers in the frame -- a pedal or a kicking foot never does) is followed across
+-- the gap over JUMP_TIME, eased, from where the limb was. Kept in the vehicle's own
+-- frame (about the player), so riding along is not a jump. A rider not solved for a
+-- while (far off, or just got on) starts afresh.
+local JUMP_MIN, JUMP_SPEED, JUMP_RATIO, JUMP_TIME = 5, 60, 3, 0.2
+BMX.RiderJump = { min = JUMP_MIN, speed = JUMP_SPEED, ratio = JUMP_RATIO, time = JUMP_TIME }
+local function smooth01(t) return t * t * (3 - 2 * t) end
+local function followTarget(ply, key, T, o, fwd, right, up, now, dt)
+    local d = T - o
+    local loc = Vector(d:Dot(fwd), d:Dot(right), d:Dot(up))
+    local J = ply.bmxIKJump or {}
+    ply.bmxIKJump = J
+    local s = J[key]
+    if not s or now - s.time > 0.5 or now < s.time then
+        J[key] = { loc = loc, shown = loc, step = 0, time = now }
+        return T
+    end
+    local step = (loc - s.loc):Length()
+    if step > JUMP_MIN + JUMP_SPEED * dt and step > JUMP_RATIO * s.step then
+        s.from, s.t = s.shown, 0
+    else
+        s.step = step
+    end
+    s.loc, s.time = loc, now
+    local shown = loc
+    if s.from then
+        s.t = s.t + dt / JUMP_TIME
+        if s.t >= 1 then
+            s.from = nil
+        else
+            shown = s.from + (loc - s.from) * smooth01(s.t)
+        end
+    end
+    s.shown = shown
+    if not s.from then return T end
+    return o + fwd * shown.x + right * shown.y + up * shown.z
+end
+
 function BMX.SolveRiderIK(ply, targets, bike)
     ply.bmxIK = ply.bmxIK or {}
     ply.bmxGripOff = ply.bmxGripOff or {}
     local fwd, up, right = bike:GetForward(), bike:GetUp(), bike:GetRight()
     local set = BMX.PoseSetFor and BMX.PoseSetFor(bike)
     local poles = set and set.poles or {}
+    -- (The frame's time for the easing, the clock only to tell a rider not solved for a
+    -- while: a paused game's clock stands still, and so would a jump's easing.)
+    local origin, now, frameDt = ply:GetPos(), CurTime(), FrameTime()
     for _, limb in ipairs(LIMBS) do
         local T = targets[limb.target]
         -- A hand takes the point on its grip nearest its shoulder.
@@ -665,6 +758,7 @@ function BMX.SolveRiderIK(ply, targets, bike)
             T = A + g * t
             targets[limb.target .. "Held"] = T
         end
+        if T then T = followTarget(ply, limb.target, T, origin, fwd, right, up, now, frameDt) end
         if T then
             local s = limb.side == 1 and "R" or "L"
             local eb = ply:LookupBone(limb.eff)
@@ -674,9 +768,11 @@ function BMX.SolveRiderIK(ply, targets, bike)
             local W, dir
             if limb.leg then
                 local toe = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Toe0")
-                dir = footDir(fwd, up, targets[limb.target:sub(1, 1) .. "Sole"])
+                local sole = targets[limb.target:sub(1, 1) .. "Sole"] or 0
                 local L = (eb and toe) and ballLength(ply, eb, toe) or 0
                 refresh(ply)
+                sole = sole + toesFor(ply, limb, T, fwd, up, sole, L)
+                dir = footDir(fwd, up, sole)
                 W = T - dir * ankleSetback(ply, limb, T, dir, L)
             elseif holding then
                 local o = ply.bmxGripOff[limb.side]
@@ -960,7 +1056,7 @@ local function clear(ply)
     for b in pairs(ply.bmxIK or {}) do ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
     ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
     ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
-    ply.bmxGripOff, ply.bmxPoseFrame = nil, nil
+    ply.bmxGripOff, ply.bmxPoseFrame, ply.bmxIKJump = nil, nil, nil
     -- The board's crouch lowers the pelvis (cl_board.lua); put it back.
     if ply.bmxPelvis then
         ply:ManipulateBonePosition(ply.bmxPelvis, Vector(0, 0, 0))
@@ -988,19 +1084,19 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
         return
     end
 
+    -- Once a frame: a player drawn twice in one (a water reflection, a mirror,
+    -- a camera's screen) keeps what the first draw posed, rather than easing
+    -- twice as fast and solving the IK twice. A passenger too: theirs eases.
+    local frameNo = FrameNumber and FrameNumber()
+    if frameNo and ply.bmxPoseFrame == frameNo then return end
+    ply.bmxPoseFrame = frameNo
+
     -- A PASSENGER is not at the bars: their pose is their own (cl_passenger.lua).
     if BMX.IsPassenger and BMX.IsPassenger(ply) then
         BMX.PassengerPose(ply, bike)
         animated[ply] = true
         return
     end
-
-    -- Once a frame: a player drawn twice in one (a water reflection, a mirror,
-    -- a camera's screen) keeps what the first draw posed, rather than easing
-    -- twice as fast and solving the IK twice.
-    local frameNo = FrameNumber and FrameNumber()
-    if frameNo and ply.bmxPoseFrame == frameNo then return end
-    ply.bmxPoseFrame = frameNo
 
     local C = bike:Cfg()
     local useIK = cv_ik:GetBool() and bike.ikTargets ~= nil
@@ -1079,15 +1175,12 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     if set.maxLean and lean > set.maxLean then lean = set.maxLean end
     local twist = pose.spine.r + poseTwist
     local reachLean = 0
-    if useIK and (ply.bmxSpineTwist or ply.bmxSpineLean) then
+    if useIK then
         -- The IK's own lean and twist (spineReach), followed.
-        local rs = ply.bmxReachSm or {}
-        ply.bmxReachSm = rs
-        ply.bmxSpineLeanShown = follow(rs, "lean", ply.bmxSpineLean or 0, SMOOTH.reach, dt)
-        ply.bmxSpineTwistShown = follow(rs, "twist", ply.bmxSpineTwist or 0, SMOOTH.reach, dt)
-        reachLean = ply.bmxSpineLeanShown
+        local reachTwist
+        reachLean, reachTwist = BMX.RiderReachFollow(ply, dt)
         lean = lean + reachLean
-        twist = twist + ply.bmxSpineTwistShown
+        twist = twist + reachTwist
     end
     pose.spine = Angle(pose.spine.p, lean, twist)
     -- The neck holds the horizon against what was added to the set's own lean

@@ -690,7 +690,11 @@ BMX.RegisterVehicle({
 --                               quarters of it (rest height is derived from the share)
 --   mass centre (4, 0, 36)      36 above the front axle = 62 above the ground, and 18
 --                               behind the front patch (the header's lever)
---   seat (8, 0, 33)             the saddle, behind the top of the big wheel
+--   seat (7, 0, 27)             the saddle, behind the top of the big wheel and as low
+--                               as the backbone clears the tyre: at 33 the bottom of the
+--                               stroke was 47 units from a real player's hip, past the
+--                               41 a leg and foot reach, and the bars 26 from the shoulder
+--                               (2026-10-11); a penny was sized to its rider's legs
 --   Drive gearRatio 1, maxCadence 9, crankTorque 340000   direct drive: a stroke is a
 --                               wheel turn. The legs' ceiling is 9 * 26 = 234 u/s
 --                               (21 km/h), a penny-farthing's top gear
@@ -725,7 +729,7 @@ BMX.RegisterVehicle({
     drawer  = "pennyfarthing",
     physics = {
         Chassis = { mass = 84, hullMin = Vector(-6, -4, 14), hullMax = Vector(18, 4, 62),
-                    massCenterExpected = Vector(4, 0, 36), seatOffset = Vector(8, 0, 33),
+                    massCenterExpected = Vector(4, 0, 36), seatOffset = Vector(7, 0, 27),
                     barHullCentre = false, pegHullHalfWidth = false },
         Wheel   = { radius = 26, rearRadius = 6, wheelbase = 44, restLength = 8, spring = 16000, damper = 800,
                     loadShare = 0.75, inertia = 600, grip = 1.3, rollingResistance = 0.010 },
@@ -762,7 +766,10 @@ BMX.RegisterBike("tandem", {
     printName   = "Tandem",
     description = "A long two-seat bike. The captain (E) steers and brakes; get on behind them with E at the back for the second seat: the stoker's W adds their pedalling to the captain's, and the torques sum.",
     colorIndex  = 8,
-    pose        = "upright",
+    -- Drop bars on the hoods (cl_geo_odd.lua), so the road bike's tucked torso: sat up
+    -- ("upright"), a real captain was two units short of them with every degree of
+    -- reach the IK has (2026-10-11).
+    pose        = "road",
     input       = "bike_rearonly",
     tricks      = {},
     grindPoints = false,

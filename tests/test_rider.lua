@@ -538,3 +538,69 @@ T.test("the head looks into the turn, left and right, and back to the road", fun
     T.ok(math.abs(turn(0)) < 0.05, "straight again, eyes ahead")
     T.ok(turn(2000) < math.sin(math.rad(30)) + 0.05, "a fast spin turns it no further than the most")
 end)
+
+-- THE TOES POINT FOR A PEDAL A STRETCH AWAY (cl_rider.lua, toesFor). Placed beyond
+-- where the stroke's sole leaves the ankle in the leg's reach, but within the leg and
+-- foot laid in a line, the ball of the foot still reaches it: the ankle extends. A real
+-- rider on a penny-farthing had the foot two units off the pedal at the bottom of
+-- every stroke before (2026-10-11).
+T.test("IK: a pedal a stretch away: the toes point and the ball of the foot reaches it", function()
+    local cl, bike, ply = seated()
+    local E, B = cl.env, cl.env.BMX
+    for _ = 1, 40 do frame(cl, bike, ply) end
+    ply:InvalidateBoneCache(); ply:SetupBones()
+    local fwd, up = bike:GetForward(), bike:GetUp()
+    local hip = P(ply, "ValveBiped.Bip01_R_Thigh")
+    local leg = (P(ply, "ValveBiped.Bip01_R_Calf") - hip):Length() + (P(ply, "ValveBiped.Bip01_R_Foot") - P(ply, "ValveBiped.Bip01_R_Calf")):Length()
+    local ball = (P(ply, "ValveBiped.Bip01_R_Toe0") - P(ply, "ValveBiped.Bip01_R_Foot")):Length()
+    local down = (fwd * 0.25 - up):GetNormalized()
+    local T0 = hip + down * (leg + ball * 0.85)
+    -- with the stroke's sole the ankle would be out of the leg's reach
+    local flat = T0 - B.RiderFootDir(fwd, up, 10) * ball
+    T.ok((flat - hip):Length() > leg, string.format("(set up: the ankle a flat sole needs is %.1f from the hip, the leg %.1f)", (flat - hip):Length(), leg))
+    local targets = {}
+    for k, v in pairs(bike.ikTargets) do targets[k] = v end
+    targets.rFoot, targets.rSole = T0, 10
+    for _ = 1, 40 do B.SolveRiderIK(ply, targets, bike) end
+    ply:InvalidateBoneCache(); ply:SetupBones()
+    local toe, ankle = P(ply, "ValveBiped.Bip01_R_Toe0"), P(ply, "ValveBiped.Bip01_R_Foot")
+    T.between((toe - T0):Length(), 0, 1.0, "the ball of the foot on the far pedal, units")
+    local d = (toe - ankle):GetNormalized()
+    local pitch = math.deg(math.asin(-d:Dot(up)))
+    T.ok(pitch > 25 + 10 + 10, string.format("the toes pointed: %.0f deg below level, the stroke's sole %.0f", pitch, 25 + 10))
+    T.ok(pitch < 25 + 10 + B.RiderToeReach + 2, "no further than the ankle goes")
+end)
+
+-- A TARGET THAT JUMPS IS EASED ACROSS (cl_rider.lua, followTarget): a vehicle's model
+-- finishing its build moves every grip and pedal at once, and the hands followed in one
+-- frame. Now the hand is part way the frame after, and there within JUMP_TIME.
+T.test("IK: a grip that jumps is followed across, not snapped to, and a steady one exactly", function()
+    local cl, bike, ply = seated()
+    local E, B = cl.env, cl.env.BMX
+    for _ = 1, 40 do frame(cl, bike, ply) end
+    local fwd = bike:GetForward()
+    local base = { rHand = bike.ikTargets.rHand, lHand = bike.ikTargets.lHand,
+                   rFoot = bike.ikTargets.rFoot, lFoot = bike.ikTargets.lFoot,
+                   rSole = bike.ikTargets.rSole, lSole = bike.ikTargets.lSole }
+    local function solve(shift, n)
+        local t = {}
+        for k, v in pairs(base) do t[k] = v end
+        t.rHand, t.lHand = base.rHand + fwd * shift, base.lHand + fwd * shift
+        for _ = 1, n do B.SolveRiderIK(ply, t, bike) end
+        ply:InvalidateBoneCache(); ply:SetupBones()
+        return (B.RiderFistCentre(ply, "R") - t.rHand):Length(), (B.RiderFistCentre(ply, "R") - base.rHand):Length()
+    end
+    local atNew = solve(0, 30)
+    T.between(atNew, 0, 1.5, "settled on the grip")
+    -- 8 units toward the rider in one frame: a jump
+    local frames = math.ceil(B.RiderJump.time / E.FrameTime())
+    local toNew = solve(-8, 1)
+    T.ok(toNew > 6, string.format("the frame after, not there yet (it eases in): %.1f from the new grip", toNew))
+    local midNew, midOld = solve(-8, math.floor(frames / 2) - 1)
+    T.ok(midNew > 2 and midOld > 2, string.format("half way through, between the two: %.1f from the new, %.1f from the old", midNew, midOld))
+    T.between(solve(-8, frames), 0, 1.5, "and on the new grip within the easing time")
+    -- small steady steps (a turning bar) are followed as they come
+    local worst = 0
+    for i = 1, 20 do worst = math.max(worst, (solve(-8 + i * 0.3, 1))) end
+    T.between(worst, 0, 1.5, "a grip moving steadily is held all the way")
+end)

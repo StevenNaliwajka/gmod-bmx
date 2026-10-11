@@ -142,11 +142,30 @@ T.test("odd models: the feet and hands go where the riders' poses expect them", 
         local l = G.vec.len(d)
         return G.vec.madd(g.A, d, math.min(1.75, l * 0.5) / l)
     end
-    local oldFoot = { 22 + 8, -(4.5 + 1.8), 0 }
-    T.ok(dist({ P.bb[1] + P.crank, P.bb[2] - P.pedalY, 0 }, oldFoot) < 2, "the penny's right pedal near the old foot")
+    local oldFoot = { 22 + 5.5, -(4.5 + 1.8), 0 }
+    T.ok(dist({ P.bb[1] + P.crank, P.bb[2] - P.pedalY, 0 }, oldFoot) < 2, "the penny's right pedal near the simple drawing's")
     T.ok(dist(hold(P.gripR), { 23, -10.5, 34 }) < 2, "the penny's right hand near the old one")
     T.ok(dist(hold(P.gripL), { 23, 10.5, 34 }) < 2, "and the left")
     T.ok(P.gripR.A[2] < 0 and P.gripL.A[2] > 0, "right is -y")
+    -- THE PENNY FITS A PLAYER (2026-10-11: a real client's rider had the foot two to
+    -- seven units off the pedal at the bottom of every stroke and the hands short of
+    -- the bars, from a saddle at 33). Measured on kleiner in the seat: the pelvis is
+    -- 5.2 ahead of and 9.2 over the seat point, and thigh, shin and the foot to its
+    -- ball reach 41.3; the pedal's tread is 0.9 over the spindle, and the model sits
+    -- its rest sag (2.36) up on the chassis.
+    local S = SIZES.penny
+    local hip = { S.seat[1] + 5.2, 0, S.seat[3] + 9.2 }
+    local bottom = { P.bb[1], 0, P.bb[3] + 2.36 - P.crank + 0.9 }
+    T.between(dist(hip, bottom), 0, 40.5, "the bottom of the stroke within a player's leg and foot of the hip")
+    -- ...and the saddle is not in the tyre: nothing of the frame (backbone, spring,
+    -- saddle) inside the big wheel's tread.
+    local worst = math.huge
+    each(model("penny"), "frame", function(v)
+        if math.abs(v.p[2]) < 1.4 then
+            worst = math.min(worst, math.sqrt((v.p[1] - P.front[1]) ^ 2 + (v.p[3] - P.front[3]) ^ 2) - 26.47)
+        end
+    end)
+    T.ok(worst > 0.3, string.format("the frame clears the big tyre: %.2f units at the closest", worst))
     -- the tandem: a bike's bottom bracket under each saddle, the captain's hands on
     -- the hoods, the stoker's on the bar behind the captain's saddle
     local L = model("tandem").layout

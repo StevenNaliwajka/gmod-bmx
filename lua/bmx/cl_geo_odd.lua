@@ -563,7 +563,7 @@ local function buildPenny(opt)
     local half = (opt.wheelbase or 44) * 0.5
     local RF = opt.radius or 26
     local RR = opt.rearRadius or 6
-    local seat = opt.seat or { 8, 0, 33 }
+    local seat = opt.seat or { 7, 0, 27 }
     local saddleTop = add(seat, V(-0.5, 0, 2.0))
     local F = V(half, 0, 0)
     local Rx = V(-half, 0, -(RF - RR))
@@ -697,10 +697,12 @@ local function buildPenny(opt)
     lathe(P, { { 0.6, sNeck0, true }, { 0.98, sNeck0, true }, { 1.02, sNeck0 + 0.15 }, { 0.92, sNeck0 + 0.5 },
                { 0.92, sNeck1 - 0.5 }, { 1.02, sNeck1 - 0.15 }, { 0.98, sNeck1, true }, { 0.6, sNeck1, true } }, F, st, 26)
     local neckMid = A((sNeck0 + sNeck1) * 0.5)
+    -- Close round the tyre (a couple of units clear), so the saddle's spring can sit
+    -- low over it: the saddle is as low as a rider's legs need (sh_bikes.lua, `seat`).
     local bbPts = {
         add(neckMid, V(-0.5, 0, 0.1)),
-        V(13.0, 0, 30.9), V(7.5, 0, 29.6), V(1.5, 0, 26.7), V(-4.0, 0, 21.6), V(-8.5, 0, 14.6),
-        V(-12.6, 0, 6.6), V(-16.2, 0, -0.9), V(-19.0, 0, -6.5), V(Rx[1] + 1.05, 0, Rx[3] + RR + 2.4),
+        V(14.0, 0, 27.4), V(10.5, 0, 25.3), V(6.0, 0, 23.2), V(1.0, 0, 19.6), V(-4.0, 0, 14.0), V(-8.5, 0, 8.5),
+        V(-12.6, 0, 3.0), V(-16.2, 0, -2.0), V(-19.0, 0, -6.5), V(Rx[1] + 1.05, 0, Rx[3] + RR + 2.4),
     }
     local bpath = spline(bbPts, 6)
     local bbR = function(t) return 0.98 - 0.4 * t, 0.82 - 0.32 * t end
@@ -817,7 +819,9 @@ local function buildPenny(opt)
 
     -- THE CRANKS on the big hub: square axle ends, slotted steel arms (the
     -- throw is set by where the pedal sits in the slot), the right one forward.
-    local CR = 6.75
+    -- The pedals are in the slot's inner half: a short throw for legs that must reach
+    -- the bottom of the stroke from a saddle over a 26-unit wheel.
+    local CR = 5.5
     local armY = 4.2
     local pedalY = armY + 0.35 + 2.0
     do

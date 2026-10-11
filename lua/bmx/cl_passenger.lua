@@ -90,16 +90,25 @@ function BMX.PassengerTargets(ply, bike, kind, rider)
 end
 
 -- The torso: forward over the rider's back (a standing passenger leans on them),
--- upright in a child seat.
-local LEAN = { pegs = 16, child = 4 }
+-- upright in a child seat, and a tandem's stoker forward to their own bars (which
+-- are low, behind the captain's saddle: a road rider's lean, not a passenger's).
+local LEAN = { pegs = 16, child = 4, stoker = 26 }
+BMX.PassengerLean = LEAN
 
 function BMX.PassengerPose(ply, bike)
     local kind = BMX.PassengerKind(ply, bike) or "pegs"
+    local stoker = kind == "pegs" and bike.ikTargetsStoker and bike.ikTargetsStoker.rFoot
+    local base = LEAN[stoker and "stoker" or kind]
+    local ik = BMX.SolveRiderIK and GetConVar("bmx_rider_ik"):GetBool()
+    -- ...and as far again as the IK asks to get the hands to what they hold (spineReach,
+    -- cl_rider.lua), followed as a rider's is.
+    local reachLean, reachTwist = 0, 0
+    if ik and BMX.RiderReachFollow then reachLean, reachTwist = BMX.RiderReachFollow(ply, FrameTime()) end
     local b = ply:LookupBone("ValveBiped.Bip01_Spine2")
-    if b then ply:ManipulateBoneAngles(b, Angle(0, LEAN[kind], 0)) end
+    if b then ply:ManipulateBoneAngles(b, Angle(0, base + reachLean, reachTwist)) end
     local head = ply:LookupBone("ValveBiped.Bip01_Head1")
-    if head then ply:ManipulateBoneAngles(head, BMX.HeadAngle(Angle(0, -LEAN[kind] * 0.7, 0))) end
-    if BMX.SolveRiderIK and GetConVar("bmx_rider_ik"):GetBool() then
+    if head then ply:ManipulateBoneAngles(head, BMX.HeadAngle(Angle(0, -(base + reachLean) * 0.7, -reachTwist * 0.5))) end
+    if ik then
         local targets = BMX.PassengerTargets(ply, bike, kind, bike:GetDriver())
         BMX.SolveRiderIK(ply, targets, bike)
     end

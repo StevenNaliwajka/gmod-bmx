@@ -344,7 +344,7 @@ BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
     H.solid("sph", saddle + up * 1.5, ent:GetAngles(), Vector(9, 4, 2), H.COL.part, H.MAT.matte)
     if lod == 0 then H.joint(crown, 2.6, col) end
 
-    cranks(ent, H, fPos, sFwd, up, fAxle, fSpin, 8, 4.5, ik, lod, col)
+    cranks(ent, H, fPos, sFwd, up, fAxle, fSpin, 5.5, 4.5, ik, lod, col)
     ik.rHand = gripRA + fAxle * 1.75
     ik.lHand = gripLA - fAxle * 1.75
     ik.rHandA, ik.rHandB = gripRA, gripR

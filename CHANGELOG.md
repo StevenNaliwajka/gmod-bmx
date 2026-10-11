@@ -5,6 +5,30 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.3.2 -- not on the Workshop yet
+
+Hands on the bars and feet on the pedals, on every vehicle. Measured on a real
+player model riding each vehicle in turn, frame by frame:
+
+- **Tandem: both riders reach their bars.** The captain sat bolt upright over
+  drop bars and was two units short of them; the captain now rides tucked, as on
+  the road bike. The stoker's hands hung four units short of their bars: the
+  torso lean that reaches for them was worked out but never drawn on a
+  passenger. It is now, and a stoker leans forward to their bars as a road
+  rider does.
+- **Penny-farthing: feet on the pedals all the way round.** The saddle was so
+  high that no player's leg reached the bottom of the stroke, and the hands
+  were short of the bars. The saddle is lower (the backbone now hugs the big
+  wheel to make room) and the pedals sit in the inner end of the crank slots,
+  as on a real one.
+- **Toes point for a far pedal.** When a pedal is just out of reach at the
+  bottom of the stroke, the ankle extends to keep the foot on it, as a real
+  rider's does, instead of the foot leaving the pedal.
+- **No snap when a vehicle's model finishes building.** While a new vehicle's
+  model builds, the simple bike is drawn; when the model appeared every grip and
+  pedal moved at once and the riders' hands and feet jumped up to ten units in
+  one frame. They now ease across in a fifth of a second.
+
 ## 1.3.1 -- on the Workshop 2026-10-11
 
 - **Riders look through corners.** The head turns a little way into the turn

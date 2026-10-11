@@ -102,7 +102,7 @@ T.test("penny: it pedals up to a penny-farthing's top speed with its legs on the
     local f, r = e.wheels[1], e.wheels[2]
     T.near(f.omega * 26, e.st.fwdSpeed, 40, "the big wheel turns with the ground")
     T.ok(r.omega * 6 > 0, "and the small one rolls")
-    T.ok(e:GetPod():GetPos().z - e:GetPos().z > 30 or e:Cfg().Chassis.seatOffset.z > 30, "the saddle is over the big wheel")
+    T.ok(e:Cfg().Chassis.seatOffset.z > e:Cfg().Wheel.radius, "the saddle is over the big wheel: " .. e:Cfg().Chassis.seatOffset.z)
     T.ok(math.abs(e.st.roll) < math.rad(5), "upright")
 end)
 
@@ -258,6 +258,9 @@ end
 T.test("tandem: it registers clean: two seats, the second one pedals, the front one steers", function()
     local sv = F.server()
     local B = sv.env.BMX
+    -- drop bars on the hoods: ridden as a road bike is, tucked (sat up, a real captain
+    -- was two units short of them, 2026-10-11)
+    T.eq(B.Bikes.tandem.pose, "road", "the road bike's pose set")
     local d = B.Bikes.tandem
     T.ok(d, "registered")
     T.eq(#sv.errors, 0, "nothing rejected: " .. table.concat(sv.errors, " | "))

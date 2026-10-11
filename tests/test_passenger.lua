@@ -603,6 +603,59 @@ T.test("client: a tandem's stoker gets their hands onto their own bars", functio
     T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
 end)
 
+-- A STOKER WHOSE BARS ARE A STRETCH AWAY LEANS ON TO THEM. On a real model the stoker's
+-- bars were four units past their arms: spineReach asked for its whole lean and twist,
+-- and the passenger's pose never drew either, so the hands hung short (2026-10-11).
+-- Here the bars are moved six units further forward than the model has them, past the
+-- stand-in's arms at the stoker's own lean: the torso goes over and the hands get there.
+T.test("client: a tandem's stoker leans on to bars a stretch away, and the hands reach them", function()
+    local MF = require("lib.meshfake")
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local E, B = cl.env, cl.env.BMX
+    MF.enable(cl)
+    local cb = cl:clientEntity("bmx_tandem")
+    cb:SetPos(E.Vector(0, 0, F.restHeight(sv)))
+    local front = B.SeatFor(B.Vehicles.tandem, cb:Cfg(), "rider")
+    local back = B.SeatFor(B.Vehicles.tandem, cb:Cfg(), "pegs")
+    local pod1 = cl.makeEntity("prop_vehicle_prisoner_pod")
+    local pod2 = cl.makeEntity("prop_vehicle_prisoner_pod")
+    pod1:SetParent(cb)
+    pod2:SetParent(cb)
+    pod1:SetPos(cb:LocalToWorld(front.offset))
+    pod1:SetAngles(cb:LocalToWorldAngles(front.angles))
+    pod2:SetPos(cb:LocalToWorld(back.offset))
+    pod2:SetAngles(cb:LocalToWorldAngles(back.angles))
+    cb:SetPod(pod1)
+    local rider, stoker = cl:player("Captain"), cl:player("Stoker")
+    rider._vehicle, stoker._vehicle = pod1, pod2
+    cb:SetDriver(rider)
+    cb._nw.PaxPegs = stoker
+    T.ok(MF.ready(cl, cb), "the model builds")
+    local fwd = cb:GetForward()
+    local spine = stoker:LookupBone("ValveBiped.Bip01_Spine2")
+    local function draw()
+        MF.draw(cl, cb)
+        local stk = cb.ikTargetsStoker
+        for _, k in ipairs({ "rHand", "lHand", "rHandA", "rHandB", "lHandA", "lHandB" }) do
+            if stk[k] then stk[k] = stk[k] + fwd * 6 end
+        end
+        E.hook.Run("PrePlayerDraw", rider)
+        E.hook.Run("PrePlayerDraw", stoker)
+        return stk
+    end
+    local stk
+    for _ = 1, 90 do stk = draw() end
+    local lean = stoker:GetManipulateBoneAngles(spine).y
+    T.ok(lean > B.PassengerLean.stoker + 4, string.format("the torso goes over: %.1f deg, the stoker's own %d", lean, B.PassengerLean.stoker))
+    for _, side in ipairs({ "R", "L" }) do
+        local key = side == "R" and "rHand" or "lHand"
+        local d = (B.RiderFistCentre(stoker, side) - (stk[key .. "Held"] or stk[key])):Length()
+        T.between(d, 0, 2, key .. " on the far bar, units")
+    end
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
 T.test("client: a passenger looks where they like: the chase camera leaves their view to the pod", function()
     local sv, world = F.server()
     local cl, cb, rider, pax = clientScene(world)

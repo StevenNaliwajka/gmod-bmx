@@ -375,7 +375,12 @@ local function sameTargets(a, b, label)
     for k, v in pairs(a) do
         n = n + 1
         T.ok(b[k] ~= nil, label .. ": " .. k .. " is still a target")
-        if b[k] then T.near((b[k] - v):Length(), 0, 1e-9, label .. ": " .. k .. " where the primitive drawing put it") end
+        -- (a flag on the table, the board's openHands, is the same flag)
+        if type(v) ~= "table" and type(v) ~= "userdata" then
+            T.eq(b[k], v, label .. ": " .. k .. " the same")
+        elseif b[k] then
+            T.near((b[k] - v):Length(), 0, 1e-9, label .. ": " .. k .. " where the primitive drawing put it")
+        end
     end
     for k in pairs(b) do T.ok(a[k] ~= nil, label .. ": no new target " .. k) end
     T.ok(n >= 4, label .. ": both hands and both feet")

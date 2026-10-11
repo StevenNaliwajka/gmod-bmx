@@ -5,7 +5,7 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
-## 1.3.0 -- not yet on the Workshop
+## 1.3.0 -- on the Workshop 2026-10-11
 
 No more freeze on spawn, riders that move like riders, and a round of fixes
 for servers.

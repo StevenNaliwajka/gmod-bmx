@@ -30,3 +30,32 @@ camera is checked for a clear line to its subject: blocked, it swings round the 
 in 30 degree steps to the nearest clear spot at the same distance, or else moves in to
 just short of what is in the way. Each moved camera is reported in the server log
 (`[ride] client diag: stock_front: swung 30`).
+
+## The animation sweep
+
+Numbers rather than pictures: `sweep.sh` rides a bot on each vehicle in turn (the BMX
+with a no-hander, the BMX with a passenger on the pegs and a can-can, the road bike,
+the tandem with a stoker, the unicycle, the penny-farthing, the dirt bike with a
+superman, the scooter, the skateboard) through the same 14 seconds -- pedal in a
+circle, sprint, attack and standing stances, a hop with the style pose -- while YOUR
+client follows each one and measures every frame:
+
+- how far each fist and foot is drawn from what the IK was handed, and from the grips
+  and pedals the vehicle drew that same frame (a rider drawn before their vehicle
+  would hold last frame's grips);
+- how far the hands, feet, spine and head move in a frame and how sharply that motion
+  changes (scaled to a 60 fps frame, so an uneven frame time is not a pop);
+- the frame times while each vehicle's model is first built, against the second
+  before;
+- every server setting against the client's copy of it.
+
+      BMX_RCON_PASSWORD=... BMX_STUDIO_OWNER=Burrito tools/ride/sweep.sh            # summary
+      BMX_RCON_PASSWORD=... BMX_STUDIO_OWNER=Burrito tools/ride/sweep.sh 1 "4 6"    # per frame, tandem and penny
+
+Run it on gm_flatgrass (`changelevel gm_flatgrass`): the stage is the open plane at
+(4000, 4000) by default (`sweep_ground x y z` for another map), clear of the spawn
+slab's 512-unit drop. A hand's miss is measured from the fist's centre, so OPEN hands
+(the unicycle's, a skater's between grabs) read the wrist-to-knuckles length, not a
+miss. First used 2026-10-11 on the marionette client: it found the tandem's and the
+penny-farthing's riders short of their bars and pedals, the skater hunched over, and
+the hands and feet jumping when a model finished building (1.3.2).

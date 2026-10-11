@@ -1338,7 +1338,8 @@ function M.Realm(world, which)
     end
     function Ply:GetGroundEntity() return self._groundEnt or NULL end
     function Ply:GetRenderAngles() return Angle(0, self:EyeAngles().y, 0) end
-    function Ply:ManipulateBonePosition(b, v) self._manipPos = self._manipPos or {}; self._manipPos[b] = v end
+    function Ply:ManipulateBonePosition(b, v) self._manipPos = self._manipPos or {}; self._manipPos[b] = v; self._pose = nil end
+    function Ply:GetManipulateBonePosition(b) return Vector((self._manipPos or {})[b] or Vector()) end
     -- A worn vehicle (G25) lowers the friction multiplier, and reads whether the engine has the
     -- player on the ground: a test says which with ply._onGround (on the ground unless false).
     function Ply:SetFriction(f) self._friction = f end
@@ -1400,7 +1401,9 @@ function M.Realm(world, which)
     -- Bones: the seated skeleton in lib/skeleton.lua, posed in the seat.
     -- Manipulations compose as the engine's do, and are also RECORDED by
     -- bone name (ply._bones) for tests that only care what was asked for.
-    function Ply:LookupBone(name) return SK.INDEX[name] end
+    -- A player may carry a real model's skeleton (lib/skeleton_real.lua, `ply._skel`);
+    -- otherwise the stand-in.
+    function Ply:LookupBone(name) return (self._skel or SK).INDEX[name] end
     function Ply:LookupSequence(name)
         if self._noSequences then return -1 end
         return name == "drive_airboat" and 42 or -1
@@ -1409,7 +1412,7 @@ function M.Realm(world, which)
         self._manip = self._manip or {}
         self._manip[b] = Angle(a.p, a.y, a.r)
         self._bones = self._bones or {}
-        self._bones[SK.BONES[b][1]] = self._manip[b]
+        self._bones[(self._skel or SK).BONES[b][1]] = self._manip[b]
         self._pose = nil
     end
     function Ply:GetManipulateBoneAngles(b)
@@ -1427,7 +1430,7 @@ function M.Realm(world, which)
     end
     function Ply:SetupBones()
         local pos, ang = rootPose(self)
-        self._pose = SK.pose(pos, ang, self._manip or {})
+        self._pose = (self._skel or SK).pose(pos, ang, self._manip or {}, self._manipPos)
         R.setupBones = (R.setupBones or 0) + 1
     end
     function Ply:InvalidateBoneCache() self._pose = nil end
@@ -1436,7 +1439,7 @@ function M.Realm(world, which)
         local m = self._pose[b]
         return m and m:Copy() or nil
     end
-    function Ply:GetBoneCount() return #SK.BONES end
+    function Ply:GetBoneCount() return #(self._skel or SK).BONES end
     -- The server telling this player's client to run a command. For a
     -- convar, that sets it, and (a userinfo convar) GetInfo then reports it.
     function Ply:ConCommand(line)

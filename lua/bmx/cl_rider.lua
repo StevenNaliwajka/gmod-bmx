@@ -533,6 +533,12 @@ local function spineReach(ply, targets)
         tries = { { -math.min(math.abs(tw), step * 0.5) * (tw > 0 and 1 or -1),
                     -math.min(ln, step * 0.5) } }
     end
+    -- THE BEST OF THE TRIES, not the first that helps. Taking the first, a twist
+    -- step helped every frame by undoing the last one's overshoot, so the twist
+    -- dithered (7, 18, 14, 10... degrees) and the lean behind it was never tried: a
+    -- dirt bike's rider, whose grips are 20 units ahead, stayed two units short of
+    -- the left one (2026-10-11, on kleiner's own skeleton).
+    local bestT, bestL, bestE
     for _, d in ipairs(tries) do
         local nt = math.Clamp(tw + d[1], -SPINE_TWIST, SPINE_TWIST)
         local nl = math.Clamp(ln + d[2], 0, SPINE_LEAN)
@@ -541,11 +547,14 @@ local function spineReach(ply, targets)
         ply:ManipulateBoneAngles(sb, Angle(baseP, baseY + nl, baseR + nt))
         refresh(ply)
         local e1 = reachExcess(ply, targets)
-        if (e0 > REACH_OUT and e1 < e0 - 1e-3) or (e0 < REACH_IN and e1 < REACH_IN) then
-            ply.bmxSpineTwist, ply.bmxSpineLean = nt, nl
-            break
+        if e0 < REACH_IN then
+            -- easing back: take it while it stays in reach
+            if e1 < REACH_IN then bestT, bestL = nt, nl break end
+        elseif e1 < e0 - 1e-3 and (not bestE or e1 < bestE) then
+            bestT, bestL, bestE = nt, nl, e1
         end
     end
+    if bestT then ply.bmxSpineTwist, ply.bmxSpineLean = bestT, bestL end
     ply:ManipulateBoneAngles(sb, cur)
     refresh(ply)
 end
@@ -611,7 +620,7 @@ end
 -- motorcyclist rides on the balls of their feet, ready to stand.
 BMX.PegSole = 6
 local GRIP_OFF_MAX = 6      -- units: a measured wrist-to-fist offset longer than this is wrong
-local GRIP_RESOLVE = 1      -- units: a fist this far from where it was used is solved for again
+local GRIP_RESOLVE = 0.25   -- units: a fist this far from where it was used is solved for again
 
 local function ballLength(ply, foot, toe)
     local a, b = bonePos(ply, foot), bonePos(ply, toe)

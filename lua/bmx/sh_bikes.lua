@@ -773,6 +773,9 @@ BMX.RegisterBike("tandem", {
     input       = "bike_rearonly",
     tricks      = {},
     grindPoints = false,
+    -- While its model builds, the simple bike at the stock size round the captain's
+    -- saddle, not stretched to the wheelbase (cl_init.lua): the captain fits it.
+    simpleAtSeat = true,
     seats = {
         rider = { pedals = true },
         pegs  = { offset = Vector(-18, 0, 22), massFactor = 0.6, pedals = true },

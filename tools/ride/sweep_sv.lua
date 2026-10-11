@@ -160,6 +160,15 @@ SW.RUNS = {
     { id = "dirtbike", throttle = 0.15, lean = 0.1, pose = "superman", boost = 260 },
     { id = "scooter" },
     { id = "skateboard", board = true },
+    { id = "cruiser" },
+    { id = "mini" },
+    { id = "fixie" },
+    { id = "city", throttle = 0.3 },
+    { id = "dh" },
+    { id = "ebike", throttle = 0.2 },
+    { id = "emoto", throttle = 0.12, lean = 0.1 },
+    { id = "moped", throttle = 0.15, lean = 0.1 },
+    { id = "dirtbike", throttle = 0.06, lean = 0.6 },     -- slow, at full lock
 }
 -- sweep_run <detail 0|1> [run numbers...]: every run in SW.RUNS, or the ones named.
 concommand.Add("sweep_ground", function(p, _, args)

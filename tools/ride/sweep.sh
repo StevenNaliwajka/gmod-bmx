@@ -4,7 +4,7 @@
 #   BMX_RCON_PASSWORD=... BMX_STUDIO_OWNER=<your name> tools/ride/sweep.sh [detail] [runs] [outfile]
 #
 # detail: 1 adds a line per frame per rider (each limb's miss, speed, stance, the reach);
-# runs: space-separated numbers into SWEEP.RUNS in sweep_sv.lua (default all nine).
+# runs: space-separated numbers into SWEEP.RUNS in sweep_sv.lua (default all eighteen).
 # Needs a test server running this addon with YOUR client connected (it renders and
 # measures), ssh to the server, and an open floor: gm_flatgrass by default. See README.md.
 set -euo pipefail
@@ -34,7 +34,7 @@ rcon "sweep_cv as-joined" >/dev/null
 sleep 2
 rcon "sweep_run $DETAIL $RUNS" >/dev/null
 
-n=$(echo ${RUNS:-1 2 3 4 5 6 7 8 9} | wc -w)
+n=$(echo ${RUNS:-$(seq 1 18)} | wc -w)
 echo "sweeping $n runs, 20 s each, on the client ..."
 for _ in $(seq 1 $((n * 7 + 20))); do
   ssh "$SSH" "grep -q DONE $GMOD/data/sweep/result.txt 2>/dev/null" && break

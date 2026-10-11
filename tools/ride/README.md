@@ -36,7 +36,9 @@ just short of what is in the way. Each moved camera is reported in the server lo
 Numbers rather than pictures: `sweep.sh` rides a bot on each vehicle in turn (the BMX
 with a no-hander, the BMX with a passenger on the pegs and a can-can, the road bike,
 the tandem with a stoker, the unicycle, the penny-farthing, the dirt bike with a
-superman, the scooter, the skateboard) through the same 14 seconds -- pedal in a
+superman, the scooter, the skateboard, then the cruiser, mini, fixie, city bike,
+downhill bike, e-bike, e-moto, moped and the dirt bike slow at full lock) through the
+same 14 seconds -- pedal in a
 circle, sprint, attack and standing stances, a hop with the style pose -- while YOUR
 client follows each one and measures every frame:
 

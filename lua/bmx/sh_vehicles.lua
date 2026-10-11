@@ -343,6 +343,9 @@ local TOP_LEVEL = {
     -- the procedural drawing a vehicle that is not the stock bike's shape asks for
     -- (G13, BMX.Drawers in cl_oddbikes.lua): a unicycle, a penny-farthing, a tandem
     drawer = true,
+    -- while its model builds, the simple bike at the stock size round the rider's
+    -- seat rather than stretched to the wheelbase (cl_init.lua; the tandem's)
+    simpleAtSeat = true,
     hidden = true,      -- not in the spawn menu
     debugOnly = true,   -- bmx_spawn needs bmx_debug >= 1
 }

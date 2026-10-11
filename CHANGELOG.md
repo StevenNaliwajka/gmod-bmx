@@ -5,6 +5,24 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.3.3 -- not on the Workshop yet
+
+The last riders who did not fit their vehicles, found by riding every vehicle on
+a real player model's skeleton:
+
+- **Dirt bike: both hands on the bars.** The left hand was two units short,
+  more at full lock. The rider now leans on to the bars when they are far,
+  instead of twisting back and forth.
+- **Scooter: hands stay on the bars through the kick.** Riders stood bolt
+  upright between kicks with the bars at arm's length, so as each kick ended the
+  hands came off them and the body pumped back and forth chasing them. Riders
+  now stand leaned over the bars, as on a real scooter.
+- **The bike shown while a new model loads fits its rider.** For the few
+  seconds a vehicle's model takes to build the first time, a simple bike stands
+  in. On the tandem it was a stretched BMX the riders' feet did not reach; it is
+  now a tandem of two ordinary bike cockpits, one under each rider. On the city
+  bike the hands now hold its swept-back grips.
+
 ## 1.3.2 -- on the Workshop 2026-10-11
 
 Hands on the bars and feet on the pedals, on every vehicle. Measured on a real

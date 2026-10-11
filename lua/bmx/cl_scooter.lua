@@ -108,6 +108,13 @@ end
 local KICK_DROP = 9             -- units the pelvis goes down at the bottom of a kick
 local AIR_TUCK  = 3             -- ...and in the air
 SC.KickDrop = KICK_DROP
+-- STOOD OVER THE BARS. A scooter's bars are waist high, and a rider stood bolt
+-- upright between kicks had them past arm's length: the IK's reach lean ran to its
+-- 30 degree limit to hold them, then lagged a kick behind -- the torso pumped against
+-- the kick and the hands came off the bars as the body rose (measured on kleiner,
+-- 2026-10-11). A rider leans over them; this much, before the speed and the kick.
+local STAND_LEAN = 16
+SC.StandLean = STAND_LEAN
 
 function SC.BodyDrop(s)
     local crouch = math.Clamp(s.crouch or 0, 0, 1)
@@ -125,7 +132,7 @@ SET.rider = function(s)
         B.LowerPelvis(ply, SC.BodyDrop({ crouch = crouch, pushBend = R.pushBend, air = R.air }))
     end
     local speedLean = math.Clamp((s.speed or 0) / 330, 0, 1) * 6
-    local spine = crouch * 16 + speedLean + (R.pushBend or 0) * 10 + math.deg(s.pitch or 0) * 0.5
+    local spine = STAND_LEAN + crouch * 16 + speedLean + (R.pushBend or 0) * 10 + math.deg(s.pitch or 0) * 0.5
     local twist = math.deg(s.steer or 0) * 0.3
     return {
         spine = Angle(0, spine, twist),

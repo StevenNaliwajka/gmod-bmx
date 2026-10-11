@@ -1035,8 +1035,9 @@ function ENT:Draw()
     local sag = math.Clamp(C.Chassis.mass * g * 0.5 / WC.spring, 0, WC.restLength)
     local lift0 = Vector(0, 0, sag)
     local bodyC = self:LocalToWorld(Vector(0, 0, 10 * k))
+    local simpleAt = Vector(0, 0, 0)        -- (see `simpleAtSeat`, below)
     local function P(v)
-        local p = self:LocalToWorld(v * k + lift0)
+        local p = self:LocalToWorld(v * k + simpleAt + lift0)
         return bodyRoll ~= 0 and rotAbout(p, bodyC, fwd, bodyRoll) or p
     end
     if bodyRoll ~= 0 then
@@ -1110,6 +1111,21 @@ function ENT:Draw()
     end
 
     if bike.hasModel then return end
+
+    -- A LONG VEHICLE'S SIMPLE BIKE (`simpleAtSeat` in its registration: the tandem's).
+    -- The simple bike is the stock frame scaled to the wheelbase, which for a tandem
+    -- (x1.8) put its saddle 28 units behind the captain and its pedals out of their
+    -- legs' reach: the feet hung six units off them for the seconds the model took to
+    -- build (measured on kleiner's skeleton, 2026-10-11). For such a vehicle it is the
+    -- stock frame at the stock size with its saddle where the rider sits, and long stays
+    -- out to the wheels: a rider fits it as they fit the BMX.
+    if bike.simpleAtSeat then
+        k = 1
+        simpleAt = C.Chassis.seatOffset - FRAME.seat
+        headT, headB = P(FRAME.headT), P(FRAME.headB)
+        steerAxis = (headT - headB):GetNormalized()
+        rPosD, fPosD = Wh(rPos), Bs(fPos)
+    end
 
     -- The paint: this bike's palette colour (sh_color.lua), networked.
     local col = BMX.PaletteColor(self:GetColorIndex())
@@ -1238,6 +1254,14 @@ function ENT:Draw()
     -- targets come from the bars without the spin, so the hands let go while
     -- the bars go round, and catch them when they are back.
     local _, _, hbL, hbR, hgL, hgR = barsAt(barsSpin, barsTurn)
+    -- SWEPT BARS are held on their swept-back ends, which come back toward the rider:
+    -- the hands were put on the straight bar's ends, short of reach on the city bike
+    -- (1.7 units, its reach lean maxed) and off the grips drawn.
+    if style == "swept" then
+        local fH = up:Cross((hgR - hgL):GetNormalized()):GetNormalized()
+        local function back(g) return g - fH * (6.5 * k) + up * (1.5 * k) end
+        hbR, hgR, hbL, hgL = hgR, back(hgR), hgL, back(hgL)
+    end
     local gripDirR, gripDirL = (hgR - hbR):GetNormalized(), (hgL - hbL):GetNormalized()
     local ik = { rHand = hbR + gripDirR * (1.75 * k), lHand = hbL + gripDirL * (1.75 * k),
                  rHandA = hbR, rHandB = hgR,
@@ -1306,6 +1330,46 @@ function ENT:Draw()
         if lod == 0 then
             tube(bb - rightW * (Q * k), bb + rightW * (Q * k), 1.3 * k, COL_PART)     -- spindle
         end
+    end
+
+    -- THE STOKER'S COCKPIT, on a seat-anchored simple bike with a second seat that
+    -- pedals (the tandem's): the captain's saddle, cranks and bars again, round the
+    -- stoker's seat, the bars on a stem back from the captain's seat tube. Without it
+    -- the stoker's limbs went to a passenger's places (the captain's shoulders, pegs at
+    -- the rear axle) out of reach until the model was built.
+    local seat2 = bike.simpleAtSeat and not pegs and BMX.SeatFor and BMX.SeatFor(bike, C, "pegs")
+    if seat2 and bike.seats and bike.seats.pegs and bike.seats.pegs.pedals then
+        local d = self:LocalToWorld(seat2.offset - C.Chassis.seatOffset) - self:GetPos()
+        local function S2(v) return Wh(P(v) + d) end
+        local bb2, seatJ2, seatT2 = S2(FRAME.bb), S2(FRAME.seatJ), S2(FRAME.seat)
+        tube(bb2, seatJ2, 1.5 * k, col)
+        tube(seatJ2, seatT2, 1.0 * k, COL_CHROME)
+        tube(bb2, bb, 1.5 * k, col)                     -- the boom to the captain's cranks
+        tube(seatJ2, seatJ, 1.5 * k, col)               -- and the top tube
+        solid("sph", seatT2 + upW * (0.8 * k) - fwdW * (0.5 * k), whipAngles,
+            Vector(9.5, 4.0, 2.0) * k, COL_PART, MAT.matte)
+        local barsC2 = S2(FRAME.bars)
+        tube(seatJ + (seat - seatJ) * 0.5, barsC2, 1.0 * k, COL_PART)      -- stem off the seat post
+        local ikS = { src = "simple" }
+        for _, side in ipairs({ 1, -1 }) do
+            local key = side == 1 and "r" or "l"
+            local g0 = barsC2 + rightW * (11 * k * side)
+            local g1 = barsC2 + rightW * (14.5 * k * side)
+            tube(barsC2, g0, 0.95 * k, COL_PART)
+            tube(g0, g1, 1.5 * k, COL_TYRE)
+            ikS[key .. "HandA"], ikS[key .. "HandB"] = g0, g1
+            ikS[key .. "Hand"] = g0 + (g1 - g0):GetNormalized() * (1.75 * k)
+            local t = self.crankAngle + (side == 1 and 0 or math.pi)
+            local root = bb2 + rightW * (Q * k * side)
+            local pedal = root + (fwdW * math.cos(t) - upW * math.sin(t)) * (CRANK * k)
+            if lod < 2 then tube(root, pedal, 0.9 * k, COL_PART) end
+            if lod == 0 then
+                solid("box", pedal + rightW * (1.8 * k * side), whipAngles, Vector(3.6, 3.6, 1.0) * k, COL_PART, MAT.matte)
+            end
+            ikS[key .. "Foot"] = pedal + rightW * (1.8 * k * side) + upW * (0.9 * k)
+            ikS[key .. "Sole"] = BMX.PedalSole and BMX.PedalSole(t) or 0
+        end
+        self.ikTargetsStoker = ikS
     end
 
     -- Style poses move the hands and feet off the bike's own points (an

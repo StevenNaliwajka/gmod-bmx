@@ -157,6 +157,9 @@ end
 hook.Add("StartCommand", "BMX.Worn.Input", function(ply, cmd)
     local w = ply.BMXWorn
     if not w or ply.BMXScripted then return end      -- a scripted wearer writes w.input itself
+    -- SetupMove's rule: not while the engine owns the player. The decoder takes the
+    -- movement keys away, so in noclip or on a ladder the player could not move.
+    if ply:InVehicle() or ply.BMXTumbling or ply:GetMoveType() ~= MOVETYPE_WALK or not ply:Alive() then return end
     if w.mode.Decode then w.mode.Decode(ply, w, cmd) end
 end)
 

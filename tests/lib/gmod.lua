@@ -331,7 +331,7 @@ function M.Realm(world, which)
     ----------------------------------------------------------------------
     -- hook / timer / concommand / convars
     ----------------------------------------------------------------------
-    R.gm = {}    -- a stand-in GAMEMODE; tests put PlayerSpawnSENT and friends on it
+    R.gm = { IsSandboxDerived = true }   -- a stand-in GAMEMODE (sandbox's); tests put PlayerSpawnSENT and friends on it
     R.properties = {}
     env.properties = {
         Add = function(name, t) t.InternalName = name; R.properties[name] = t end,
@@ -628,6 +628,7 @@ function M.Realm(world, which)
     env.engine = { TickInterval = function() return world.dt end }
     env.game = {
         GetMap = function() return "gm_flatgrass" end,
+        SinglePlayer = function() return R.singlePlayer == true end,
         MaxPlayers = function() return 8 end,
         ConsoleCommand = function(s) R.log[#R.log + 1] = "console: " .. s end,
         -- The world entity (G13: the lock welds a bike to it). Made on first use, and
@@ -658,6 +659,17 @@ function M.Realm(world, which)
     env.constraint = {
         Weld = constraintOf("weld"),
         NoCollide = constraintOf("nocollide"),
+        -- The real listing: { Ent1, Ent2, Constraint, Type } per live constraint.
+        FindConstraints = function(ent, kind)
+            local out = {}
+            for _, c in ipairs(R.constraints) do
+                if not c._removed and (c._a == ent or c._b == ent)
+                    and (kind == nil or c._kind == string.lower(kind)) then
+                    out[#out + 1] = { Ent1 = c._a, Ent2 = c._b, Constraint = c, Type = kind }
+                end
+            end
+            return out
+        end,
         -- Every live constraint on an entity, of a kind (or any).
         Find = function(a, b, kind)
             local out = {}
@@ -852,6 +864,13 @@ function M.Realm(world, which)
             self._phys:SetMass(80)
         end
         if self.SetupDataTables then self:SetupDataTables() end
+        -- A paste's networked vars (duplicator.DoGeneric): the engine has them
+        -- set before Initialize, over SetupDataTables' defaults.
+        for k, v in pairs(self._pendingDT or {}) do
+            local set = self["Set" .. k]
+            if set then set(self, v) end
+        end
+        self._pendingDT = nil
         if self.Initialize then self:Initialize() end
         self._spawned = true
     end
@@ -1485,8 +1504,13 @@ function M.Realm(world, which)
         end,
         Copy = function(ent)
             -- ONE entity table, as the real Copy returns. Paste wants a list.
+            -- DT: the networked vars, as GetNetworkVars gives them (entities left out here)
+            local dt = {}
+            for k, v in pairs(ent._nw or {}) do
+                if not (type(v) == "table" and v._class) then dt[k] = v end
+            end
             return { Class = ent:GetClass(), Pos = ent:GetPos(), Angle = ent:GetAngles(),
-                     EntityMods = table.Copy(ent.EntityMods or {}) }
+                     EntityMods = table.Copy(ent.EntityMods or {}), DT = dt }
         end,
         StoreEntityModifier = function(ent, key, data)
             ent.EntityMods = ent.EntityMods or {}
@@ -1513,6 +1537,8 @@ function M.Realm(world, which)
         DoGeneric = function(e, data)
             if data.Pos then e:SetPos(data.Pos) end
             if data.Angle then e:SetAngles(data.Angle) end
+            -- networked vars: here SetupDataTables runs at Spawn, so they wait for it
+            if data.DT then e._pendingDT = table.Copy(data.DT) end
         end,
         DoGenericPhysics = function() end,
     }

@@ -973,3 +973,36 @@ T.test("headless: the skates' cases exist, ride the worn vehicle, and the runner
     fh:close()
     T.ok(src:find("setupWorn", 1, true) and src:find("BMX.Worn.Unequip", 1, true), "sv_test.lua sets up and tears down a worn vehicle")
 end)
+
+
+-- The decoder takes the movement keys away from the engine; in noclip or on a
+-- ladder the engine owns the player, and the player could not move.
+T.test("skates: the keys are left to the engine in noclip and on a ladder", function()
+    local sv, ply, mv, w = skater()
+    local E = sv.env
+    ply.BMXScripted = nil
+    local IN = gmod.IN
+    local function cmd()
+        local c = { buttons = IN.FORWARD + IN.JUMP, fwd = 10000, side = 0, up = 0 }
+        function c:GetButtons() return self.buttons end
+        function c:SetButtons(b) self.buttons = b end
+        function c:GetForwardMove() return self.fwd end
+        function c:SetForwardMove(v) self.fwd = v end
+        function c:SetSideMove(v) self.side = v end
+        function c:SetUpMove(v) self.up = v end
+        function c:GetViewAngles() return E.Angle(0, 0, 0) end
+        return c
+    end
+    local walking = cmd()
+    E.hook.Run("StartCommand", ply, walking)
+    T.eq(walking.fwd, 0, "walking on skates: the engine gets no forward move")
+    ply._moveType = E.MOVETYPE_NOCLIP
+    local flying = cmd()
+    E.hook.Run("StartCommand", ply, flying)
+    T.eq(flying.fwd, 10000, "noclip: the player's own")
+    T.ok(E.bit.band(flying.buttons, IN.JUMP) ~= 0, "jump kept")
+    ply._moveType = 9                                  -- MOVETYPE_LADDER
+    local climbing = cmd()
+    E.hook.Run("StartCommand", ply, climbing)
+    T.eq(climbing.fwd, 10000, "a ladder: the player's own")
+end)

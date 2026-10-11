@@ -35,9 +35,7 @@ function BMX.ShiftForButton(bike, button, wheelOn)
     return nil
 end
 
-hook.Add("PlayerButtonDown", "BMX.Shift", function(ply, button)
-    if ply ~= LocalPlayer() then return end
-    if not IsFirstTimePredicted() then return end
+BMX.ClientButton("BMX.Shift", function(ply, button)
     local bike = BMX.LocalBike(ply)
     if not bike or bike:GetDriver() ~= ply then return end
     local up = BMX.ShiftForButton(bike, button, cv_wheel:GetBool())

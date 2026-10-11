@@ -67,6 +67,22 @@ local function registerDuplicator(class)
         e:Spawn()
         e:Activate()
         duplicator.DoGenericPhysics(e, ply, data)
+        -- A LOCK IS NOT COPIED. Its owner (BMXLock) is not in the copy, but the
+        -- networked padlock and the weld to the world are, so the copy was a bike
+        -- welded down that nobody could unlock. It comes up unlocked and free; its
+        -- welds are made after this, hence the timer.
+        if e.GetLocked and e:GetLocked() then
+            e:SetLocked(false)
+            timer.Simple(0, function()
+                if not IsValid(e) or e.BMXLock or not constraint.FindConstraints then return end
+                for _, c in ipairs(constraint.FindConstraints(e, "Weld")) do
+                    local other = (c.Ent1 == e) and c.Ent2 or c.Ent1
+                    if other and other.IsWorld and other:IsWorld() and IsValid(c.Constraint) then
+                        c.Constraint:Remove()
+                    end
+                end
+            end)
+        end
         return e
     end, "Data")
 end

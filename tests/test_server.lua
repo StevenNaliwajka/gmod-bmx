@@ -209,7 +209,7 @@ end)
 
 T.test("the tuning self-test and config dump run without a client", function()
     local sv = F.server()
-    local ply = sv:player("Tuner")
+    local ply = sv:player("Tuner", { superadmin = true })    -- console or superadmin only
     sv:command("bmx_selftest", ply)
     sv:run(0.2)
     local joined = table.concat(ply._chat or {}, "\n")
@@ -627,6 +627,74 @@ T.test("the context menu offers every colour and paints the bike", function()
     prop:Receive(0, ply)
     E.net.ReadEntity = rd
     T.eq(bike:GetColorIndex(), 6, "painted teal")
+end)
+
+-- Every paint puffs smoke and plays a sound at everyone near, so the context
+-- menu's paint has K's cooldown: a flood of "properties" messages was free.
+T.test("the context menu's paint has the K key's cooldown", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    local ply = sv:player("Walker")
+    local prop = sv.properties.bmx_color
+    local rd, ru = E.net.ReadEntity, E.net.ReadUInt
+    local function paint(i)
+        E.net.ReadEntity = function() return bike end
+        E.net.ReadUInt = function() return i end
+        prop:Receive(0, ply)
+        E.net.ReadEntity, E.net.ReadUInt = rd, ru
+    end
+    paint(6)
+    T.eq(bike:GetColorIndex(), 6, "the first paint")
+    paint(3)
+    T.eq(bike:GetColorIndex(), 6, "a second within the cooldown is dropped")
+    sv.world.time = sv.world.time + 0.5
+    paint(3)
+    T.eq(bike:GetColorIndex(), 3, "after it, painted")
+end)
+
+-- TTT's PlayerSpawn clears the round (credits, bought equipment), and getting up
+-- from a tumble is a ply:Spawn(): outside sandbox and its children a crash is the shove.
+T.test("a crash tumbles the rider as a ragdoll only in a sandbox-derived gamemode", function()
+    local sv = F.server()
+    local E = sv.env
+    local ply = sv:player("Rider")
+    T.ok(E.BMX.TumbleAllowed(), "sandbox: yes")
+    E.GAMEMODE.IsSandboxDerived = false
+    T.eq(E.BMX.Tumble(ply, E.Vector(0, 0, 0)), false, "TTT (not sandbox-derived): no, the caller shoves")
+    T.ok(not ply.BMXTumbling, "and nothing started")
+    E.GAMEMODE.IsSandboxDerived = true
+    T.eq(E.BMX.Tumble(ply, E.Vector(0, 0, 0)), true, "back in sandbox: tumbles")
+end)
+
+-- TTT and the other round-based gamemodes have no spawn rules (PlayerSpawnSENT is
+-- sandbox's): a dead player or a spectator spawned bikes and park pieces in a round.
+T.test("the dead and spectators spawn nothing of ours", function()
+    local sv = F.server()
+    local E = sv.env
+    local ply = sv:player("Ghost")
+    ply:SetPos(E.Vector(0, 0, 0))
+    ply._eyeTrace = { Hit = true, HitPos = E.Vector(100, 0, 0), HitNormal = E.Vector(0, 0, 1) }
+    ply.Alive = function() return false end
+    T.eq(E.hook.Run("PlayerSpawnSENT", ply, "bmx_base"), false, "dead: a bike refused")
+    T.eq(E.hook.Run("PlayerSpawnSENT", ply, "bmx_park_kicker_m"), false, "a park piece refused")
+    T.eq(E.hook.Run("PlayerSpawnSENT", ply, "prop_physics"), nil, "what is not ours is not our business")
+    sv:command("bmx_spawn", ply)
+    T.eq(#E.ents.FindByClass("bmx_base"), 0, "bmx_spawn spawns nothing")
+    ply.Alive = nil
+    ply.IsSpec = function() return true end
+    T.eq(E.hook.Run("PlayerSpawnSENT", ply, "bmx_base"), false, "TTT's spectator: refused")
+    ply.IsSpec = nil
+    T.eq(E.hook.Run("PlayerSpawnSENT", ply, "bmx_base"), nil, "alive and playing: allowed")
+end)
+
+-- Each run spawns a physics prop over the caller: console or superadmin only.
+T.test("bmx_selftest is for the console or a superadmin", function()
+    local sv = F.server()
+    local E = sv.env
+    local ply = sv:player("Joe")
+    sv:command("bmx_selftest", ply)
+    T.eq(#E.ents.FindByClass("prop_physics"), 0, "a player spawns nothing")
 end)
 
 T.test("a bike spawns in your chosen default colour, and a copy keeps its paint", function()

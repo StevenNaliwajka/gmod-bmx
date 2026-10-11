@@ -214,6 +214,16 @@ T.test("lagcomp: a command's age is the time since the tick it saw, clamped by p
         "and at what the player's own ping explains")
 end)
 
+-- cl_interp is the client's to set: "nan" passed both clamps (every comparison
+-- with NaN is false), and LagComp.Grace then answered from the oldest sample.
+T.test("lagcomp: a cl_interp of nan or inf gives no age", function()
+    local P = F.server().env.BMX.Predict
+    local dt = 1 / 66
+    T.eq(P.CmdAge(1000, 994, 0 / 0, dt, 0.5, 0.2), 0, "nan")
+    T.eq(P.CmdAge(1000, 994, -math.huge, dt, 0.5, 0.2), 0, "-inf")
+    T.ok(P.CmdAge(1000, 994, math.huge, dt, 0.5, 0.2) <= 0.5, "inf: no more than the maximum")
+end)
+
 T.test("lagcomp: the grounded history answers 'was it on the ground then'", function()
     local P = F.server().env.BMX.Predict
     local h = { { t = 1.0, grounded = true }, { t = 1.1, grounded = true },

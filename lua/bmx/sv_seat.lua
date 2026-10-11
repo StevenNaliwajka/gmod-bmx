@@ -181,6 +181,12 @@ end
 --
 -- Returns false if it could not (no ragdoll, a dead player), and the caller
 -- falls back to the shove.
+--
+-- ONLY WHERE GETTING UP IS ONLY GETTING UP. It ends in ply:Spawn(), and a
+-- gamemode's PlayerSpawn may do more than stand a player up: TTT's clears the
+-- round's state (credits, bought equipment, a detective's armour), so a traitor
+-- who crashed lost the lot. Sandbox and what derives from it (the BMX mode,
+-- DarkRP) only spawn; anywhere else a crash is the shove.
 --------------------------------------------------------------------------
 local TUMBLE_TIME = 1.6
 BMX.TumbleTime = TUMBLE_TIME
@@ -188,8 +194,13 @@ BMX.TumbleTime = TUMBLE_TIME
 CreateConVar("bmx_crash_ragdoll", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED),
     "Throw crashed riders off as a ragdoll for a moment (0 = the old shove).")
 
+function BMX.TumbleAllowed()
+    return GAMEMODE ~= nil and GAMEMODE.IsSandboxDerived == true
+end
+
 function BMX.Tumble(ply, vel, after)
     if not IsValid(ply) or not ply:Alive() or ply.BMXTumbling then return false end
+    if not BMX.TumbleAllowed() then return false end
     local rag = ents.Create("prop_ragdoll")
     if not IsValid(rag) then return false end
 

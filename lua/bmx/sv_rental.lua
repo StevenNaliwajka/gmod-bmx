@@ -38,6 +38,7 @@ function R.Rent(ply, machine, id)
         return refuse(ply, "walk up to the rental machine first.")
     end
     if ply:InVehicle() then return refuse(ply, "get off first.") end
+    if BMX.MaySpawn and not BMX.MaySpawn(ply) then return nil, "not alive" end
     id = string.lower(tostring(id or ""))
     local def = BMX.Vehicles[id]
     if not def or def.hidden then return refuse(ply, "the machine has no " .. id .. ".") end
@@ -56,6 +57,12 @@ function R.Rent(ply, machine, id)
             " are switched off on this server.")
     end
     if not BMX.DebugAllowed(def, ply) then return refuse(ply, id .. " is a debug vehicle.") end
+    -- The motor vehicles' privilege is asked on PlayerSpawnSENT (sv_motor.lua),
+    -- which the machine does not go through: so here too, or any player rented
+    -- what the spawn menu refuses them.
+    if def.family == "moto" and not BMX.Can(ply, "BMX - Spawn Motor Vehicles") then
+        return refuse(ply, "motor vehicles need the \"BMX - Spawn Motor Vehicles\" privilege on this server.")
+    end
     if hook.Run("BMX_CanSpawn", ply, id) == false then return nil, "vetoed" end
 
     R.Return(ply)

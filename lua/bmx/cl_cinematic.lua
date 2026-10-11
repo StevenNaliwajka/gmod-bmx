@@ -258,12 +258,10 @@ function BMX.CinematicTumbleView(rag, dt, now)
 end
 
 --------------------------------------------------------------------------
--- L toggles it. PlayerButtonDown runs client-side for the local player; the
--- first-time check stops prediction firing it twice.
+-- L toggles it (BMX.ClientButton: the local player's press, singleplayer too).
 --------------------------------------------------------------------------
-hook.Add("PlayerButtonDown", "BMX.CinematicKey", function(ply, button)
-    if button ~= KEY_L or ply ~= LocalPlayer() then return end
-    if IsFirstTimePredicted and not IsFirstTimePredicted() then return end
+BMX.ClientButton("BMX.CinematicKey", function(ply, button)
+    if button ~= KEY_L then return end
     if not BMX.LocalBike(ply) then return end
     cv:SetBool(not cv:GetBool())
     state.shot = nil

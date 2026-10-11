@@ -164,6 +164,26 @@ T.test("rental: an empty rental goes back after a while, a ridden or locked one 
     T.ok(locked:IsValid(), "a locked one is kept")
 end)
 
+-- The privilege the spawn menu asks for a motor vehicle (sv_motor.lua, an admin
+-- by default) lives on PlayerSpawnSENT, which the machine skips: it asks too.
+T.test("rental: a motor vehicle needs the motor privilege, as the spawn menu does", function()
+    local sv, m, ply = scene()
+    local R = sv.env.BMX.Rental
+    for _, id in ipairs({ "ebike", "emoto", "dirtbike", "moped" }) do
+        T.ok(not R.Rent(ply, m, id), "a player without it gets no " .. id)
+        later(sv)
+    end
+    T.eq(rentals(sv), 0, "nothing handed out")
+    local said = (ply._chat or {})[1]
+    T.ok(said and said:find("Spawn Motor Vehicles", 1, true), "told why: " .. tostring(said))
+    local admin = sv:player("Admin", { superadmin = true })
+    admin:SetPos(ply:GetPos())
+    local bike = R.Rent(admin, m, "dirtbike")
+    T.ok(bike and bike:IsValid(), "an admin rents one")
+    later(sv)
+    T.ok(R.Rent(ply, m, "stock"), "and a bicycle still needs nothing")
+end)
+
 T.test("rental: leaving the server returns it", function()
     local sv, m, ply = scene()
     local bike = sv.env.BMX.Rental.Rent(ply, m, "stock")

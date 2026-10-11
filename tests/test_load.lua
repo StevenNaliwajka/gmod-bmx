@@ -169,3 +169,22 @@ T.test("load: sixteen bikes spawned and removed leave nothing behind", function(
     end
     T.eq(thinks, 0, "no per-bike hooks left running")
 end)
+
+
+-- Two NetworkVars on one slot of one type are ONE networked value: the bike's
+-- LeanFwd and the board's PushPhase were both Float 6, so each read the other's.
+T.test("load: no two of the bike's networked vars share a slot", function()
+    local sv = F.server()
+    local bike = sv.env.ents.Create("bmx_base")
+    local seen, clash = {}, {}
+    local real = bike.NetworkVar
+    bike.NetworkVar = function(self, kind, slot, name)
+        local key = kind .. " " .. slot
+        if seen[key] then clash[#clash + 1] = key .. ": " .. seen[key] .. " and " .. name end
+        seen[key] = name
+        return real(self, kind, slot, name)
+    end
+    bike:SetupDataTables()
+    T.ok(next(seen) ~= nil, "it declares some")
+    T.eq(#clash, 0, "every slot once: " .. table.concat(clash, "; "))
+end)

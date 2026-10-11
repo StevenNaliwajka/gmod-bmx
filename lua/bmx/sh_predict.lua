@@ -221,7 +221,9 @@ function P.CmdAge(serverTick, cmdTick, lerp, interval, maxAge, ping)
     local seen = cmdTick - lerp / interval
     local age = (serverTick - seen) * interval
     local cap = math.min(maxAge, (ping or 0) + lerp + 2 * interval)
-    if age < 0 then return 0 end
+    -- not (age >= 0): also NaN, from a client's cl_interp "nan", which passed
+    -- both clamps and made LagComp.Grace answer from its oldest sample
+    if not (age >= 0) then return 0 end
     if age > cap then return cap end
     return age
 end

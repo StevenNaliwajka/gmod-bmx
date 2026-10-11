@@ -1073,3 +1073,29 @@ T.test("eased camera: the chase position follows the eased view, and stays out o
     T.ok(back.x > 50, "the camera is behind the bike: " .. tostring(back))
     T.between(math.abs(back.y), 0, 1, "and on its line")
 end)
+
+
+-- PlayerButtonDown is predicted: in singleplayer the engine calls it on the server
+-- only, so the client's key hooks (L, the shift keys, the replay keys) never ran.
+-- The server sends the press down instead (BMX.ClientButton, sh_util.lua).
+T.test("singleplayer: L reaches the client through the server, once", function()
+    local s = scene()
+    local E = cine(s)
+    E.game.SinglePlayer = function() return true end
+    s.sv.env.game.SinglePlayer = function() return true end
+    E.hook.Run("PlayerButtonDown", s.me, E.KEY_L)
+    T.ok(not E.BMX.CinematicActive(s.me), "the client's own hook stands down (singleplayer never calls it)")
+    local ply = s.ply
+    local before = #s.world.wire
+    s.sv.env.hook.Run("PlayerButtonDown", ply, E.KEY_L)
+    T.eq(#s.world.wire, before + 1, "the server sends the press")
+    local msg = s.world.wire[#s.world.wire]
+    T.eq(msg.name, "bmx_button", "as bmx_button")
+    s.cl:deliver(msg)
+    T.ok(E.BMX.CinematicActive(s.me), "and L works")
+    E.game.SinglePlayer = function() return false end
+    s.sv.env.game.SinglePlayer = function() return false end
+    local n = #s.world.wire
+    s.sv.env.hook.Run("PlayerButtonDown", ply, E.KEY_L)
+    T.eq(#s.world.wire, n, "in multiplayer the server sends nothing")
+end)

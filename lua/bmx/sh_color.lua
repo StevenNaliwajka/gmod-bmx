@@ -221,6 +221,9 @@ if properties then
             local i = net.ReadUInt(5)
             if not properties.CanBeTargeted(ent, ply) then return end
             if not self:Filter(ent, ply) then return end
+            -- K's cooldown: every paint puffs smoke and plays a sound at everyone near
+            if CurTime() < (ply.BMXNextRecolor or 0) then return end
+            ply.BMXNextRecolor = CurTime() + COOLDOWN
             BMX.SetBikeColor(ent, i, true, ply)
         end,
     })

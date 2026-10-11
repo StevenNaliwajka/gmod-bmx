@@ -135,6 +135,23 @@ hook.Add("PlayerSpawnSENT", "BMX.Enabled", function(ply, class)
     end
 end)
 
+-- NOT FROM THE DEAD. TTT and the other round-based gamemodes have no spawn rules of
+-- their own (PlayerSpawnSENT is sandbox's), so a dead player or a spectator could
+-- drop bikes and park pieces in front of the living (bmx_spawn, /bike). Every
+-- door of ours asks PlayerSpawnSENT; the rental machine asks BMX.MaySpawn too.
+function BMX.MaySpawn(ply)
+    if not IsValid(ply) then return true end                  -- the server console
+    if not ply:Alive() then return false end
+    if TEAM_SPECTATOR and ply.Team and ply:Team() == TEAM_SPECTATOR then return false end
+    if ply.IsSpec and ply:IsSpec() then return false end      -- TTT's spectators
+    return true
+end
+
+hook.Add("PlayerSpawnSENT", "BMX.Alive", function(ply, class)
+    if type(class) ~= "string" or class:sub(1, 4) ~= "bmx_" then return end
+    if not BMX.MaySpawn(ply) then return false end
+end)
+
 hook.Add("PlayerSpawnSENT", "BMX.Limit", function(ply, class)
     if not isBikeClass(class) then return end
     local limit = maxPer:GetInt()

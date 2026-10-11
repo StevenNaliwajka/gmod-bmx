@@ -62,6 +62,31 @@ function ENT:Use(ply)
     ply:ChatPrint("[BMX] " .. (say[what] or ""))
 end
 
+-- A COPY (the duplicator, a save) starts empty. The default copy merges this
+-- entity's table into the paste, so the paste held the original's bikes and its
+-- weld: removing the paste let the original's bikes down and pulled the original
+-- off its car.
+function ENT:OnEntityCopyTableFinish(data)
+    data.held, data.carrier, data.carrierWeld = nil, nil, nil
+    if data.DT then data.DT.Loaded = 0 end
+end
+
+-- ...and finds its own car once the paste has made its welds, which is after this.
+function ENT:PostEntityPaste()
+    timer.Simple(0, function()
+        if not IsValid(self) or not (BMX.Rack and constraint.FindConstraints) then return end
+        for _, c in ipairs(constraint.FindConstraints(self, "Weld")) do
+            local other = (c.Ent1 == self) and c.Ent2 or c.Ent1
+            if BMX.Rack.IsCarrier(other) then
+                self.carrier, self.carrierWeld = other, c.Constraint
+                if self.SetCarried then self:SetCarried(true) end
+                return
+            end
+        end
+        if self.SetCarried then self:SetCarried(false) end
+    end)
+end
+
 function ENT:OnRemove()
     if BMX.Rack then
         BMX.Rack.ReleaseAll(self)

@@ -788,4 +788,6 @@ function ENT:OnRemove()
     if IsValid(pod) then SafeRemoveEntity(pod) end
     -- Whatever it was carrying is the world's again (sv_basket.lua).
     if self.basketHeld and BMX.Basket then BMX.Basket.Release(self, "removed") end
+    -- Off its rack, so the rack's slot and its drawn count are free again.
+    if self.BMXRack and BMX.Rack then BMX.Rack.Release(self) end
 end

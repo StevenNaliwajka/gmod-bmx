@@ -108,9 +108,11 @@ function ENT:SetupDataTables()
     self:NetworkVar("Float", 4, "Cadence")
     -- The rider's weight forward over the bars, 0..1 (G02, sv_balance.lua): LMB +
     -- Ctrl, or LMB in bmx_lmb_mode lean. The IK leans the torso and drops the
-    -- shoulders by it (cl_rider.lua). Slot 6: the next free ones are left to
-    -- whoever adds the next state.
-    self:NetworkVar("Float", 6, "LeanFwd")
+    -- shoulders by it (cl_rider.lua). Slot 9: it was 6, which the board's
+    -- PushPhase took later (below), so the two wrote one value -- a board's kick
+    -- read the bike's lean between pushes. tests/test_load.lua checks no two
+    -- share a slot now.
+    self:NetworkVar("Float", 9, "LeanFwd")
 
     self:NetworkVar("Int",   0, "Score")
     -- The paint: an index into BMX.Palette (sh_color.lua).

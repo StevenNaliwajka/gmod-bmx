@@ -108,6 +108,9 @@ end)
 -- Expected output on a correct build: "dv = 100.0 u/s  -> IMPULSE (expected)".
 --------------------------------------------------------------------------
 concommand.Add("bmx_selftest", function(ply)
+    -- Console or superadmin (the host, in singleplayer): each run spawns a
+    -- physics prop over the caller, which a bind could repeat all day.
+    if IsValid(ply) and not ply:IsSuperAdmin() then return end
     local function out(s)
         if IsValid(ply) then ply:PrintMessage(HUD_PRINTCONSOLE, s) end
         MsgN("[BMX selftest] " .. s)

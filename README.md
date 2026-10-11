@@ -208,7 +208,8 @@ Server console or `server.cfg`; all three are saved.
 
 ## First run
 
-Run this once on any new server build before tuning anything:
+Run this once on any new server build before tuning anything (from the server
+console, or as a superadmin; in singleplayer you are one):
 
 ```
 bmx_selftest

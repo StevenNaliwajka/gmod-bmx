@@ -646,3 +646,39 @@ function BMX.GrindCrankPoint(cfg)
     return Vector(G.bb.x * k, 0, G.bb.z * k + sag - G.ring * k)
 end
 
+
+--------------------------------------------------------------------------
+-- A KEY THE CLIENT ACTS ON. PlayerButtonDown is a predicted hook: in singleplayer
+-- the engine runs it on the server only, never on the client, so a client-side
+-- hook on it (the gear keys, L, the replay keys) did nothing there.
+-- BMX.ClientButton(name, fn) calls fn(LocalPlayer(), button) on the client for
+-- the local player's presses either way: from the client's own hook in
+-- multiplayer (once, not once per prediction), and in singleplayer from the
+-- server's, sent down.
+--------------------------------------------------------------------------
+if SERVER then
+    util.AddNetworkString("bmx_button")
+    hook.Add("PlayerButtonDown", "BMX.ClientButtons", function(ply, button)
+        if not (game.SinglePlayer and game.SinglePlayer()) then return end
+        net.Start("bmx_button")
+            net.WriteUInt(button, 16)
+        net.Send(ply)
+    end)
+else
+    local handlers = {}
+    function BMX.ClientButton(name, fn)
+        handlers[name] = fn
+        hook.Add("PlayerButtonDown", name, function(ply, button)
+            if game.SinglePlayer and game.SinglePlayer() then return end   -- the server's message brings it
+            if ply ~= LocalPlayer() then return end
+            if IsFirstTimePredicted and not IsFirstTimePredicted() then return end
+            fn(ply, button)
+        end)
+    end
+    net.Receive("bmx_button", function()
+        local button = net.ReadUInt(16)
+        local ply = LocalPlayer()
+        if not IsValid(ply) then return end
+        for _, fn in pairs(handlers) do fn(ply, button) end
+    end)
+end

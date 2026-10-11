@@ -622,26 +622,23 @@ concommand.Add("bmx_replay_list", function()
     for _, f in ipairs(files) do say(f:gsub("%.txt$", "")) end
 end)
 
-hook.Add("PlayerButtonDown", "BMX.ReplayKeys", function(ply, button)
-    if not IsFirstTimePredicted or IsFirstTimePredicted() then
-        if ply ~= LocalPlayer() then return end
-        if ply.IsTyping and ply:IsTyping() then return end
-        local key = cv_key:GetInt()
-        if key > 0 and button == key and (pb or BMX.LocalBike(ply)) then
-            if pb then R.Stop() else R.Start(R.Snapshot()) end
-            return
-        end
-        if not pb then return end
-        if button == KEY_P then pb.paused = not pb.paused
-        elseif button == KEY_LEFT then R.Seek(pb.t - 1)
-        elseif button == KEY_RIGHT then R.Seek(pb.t + 1)
-        elseif button == KEY_UP or button == KEY_DOWN then
-            local at = 4
-            for i, s in ipairs(SPEEDS) do if math.abs(pb.speed) == s then at = i end end
-            at = math.Clamp(at + (button == KEY_UP and 1 or -1), 1, #SPEEDS)
-            pb.speed = SPEEDS[at] * (pb.speed < 0 and -1 or 1)
-        elseif button >= KEY_1 and button <= KEY_4 then R.SetMode(MODES[button - KEY_1 + 1])
-        end
+BMX.ClientButton("BMX.ReplayKeys", function(ply, button)
+    if ply.IsTyping and ply:IsTyping() then return end
+    local key = cv_key:GetInt()
+    if key > 0 and button == key and (pb or BMX.LocalBike(ply)) then
+        if pb then R.Stop() else R.Start(R.Snapshot()) end
+        return
+    end
+    if not pb then return end
+    if button == KEY_P then pb.paused = not pb.paused
+    elseif button == KEY_LEFT then R.Seek(pb.t - 1)
+    elseif button == KEY_RIGHT then R.Seek(pb.t + 1)
+    elseif button == KEY_UP or button == KEY_DOWN then
+        local at = 4
+        for i, s in ipairs(SPEEDS) do if math.abs(pb.speed) == s then at = i end end
+        at = math.Clamp(at + (button == KEY_UP and 1 or -1), 1, #SPEEDS)
+        pb.speed = SPEEDS[at] * (pb.speed < 0 and -1 or 1)
+    elseif button >= KEY_1 and button <= KEY_4 then R.SetMode(MODES[button - KEY_1 + 1])
     end
 end)
 

@@ -434,6 +434,62 @@ T.test("lock: it needs a bike with nobody on it, standing on the world, upright,
     T.ok(not ok and why:find("already"), "twice: " .. tostring(why))
 end)
 
+-- A copy (the duplicator, a save) carries the networked padlock and the weld to the
+-- world, but not the lock's owner: it was a bike welded down that nobody could unlock.
+T.test("lock: a copy of a locked bike comes up unlocked and free; the original stays locked", function()
+    local sv, bike, owner = lockScene()
+    local E, L = sv.env, sv.env.BMX.Lock
+    L.Lock(bike, owner)
+    local data = E.duplicator.Copy(bike)
+    T.eq(data.DT.Locked, true, "the copy carries the padlock")
+    local copy = E.duplicator.Paste(owner, { data })[1]
+    T.ok(copy and copy:IsValid(), "pasted")
+    -- the paste makes its constraints after the entities, the weld to the world among them
+    E.constraint.Weld(copy, E.game.GetWorld(), 0, 0, 0, true, false)
+    sv:run(0.1)
+    T.eq(copy:GetLocked(), false, "no padlock on the copy")
+    T.eq(welds(sv, copy, E.game.GetWorld()), 0, "and not welded down")
+    T.ok(L.Of(bike) and bike:GetLocked(), "the original is still locked")
+    T.eq(welds(sv, bike, E.game.GetWorld()), 1, "and still welded")
+end)
+
+-- The default copy merges the entity's table into the paste: a copied rack held the
+-- original's bikes and weld, and removing it let them down and the original fell off.
+T.test("rack: a copy starts empty: none of the original's bikes, weld or count", function()
+    local sv, rack, bikeAt = scene()
+    local E, R = sv.env, sv.env.BMX.Rack
+    local car = E.ents.Create("prop_vehicle_jeep")
+    car:SetPos(E.Vector(0, 120, 30))
+    car:Spawn()
+    R.Attach(rack, car)
+    T.ok(R.Load(rack, bikeAt(0)), "a bike on it")
+    local data = { held = rack.held, carrier = rack.carrier, carrierWeld = rack.carrierWeld, DT = { Loaded = 1, Carried = true } }
+    rack:OnEntityCopyTableFinish(data)
+    T.eq(data.held, nil, "not the bikes")
+    T.eq(data.carrier, nil, "not the car")
+    T.eq(data.carrierWeld, nil, "not the weld")
+    T.eq(data.DT.Loaded, 0, "drawn empty")
+    -- a pasted rack welded to a car finds it once the welds exist
+    local copy = E.ents.Create("bmx_bike_rack")
+    copy:Spawn()
+    copy:PostEntityPaste()
+    E.constraint.Weld(copy, car, 0, 0, 0, true, false)
+    sv:run(0.1)
+    T.eq(copy.carrier, car, "the copy knows its own car")
+    T.eq(R.Count(rack), 1, "the original still holds its bike")
+end)
+
+T.test("rack: a racked bike that is removed frees its slot, and the rack is drawn emptier", function()
+    local sv, rack, bikeAt = scene()
+    local R = sv.env.BMX.Rack
+    local bike = bikeAt(0)
+    T.ok(R.Load(rack, bike), "loaded")
+    T.eq(rack:GetLoaded(), 1, "one drawn")
+    bike:Remove()
+    T.eq(R.Count(rack), 0, "its slot is free")
+    T.eq(rack:GetLoaded(), 0, "and the rack is drawn empty")
+end)
+
 T.test("lock: bmx_allow_bikes 0 switches it off with the rest of the bikes", function()
     local sv, bike, owner = lockScene()
     local E, L = sv.env, sv.env.BMX.Lock

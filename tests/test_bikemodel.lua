@@ -506,6 +506,8 @@ T.test("bike model (client): a whip turns the frame, a barspin the bars, and the
 end)
 
 T.test("bike model (client): the cranks and wheels turn with the rear wheel", function()
+    S.cb:SetGrounded(true)
+    S.cb:SetPedalling(true)          -- pedalled: a freewheel's cranks turn only then
     draw(S)
     local c0, w0 = group(S, "cranks"):Col(1), group(S, "wheelR"):Col(1)
     local C = S.cb:Cfg()

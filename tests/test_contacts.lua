@@ -64,6 +64,10 @@ local function scene(id)
     cb:SetPos(sb:GetPos())
     cb:SetAngles(sb:GetAngles())
     for k, v in pairs(sb._nw) do cb._nw[k] = v end
+    -- ridden: on the ground and pedalled, so a freewheel's cranks turn with the
+    -- wheel (cl_init.lua ENT:Coasting)
+    cb:SetGrounded(true)
+    if cb.SetPedalling then cb:SetPedalling(true) end
     local s = { id = id, cb = cb, sb = sb, def = B.Vehicles[id], cfg = cfg,
                 k = math.max(cfg.Wheel.wheelbase, 1) / 39 }
     w.scenes[id] = s

@@ -259,9 +259,31 @@ function BMX.VertAir(ent, phys, cfg, dt, inp, st, w)
         st.spineBlend, st.spineDone = 0, true
     end
     if st.spineBlend and sp then
-        -- OVER THE TOP toward the far face, spineSpeed across it, and
-        -- gravity left to bring it down. Blended onto the way DOWN the face (70
-        -- degrees: 48 u/s across, 132 down) the bike dropped straight onto the
+        -- AIMED AT THE FACE (1.3.1). The speed across is the one that brings the
+        -- flight down on the middle of the far face (BMX.Launch.SpineAim) from
+        -- where it is now, under gravity: a fixed spineSpeed still overshot onto
+        -- the floor when the bike went higher than usual (x 546 of a spine
+        -- ending at 492, a crash, spine_transfer on CI about one run in seven).
+        if st.spineAim == nil then
+            st.spineAim = BMX.Launch and BMX.Launch.SpineAim
+                and BMX.Launch.SpineAim(sp, st.launchNormal, cfg, { filter = ent.traceFilter }) or false
+        end
+        local aim = st.spineAim
+        local across = Vector(sp.dir.x, sp.dir.y, 0)
+        local aimed
+        if aim and across:LengthSqr() > 1e-4 then
+            across:Normalize()
+            local toward = Vector(aim.pos.x - com.x, aim.pos.y - com.y, 0)
+            local hs = BMX.SpineSpeed(com, vel.z, aim.pos, -physenv.GetGravity().z)
+            if hs and toward:Dot(across) > 0 then
+                aimed = toward:GetNormalized() * BMX.Clamp(hs, A.spineSpeedMin, A.spineSpeedMax) + vector_up * vel.z
+            elseif toward:Dot(across) <= 0 then
+                aimed = across * A.spineSpeedMin + vector_up * vel.z     -- already past it: come down now
+            end
+        end
+        -- WITHOUT AN AIM: over the top toward the far face, spineSpeed across
+        -- it, and gravity left to bring it down. Blended onto the way DOWN the
+        -- face (70 degrees: 48 u/s across, 132 down) the bike dropped straight onto the
         -- spine's top from its apex a hand's width short of it and hung there
         -- on the coping, the rider off, one ride in two (spine_transfer, real
         -- server). The step is a share of what is left of the blend, so it lands
@@ -276,6 +298,7 @@ function BMX.VertAir(ent, phys, cfg, dt, inp, st, w)
         else
             want = sp.dir * max(vel:Length(), A.spineSpeed)
         end
+        want = aimed or want
         local k = min(1, dt / max(A.spineBlend - st.spineBlend, dt))
         local dv = (want - vel) * k
         if BMX.FiniteVec(dv) then phys:ApplyForceCenter(dv * phys:GetMass()) end
@@ -283,6 +306,22 @@ function BMX.VertAir(ent, phys, cfg, dt, inp, st, w)
         if st.spineBlend >= A.spineBlend then st.spineBlend = nil end
     end
     return ownsTurn
+end
+
+--------------------------------------------------------------------------
+-- THE SPEED ACROSS that brings a flight down on `target`: from `com`, moving `vz`
+-- up, under gravity `g` (u/s^2, downward positive), the time until it is back
+-- down at target.z, and the horizontal distance to cover in it. nil when the
+-- flight never comes down that far. Pure, for the tests. Returns speed, time.
+--------------------------------------------------------------------------
+function BMX.SpineSpeed(com, vz, target, g)
+    if not g or g <= 0 then return nil end
+    local disc = vz * vz + 2 * g * (com.z - target.z)
+    if disc < 0 then return nil end
+    local t = (vz + math.sqrt(disc)) / g
+    if t <= 1e-3 then return nil end
+    local dx, dy = target.x - com.x, target.y - com.y
+    return math.sqrt(dx * dx + dy * dy) / t, t
 end
 
 --------------------------------------------------------------------------
@@ -465,7 +504,7 @@ function BMX.AirReset(st)
     st.airTime   = 0
     -- Vert flights (VertAir): nothing carried over from the last air.
     st.vertSpin, st.vertTarget, st.vertTurning, st.vertDir = 0, nil, false, nil
-    st.spineTarget, st.spineSeen, st.spineBlend, st.spineDone = nil, nil, nil, nil
+    st.spineTarget, st.spineSeen, st.spineBlend, st.spineDone, st.spineAim = nil, nil, nil, nil, nil
     st.vertDrop, st.vertAxis, st.dropRef, st.dropTick = nil, nil, nil, 0
     st.spineW, st.spineWPress, st.spineTick = false, nil, 0
     st.airPeakZ, st.launchKind = nil, nil

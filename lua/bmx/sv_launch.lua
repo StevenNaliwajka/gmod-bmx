@@ -438,3 +438,34 @@ function L.FindSpine(p, n1, cfg, opts)
     end
     return nil
 end
+
+--------------------------------------------------------------------------
+-- WHERE ON THE FAR FACE TO LAND. From the point FindSpine found near its top,
+-- walk on down the face (8 u steps along its fall line, as far as spineDrop)
+-- while the ground is still that face -- lower each step, and mirroring n1
+-- within spineMirror -- and return its middle: { pos, top, foot }. The transfer
+-- aims the flight there (sv_air.lua), so it comes down on the face however high
+-- it went, instead of carrying a fixed speed over it.
+--------------------------------------------------------------------------
+function L.SpineAim(sp, n1, cfg, opts)
+    opts = opts or {}
+    local A = (cfg or BMX.Config).Air
+    local trace = opts.trace or defaultTrace
+    if not (sp and n1) then return nil end
+    local h = Vector(sp.dir.x, sp.dir.y, 0)
+    local len = h:Length()
+    if len < 1e-3 then return nil end
+    h = h / len
+    local mirror = Vector(-n1.x, -n1.y, n1.z)
+    local foot, lastZ = sp.pos, sp.pos.z
+    for d = 8, A.spineDrop, 8 do
+        local q = sp.pos + h * d
+        local z, n = trace(q, opts.filter)
+        if not (z and n) or z >= lastZ - 0.5
+           or math.acos(math.max(-1, math.min(1, n:Dot(mirror)))) > A.spineMirror then
+            break
+        end
+        foot, lastZ = Vector(q.x, q.y, z), z
+    end
+    return { pos = (sp.pos + foot) * 0.5, top = sp.pos, foot = foot }
+end

@@ -295,14 +295,51 @@ T.test("spine transfer: a fresh W near the apex carries the velocity over onto t
     sv:run(0.4)
     T.ok(bike.st.spineDone, "the press took")
     local v = bike:GetPhysicsObject():GetVelocity()
-    T.ok(v:GetNormalized():Dot(dir) > 0.8, "moving down the far face: " .. v:GetNormalized():Dot(dir))
-    T.ok(v:Length() >= 120, "at least the transfer speed: " .. v:Length())
+    -- Aimed (BMX.SpineSpeed): carried ACROSS toward the far face at the speed that
+    -- comes down on it -- from 6000 u up, the slowest the aim allows.
+    local A = sv.env.BMX.Config.Air
+    T.ok(v.x > 0 and math.abs(v.y) < 1, "across, toward the far face: " .. tostring(v))
+    T.between(v.x, A.spineSpeedMin - 1, A.spineSpeedMax + 1, "at an aimed speed across")
     local paid = sv.env.BMX.ScoreAir(bike.st)
     local got
     for _, t in ipairs(paid) do if t.name == "Spine Transfer" then got = t end end
     T.ok(got, "scored as a Spine Transfer")
     T.eq(got and got.points, sv.env.BMX.Config.Air.spinePoints, "at the config's points")
     T.eq(#sv.errors, 0, "no errors: " .. table.concat(sv.errors, " | "))
+end)
+
+-- A fixed speed across overshot the far face onto the floor whenever the bike went
+-- higher than usual (spine_transfer on CI, about one run in seven): the aim is the
+-- middle of the face, and the speed the one that comes down there.
+T.test("spine transfer: aimed at the middle of the far face, between its top and its foot", function()
+    local sv = F.server()
+    local E, L, C = sv.env, sv.env.BMX.Launch, sv.env.BMX.Config
+    local trace = spineTrace(E, 70)
+    local sp = L.FindSpine(V(E, 108, 0, 190), face(E, 70), C, { trace = trace })
+    local aim = L.SpineAim(sp, face(E, 70), C, { trace = trace })
+    T.ok(aim, "an aim")
+    local footX = 100 + 100 / math.tan(math.rad(70))
+    T.ok(aim.foot.x > footX - 9 and aim.foot.x <= footX + 0.5, "the foot where the face meets the floor: " .. aim.foot.x)
+    T.ok(aim.pos.x > aim.top.x and aim.pos.x < aim.foot.x, "the aim between them: " .. aim.pos.x)
+    T.ok(aim.pos.z < aim.top.z and aim.pos.z > aim.foot.z, "half way down: " .. aim.pos.z)
+end)
+
+T.test("spine transfer: the aimed speed comes down on the target, however high the flight went", function()
+    local sv = F.server()
+    local E = sv.env
+    local g = 600
+    local target = E.Vector(140, 0, 50)
+    for _, case in ipairs({ { 60, 0 }, { 120, 0 }, { 220, 40 }, { 300, -30 }, { 90, 120 } }) do
+        local com = E.Vector(100, 0, target.z + case[1])
+        local vz = case[2]
+        local hs = E.BMX.SpineSpeed(com, vz, target, g)
+        T.ok(hs, "a speed from " .. case[1] .. " u up")
+        -- fly it: small steps under gravity until it is back down at the target's height
+        local x, z, v, dt = com.x, com.z, vz, 1 / 600
+        repeat x, z, v = x + hs * dt, z + v * dt - 0.5 * g * dt * dt, v - g * dt until z <= target.z
+        T.near(x, target.x, 1, string.format("from %d u up at %d u/s: lands on the aim", case[1], vz))
+    end
+    T.eq(E.BMX.SpineSpeed(E.Vector(0, 0, 0), 10, E.Vector(40, 0, 100), g), nil, "a target above the flight's reach: no speed")
 end)
 
 T.test("spine transfer: no press, no transfer", function()

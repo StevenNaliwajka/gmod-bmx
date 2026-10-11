@@ -763,7 +763,9 @@ C.Air = {
     spineDrop   = 260,
     spineMirror = math.rad(35),
     spineBlend  = 0.3,
-    spineSpeed  = 140,
+    spineSpeed  = 140,      -- across, when the far face cannot be measured (sv_launch SpineAim)
+    spineSpeedMin = 40,     -- the aimed speed across, at least...
+    spineSpeedMax = 260,    -- ...and at most
     spinePoints = 350,
     spineWindow = 1.2,
 }

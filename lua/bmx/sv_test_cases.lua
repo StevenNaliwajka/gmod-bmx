@@ -2957,9 +2957,12 @@ end)
 -- With the vert turn's fixes (sv_air.lua) and 39211f2's tail guard: 20/20 on a
 -- real server, 2026-10-08; with the wheels' edge contact and the carry held to
 -- spineSpeed, 18/20.)
-T.Case("spine_transfer", { timeout = 40,
-    desc = "over a park spine with a fresh W at the top: the far face is seen, the velocity carried onto it, Spine Transfer scored, and it lands on the far side" },
-function(ctx)
+-- One run over a park spine at `speed` (u/s at the start of the run-up). The far
+-- face is AIMED at (sv_air.lua, BMX.Launch.SpineAim): a fixed speed across it
+-- overshot onto the floor whenever the bike went higher than usual (x 546 of a
+-- spine ending at 492, about one CI run in seven), so the landing must be ON the
+-- far face, not merely past the coping.
+local function spineRun(ctx, speed)
     local g = ctx.ground
     local b = BMX.Park.Build("spine", { 2, 3 })
     local xa = g.x + 760
@@ -2972,7 +2975,7 @@ function(ctx)
         for _, t in ipairs(tricks) do paid[#paid + 1] = t.name end
     end)
     local kind, seen, pressedAt
-    local flew, landed = rideOffPiece(ctx, xa, 380, 430, 12, function(st)
+    local flew, landed = rideOffPiece(ctx, xa, 380, speed, 12, function(st)
         if not st.airMode then return end
         kind = kind or st.launchKind
         seen = seen or st.spineTarget ~= nil
@@ -2982,9 +2985,10 @@ function(ctx)
     end)
     ctx:input({})
     hook.Remove("BMX_TricksLanded", "BMX.TestSpine")
-    ctx:log(string.format("flew %s, kind %s, far face seen %s, paid %s, landed at x %.0f (spine from %.0f to %.0f)",
+    local aim = ctx:st().spineAim
+    ctx:log(string.format("flew %s, kind %s, far face seen %s, paid %s, landed at x %.0f (spine from %.0f to %.0f; aimed at x %s)",
         tostring(flew), tostring(kind), tostring(seen), table.concat(paid, ", "),
-        ctx.bike:GetPos().x, xa, xa + 2 * b.hl))
+        ctx.bike:GetPos().x, xa, xa + 2 * b.hl, aim and string.format("%.0f", aim.pos.x) or "-"))
     if not ctx:ok(flew, "the bike left the top of the spine") then return end
     ctx:ok(kind == "vert", "the takeoff was classified vert: " .. tostring(kind))
     ctx:ok(seen, "the far face was found near the apex")
@@ -2993,10 +2997,19 @@ function(ctx)
     local got = false
     for _, n in ipairs(paid) do if n == "Spine Transfer" then got = true end end
     ctx:ok(got, "Spine Transfer was scored")
-    -- Past the coping, on the far side of the spine.
+    -- On the far side of the spine, and on its face: not past the foot onto the floor.
     ctx:ok(ctx.bike:GetPos().x > xa + b.hl, "landed on the far face, past the coping")
+    ctx:ok(ctx.bike:GetPos().x < xa + 2 * b.hl + 24, "and not past its foot onto the floor")
     ctx:ok(IsValid(ctx.bike:GetDriver()), "rider still aboard")
-end)
+end
+
+T.Case("spine_transfer", { timeout = 40,
+    desc = "over a park spine with a fresh W at the top: the far face is seen, the velocity carried onto it, Spine Transfer scored, and it lands on the far face" },
+function(ctx) spineRun(ctx, 430) end)
+
+T.Case("spine_transfer_fast", { timeout = 40,
+    desc = "the same, coming in faster and going higher: still aimed down onto the far face, not past it onto the floor" },
+function(ctx) spineRun(ctx, 500) end)
 
 --------------------------------------------------------------------------
 -- THE NOSE MANUAL (G02, bmx_nose_manual): rolling on the front wheel.

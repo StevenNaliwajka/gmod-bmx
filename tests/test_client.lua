@@ -138,6 +138,8 @@ end)
 T.test("the pedals are geared to the rear wheel: still with it, forward with it, back with it", function()
     local s = scene()
     local C = s.cb:Cfg()
+    s.cb:SetGrounded(true)
+    s.cb:SetPedalling(true)                -- pedalling: a freewheel's cranks turn only then
     s.cb:SetCadence(12)                    -- the rider's legs are not what turns them
     s.cb._vel = s.cb:GetForward() * 0
     draw(s)
@@ -156,6 +158,50 @@ T.test("the pedals are geared to the rear wheel: still with it, forward with it,
     s.cb._vel = s.cb:GetForward() * -60
     draw(s)
     T.ok(s.cb.crankAngle < back0, "rolling back: pedals back")
+end)
+
+-- Geared to the wheel always, the legs pedalled down every hill and spun in the
+-- air with the rear wheel. A freewheel holds them: level, the way a rider sets the
+-- pedals for a jump, until somebody pedals on the ground again.
+T.test("a freewheel coasts: let go and the cranks come level and stay; pedal and they are picked up without a jump", function()
+    local s = scene()
+    s.cb:SetGrounded(true)
+    s.cb:SetPedalling(true)
+    s.cb._vel = s.cb:GetForward() * 200
+    for _ = 1, 7 do draw(s) end
+    T.ok(math.abs(math.sin(s.cb.crankAngle)) > 0.05, "pedalling: wherever the stroke is (" .. s.cb.crankAngle .. ")")
+    s.cb:SetPedalling(false)
+    local prev = s.cb.crankAngle
+    for _ = 1, 150 do
+        draw(s)
+        T.ok(math.abs(s.cb.crankAngle - prev) < 0.3, "eased, never snapped")
+        prev = s.cb.crankAngle
+    end
+    T.near(math.sin(s.cb.crankAngle), 0, 0.01, "coasting: the cranks level")
+    local held = s.cb.crankAngle
+    for _ = 1, 20 do draw(s) end
+    T.near(s.cb.crankAngle, held, 1e-6, "and held while the wheel rolls on")
+    s.cb:SetPedalling(true)
+    draw(s)
+    T.near(s.cb.crankAngle, held, 0.15, "pedalling again: picked up from there (one frame of turning on)")
+    for _ = 1, 10 do draw(s) end
+    T.ok(math.abs(s.cb.crankAngle - held) > 0.3, "and turning")
+    s.cb:SetGrounded(false)
+    for _ = 1, 66 do draw(s) end
+    T.near(math.sin(s.cb.crankAngle), 0, 0.01, "in the air, pedals level, whatever the keys")
+end)
+
+T.test("a fixed gear has no freewheel: its cranks turn with the wheel, pedalling or not", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local cb = cl:clientEntity(sv.env.BMX.ClassFor("fixie"))
+    cb:SetPos(cl.env.Vector(0, 0, 20))
+    T.eq(cb:Coasting(), false, "never coasting")
+    local stock = cl:clientEntity("bmx_base")
+    T.eq(stock:Coasting(), true, "a BMX not pedalled is")
+    stock:SetGrounded(true)
+    stock:SetPedalling(true)
+    T.eq(stock:Coasting(), false, "and pedalled on the ground is not")
 end)
 
 T.test("the kickstand is drawn exactly when it is down", function()

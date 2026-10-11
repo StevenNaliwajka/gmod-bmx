@@ -526,7 +526,7 @@ T.test("pose: a motorbike rider's chosen lean stops at the pose set's cap", func
     local added = B.PoseSets.moto.rider({ crank = 0, speed = top, topSpeed = top, sprint = false,
         hop = 0, pitch = 0, steer = 0, leanFwd = 0 }).spine.y + B.StanceLean(ply)
     T.ok(added > cap + 10, string.format("the leans add up past the cap: %.0f", added))
-    local chosen = ply._bones["ValveBiped.Bip01_Spine2"].y - (ply.bmxSpineLean or 0)
+    local chosen = B.RiderSpineLean(ply)
     T.near(chosen, cap, 1e-6, "full speed in the attack stance folds to the cap")
 end)
 

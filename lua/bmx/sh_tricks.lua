@@ -192,7 +192,7 @@ function BMX.UnpackTrickBits(bits)
 end
 
 -- How long the rider takes to move into, or out of, a pose (cl_rider.lua).
-BMX.PoseBlendTime = 0.15
+BMX.PoseBlendTime = 0.2
 
 --------------------------------------------------------------------------
 -- THE BUILT-INS. Same names, same numbers, as when they were rows in

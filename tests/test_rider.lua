@@ -20,6 +20,10 @@ local function client()
     local ply = cl:player("Rider")
     ply._vehicle = pod
     bike:SetDriver(ply)
+    -- on the ground and pedalling, so the cranks turn with the wheel (a freewheel
+    -- holds them still otherwise: cl_init.lua ENT:Coasting)
+    bike:SetGrounded(true)
+    bike:SetPedalling(true)
     return cl, bike, ply
 end
 
@@ -321,23 +325,109 @@ T.test("IK: no limb is wrung: twist stays within limits through pedalling and st
     T.between(reach(cl, ply, "ValveBiped.Bip01_R_Hand", bike.ikTargets.rHand), 0, 3, "hand on its grip")
 end)
 
-T.test("landing: the rider crouches to soak it up, in proportion, then stands", function()
+T.test("landing: the rider crouches to soak it up, in proportion, the knees giving over a few frames, then stands", function()
     local cl, bike, ply = seated()
     local function land(vz)
-        bike.bmxLand = 0
+        bike.bmxLandHit, bike.bmxSm = 0, nil
         bike:SetGrounded(false)
         bike._vel = cl.env.Vector(0, 0, vz)
         frame(cl, bike, ply)                  -- in the air, falling
         bike:SetGrounded(true)
         bike._vel = cl.env.Vector()
         frame(cl, bike, ply)                  -- touchdown
-        return bike.bmxLand
+        local first, peak = bike.bmxLand, bike.bmxLand
+        for _ = 1, 15 do frame(cl, bike, ply) peak = math.max(peak, bike.bmxLand) end
+        return peak, first
     end
     T.eq(land(-60), 0, "a gentle touchdown: no crouch")
-    local soft, hard = land(-200), land(-500)
-    T.ok(soft > 0.3 and hard > soft, string.format("a harder landing crouches deeper (%.2f < %.2f)", soft, hard))
-    for _ = 1, 40 do frame(cl, bike, ply) end
+    local soft = land(-200)
+    local hard, first = land(-500)
+    T.ok(soft > 0.25 and hard > soft, string.format("a harder landing crouches deeper (%.2f < %.2f)", soft, hard))
+    T.ok(first < hard * 0.5, string.format("not all in the touchdown frame (%.2f of %.2f)", first, hard))
+    for _ = 1, 60 do frame(cl, bike, ply) end
     T.eq(bike.bmxLand, 0, "and stands back up")
+end)
+
+-- What the pose is built from used to be fed straight in: a sprint was ten
+-- degrees of tuck in one frame, a change of stance 28. It is followed now
+-- (cl_rider.lua SMOOTH), the same at any frame rate.
+T.test("smoothing: a sprint and a change of stance ease the torso over, at 30 and at 144 frames a second", function()
+    local results = {}
+    for _, fps in ipairs({ 30, 144 }) do
+        local cl, bike, ply = seated()
+        local E = cl.env
+        E.GetConVar("bmx_rider_ik"):SetString("0")       -- the body alone
+        E.FrameTime = function() return 1 / fps end
+        local function lean() return E.BMX.RiderSpineLean(ply) end
+        local function run(secs, track)
+            local last, worst, t63 = lean(), 0, nil
+            local from = last
+            for i = 1, math.floor(secs * fps) do
+                frame(cl, bike, ply)
+                local now = lean()
+                worst = math.max(worst, math.abs(now - last))
+                last = now
+                if track and not t63 and math.abs(now - from) >= 0.63 * math.abs(track - from) then t63 = i / fps end
+            end
+            return worst, t63, from
+        end
+        run(1)
+        local before = lean()
+        bike:SetSprinting(true)
+        local worst, t63 = run(0.8, before + E.BMX.RiderAmplitudes.sprintTuck)
+        local step = lean() - before
+        T.near(step, E.BMX.RiderAmplitudes.sprintTuck, 0.5, fps .. " fps: the whole sprint tuck in the end")
+        T.ok(worst < step * (fps == 30 and 0.4 or 0.12), string.format("%d fps: at most %.1f of %.1f degrees a frame", fps, worst, step))
+        results[fps] = t63
+        ply:SetNWInt("BMXStance", 3)                    -- attack
+        local s0 = lean()
+        local w2 = run(0.8)
+        T.near(lean() - s0, 22, 0.5, fps .. " fps: into the attack stance")
+        T.ok(w2 < 22 * (fps == 30 and 0.4 or 0.12), string.format("%d fps: the stance eased, %.1f a frame", fps, w2))
+    end
+    T.ok(results[30] and results[144] and math.abs(results[30] - results[144]) < 0.05,
+        string.format("as quick at 30 as at 144 (%.3f s, %.3f s)", results[30] or -1, results[144] or -1))
+end)
+
+-- Out of the saddle a rider's shoulders rock with the pedals and the body dips
+-- into each downstroke; seated, barely; coasting, not at all.
+T.test("the stroke in the body: out of the saddle the shoulders rock with the cranks, the head holds still", function()
+    local cl = client()
+    local R = cl.env.BMX.RiderAmplitudes
+    local up = pose(cl, { stand = 1, pedal = 1, crank = math.pi / 2 })
+    local down = pose(cl, { stand = 1, pedal = 1, crank = 3 * math.pi / 2 })
+    T.near(up.spine.r, R.strokeTwist, 1e-6, "a rock one way")
+    T.near(down.spine.r, -R.strokeTwist, 1e-6, "and back, half a turn on")
+    T.near(up.head.r, -up.spine.r * 0.8, 1e-6, "the head turned back against it")
+    T.ok(pose(cl, { stand = 1, pedal = 1, crank = math.pi / 2 }).spine.y >
+         pose(cl, { stand = 1, pedal = 1, crank = 0 }).spine.y, "a dip into the downstroke")
+    T.ok(math.abs(pose(cl, { stand = 0, pedal = 1, crank = math.pi / 2 }).spine.r) < R.strokeTwist * 0.3, "seated, barely")
+    T.eq(pose(cl, { stand = 1, pedal = 0, crank = math.pi / 2 }).spine.r, 0, "coasting, not at all")
+    T.near(pose(cl, { sprint = 1, pedal = 1, crank = math.pi / 2 }).spine.r, R.strokeTwist, 1e-6, "a sprint is out of the saddle")
+    T.ok(pose(cl, { air = 1 }).head.y > pose(cl, {}).head.y + 5, "in the air the head drops to spot the landing")
+end)
+
+T.test("IK: a rider some way off still pedals, solved every few frames", function()
+    local cl, bike, ply = seated()
+    local n = 0
+    cl.env.FrameNumber = function() n = n + 1 return n end
+    cl.eyePos = bike:GetPos() + cl.env.Vector(2000, 0, 0)
+    local solved = 0
+    for _ = 1, 16 do
+        cl.setupBones = 0
+        frame(cl, bike, ply)
+        if cl.setupBones > 0 then solved = solved + 1 end
+    end
+    T.between(solved, 3, 5, "a quarter of the frames")
+end)
+
+T.test("a rider drawn twice in one frame (a reflection) is posed once", function()
+    local cl, bike, ply = seated()
+    cl.env.FrameNumber = function() return 7 end
+    frame(cl, bike, ply)
+    cl.setupBones = 0
+    cl.env.hook.Run("PrePlayerDraw", ply)
+    T.eq(cl.setupBones, 0, "the second draw reuses the first's pose")
 end)
 
 T.test("IK: at full lock, both hands stay on the grips, left and right", function()
@@ -373,4 +463,45 @@ T.test("IK: the knees never come into the stomach, all the way round the pedals"
         end
     end
     T.ok(worst > 9, string.format("closest a knee gets to the torso's centre line: %.1f", worst))
+end)
+
+
+-- ValveBiped's head is turned half round from its spine (+Y back, +Z right,
+-- measured on real models; tests/lib/skeleton.lua), so the pose's "hold the
+-- horizon against the spine" nodded the head onto the chest on every real model:
+-- a road rider looking at the ground (rider-preview/real-client-v2, 2026-10-10).
+T.test("the head looks up the road, not at the ground, however far the rider tucks", function()
+    local cl, bike, ply = seated()
+    local E = cl.env
+    E.GetConVar("bmx_rider_ik"):SetString("0")
+    bike:SetSpeedUPS(400)
+    bike:SetSprinting(true)
+    ply:SetNWInt("BMXStance", 3)                          -- attack: the deepest fold
+    for _ = 1, 60 do frame(cl, bike, ply) end
+    ply:InvalidateBoneCache(); ply:SetupBones()
+    local head = ply:GetBoneMatrix(ply:LookupBone("ValveBiped.Bip01_Head1"))
+    local spine = ply:GetBoneMatrix(ply:LookupBone("ValveBiped.Bip01_Spine2"))
+    local face = head:GetRight()                          -- the head's -Y: where the face points
+    local chest = -spine:GetRight()                       -- the spine's +Y: where the chest points
+    local fwd = bike:GetForward()
+    T.ok(E.BMX.RiderSpineLean(ply) > 30, "folded well forward: " .. E.BMX.RiderSpineLean(ply))
+    T.ok(chest:Dot(E.Vector(0, 0, 1)) < -0.4, "the chest faces down")
+    T.ok(face:Dot(E.Vector(0, 0, 1)) > -0.5, string.format("but the face looks ahead, %.0f deg down",
+        math.deg(math.asin(-face:Dot(E.Vector(0, 0, 1))))))
+    T.ok(face:Dot(fwd) > 0.85, "up the road")
+end)
+
+-- A back curves: the lean is shared down the spine's links instead of folding at
+-- the shoulder blades.
+T.test("the back curves: the lean is shared down the spine, the lower links a little less", function()
+    local cl, bike, ply = seated()
+    local E = cl.env
+    E.GetConVar("bmx_rider_ik"):SetString("0")
+    bike:SetSpeedUPS(400)
+    for _ = 1, 30 do frame(cl, bike, ply) end
+    local function y(name) return ply:GetManipulateBoneAngles(ply:LookupBone("ValveBiped.Bip01_" .. name)).y end
+    local low, mid, top = y("Spine"), y("Spine1"), y("Spine2")
+    T.ok(low > 0 and mid > 0 and top > 0, string.format("every link bends forward (%.1f %.1f %.1f)", low, mid, top))
+    T.ok(low < mid and mid < top, "less low down")
+    T.near(low + mid + top, E.BMX.RiderSpineLean(ply), 1e-9, "and they add up to the pose's lean")
 end)

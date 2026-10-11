@@ -98,7 +98,7 @@ function BMX.PassengerPose(ply, bike)
     local b = ply:LookupBone("ValveBiped.Bip01_Spine2")
     if b then ply:ManipulateBoneAngles(b, Angle(0, LEAN[kind], 0)) end
     local head = ply:LookupBone("ValveBiped.Bip01_Head1")
-    if head then ply:ManipulateBoneAngles(head, Angle(0, -LEAN[kind] * 0.7, 0)) end
+    if head then ply:ManipulateBoneAngles(head, BMX.HeadAngle(Angle(0, -LEAN[kind] * 0.7, 0))) end
     if BMX.SolveRiderIK and GetConVar("bmx_rider_ik"):GetBool() then
         local targets = BMX.PassengerTargets(ply, bike, kind, bike:GetDriver())
         BMX.SolveRiderIK(ply, targets, bike)

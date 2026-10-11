@@ -54,6 +54,14 @@ local RIDER = {
     -- road, and the legs fold a little under the weight.
     leanFwd      = 24,     -- degrees of extra spine lean
     leanFwdHips  = 9,      -- degrees of extra thigh fold
+    -- THE STROKE IN THE BODY. Out of the saddle (standing, attack, a sprint) a
+    -- rider's shoulders rock with the pedals, pulling on the bar on the side that
+    -- pushes, and the body dips a little into each downstroke; seated, barely.
+    -- The head holds still against the shoulders, eyes on the road.
+    strokeTwist  = 7,      -- degrees each way about the spine's length, out of the saddle
+    strokeBob    = 2.5,    -- degrees forward at the bottom of each downstroke
+    strokeSeated = 0.2,    -- ...seated, this fraction of it
+    airLook      = 12,     -- degrees the head drops in the air, to spot the landing
 }
 BMX.RiderAmplitudes = RIDER
 
@@ -62,8 +70,28 @@ local BONES = {
     lThigh = "ValveBiped.Bip01_L_Thigh", lCalf = "ValveBiped.Bip01_L_Calf",
     spine  = "ValveBiped.Bip01_Spine2",  head  = "ValveBiped.Bip01_Head1",
     rArm   = "ValveBiped.Bip01_R_UpperArm", lArm = "ValveBiped.Bip01_L_UpperArm",
+    -- the spine's lower links, which take a share of its forward lean (below)
+    spineLow = "ValveBiped.Bip01_Spine", spineMid = "ValveBiped.Bip01_Spine1",
 }
 BMX.RiderBones = BONES
+
+-- A BACK CURVES. The forward lean used to be all at Spine2, a hinge at the
+-- shoulder blades over a back held straight; it is shared down the spine's
+-- links now, the lower ones a little less, as a back bends. ValveBiped's Spine,
+-- Spine1 and Spine2 share their frame (measured, tests/lib/skeleton.lua), so
+-- each takes the same Angle(0, lean, 0). A model without a link gives its
+-- share to Spine2. The IK's own lean toward the grips (spineReach) and every
+-- twist stay on Spine2.
+local SPINE_SHARE = { { "spineLow", 0.25 }, { "spineMid", 0.3 } }
+local HEAD_HOLD = 0.75     -- of a lean added to a pose set's own, the neck takes back
+
+-- THE HEAD IS TURNED HALF ROUND from the spine on ValveBiped (+Y back, +Z right:
+-- measured), so a flex that bends the spine forward tips the head back. Every pose
+-- set speaks of the head in the spine's terms (positive y nods it forward); this
+-- is what goes on the bone. The twist, about the bone's length, is the same.
+function BMX.HeadAngle(a)
+    return Angle(-a.p, -a.y, a.r)
+end
 
 --------------------------------------------------------------------------
 -- The pose, as { boneKey = Angle } offsets from the base pose.
@@ -71,11 +99,15 @@ BMX.RiderBones = BONES
 --   s.crank     crank angle, rad (the drawn cranks')
 --   s.speed     u/s
 --   s.topSpeed  u/s, the cadence-limited top speed
---   s.sprint    bool
+--   s.sprint    0..1 (or a bool)
 --   s.hop       0..1 preload
 --   s.pitch     bike pitch, rad, nose up positive
 --   s.steer     rad
 --   s.leanFwd   0..1 weight forward over the bars (G02)
+--   s.stand     0..1 out of the saddle (the stance: standing, attack)
+--   s.pedal     0..1 how hard the legs are turning the cranks
+--   s.air       0..1 how far into an air
+-- `sprint` may be a fraction as well as a bool: the driver below eases it.
 --------------------------------------------------------------------------
 function BMX.RiderPose(s)
     local R = RIDER
@@ -98,21 +130,85 @@ function BMX.RiderPose(s)
     local frac  = math.Clamp((s.speed or 0) / math.max(s.topSpeed or 1, 1), 0, 1)
     local lean  = BMX.Clamp(s.leanFwd or 0, 0, 1)
     rT, lT = rT - lean * R.leanFwdHips, lT - lean * R.leanFwdHips
-    local tuck  = frac * R.tuckMax + (s.sprint and R.sprintTuck or 0) + crouch * 0.6
+    local sprint = (s.sprint == true and 1) or (tonumber(s.sprint) or 0)
+    local tuck  = frac * R.tuckMax + sprint * R.sprintTuck + crouch * 0.6
     local spine = tuck + lean * R.leanFwd + math.deg(s.pitch or 0) * R.pitchFollow
+
+    -- The stroke: a twist with the cranks (one rock a turn, toward the side that
+    -- pushes) and a dip with each downstroke (two a turn), as hard as the legs
+    -- work and mostly out of the saddle.
+    local effort = BMX.Clamp(s.pedal or 0, 0, 1) *
+        math.max(sprint, BMX.Clamp(s.stand or 0, 0, 1), R.strokeSeated)
+    local twist = math.sin(c) * R.strokeTwist * effort
+    spine = spine + (0.5 - 0.5 * math.cos(2 * c)) * R.strokeBob * effort
 
     local arm = math.deg(s.steer or 0) * R.armSteer
 
     return {
         rThigh = Angle(0, rT, 0), lThigh = Angle(0, lT, 0),
         rCalf  = Angle(0, rC, 0), lCalf  = Angle(0, lC, 0),
-        spine  = Angle(0, spine, 0),
+        spine  = Angle(0, spine, twist),
         -- The head holds the horizon against the spine, so the rider looks
-        -- down the road rather than at the front tyre.
-        head   = Angle(0, -spine * 0.7, 0),
+        -- down the road rather than at the front tyre; it holds still against
+        -- the shoulders' rock, and in the air it drops to spot the landing.
+        head   = Angle(0, -spine * 0.7 + BMX.Clamp(s.air or 0, 0, 1) * R.airLook, -twist * 0.8),
         rArm   = Angle(arm, 0, 0), lArm = Angle(arm, 0, 0),
     }
 end
+
+--------------------------------------------------------------------------
+-- SMOOTHED INPUTS. What the pose is built from arrives in steps: sprint is a
+-- bool, the stance an int, the hop charge and the weight forward are networked
+-- floats that move at the network's rate, and a landing is seen in one frame.
+-- Fed straight in, every step was a snap: ten degrees of tuck the frame a sprint
+-- started, 28 when the stance changed, a full crouch the frame the wheels
+-- touched and none the frame a hop let go. Each now FOLLOWS its input on a
+-- critically damped spring: it eases out and in, never overshoots, and moves
+-- the same at 30 frames a second as at 300. Seconds, roughly the time to cover
+-- two thirds of a step.
+--------------------------------------------------------------------------
+local SMOOTH = {
+    sprint  = 0.16,   -- out of the saddle into a sprint and back
+    lean    = 0.09,   -- weight forward (G02): already ramped by the server, this hides the steps
+    stance  = 0.22,   -- the stance's torso lean, and out of the saddle
+    hopIn   = 0.07,   -- the hop preload going down
+    hopOut  = 0.045,  -- ...and the pop up, quicker
+    land    = 0.05,   -- a landing's crouch going in
+    air     = 0.25,   -- the head dropping in the air and coming up after
+    pedal   = 0.2,    -- how hard the legs work, from the cranks' speed
+    reach   = 0.08,   -- the IK's own lean and twist toward grips out of reach
+}
+BMX.RiderSmooth = SMOOTH
+local PEDAL_FULL = 7        -- rad/s of crank: a rider working (about 67 rpm)
+
+-- A critically damped spring (the Game Programming Gems 4 form): x and its rate v
+-- toward `target` with time `tau`, exact enough at any dt and never unstable.
+local function damp(x, v, target, tau, dt)
+    if dt <= 0 then return x, v end
+    local omega = 2 / math.max(tau, 1e-3)
+    local k = omega * dt
+    local e = 1 / (1 + k + 0.48 * k * k + 0.235 * k * k * k)
+    local change = x - target
+    local temp = (v + omega * change) * dt
+    v = (v - omega * temp) * e
+    x = target + (change + temp) * e
+    -- (it can cross the target by a hair on a big step: not past it)
+    if (change > 0) == (x < target) and x ~= target then x, v = target, 0 end
+    return x, v
+end
+BMX.RiderDamp = damp
+
+-- st[key] follows target. The first sight of a key starts it at its target, so
+-- a rider who gets on is not seen easing into the pose they already hold.
+local function follow(st, key, target, tau, dt)
+    local x = st[key]
+    if x == nil then st[key], st[key .. "V"] = target, 0 return target end
+    local v
+    x, v = damp(x, st[key .. "V"] or 0, target, tau, dt)
+    st[key], st[key .. "V"] = x, v
+    return x
+end
+BMX.RiderFollow = follow
 
 --------------------------------------------------------------------------
 -- HANDS ON THE GRIPS, FEET ON THE PEDALS: inverse kinematics.
@@ -376,7 +472,11 @@ end
 --------------------------------------------------------------------------
 local SPINE_TWIST = 40     -- degrees either way, about the spine's length
 local SPINE_LEAN  = 30     -- degrees of extra lean toward the bars
-local SPINE_STEP  = 4      -- degrees a frame
+local SPINE_STEP  = 4      -- degrees a frame, at 60 frames a second
+-- Out of reach above REACH_OUT, home below REACH_IN, held between: one line
+-- for both had the torso lean in one frame and ease back the next, at the
+-- edge of reach, a shiver at full lock.
+local REACH_OUT, REACH_IN = 0.15, 0.03
 
 -- How far each grip is beyond its shoulder's reach, summed. Scored on REACH,
 -- not on where the hands are now: a twist trial moves the hands with the
@@ -399,6 +499,11 @@ local function reachExcess(ply, targets)
     return total
 end
 
+-- It DECIDES where the torso should be (ply.bmxSpineTwist, ply.bmxSpineLean),
+-- trying a step either way on the real skeleton; the pose then FOLLOWS that
+-- (SMOOTH.reach, in the driver below), so the body turns into the bars
+-- smoothly, and as fast at any frame rate. The skeleton is put back as the
+-- pose had it, which is what this frame draws.
 local function spineReach(ply, targets)
     local sb = ply:LookupBone("ValveBiped.Bip01_Spine2")
     if not (sb and targets.rHand and targets.lHand) then return end
@@ -406,27 +511,32 @@ local function spineReach(ply, targets)
     local cur = ply:GetManipulateBoneAngles(sb)
     local e0 = reachExcess(ply, targets)
     local tw, ln = ply.bmxSpineTwist or 0, ply.bmxSpineLean or 0
+    -- What the pose drew is the base plus the shown (followed) reach: trials
+    -- are the base plus a candidate target.
+    local shownTw, shownLn = ply.bmxSpineTwistShown or tw, ply.bmxSpineLeanShown or ln
+    local baseP, baseY, baseR = cur.p, cur.y - shownLn, cur.r - shownTw
+    local step = SPINE_STEP * math.Clamp(FrameTime() * 60, 0.25, 2)
     local tries = {}
-    if e0 > 0.05 then
+    if e0 > REACH_OUT then
         -- Either way on the twist, and more or less lean: a lean left over
         -- from the last turn can be the thing in the way on this one.
-        tries = { { SPINE_STEP, 0 }, { -SPINE_STEP, 0 }, { 0, SPINE_STEP }, { 0, -SPINE_STEP } }
-    elseif math.abs(tw) > 0.1 or ln > 0.1 then
+        tries = { { step, 0 }, { -step, 0 }, { 0, step }, { 0, -step } }
+    elseif e0 < REACH_IN and (math.abs(tw) > 0.1 or ln > 0.1) then
         -- In reach: ease back toward square and upright, while it stays so.
-        tries = { { -math.min(math.abs(tw), SPINE_STEP * 0.5) * (tw > 0 and 1 or -1),
-                    -math.min(ln, SPINE_STEP * 0.5) } }
+        tries = { { -math.min(math.abs(tw), step * 0.5) * (tw > 0 and 1 or -1),
+                    -math.min(ln, step * 0.5) } }
     end
     for _, d in ipairs(tries) do
         local nt = math.Clamp(tw + d[1], -SPINE_TWIST, SPINE_TWIST)
         local nl = math.Clamp(ln + d[2], 0, SPINE_LEAN)
         -- The lean goes on the flex (y) the pose already uses; its sign is
         -- the pose's own "forward", so it needs no calibration.
-        ply:ManipulateBoneAngles(sb, Angle(cur.p, cur.y + (nl - ln), nt))
+        ply:ManipulateBoneAngles(sb, Angle(baseP, baseY + nl, baseR + nt))
         refresh(ply)
         local e1 = reachExcess(ply, targets)
-        if (e0 > 0.05 and e1 < e0 - 1e-3) or (e0 <= 0.05 and e1 <= 0.05) then
+        if (e0 > REACH_OUT and e1 < e0 - 1e-3) or (e0 < REACH_IN and e1 < REACH_IN) then
             ply.bmxSpineTwist, ply.bmxSpineLean = nt, nl
-            return
+            break
         end
     end
     ply:ManipulateBoneAngles(sb, cur)
@@ -629,7 +739,7 @@ BMX.RiderAimBone = aim
 -- and the solver is the same guarded one that holds the grips.
 --
 -- The server sends one pose id; every client blends its own weights toward it
--- over BMX.PoseBlendTime (0.15 s), in and out.
+-- over BMX.PoseBlendTime, in and out, eased (BMX.UpdatePoseWeights).
 --------------------------------------------------------------------------
 local HANDS_UP = { rHand = Vector(8, -15, 36), lHand = Vector(8, 15, 36) }
 local FEET_OUT = { rFoot = Vector(-1, -14, 5), lFoot = Vector(-1, 14, 5) }
@@ -726,16 +836,28 @@ local POSE_LIMBS = { "rHand", "lHand", "rFoot", "lFoot" }
 
 -- This bike's pose weights (name -> 0..1), moved toward the pose the server
 -- says is held. Called once a frame from the bike's Draw.
+--
+-- EASED, NOT LINEAR. The weights move at a steady rate (bike.poseLin), and
+-- what the body follows is that eased in and out (smoothstep), so a limb
+-- leaves its grip gently, swings, and settles on its pose instead of starting
+-- and stopping dead. Crossing from one pose to another still sums to one:
+-- smoothstep(1 - t) is 1 - smoothstep(t).
+local function ease(t) return t * t * (3 - 2 * t) end
+BMX.PoseEase = ease
+
 function BMX.UpdatePoseWeights(bike, current, dt)
-    local W = bike.poseW or {}
+    local L = bike.poseLin or {}
+    bike.poseLin = L
+    local W = {}
     bike.poseW = W
     local step = (dt or 0) / BMX.PoseBlendTime
     for _, name in ipairs(BMX.PoseNames) do
-        local w = W[name] or 0
+        local w = L[name] or 0
         local target = (name == current) and 1 or 0
         if w < target then w = math.min(target, w + step)
         elseif w > target then w = math.max(target, w - step) end
-        W[name] = w > 0 and w or nil
+        L[name] = w > 0 and w or nil
+        if w > 0 then W[name] = ease(w) end
     end
     return W
 end
@@ -814,6 +936,12 @@ local animated = {}     -- player -> true while we have bones moved on them
 local LAND_MIN     = 120    -- u/s downward: gentler than this is not worth a crouch
 local LAND_FULL    = 450    -- u/s downward for the deepest crouch
 local LAND_RECOVER = 2.0    -- per second: back up in about half a second
+-- A RIDER FAR AWAY STILL PEDALS. The IK re-poses the skeleton a few dozen times a
+-- frame: every frame near the view, every IK_FAR_EVERY frames out to IK_FAR, and
+-- not at all beyond (they keep the pose they had). It used to stop at IK_RANGE,
+-- and a rider across the park froze mid-stroke on a moving bike.
+local IK_FAR       = 3000
+local IK_FAR_EVERY = 4
 local LIMB_KEYS = { rThigh = true, lThigh = true, rCalf = true, lCalf = true,
                     rArm = true, lArm = true }
 
@@ -824,7 +952,8 @@ local function clear(ply)
     end
     for b in pairs(ply.bmxIK or {}) do ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
     ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
-    ply.bmxGripOff = nil
+    ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
+    ply.bmxGripOff, ply.bmxPoseFrame = nil, nil
     -- The board's crouch lowers the pelvis (cl_board.lua); put it back.
     if ply.bmxPelvis then
         ply:ManipulateBonePosition(ply.bmxPelvis, Vector(0, 0, 0))
@@ -833,6 +962,17 @@ local function clear(ply)
     animated[ply] = nil
 end
 BMX.ClearRiderPose = clear
+
+-- How far forward the pose has a rider's back, degrees, summed down the spine and
+-- less the IK's own reach lean: what the pose set, the style pose and the stance chose.
+function BMX.RiderSpineLean(ply)
+    local total = 0
+    for _, key in ipairs({ "spineLow", "spineMid", "spine" }) do
+        local b = ply:LookupBone(BONES[key])
+        if b then total = total + ply:GetManipulateBoneAngles(b).y end
+    end
+    return total - (ply.bmxReachSm and ply.bmxSpineLeanShown or 0)
+end
 
 hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     local bike = cv_anim:GetBool() and BMX.LocalBike(ply) or nil
@@ -848,33 +988,66 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
         return
     end
 
+    -- Once a frame: a player drawn twice in one (a water reflection, a mirror,
+    -- a camera's screen) keeps what the first draw posed, rather than easing
+    -- twice as fast and solving the IK twice.
+    local frameNo = FrameNumber and FrameNumber()
+    if frameNo and ply.bmxPoseFrame == frameNo then return end
+    ply.bmxPoseFrame = frameNo
+
     local C = bike:Cfg()
     local useIK = cv_ik:GetBool() and bike.ikTargets ~= nil
+    local dt = FrameTime()
+    local st = bike.bmxSm or {}
+    bike.bmxSm = st
 
     -- THE LEGS SOAK UP A LANDING. On touching down with real downward speed
     -- the rider crouches, in proportion to how hard it was, and eases back up
     -- over about half a second: the same fold as a hop preload. Worked out
     -- here from what the client already sees (grounded, and the bike's
-    -- vertical velocity just before), so it costs no networking.
-    local dt = FrameTime()
+    -- vertical velocity just before), so it costs no networking. The impact
+    -- (bmxLandHit) is a step; the crouch (bmxLand) follows it on a spring, so
+    -- the knees give over a few frames instead of folding in one.
     local grounded = bike:GetGrounded()
     local vz = bike:GetVelocity().z
     if grounded and bike.bmxWasAir and (bike.bmxAirVz or 0) < -LAND_MIN then
-        bike.bmxLand = math.Clamp(-bike.bmxAirVz / LAND_FULL, 0.35, 1)
+        bike.bmxLandHit = math.Clamp(-bike.bmxAirVz / LAND_FULL, 0.35, 1)
     end
     if not grounded then bike.bmxAirVz = vz end
     bike.bmxWasAir = not grounded
-    bike.bmxLand = math.max(0, (bike.bmxLand or 0) - dt * LAND_RECOVER)
+    bike.bmxLandHit = math.max(0, (bike.bmxLandHit or 0) - dt * LAND_RECOVER)
+    local land = follow(st, "land", bike.bmxLandHit, SMOOTH.land, dt)
+    if bike.bmxLandHit == 0 and land < 0.002 then land, st.land, st.landV = 0, 0, 0 end
+    bike.bmxLand = land
+
+    -- The rest of what the pose is built from, followed (SMOOTH).
+    local hopNow = bike:GetHopCharge()
+    local hop = follow(st, "hop", hopNow, hopNow > (st.hop or 0) and SMOOTH.hopIn or SMOOTH.hopOut, dt)
+    local sprint = follow(st, "sprint", bike:GetSprinting() and 1 or 0, SMOOTH.sprint, dt)
+    local leanFwd = follow(st, "lean", bike:GetLeanFwd(), SMOOTH.lean, dt)
+    local air = follow(st, "air", grounded and 0 or 1, SMOOTH.air, dt)
+    local crank = bike.crankAngle or 0
+    local turned = st.crank and math.abs((crank - st.crank + math.pi) % (2 * math.pi) - math.pi) or 0
+    st.crank = crank
+    local pedal = follow(st, "pedal", dt > 0 and math.Clamp(turned / dt / PEDAL_FULL, 0, 1) or 0, SMOOTH.pedal, dt)
+    local stanceName = BMX.StanceOf and BMX.StanceOf(ply) or "seated"
+    local stance = follow(st, "stance", BMX.StanceLean and BMX.StanceLean(ply) or 0, SMOOTH.stance, dt)
+    local stand = follow(st, "stand", (stanceName == "standing" or stanceName == "attack") and 1 or 0,
+        SMOOTH.stance, dt)
+
     local set = BMX.PoseSetFor(bike)
     local pose = set.rider({
-        crank    = bike.crankAngle or 0,
+        crank    = crank,
         speed    = bike:GetSpeedUPS(),
         topSpeed = BMX.Gears.TopCeiling(bike, C),
-        sprint   = bike:GetSprinting(),
-        hop      = math.max(bike:GetHopCharge(), bike.bmxLand or 0),
+        sprint   = sprint,
+        hop      = math.max(hop, land),
         pitch    = select(2, BMX.Attitude(bike, vector_up)),
         steer    = bike:GetSteer(),
-        leanFwd  = bike:GetLeanFwd(),
+        leanFwd  = leanFwd,
+        stand    = stand,
+        pedal    = pedal,
+        air      = air,
         -- For a pose set that needs more than the bike's own numbers (the
         -- board's crouch and stance live on the entity and the player).
         bike     = bike,
@@ -882,33 +1055,60 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     })
     -- A style pose folds and twists the torso too (BMX.RiderPoses).
     local poseLean, poseTwist = BMX.PoseBody(bike.poseW, set.poses)
-    -- ...and so does the rider's chosen stance (sh_stance.lua, G21).
-    poseLean = poseLean + (BMX.StanceLean and BMX.StanceLean(ply) or 0)
+    -- ...and so does the rider's chosen stance (sh_stance.lua, G21), eased.
+    poseLean = poseLean + stance
     -- A pose set may cap how far the CHOSEN lean folds the torso (`maxLean`,
     -- degrees). The tuck, the set's own lean, a style pose and the stance
     -- otherwise just add up: on a motorbike at full speed in the attack stance
     -- they came to 62 degrees, the head below the bars (seen with tools/rider).
     -- The IK's own lean toward grips out of reach (spineReach) goes on after
     -- the cap, so a capped rider still gets their hands to the bars.
-    local lean = pose.spine.y + poseLean
+    local setLean = pose.spine.y
+    local lean = setLean + poseLean
     if set.maxLean and lean > set.maxLean then lean = set.maxLean end
     local twist = pose.spine.r + poseTwist
+    local reachLean = 0
     if useIK and (ply.bmxSpineTwist or ply.bmxSpineLean) then
-        lean = lean + (ply.bmxSpineLean or 0)
-        twist = (ply.bmxSpineTwist or 0) + poseTwist
+        -- The IK's own lean and twist (spineReach), followed.
+        local rs = ply.bmxReachSm or {}
+        ply.bmxReachSm = rs
+        ply.bmxSpineLeanShown = follow(rs, "lean", ply.bmxSpineLean or 0, SMOOTH.reach, dt)
+        ply.bmxSpineTwistShown = follow(rs, "twist", ply.bmxSpineTwist or 0, SMOOTH.reach, dt)
+        reachLean = ply.bmxSpineLeanShown
+        lean = lean + reachLean
+        twist = twist + ply.bmxSpineTwistShown
     end
     pose.spine = Angle(pose.spine.p, lean, twist)
+    -- The neck holds the horizon against what was added to the set's own lean
+    -- (the stance, a style pose, the IK's reach), as each set's head does
+    -- against its own: the eyes stay up the road.
+    if pose.head then
+        pose.head = Angle(pose.head.p, pose.head.y - (lean - setLean) * HEAD_HOLD, pose.head.r)
+    end
+    -- The chosen lean shared down the back; Spine2 keeps the rest of it, the
+    -- IK's reach and the twist.
+    local rest = lean - reachLean
+    for _, sh in ipairs(SPINE_SHARE) do
+        local b = ply:LookupBone(BONES[sh[1]])
+        if b then
+            ply:ManipulateBoneAngles(b, Angle(0, rest * sh[2], 0))
+            lean = lean - rest * sh[2]
+        end
+    end
+    pose.spine = Angle(pose.spine.p, lean, pose.spine.r)
     for key, ang in pairs(pose) do
         -- With IK on, the limbs are the solver's; the pose keeps the body.
         if not (useIK and LIMB_KEYS[key]) then
             local b = ply:LookupBone(BONES[key])
+            if key == "head" then ang = BMX.HeadAngle(ang) end
             if b then ply:ManipulateBoneAngles(b, ang) end
         end
     end
     -- The solve re-poses the skeleton a few dozen times, which is nothing for
     -- the riders near you and waste for one across the map, so a rider far
     -- from the view keeps the pose they last had (manipulations persist).
-    if useIK and EyePos():Distance(ply:GetPos()) < IK_RANGE then
+    local dist = useIK and EyePos():Distance(ply:GetPos()) or math.huge
+    if dist < IK_RANGE or (dist < IK_FAR and ((frameNo or 0) + ply:EntIndex()) % IK_FAR_EVERY == 0) then
         if set.solveIK then
             set.solveIK(ply, bike)      -- the board's: feet on the bolts, facing sideways
         else

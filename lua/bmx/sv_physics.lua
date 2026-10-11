@@ -103,6 +103,9 @@ local function drivetrain(ent, cfg, dt, inp, st, rear)
     -- stoker's, each 0..1, so a tandem's torque is the sum of its two riders'. For every
     -- other vehicle it is the driver's alone, the number it always was.
     local thr = inp.throttle + (BMX.Tandem and BMX.Tandem.Push(ent, inp) or 0)
+    -- Whether anyone is pushing on the pedals: a freewheel's drawn cranks turn only
+    -- then (cl_init.lua ENT:Coasting), networked as Pedalling.
+    st.pedalling = thr > 0.05
 
     local tq  = D.crankTorque * (sprinting and D.sprintTorque  or 1)
     local cad = D.maxCadence  * (sprinting and D.sprintCadence or 1)

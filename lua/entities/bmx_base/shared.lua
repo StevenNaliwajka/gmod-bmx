@@ -94,6 +94,9 @@ function ENT:SetupDataTables()
     self:NetworkVar("Bool",  3, "StandDown")
     -- The child seat, on or off (G11): the context-menu toggle on a bike that has one.
     self:NetworkVar("Bool",  4, "ChildSeat")
+    -- Somebody pushing on the pedals (sv_physics.lua st.pedalling): a freewheel's
+    -- drawn cranks follow the wheel only then (cl_init.lua ENT:Coasting).
+    self:NetworkVar("Bool",  5, "Pedalling")
     -- Locked to the world by a bike lock (G13, sv_lock.lua): a chain and a padlock are drawn.
     -- Slot 12, not the next free one: the other vehicle work takes the low ones.
     self:NetworkVar("Bool", 12, "Locked")

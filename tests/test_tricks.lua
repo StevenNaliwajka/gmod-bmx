@@ -765,27 +765,31 @@ T.test("client: a barspin lets the hands go and the bars turn, an X-up crosses t
     T.ok((s.cb.ikTargets.rHand - hand0):Length() > 5, "an X-up has taken the right hand across")
 end)
 
-T.test("client: poses blend in over 0.15 s and out again", function()
+T.test("client: poses blend in over 0.2 s and out again, eased in and out", function()
     local s = scene()
     local B = s.cl.env.BMX
     local bike = {}
     local name = "superman"
+    T.eq(B.PoseBlendTime, 0.2, "0.2 s")
     local W = B.UpdatePoseWeights(bike, name, 0.05)
-    T.near(W[name], 0.05 / 0.15, 1e-9, "a third of the way after 50 ms")
+    T.near(W[name], 0.15625, 1e-9, "a gentle start: smoothstep(0.25) after 50 ms")
     B.UpdatePoseWeights(bike, name, 0.05)
+    T.near(bike.poseW[name], 0.5, 1e-9, "half way at half time")
     B.UpdatePoseWeights(bike, name, 0.05)
-    T.near(bike.poseW[name], 1, 1e-9, "fully in after 150 ms")
-    B.UpdatePoseWeights(bike, name, 0.15)
+    T.near(bike.poseW[name], 0.84375, 1e-9, "slowing into it")
+    B.UpdatePoseWeights(bike, name, 0.05)
+    T.near(bike.poseW[name], 1, 1e-9, "fully in after 200 ms")
+    B.UpdatePoseWeights(bike, name, 0.2)
     T.near(bike.poseW[name], 1, 1e-9, "and held")
-    B.UpdatePoseWeights(bike, nil, 0.075)
-    T.near(bike.poseW[name], 0.5, 1e-9, "half out after 75 ms")
     B.UpdatePoseWeights(bike, nil, 0.1)
+    T.near(bike.poseW[name], 0.5, 1e-9, "half out after 100 ms")
+    B.UpdatePoseWeights(bike, nil, 0.15)
     T.eq(bike.poseW[name], nil, "gone")
-    -- Moving from one pose to another crosses them.
-    B.UpdatePoseWeights(bike, "nohander", 0.15)
-    B.UpdatePoseWeights(bike, "nofooter", 0.075)
-    T.near(bike.poseW.nohander, 0.5, 1e-9, "the old one fades")
-    T.near(bike.poseW.nofooter, 0.5, 1e-9, "as the new one comes in")
+    -- Moving from one pose to another crosses them, and they still sum to one.
+    B.UpdatePoseWeights(bike, "nohander", 0.2)
+    B.UpdatePoseWeights(bike, "nofooter", 0.05)
+    T.near(bike.poseW.nohander + bike.poseW.nofooter, 1, 1e-9, "the old one fades as the new one comes in")
+    T.ok(bike.poseW.nohander > 0.8, "and the old one lets go gently at first")
 end)
 
 T.test("client: a pose pulls its IK target toward its own, in proportion to its weight", function()

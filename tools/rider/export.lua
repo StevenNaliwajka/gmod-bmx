@@ -144,6 +144,17 @@ local function sample(id)
     end
     local model = MF.ready(cl, bike)
     for _ = 1, WARMUP do frame() end
+    -- The cranks TURN between samples, at the sampling's pace (cl_rider.lua eases
+    -- the body by how hard the legs work, which it reads off the cranks' speed):
+    -- one turn first, so the first sample is mid-ride, not just starting.
+    local function turnTo(to)
+        local from = crank
+        for s = 1, SETTLE do
+            crank = from + (to - from) * s / SETTLE
+            frame()
+        end
+    end
+    for i = 1, FRAMES do turnTo(i / FRAMES * 2 * math.pi - 2 * math.pi) end
     local set = B.PoseSetFor and B.PoseSetFor(bike) or {}
 
     -- The wheels where cl_init.lua draws them at rest: the axle line lifted
@@ -184,8 +195,7 @@ local function sample(id)
         return bones, targets, reach
     end
     for i = 0, FRAMES - 1 do
-        crank = i / FRAMES * 2 * math.pi
-        for _ = 1, SETTLE do frame() end
+        turnTo(i / FRAMES * 2 * math.pi)
         local bones, targets, reach = snapshot(ply, bike.ikTargets, set.openHands)
         local f = { crank = math.deg(crank), bones = bones, targets = targets, reach = reach }
         if stoker then

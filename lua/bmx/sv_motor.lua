@@ -119,6 +119,7 @@ BMX.Drives.throttle = function(ent, cfg, dt, inp, st, wheel, vdef)
     if not on then tq = 0 end
     tq = tq * M.WheelieCut(st.pitch, inp.wheelieMod)
     st.cadence = 0                     -- no legs: nothing turns the cranks
+    st.pedalling = false
 
     -- REGEN: S slows the motor as well as the pad. It fades in over the first 60 u/s
     -- so it never pushes a standing vehicle backwards, and it goes to the pack.
@@ -210,6 +211,7 @@ BMX.Drives.engine = function(ent, cfg, dt, inp, st, wheel, vdef)
     end
 
     st.cadence = 0
+    st.pedalling = false
     st.rpm = E.omega * RPM
     st.clutchLever = E.lever
     -- Keep the rear brake whatever the sign: engine braking is a drag, not pedalling backwards.

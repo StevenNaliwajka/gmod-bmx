@@ -102,8 +102,19 @@ M.BONES = {
     -- be a plain pitch, which left the side axis on Y, so every "forward" lean
     -- bent the rider to the LEFT -- +20 put the head 4 units left, not 4
     -- forward -- and the IK, solved in each bone's own frame, could not tell.
-    { B .. "Spine2",     B .. "Pelvis",    Vector(0, 0, 12),   Angle(-90, 0, -90) },
-    { B .. "Head1",      B .. "Spine2",    Vector(12, 0, 0),   Angle(0, 0, 0) },
+    --
+    -- THREE LINKS, AND THE HEAD THE OTHER WAY ROUND, as measured on real player
+    -- models (kleiner, male_07, alyx, police; their bone matrices read on a
+    -- server, 2026-10-11): Spine, Spine1, Spine2 and Spine4 all point up with
+    -- +Y forward and +Z left, so a lean shared down them bends one way; Neck1
+    -- and Head1 point up with +Y BACK and +Z RIGHT -- the spine's frame turned
+    -- half round about its length -- so the same flex on the head turns it the
+    -- other way. This used to give Head1 the spine's frame, and the head that
+    -- was meant to hold the horizon nodded onto the chest on every real model.
+    { B .. "Spine",      B .. "Pelvis",    Vector(0, 0, 4),    Angle(-90, 0, -90) },
+    { B .. "Spine1",     B .. "Spine",     Vector(4, 0, 0),    Angle(0, 0, 0) },
+    { B .. "Spine2",     B .. "Spine1",    Vector(4, 0, 0),    Angle(0, 0, 0) },
+    { B .. "Head1",      B .. "Spine2",    Vector(12, 0, 0),   Angle(0, 0, 180) },
     -- The arms hang off the SPINE, as ValveBiped's do (through the clavicles),
     -- so twisting the spine carries the shoulders round. A shoulder 18 up and 7
     -- out is (6, 0, -7) from Spine2, and the arm's rest is "forward and 30

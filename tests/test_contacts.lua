@@ -317,6 +317,8 @@ T.test("contacts: the moped pedals with the wheel, then rests the feet on level 
     model(s)
     local cb = s.cb
     cb.spin.rear.angle, cb.spin.rear.rate = 1.0, 0     -- cranks a little round from level
+    cb:SetGrounded(true)
+    cb:SetPedalling(true)                                -- pedalled with the engine off
     cb:SetRpm(0)
     draw(s)
     local c0 = cb.crankAngle

@@ -876,11 +876,26 @@ end
 -- caught rests its rider's feet on them, level (Motor.RestCrank eases them
 -- there). When they are let go again the wheel picks them up from where they
 -- stood, through `crankOffset`, so the legs never jump a half turn.
+--
+-- A FREEWHEEL COASTS. Geared to the wheel always, the legs went on pedalling
+-- down every hill and spun in the air with the rear wheel, which no rider does.
+-- On a bike with a freewheel (the pedal drive, a coaster, an e-bike, a moped
+-- with its engine off) the wheel drives the cranks only while somebody pedals
+-- (Pedalling) on the ground; otherwise they are held, eased level the way a
+-- rider sets them for a jump, and picked up again from there. A fixed gear, a
+-- unicycle and a penny-farthing have no freewheel: their legs turn with the wheel.
 --------------------------------------------------------------------------
+local FREEWHEEL = { pedal = true, coaster = true, assist = true, engine = true }
+function ENT:Coasting()
+    local d = self:Bike().drive
+    if not (d and FREEWHEEL[d.kind]) then return false end
+    return not (self:GetPedalling() and self:GetGrounded())
+end
+
 function ENT:CrankAngle(rSpin, C, dt)
     local free = rSpin / BMX.GearRatio(self, C)
     local Mo = BMX.Motor
-    if Mo and Mo.FixedCranks and Mo.FixedCranks(self) then
+    if Mo and Mo.FixedCranks and (Mo.FixedCranks(self) or self:Coasting()) then
         local a = Mo.RestCrank and Mo.RestCrank(self, self.crankAngle, dt) or 0
         self.crankOffset = a - free
         return a

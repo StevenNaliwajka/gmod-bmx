@@ -21,7 +21,8 @@ a real player model's skeleton:
   rates a fast move -- dropping into a scooter kick, the pop of a hop -- left a
   hand up to eight units off the bar for a frame, because each joint could only
   turn so far per frame. The arm and the wrist now keep turning until the hand
-  is there.
+  is there, and when a hard landing or a hop throws the bars out of reach the
+  rider leans in for them at once rather than over several frames.
 - **The bike shown while a new model loads fits its rider.** For the few
   seconds a vehicle's model takes to build the first time, a simple bike stands
   in. On every vehicle longer than a BMX it was a BMX stretched to the length,

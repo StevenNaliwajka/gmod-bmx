@@ -528,9 +528,21 @@ end
 -- (SMOOTH.reach, in the driver below), so the body turns into the bars
 -- smoothly, and as fast at any frame rate. The skeleton is put back as the
 -- pose had it, which is what this frame draws.
+-- A GRIP OUT OF REACH IS REACHED FOR AT ONCE. One round of tries a frame moved the
+-- torso SPINE_STEP at a time while a hard landing or a hop's pop had the hands out of
+-- reach for four frames on a 20 fps client (2026-10-11): while the hands are out of
+-- reach it takes up to REACH_ROUNDS rounds in the frame.
+local REACH_ROUNDS = 2
+local spineReachOnce
 local function spineReach(ply, targets)
+    for _ = 1, REACH_ROUNDS do
+        if not spineReachOnce(ply, targets) then break end
+    end
+end
+-- One round. True while the hands are still out of reach and the round helped.
+function spineReachOnce(ply, targets)
     local sb = ply:LookupBone("ValveBiped.Bip01_Spine2")
-    if not (sb and targets.rHand and targets.lHand) then return end
+    if not (sb and targets.rHand and targets.lHand) then return false end
     refresh(ply)
     local cur = ply:GetManipulateBoneAngles(sb)
     local e0 = reachExcess(ply, targets)
@@ -574,6 +586,7 @@ local function spineReach(ply, targets)
     if bestT then ply.bmxSpineTwist, ply.bmxSpineLean = bestT, bestL end
     ply:ManipulateBoneAngles(sb, cur)
     refresh(ply)
+    return bestE ~= nil and bestE > REACH_OUT
 end
 
 -- What spineReach decided, FOLLOWED (SMOOTH.reach): the lean and twist a pose adds to
@@ -586,8 +599,12 @@ function BMX.RiderReachFollow(ply, dt)
     if not (ply.bmxSpineTwist or ply.bmxSpineLean) then return 0, 0 end
     local rs = ply.bmxReachSm or {}
     ply.bmxReachSm = rs
-    ply.bmxSpineLeanShown = follow(rs, "lean", ply.bmxSpineLean or 0, SMOOTH.reach, dt)
-    ply.bmxSpineTwistShown = follow(rs, "twist", ply.bmxSpineTwist or 0, SMOOTH.reach, dt)
+    -- Reaching OUT for a grip is quick (a rider grabs for the bars), letting the
+    -- torso back is the unhurried SMOOTH.reach.
+    local function tau(key, want) return (math.abs(want) > math.abs(rs[key] or 0)) and SMOOTH.reach * 0.4 or SMOOTH.reach end
+    local lean, twist = ply.bmxSpineLean or 0, ply.bmxSpineTwist or 0
+    ply.bmxSpineLeanShown = follow(rs, "lean", lean, tau("lean", lean), dt)
+    ply.bmxSpineTwistShown = follow(rs, "twist", twist, tau("twist", twist), dt)
     return ply.bmxSpineLeanShown, ply.bmxSpineTwistShown
 end
 

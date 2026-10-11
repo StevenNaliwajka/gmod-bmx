@@ -220,3 +220,38 @@ T.test("real skeleton: a scooter rider's hands stay on the bars through the kick
         T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
     end
 end)
+
+-- A GRIP THAT GOES OUT OF REACH IS REACHED FOR AT ONCE. A hard landing or a hop's pop
+-- moves the body away from the bars in a frame; the torso's reach lean took four
+-- frames at 20 fps to follow and the hands were off the bars meanwhile (2026-10-11).
+-- Here the grips go 4 units further in one frame: back on them within two frames.
+T.test("real skeleton: grips that jump out of reach are reached for within two frames at 20 fps", function()
+    local sv, world, cl, n = client()
+    local E, B = cl.env, cl.env.BMX
+    local bike = cl:clientEntity("bmx_base")
+    bike:SetPos(E.Vector(0, 0, F.restHeight(sv)))
+    local ply = cl:player("Reacher" .. n)
+    ply._skel = SR.load("kleiner_seated")
+    ply._vehicle = seatPod(cl, bike, B.SeatFor(bike:Bike(), bike:Cfg(), "rider"))
+    bike:SetPod(ply._vehicle)
+    bike:SetDriver(ply)
+    cl.eyePos = bike:GetPos() + E.Vector(0, 150, 50)
+    world.dt = 1 / 20
+    local fwd = bike:GetForward()
+    local function frame(shift)
+        bike:Draw()
+        local t = bike.ikTargets
+        for _, k in ipairs({ "rHand", "lHand", "rHandA", "rHandB", "lHandA", "lHandB" }) do
+            if t[k] then t[k] = t[k] + fwd * shift end
+        end
+        E.hook.Run("PrePlayerDraw", ply)
+        local w = misses(B, ply, t)
+        return math.max(w.rHand or 0, w.lHand or 0)
+    end
+    for _ = 1, 20 do frame(4) end
+    T.between(frame(4), 0, 0.3, "settled on grips a stretch away")
+    frame(8)
+    local second = frame(8)
+    T.between(second, 0, 1.2, "two frames after the grips went 4 units further, the hands within, units")
+    T.between(frame(8), 0, 0.8, "and nearly there the frame after")
+end)

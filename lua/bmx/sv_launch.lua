@@ -442,10 +442,12 @@ end
 --------------------------------------------------------------------------
 -- WHERE ON THE FAR FACE TO LAND. From the point FindSpine found near its top,
 -- walk on down the face (8 u steps along its fall line, as far as spineDrop)
--- while the ground is still that face -- lower each step, and mirroring n1
--- within spineMirror -- and return its middle: { pos, top, foot }. The transfer
--- aims the flight there (sv_air.lua), so it comes down on the face however high
--- it went, instead of carrying a fixed speed over it.
+-- while the ground keeps falling away, to its foot on the floor, and aim at the
+-- point HALF WAY DOWN IN HEIGHT: { pos, top, foot }. Not the top's steep lip: a
+-- park spine's far face is a quarter pipe, near vertical at the coping, and a
+-- bike that came down there hit a wall, crashed and slid to the floor (test-gmod,
+-- 2026-10-11: aimed at x 406, "landed" at 549-569 of a spine ending at 492).
+-- The transfer aims the flight there (sv_air.lua).
 --------------------------------------------------------------------------
 function L.SpineAim(sp, n1, cfg, opts)
     opts = opts or {}
@@ -456,16 +458,19 @@ function L.SpineAim(sp, n1, cfg, opts)
     local len = h:Length()
     if len < 1e-3 then return nil end
     h = h / len
-    local mirror = Vector(-n1.x, -n1.y, n1.z)
-    local foot, lastZ = sp.pos, sp.pos.z
+    local pts, lastZ = { sp.pos }, sp.pos.z
     for d = 8, A.spineDrop, 8 do
         local q = sp.pos + h * d
-        local z, n = trace(q, opts.filter)
-        if not (z and n) or z >= lastZ - 0.5
-           or math.acos(math.max(-1, math.min(1, n:Dot(mirror)))) > A.spineMirror then
-            break
-        end
-        foot, lastZ = Vector(q.x, q.y, z), z
+        local z = trace(q, opts.filter)
+        if not z or z >= lastZ - 0.5 then break end
+        pts[#pts + 1] = Vector(q.x, q.y, z)
+        lastZ = z
     end
-    return { pos = (sp.pos + foot) * 0.5, top = sp.pos, foot = foot }
+    local foot = pts[#pts]
+    local midZ = (sp.pos.z + foot.z) * 0.5
+    local aim = foot
+    for _, q in ipairs(pts) do
+        if q.z <= midZ then aim = q break end
+    end
+    return { pos = aim, top = sp.pos, foot = foot }
 end

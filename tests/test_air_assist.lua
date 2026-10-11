@@ -319,9 +319,26 @@ T.test("spine transfer: aimed at the middle of the far face, between its top and
     local aim = L.SpineAim(sp, face(E, 70), C, { trace = trace })
     T.ok(aim, "an aim")
     local footX = 100 + 100 / math.tan(math.rad(70))
-    T.ok(aim.foot.x > footX - 9 and aim.foot.x <= footX + 0.5, "the foot where the face meets the floor: " .. aim.foot.x)
+    T.ok(aim.foot.x > footX - 9 and aim.foot.x <= footX + 8.5, "the foot where the face meets the floor (to a step): " .. aim.foot.x)
     T.ok(aim.pos.x > aim.top.x and aim.pos.x < aim.foot.x, "the aim between them: " .. aim.pos.x)
-    T.ok(aim.pos.z < aim.top.z and aim.pos.z > aim.foot.z, "half way down: " .. aim.pos.z)
+    T.ok(aim.pos.z < aim.top.z and aim.pos.z > aim.foot.z - 0.5, "below the top: " .. aim.pos.z)
+    T.near(aim.pos.z, (aim.top.z + aim.foot.z) / 2, 12, "about half way down in height")
+    -- a quarter-pipe far face: near vertical at the top, easing to the floor -- the aim
+    -- is where it has eased, half way down, not the lip
+    local R0 = 100
+    local qp = function(p)
+        if p.x < 100 then return math.max(0, p.x), face(E, 70) end
+        local x = p.x - 100
+        if x >= R0 then return 0, E.Vector(0, 0, 1) end
+        -- a quarter circle about (100 + R0, R0): height R0 at the coping, vertical
+        -- there, easing to the floor at x = 100 + R0; the normal points at the centre
+        local z = R0 - math.sqrt(R0 * R0 - (R0 - x) ^ 2)
+        return z, E.Vector((R0 - x) / R0, 0, (R0 - z) / R0)
+    end
+    local sp2 = L.FindSpine(V(E, 104, 0, 190), face(E, 70), C, { trace = qp })
+    local aim2 = sp2 and L.SpineAim(sp2, face(E, 70), C, { trace = qp })
+    T.ok(aim2 and aim2.foot.x > 190, "the curved face's foot is found at the floor: " .. tostring(aim2 and aim2.foot.x))
+    T.ok(aim2 and aim2.pos.x > 120, "and the aim well down it, not at the lip: " .. tostring(aim2 and aim2.pos.x))
 end)
 
 T.test("spine transfer: the aimed speed comes down on the target, however high the flight went", function()

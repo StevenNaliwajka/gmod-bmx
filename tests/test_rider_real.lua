@@ -255,3 +255,38 @@ T.test("real skeleton: grips that jump out of reach are reached for within two f
     T.between(second, 0, 1.2, "two frames after the grips went 4 units further, the hands within, units")
     T.between(frame(8), 0, 0.8, "and nearly there the frame after")
 end)
+
+-- THE FEET ON PEDALS THAT JUMP, THE SAME FRAME. A hard landing swings the frame under
+-- the rider: on a 20 fps client a foot stood two to five units off its pedal for two
+-- frames, the foot turned only so far a frame (2026-10-11). Here the pedals drop 10 units
+-- and bounce 5 back, a frame each: each foot is on its pedal in that frame (with the
+-- foot aimed twice a frame, as it was, 2 units off on the bounce).
+T.test("real skeleton: pedals that jump in one frame (a hard landing) have the feet on them that frame", function()
+    local sv, world, cl, n = client()
+    local E, B = cl.env, cl.env.BMX
+    local bike = cl:clientEntity("bmx_base")
+    bike:SetPos(E.Vector(0, 0, F.restHeight(sv)))
+    bike:SetGrounded(true)
+    bike:SetPedalling(true)
+    local ply = cl:player("Lander" .. n)
+    ply._skel = SR.load("kleiner_seated")
+    ply._vehicle = seatPod(cl, bike, B.SeatFor(bike:Bike(), bike:Cfg(), "rider"))
+    bike:SetPod(ply._vehicle)
+    bike:SetDriver(ply)
+    cl.eyePos = bike:GetPos() + E.Vector(0, 150, 50)
+    world.dt = 1 / 20
+    local up, fwd = bike:GetUp(), bike:GetForward()
+    local function frame(drop)
+        bike:Draw()
+        local t = bike.ikTargets
+        for _, k in ipairs({ "rFoot", "lFoot" }) do t[k] = t[k] - up * drop + fwd * (drop * 0.5) end
+        E.hook.Run("PrePlayerDraw", ply)
+        local w = misses(B, ply, t)
+        return math.max(w.rFoot or 0, w.lFoot or 0)
+    end
+    bike._vel = fwd * 150
+    for _ = 1, 20 do frame(0) end
+    T.between(frame(10), 0, 0.3, "the frame the pedals dropped, the feet on them, units")
+    T.between(frame(-5), 0, 0.3, "and the frame they bounced back up past where they were")
+    T.between(frame(0), 0, 0.3, "and home")
+end)

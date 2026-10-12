@@ -834,9 +834,16 @@ function BMX.SolveRiderIK(ply, targets, bike)
 
             if limb.leg then
                 -- Toes forward, the sole pitched as the stroke has it, the ball on the pedal.
+                -- Until it points there (the leg solve just turned the foot with the shin,
+                -- and each aim turns it at most MAX_STEP: twice was not enough the frame a
+                -- hard landing swung the leg, and the foot stood off its pedal for two).
                 local toe = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Toe0")
-                -- Twice: the leg solve just turned the foot with the shin.
-                if eb and toe then aim(ply, eb, eb, toe, dir); aim(ply, eb, eb, toe, dir) end
+                if eb and toe then
+                    for _ = 1, 4 do
+                        aim(ply, eb, eb, toe, dir)
+                        if (bonePos(ply, toe) - bonePos(ply, eb)):GetNormalized():Dot(dir) > 0.998 then break end
+                    end
+                end
             elseif not holding then
                 -- Nothing to hold (a unicyclist's balancing arms): the hand relaxed and
                 -- open, fingers out and a little down, not a fist.

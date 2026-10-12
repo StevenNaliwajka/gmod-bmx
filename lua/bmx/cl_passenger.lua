@@ -99,6 +99,11 @@ BMX.PassengerLean = LEAN
 
 function BMX.PassengerPose(ply, bike)
     local kind = BMX.PassengerKind(ply, bike) or "pegs"
+    -- On the frame the bike drew, as the rider is (cl_rider.lua).
+    if BMX.RiderFollowFrame and BMX.SeatFor then
+        local seat = BMX.SeatFor(bike:Bike(), bike:Cfg(), kind)
+        if seat then BMX.RiderFollowFrame(ply, bike, seat.offset) end
+    end
     local stoker = kind == "pegs" and bike.ikTargetsStoker and bike.ikTargetsStoker.rFoot
     local base = LEAN[stoker and "stoker" or kind]
     local ik = BMX.SolveRiderIK and GetConVar("bmx_rider_ik"):GetBool()

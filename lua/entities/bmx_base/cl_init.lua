@@ -689,6 +689,9 @@ function ENT:DrawDetailed(model, S)
         Pf = function(m) return rPos + rotVec(P0(m) - rA0, right, phi) end
         upF = rotVec(up, right, phi)
     end
+    -- Where this drawing puts a chassis point, for the rider to ride it (cl_rider.lua,
+    -- BMX.RiderFollowFrame): a compressed suspension lifts the frame off the chassis.
+    self.bmxFrameMap = { Pf = Pf, P0 = P0, lift0 = S.lift0 }
 
     local headB = Pf(lay.headB)
     local steerAxis = (Pf(lay.headT) - headB):GetNormalized()
@@ -1121,6 +1124,7 @@ function ENT:Draw()
     end
 
     if bike.hasModel then return end
+    self.bmxFrameMap = nil          -- the simple frame is the chassis': nothing to follow
 
     -- A LONG VEHICLE'S SIMPLE BIKE (BMX.SimpleAtSeat). The simple bike is the stock
     -- frame scaled to the wheelbase, which for a tandem (x1.8) put its saddle 28 units

@@ -290,3 +290,46 @@ T.test("real skeleton: pedals that jump in one frame (a hard landing) have the f
     T.between(frame(-5), 0, 0.3, "and the frame they bounced back up past where they were")
     T.between(frame(0), 0, 0.3, "and home")
 end)
+
+-- THE RIDER RIDES THE FRAME THE BIKE DRAWS. The frame is drawn on its axles, so a
+-- suspension squashed by a hard landing lifts saddle, pedals and bars off the chassis
+-- the rider's seat is on (cl_init.lua); the rider is moved with it (BMX.RiderFollowFrame)
+-- and stays on the bars and pedals. Without it, squashed 6 units, the hands were 0.9
+-- off the bars.
+T.test("real skeleton: a landing squashes the suspension and the rider rides the frame down and up, on the bars and pedals", function()
+    local sv, world, cl, n = client()
+    local E, B = cl.env, cl.env.BMX
+    local cb = cl:clientEntity("bmx_base")
+    local z0 = F.restHeight(sv)
+    cb:SetPos(E.Vector(0, 0, z0))
+    cb:SetGrounded(true)
+    cb:SetPedalling(true)
+    local seat = B.SeatFor(cb:Bike(), cb:Cfg(), "rider")
+    local ply = cl:player("Squash" .. n)
+    ply._skel = SR.load("kleiner_seated")
+    ply._vehicle = seatPod(cl, cb, seat)
+    cb:SetPod(ply._vehicle)
+    cb:SetDriver(ply)
+    cl.eyePos = cb:GetPos() + E.Vector(0, 150, 50)
+    T.ok(MF.ready(cl, cb), "the model builds")
+    world.dt = 1 / 20
+    cb._vel = cb:GetForward() * 120
+    local worst, rose = 0, 0
+    local pb = ply:LookupBone("ValveBiped.Bip01_Pelvis")
+    for i = 1, 36 do
+        local dz = (i > 14 and i <= 22) and 6 or 0
+        cb:SetPos(E.Vector(cb:GetPos().x, 0, z0 - dz))
+        ply._vehicle:SetPos(cb:LocalToWorld(seat.offset))
+        MF.draw(cl, cb)
+        E.hook.Run("PrePlayerDraw", ply)
+        if i > 8 then
+            local w = misses(B, ply, cb.ikTargets)
+            for _, v in pairs(w) do worst = math.max(worst, v) end
+            if dz > 0 then rose = math.max(rose, (ply:GetManipulateBonePosition(pb)):Length()) end
+        end
+    end
+    T.between(worst, 0, 0.3, "hands and feet on the bike through the squash, units at worst")
+    T.ok(rose > 3, string.format("the rider rose with the frame: %.1f units", rose))
+    T.between(ply:GetManipulateBonePosition(pb):Length(), 0, 0.5, "and is back on the chassis once it is up")
+    if cb.Remove then cb:Remove() end
+end)

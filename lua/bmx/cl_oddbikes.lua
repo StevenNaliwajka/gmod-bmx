@@ -249,6 +249,8 @@ local function pennyModel(ent, model, S, ik)
     local rPos = S.rPos
     local function Pf(m) return rPos + rotVec(P0(m) - rA0, right, phi) end
     local upF = rotVec(up, right, phi)
+    -- (the rider rides this frame: cl_rider.lua, BMX.RiderFollowFrame)
+    ent.bmxFrameMap = { Pf = Pf, P0 = P0, lift0 = Vector(0, 0, S.sag) }
     local headB = Pf(L.headB)
     local axis = (Pf(L.headT) - headB):GetNormalized()
     local function forkMap(m) return headB + rotVec(Pf(m) - headB, axis, -S.steer) end
@@ -313,6 +315,7 @@ BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
         ent.crankAngle = fSpin
         return
     end
+    ent.bmxFrameMap = nil           -- the simple drawing's frame is the chassis'
 
     render.SetColorMaterial()
     H.wheel(ent, "front", fPos, fAxle, fSpin, rf, fHit, debug, lod)

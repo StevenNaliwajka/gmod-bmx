@@ -589,6 +589,67 @@ function spineReachOnce(ply, targets)
     return bestE ~= nil and bestE > REACH_OUT
 end
 
+-- THE RIDER RIDES THE DRAWN FRAME. A bike's frame is drawn sitting on its axles
+-- (cl_init.lua: Pf), so a suspension squashed by a hard landing lifts the frame --
+-- saddle, pedals and bars -- off the chassis, while the seat a player is parented to
+-- stays on the chassis: the pedals came up into the folded legs and a foot stood off
+-- its pedal for two frames on a 20 fps client (2026-10-11). The pelvis is moved by
+-- what the drawing did to the seat point (BMX.RiderFollowFrame), so the rider rises
+-- and settles with the bike. Which way a bone position offset moves the pelvis is the
+-- skeleton's own, so it is MEASURED once per model, in the vehicle's frame (a seated
+-- rider faces the way the vehicle does), as the board's crouch measures its way down.
+local FRAME_SHIFT_MAX = 12      -- units: more than this is a wheel lost, not a landing
+local pelvisMaps = {}           -- model -> { x, y, z column Vectors } or false
+local function pelvisMap(ply, bike, pb)
+    local model = ply:GetModel()
+    local m = pelvisMaps[model]
+    if m ~= nil then return m end
+    ply:ManipulateBonePosition(pb, Vector(0, 0, 0))
+    refresh(ply)
+    local p0 = bonePos(ply, pb)
+    if not p0 then pelvisMaps[model] = false return false end
+    local cols = {}
+    for i, ax in ipairs({ Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1) }) do
+        ply:ManipulateBonePosition(pb, ax * 4)
+        refresh(ply)
+        local d = (bonePos(ply, pb) - p0) / 4
+        cols[i] = Vector(d:Dot(bike:GetForward()), -d:Dot(bike:GetRight()), d:Dot(bike:GetUp()))
+    end
+    ply:ManipulateBonePosition(pb, Vector(0, 0, 0))
+    refresh(ply)
+    local det = cols[1]:Dot(cols[2]:Cross(cols[3]))
+    m = math.abs(det) > 0.25 and cols or false
+    pelvisMaps[model] = m
+    return m
+end
+
+-- `seat`: the rider's seat in the vehicle's chassis space (its pod's offset).
+function BMX.RiderFollowFrame(ply, bike, seat)
+    local pb = ply:LookupBone("ValveBiped.Bip01_Pelvis")
+    if not pb then return end
+    local fm = bike.bmxFrameMap
+    local shift
+    if fm and seat then
+        local m = seat - fm.lift0
+        local d = fm.Pf(m) - fm.P0(m)
+        shift = Vector(d:Dot(bike:GetForward()), -d:Dot(bike:GetRight()), d:Dot(bike:GetUp()))
+        if shift:Length() > FRAME_SHIFT_MAX or shift:Length() < 0.05 then shift = nil end
+    end
+    if not shift then
+        if ply.bmxFramePelvis then
+            ply:ManipulateBonePosition(pb, Vector(0, 0, 0))
+            ply.bmxFramePelvis, ply.bmxPelvis = nil, nil
+        end
+        return
+    end
+    local M = pelvisMap(ply, bike, pb)
+    if not M then return end
+    local det = M[1]:Dot(M[2]:Cross(M[3]))
+    local x = Vector(shift:Dot(M[2]:Cross(M[3])), M[1]:Dot(shift:Cross(M[3])), M[1]:Dot(M[2]:Cross(shift))) / det
+    ply:ManipulateBonePosition(pb, x)
+    ply.bmxFramePelvis, ply.bmxPelvis = pb, pb      -- (clear() puts it back)
+end
+
 -- What spineReach decided, FOLLOWED (SMOOTH.reach): the lean and twist a pose adds to
 -- Spine2 this frame, degrees, and what spineReach's next trials take as already shown.
 -- The rider's pose and a passenger's (cl_passenger.lua) both put it on, or the torso a
@@ -1140,7 +1201,7 @@ local function clear(ply)
     for b in pairs(ply.bmxIK or {}) do ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
     ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
     ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
-    ply.bmxGripOff, ply.bmxPoseFrame, ply.bmxIKJump = nil, nil, nil
+    ply.bmxGripOff, ply.bmxPoseFrame, ply.bmxIKJump, ply.bmxFramePelvis = nil, nil, nil, nil
     -- The board's crouch lowers the pelvis (cl_board.lua); put it back.
     if ply.bmxPelvis then
         ply:ManipulateBonePosition(ply.bmxPelvis, Vector(0, 0, 0))
@@ -1296,6 +1357,12 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     -- The solve re-poses the skeleton a few dozen times, which is nothing for
     -- the riders near you and waste for one across the map, so a rider far
     -- from the view keeps the pose they last had (manipulations persist).
+    -- On the saddle the bike drew (a board's and a scooter's riders stand on drawings
+    -- of their own, with their own pelvis).
+    if not set.solveIK then
+        local seat = BMX.SeatFor and BMX.SeatFor(bike:Bike(), C, "rider")
+        BMX.RiderFollowFrame(ply, bike, seat and seat.offset or C.Chassis.seatOffset)
+    end
     local dist = useIK and EyePos():Distance(ply:GetPos()) or math.huge
     if dist < IK_RANGE or (dist < IK_FAR and ((frameNo or 0) + ply:EntIndex()) % IK_FAR_EVERY == 0) then
         if set.solveIK then

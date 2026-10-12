@@ -23,6 +23,11 @@ a real player model's skeleton:
   turn so far per frame. The arm and the wrist now keep turning until the hand
   is there, and when a hard landing or a hop throws the bars out of reach the
   rider leans in for them at once rather than over several frames.
+- **Riders ride the bike through a landing.** The bike is drawn sitting on its
+  wheels, so a landing that squashed the suspension lifted the saddle, pedals
+  and bars while the rider stayed where they were: hands came off the bars and
+  a foot off its pedal for a moment. The rider now rises and settles with the
+  bike.
 - **The bike shown while a new model loads fits its rider.** For the few
   seconds a vehicle's model takes to build the first time, a simple bike stands
   in. On every vehicle longer than a BMX it was a BMX stretched to the length,

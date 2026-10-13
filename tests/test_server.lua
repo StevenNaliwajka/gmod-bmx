@@ -75,6 +75,22 @@ T.test("nobody can physgun, gravgun or punt a bike with a rider on it", function
     T.eq(E.hook.Run("PhysgunPickup", stranger, bike:GetPod()), false, "the seat, never")
 end)
 
+-- The other way round: getting on a bike somebody is holding made the same mess,
+-- with the holder free to fling the rider about.
+T.test("nobody gets on a bike somebody is holding with the physgun or gravity gun", function()
+    local sv = F.server()
+    local bike = F.bike(sv)
+    local ply = sv:player("Rider")
+    bike.IsPlayerHolding = function() return true end
+    ply._chat = {}
+    bike:Use(ply)
+    T.ok(not ply:InVehicle(), "held: no getting on")
+    T.ok(table.concat(ply._chat, " "):find("holding", 1, true), "and told why")
+    bike.IsPlayerHolding = function() return false end
+    bike:Use(ply)
+    T.ok(ply:InVehicle(), "let go of: on")
+end)
+
 T.test("a bike survives the duplicator with exactly one seat", function()
     local sv = F.server()
     local E = sv.env

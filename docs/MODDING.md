@@ -403,14 +403,17 @@ BMX.Worn.Equip(ply, "skates")      -- put a player into a worn vehicle (returns 
 BMX.Worn.Unequip(ply)
 BMX.Worn.Of(ply)                   -- the wearer's state, or nil: { id, def, st, input, proxy, ... }
 BMX.WornIDs()                      -- the worn vehicles, as BMX.VehicleIDs() is the entity ones
-BMX.WornModes.<balance> = { Decode, Setup, Move, Equip, Unequip, Weapon }
+BMX.WornModes.<balance> = { Decode, Setup, Move, Equip, Unequip, Weapon, Pause?, Resume? }
 ```
 
 A **mode** is what a `balance` name means for a worn vehicle: `Decode(ply, w, cmd)` reads
 the player's usercmd into `w.input`; `Setup(ply, w, mv, dt)` runs once a movement tick
 before the engine moves the player and may rewrite their velocity; `Move(ply, w, mv,
 dt)` returns `true` to take the movement over; `Weapon` is the SWEP class that carries
-the vehicle (`bmx_spawn <id>` and the /bike window give it). `w.proxy` is a plain table
+the vehicle (`bmx_spawn <id>` and the /bike window give it). The optional `Pause(ply, w)`
+and `Resume(ply, w)` are called when the engine takes the player over (noclip, a ladder)
+and gives them back: whatever the mode had going (a grind, an air) is over, and the
+player is to be read afresh. `w.proxy` is a plain table
 that stands in for the entity for the scoring and the combos (`Bike`, `Cfg`, `GetDriver`,
 `GetScore`, `AwardTricks`), so a trick on skates pays, builds a combo, fires
 `BMX_TrickLanded` and shows a callout exactly as a bike's does; the score is the

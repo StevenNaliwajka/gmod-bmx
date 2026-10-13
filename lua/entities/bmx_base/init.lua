@@ -256,6 +256,14 @@ function ENT:Use(activator)
     -- an alias: MODDING.md says so.
     if hook.Run("BMX_CanMount", activator, self) == false then return end
     if activator.BMXTumbling or self.pickingUp then return end
+    -- NOT ONE SOMEBODY IS HOLDING (physgun, gravity gun). A ridden bike cannot be
+    -- picked up (PhysgunPickup, sv_seat.lua: the shadow controller against the
+    -- simulation, with a rider parented to the argument), and getting on one already
+    -- held made exactly that -- with the holder free to fling the rider about.
+    if self.IsPlayerHolding and self:IsPlayerHolding() then
+        activator:ChatPrint("[BMX] somebody is holding that bike.")
+        return
+    end
     -- A bike lying down is picked up first, where the player can see it
     -- (BMX.BeginPickUp), and they get on at the end of it.
     if BMX.IsFallen(self) then

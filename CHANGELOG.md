@@ -5,6 +5,95 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.3.4 -- not on the Workshop yet
+
+A bug audit of the whole addon. Nothing here was reported by a player; each was
+found by reading the code and is reproduced by a test that failed before the fix.
+
+**Rules that could be got round**
+
+- **A pasted dupe follows the spawn rules.** Pasting a bike (or loading a save)
+  skipped every check a spawn makes: the per-player limit, the vehicle switches,
+  the motor-vehicle permission, the no-spawning-while-dead rule and the server's
+  entity limit. The copy also had no owner, so it never counted against the
+  limit and anybody could lock it. Park pieces and the bike rack could be pasted
+  past the park's piece cap the same way. All of them now ask exactly what the
+  spawn menu asks, and belong to whoever pasted them.
+- **A pasted locked bike shows no padlock.** It came up free but still drawn
+  chained, saying "it is not locked" when you tried to unlock it.
+- **A car pasted with bikes on its rack keeps them on the rack.** They hung from
+  the copied weld running their own wheels, and the rack said it was empty.
+- **`bmx_color` only paints a parked bike you could paint from the menu.** It
+  repainted anybody's bike, a locked one too, with smoke for everyone near.
+- **The bike rack is the owner's.** Pressing E on somebody else's free-standing
+  rack welded it to your car, and you could drive off with it and their bikes.
+  A racked bike (which cannot be locked) came off for anybody; now only for the
+  bike's owner, the rack's owner or an admin.
+- **The park tool asks the server, and removes only your own pieces.** Placing
+  skipped the entity limit and admin-mod rules, and Reload removed anybody's
+  piece, so a park somebody else built could be taken apart a piece at a time.
+- **Skates are not given to the dead, to spectators, or past the per-player
+  limit** (`bmx_give_skates`, `bmx_spawn skates`).
+- **`bmx_dump_config` is for admins** (some 370 console lines a call).
+
+**Scoring**
+
+- **No points for waiting.** "Air Time" kept counting while a bike hung on a pipe
+  by its frame with its wheels in the air: 120 points a second.
+- **No grind pays a half tailwhip.** Locking onto a rail with the frame or bars
+  part way round, or still in a style pose, paid the air there and rounded a half
+  tailwhip up to a whole one, where on the ground it would have been a crash.
+  The bike now goes on through the air and is judged where it lands.
+- **Skates: noclip in the middle of a grind ends it, unpaid.** The grind's clock
+  ran on through noclip and paid every second of it on the way out.
+- **A board steps on in its new rider's stance.** The last rider's switch stayed
+  on the board, so the next rider stood the wrong way round and every trick was
+  paid as "Switch".
+
+**Crashes**
+
+- **A crash a gamemode cancels does nothing at all.** The combo was still lost,
+  the basket emptied and `BMX_Crashed` fired, every tick for a bike lying on its
+  side.
+- **Getting up keeps the rounds in your guns.** Every crash ragdoll emptied every
+  magazine.
+- **Killed or respawned while ragdolled, you are not stood back up** 1.6 seconds
+  later with your old health and weapons.
+- **Skates: a bail without the ragdoll is a bail.** With crash ragdolls off (or
+  in TTT) the skater was thrown at twice their speed for a moment and then put
+  back to it; the bail only did damage.
+- **Nobody gets on a bike somebody is holding** with the physgun or gravity gun
+  (the holder could fling the rider about).
+
+**Replays**
+
+- **No rider drawn on a parked bike.** Every bike near you was replayed with a
+  rider on it, a parked bike, a rental or a racked one too. Saved replays record
+  who rode what (older replay files still load as before).
+- **The rider's name and model follow whoever rides the bike.** A bike first seen
+  parked kept a blank name for the rest of the session.
+- **A damaged replay file is refused, not shown** (it errored every frame).
+
+**Drawing and the rest**
+
+- **Ragdolls that are not ours keep their own colour.** Sandbox ragdolls and TTT
+  corpses could show another player's colour.
+- **Wheels and pedals turn at the right speed in a reflection.** A bike seen in
+  water or a mirror is drawn more than once a frame, and turned its wheels, its
+  cranks and its rider's legs on every pass.
+- **Turning off rider IK while riding puts the hands and feet back.**
+- **A passenger's L does nothing** (it was letterbox bars with no camera).
+- **The city bike's basket tells the engine when a prop goes in and out,** which
+  it must when a collision rule changes.
+- **The child seat gives a player back the size they had,** not the default.
+- **A board put down from under your arm can be undone with Z** and is in your
+  cleanup. A rented board cannot be picked up and kept.
+- **The cleanup panel has a "BMX vehicles" button.**
+- **Bots' paths:** placing a park piece no longer leaves overlapping copies of the
+  ground in the navmesh, and planning a long path no longer stalls the server.
+- **A stray global** (`gP`, from the unicycle) is gone; the syntax check now fails
+  any file that sets a global other than `BMX`.
+
 ## 1.3.3 -- on the Workshop 2026-10-12
 
 The last riders who did not fit their vehicles, found by riding every vehicle on

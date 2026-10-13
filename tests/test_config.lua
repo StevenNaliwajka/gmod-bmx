@@ -208,6 +208,7 @@ end)
 T.test("every config group the merge knows is dumped by bmx_dump_config", function()
     local _, B, sv = cfg()
     local ply = sv:player("Tuner")
+    ply._admin = true                       -- it is for admins (and the console)
     sv:command("bmx_dump_config", ply)
     local joined = table.concat(ply._chat, "\n")
     for _, g in ipairs(B.ConfigGroups) do

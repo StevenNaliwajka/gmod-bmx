@@ -212,7 +212,8 @@ hook.Add("PlayerEnteredVehicle", "BMX.Worn.Vehicle", drop)
 -- the same doors a spawn does (BMX_CanSpawn, bmx_allow_boards), and the SWEP that
 -- carries the vehicle is the mode's (`Give`).
 --------------------------------------------------------------------------
-function W.Give(ply, id)
+-- `rental`: the machine's (sv_rental.lua), which is not the player's spawn budget.
+function W.Give(ply, id, rental)
     local def = BMX.Vehicles[string.lower(id or "")]
     if not (IsValid(ply) and def and def.worn) then return false end
     local mode = BMX.WornModes[def.balance]
@@ -224,7 +225,7 @@ function W.Give(ply, id)
     -- to be asked through. Already wearing them is not a second pair.
     if ply:HasWeapon(class) then ply:SelectWeapon(class) return true end
     if BMX.MaySpawn and not BMX.MaySpawn(ply) then return false end
-    if BMX.AtBikeLimit and BMX.AtBikeLimit(ply) then return false end
+    if not rental and BMX.AtBikeLimit and BMX.AtBikeLimit(ply) then return false end
     if hook.Run("BMX_CanSpawn", ply, def.id) == false then return false end
     if not BMX.VehicleEnabled(def.id) then
         ply:ChatPrint("[BMX] " .. string.lower(BMX.Families[def.family].category) ..

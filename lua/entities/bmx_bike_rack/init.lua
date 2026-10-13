@@ -69,6 +69,8 @@ end
 -- off its car.
 function ENT:OnEntityCopyTableFinish(data)
     data.held, data.carrier, data.carrierWeld = nil, nil, nil
+    -- Nor its owner: the copy is whoever pastes it (sv_rack.lua's paste).
+    data.m_PlayerCreator, data.BMXOwner = nil, nil
     if data.DT then data.DT.Loaded = 0 end
 end
 

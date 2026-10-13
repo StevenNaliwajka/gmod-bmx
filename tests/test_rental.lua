@@ -218,3 +218,18 @@ T.test("rental: every vehicle the machine offers has a picture, and the window o
     T.ok(n >= 10, "the machine offers the lot (" .. n .. ")")
     T.ok(type(cl.env.BMX.Rental.OpenWindow) == "function", "the client has the window")
 end)
+
+-- The machine's skates are the machine's, as its bikes are (sandbox's spawn limit does
+-- not apply, above): bmx_max_per_player counted them, and counted the rental bike being
+-- given back, so swapping a rental bike for skates at the machine was refused.
+T.test("rental: skates from the machine are not the player's spawn budget", function()
+    local sv, m, ply = scene()
+    local R = sv.env.BMX.Rental
+    sv.env.GetConVar("bmx_max_per_player"):SetString("1")
+    T.ok(R.Rent(ply, m, "stock"), "a rental bike")
+    ply:ExitVehicle()
+    later(sv)
+    local got, why = R.Rent(ply, m, "skates")
+    T.ok(got, "swapped for skates at the limit: " .. tostring(why) .. " " .. table.concat(ply._chat or {}, " | "))
+    T.ok(ply:HasWeapon("weapon_bmx_skates"), "worn")
+end)

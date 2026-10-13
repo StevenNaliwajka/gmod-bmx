@@ -430,11 +430,13 @@ end)
 
 T.test("IK: a rider some way off still pedals, solved every few frames", function()
     local cl, bike, ply = seated()
+    -- The frame's number, the same for everything drawn in it (the bike asks too).
     local n = 0
-    cl.env.FrameNumber = function() n = n + 1 return n end
+    cl.env.FrameNumber = function() return n end
     cl.eyePos = bike:GetPos() + cl.env.Vector(2000, 0, 0)
     local solved = 0
     for _ = 1, 16 do
+        n = n + 1
         cl.setupBones = 0
         frame(cl, bike, ply)
         if cl.setupBones > 0 then solved = solved + 1 end

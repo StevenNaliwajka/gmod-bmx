@@ -307,7 +307,6 @@ function R.Use(rack, ply)
     return refused and "notyours" or "nothing"
 end
 
--- The racked bike's own E: let it down (the next E gets on). See ENT:Use.
 -- A paste asks too (the duplicator asks nothing of a class it was not told about):
 -- bikes switched off, the server's entity limit and its admin mod, and the copy is the
 -- paster's, for the prop protection and for R.MayHandle.
@@ -315,11 +314,21 @@ if duplicator and duplicator.RegisterEntityClass then
     duplicator.RegisterEntityClass("bmx_bike_rack", function(ply, data)
         if IsValid(ply) and hook.Run("PlayerSpawnSENT", ply, data.Class) == false then return end
         local e = duplicator.GenericDuplicatorFunction(ply, data)
-        if IsValid(e) and IsValid(ply) then hook.Run("PlayerSpawnedSENT", ply, e) end
+        -- The paster's: the stock copy merges the original's table in, its creator
+        -- (m_PlayerCreator) with it, and without prop protection that is the owner
+        -- R.MayHandle asks -- the copy was its original spawner's, not yours.
+        if IsValid(e) then
+            e.m_PlayerCreator = nil
+            if IsValid(ply) then
+                if e.SetCreator then e:SetCreator(ply) end
+                hook.Run("PlayerSpawnedSENT", ply, e)
+            end
+        end
         return e
     end, "Data")
 end
 
+-- (The racked bike's own E lets it down, the next E gets on: ENT:Use.)
 hook.Add("PlayerSpawnSENT", "BMX.RackEnabled", function(ply, class)
     if class ~= "bmx_bike_rack" then return end
     if not R.AccessoriesEnabled() then

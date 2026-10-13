@@ -801,6 +801,7 @@ T.test("skates grind: noclip mid-grind ends it unpaid; coming back is a fresh st
     for _ = 1, 66 * 5 do tick(sv, ply, mv, gz) end
     T.eq(w.st.grind, nil, "the grind is over")
     T.eq(ended[1], "rider", "ended by the rider")
+    T.eq(ply:GetNWInt("BMXSkateGrind", 0), 0, "and everyone is told: no sparks through the noclip")
     ply._moveType = nil
     w.input.jump = false
     for _ = 1, 10 do tick(sv, ply, mv, gz) end

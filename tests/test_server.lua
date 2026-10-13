@@ -688,6 +688,19 @@ T.test("bmx_color asks what the context menu asks before painting a parked bike"
     sv.world.time = sv.world.time + 1
     sv:command("bmx_color", ply, "pink")
     T.eq(bike:GetColorIndex(), E.BMX.PaletteIndex("pink"), "an unlocked bike nobody guards: painted")
+
+    -- Not sandbox (TTT, the base gamemode): CanProperty is always no there, so the rule
+    -- is your own bike or nobody's, that the lock lets you at.
+    sv.gm.IsSandboxDerived = false
+    sv.gm.CanProperty = function() return false end
+    sv.world.time = sv.world.time + 1
+    sv:command("bmx_color", ply, "blue")
+    T.eq(bike:GetColorIndex(), E.BMX.PaletteIndex("pink"), "not sandbox: somebody else's bike is not painted")
+    bike.BMXOwner = ply
+    sv.world.time = sv.world.time + 1
+    sv:command("bmx_color", ply, "blue")
+    T.eq(bike:GetColorIndex(), E.BMX.PaletteIndex("blue"), "but your own is")
+    sv.gm.IsSandboxDerived, sv.gm.CanProperty = true, nil
 end)
 
 T.test("the context menu offers every colour and paints the bike", function()

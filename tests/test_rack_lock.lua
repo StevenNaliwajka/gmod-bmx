@@ -483,6 +483,26 @@ T.test("rack: a pasted bike that was racked is on the pasted rack again", functi
     T.eq(R.Count(rack), 1, "the original still holds its own")
 end)
 
+-- The stock copy merges the original's table into the paste, its creator with it:
+-- without prop protection the copy was its original spawner's, so the paster could
+-- not use their own rack and the original's owner could take bikes off it.
+T.test("rack: a pasted rack is the paster's, not the original spawner's", function()
+    local sv, rack = scene()
+    local E, R = sv.env, sv.env.BMX.Rack
+    local a, b = sv:player("A"), sv:player("B")
+    rack:SetCreator(a)
+    T.eq(R.OwnerOf(rack), a, "A's rack")
+    local data = E.duplicator.Copy(rack)
+    data.m_PlayerCreator = a                -- the real copy carries the entity's table
+    local kept = data.m_PlayerCreator
+    local copy = E.duplicator.Paste(b, { data })[1]
+    T.ok(copy and copy:IsValid(), "pasted")
+    T.eq(R.OwnerOf(copy), b, "B's copy")
+    rack:OnEntityCopyTableFinish(data)
+    T.eq(data.m_PlayerCreator, nil, "and a copy no longer carries its creator at all")
+    T.eq(kept, a, "(it did)")
+end)
+
 -- The default copy merges the entity's table into the paste: a copied rack held the
 -- original's bikes and weld, and removing it let them down and the original fell off.
 T.test("rack: a copy starts empty: none of the original's bikes, weld or count", function()

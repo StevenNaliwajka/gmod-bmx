@@ -545,6 +545,7 @@ function M.Realm(world, which)
         if hs < 0 and groundAt(world, s) then
             res.Hit, res.Fraction, res.HitPos, res.StartSolid = true, 0, s, true
             res.HitWorld = true
+            res.FractionLeftSolid = 1        -- under the ground plane it never comes out
             return res
         end
         if world.groundBumps then
@@ -934,6 +935,9 @@ function M.Realm(world, which)
             if env.IsValid(o) then o:Remove() end
         end
     end
+    -- Who spawned it, as sandbox records it (includes/extensions/entity.lua).
+    function Ent:SetCreator(ply) self.m_PlayerCreator = ply end
+    function Ent:GetCreator() return self.m_PlayerCreator or NULL end
     function Ent:RestoreNetworkVars(dt)
         for k, v in pairs(dt or {}) do
             local set = self["Set" .. k]

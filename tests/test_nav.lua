@@ -122,14 +122,13 @@ T.test("park: a piece rests on the highest ground under its footprint", function
     T.eq(z, 7, "turned, it still finds the high side")
 end)
 
--- A remesh takes away the areas round a placed piece and builds that ground again.
--- The box was grown ONCE, to the areas the first box touched; its new edges cut
--- through areas that were left standing, and the build laid new ones over them.
-T.test("nav: a remesh's box grows until no area left standing overlaps it", function()
+-- A remesh takes away the areas round a placed piece and builds that ground again,
+-- the box grown ONCE to cover them. (Grown until it cut through nothing, it took in
+-- most of a real mesh, whose rows do not line up, for every piece; the build skips
+-- the ground the areas its edges cut through still cover, test below.)
+T.test("nav: a remesh's box is grown once, to the areas the piece's box touches", function()
     local E = env()
     local N = E.BMX.Nav
-    -- A floor of areas in rows that do not line up (a brick wall): every row's joints
-    -- are offset from the next one's, as a mesh built at another cell size is.
     local function floor(brick)
         local areas = {}
         for row = 0, 7 do
@@ -141,7 +140,6 @@ T.test("nav: a remesh's box grows until no area left standing overlaps it", func
                 areas[#areas + 1] = a
             end
         end
-        -- FindInBox: what OVERLAPS the rectangle (an edge shared is not an overlap).
         return function(lo, hi)
             local o = {}
             for _, a in ipairs(areas) do
@@ -150,20 +148,107 @@ T.test("nav: a remesh's box grows until no area left standing overlaps it", func
             return o
         end
     end
-    local function standing(find, gone, lo, hi)
-        local removed, left = {}, 0
-        for _, a in ipairs(gone) do removed[a] = true end
-        for _, a in ipairs(find(lo, hi)) do if not removed[a] then left = left + 1 end end
-        return left
-    end
-    local find = floor(true)
-    local gone, lo, hi = N.RemeshBox(E.Vector(200, 150, 0), E.Vector(260, 200, 0), find)
-    T.eq(standing(find, gone, lo, hi), 0, "nothing left standing under the box it builds")
-    T.ok(#gone > 2, "the areas round it go: " .. #gone)
-    -- On a floor whose joints line up, it stops at the areas the first box touched.
-    find = floor(false)
-    gone, lo, hi = N.RemeshBox(E.Vector(200, 150, 0), E.Vector(260, 200, 0), find)
-    T.eq(standing(find, gone, lo, hi), 0, "lined up: nothing left standing either")
+    local gone, lo, hi = N.RemeshBox(E.Vector(200, 150, 0), E.Vector(260, 200, 0), floor(false))
     T.eq(#gone, 2, "two areas touched, two gone")
     T.eq(hi.x - lo.x, 96, "and the box is theirs: " .. (hi.x - lo.x))
+    gone, lo, hi = N.RemeshBox(E.Vector(200, 150, 0), E.Vector(260, 200, 0), floor(true))
+    T.eq(#gone, 3, "out of line: only what the box touched (one row's joint is under it)")
+    T.ok(hi.x - lo.x <= 96 * 2, "a box of two areas, not the floor: " .. (hi.x - lo.x))
+end)
+
+--------------------------------------------------------------------------
+-- A remesh on a real build. The engine's navmesh is not in the shim: this one
+-- keeps rectangles at a height, with links, which is all Build and Remesh ask of it.
+--------------------------------------------------------------------------
+local function fakeNavmesh(E)
+    local areas, nextId = {}, 1
+    local A = {}
+    A.__index = A
+    function A:IsValid() return not self.gone end
+    function A:Remove() self.gone = true end
+    function A:SetCorner() end
+    function A:GetID() return self.id end
+    function A:GetExtentInfo() return { lo = E.Vector(self.x0, self.y0, self.z), hi = E.Vector(self.x1, self.y1, self.z) } end
+    function A:GetZ() return self.z end
+    function A:GetCenter() return E.Vector((self.x0 + self.x1) / 2, (self.y0 + self.y1) / 2, self.z) end
+    function A:IsConnected(b) return self.links[b] == true end
+    function A:ConnectTo(b) self.links[b] = true end
+    local live = function()
+        local o = {}
+        for _, a in ipairs(areas) do if not a.gone then o[#o + 1] = a end end
+        return o
+    end
+    return {
+        live = live,
+        CreateNavArea = function(nw, se)
+            local a = setmetatable({ id = nextId, x0 = math.min(nw.x, se.x), x1 = math.max(nw.x, se.x),
+                y0 = math.min(nw.y, se.y), y1 = math.max(nw.y, se.y), z = nw.z, links = {} }, A)
+            nextId = nextId + 1
+            areas[#areas + 1] = a
+            return a
+        end,
+        Reset = function() for _, a in ipairs(areas) do a.gone = true end end,
+        GetNavAreaCount = function() return #live() end,
+        GetAllNavAreas = live,
+        FindInBox = function(lo, hi)
+            local o = {}
+            for _, a in ipairs(live()) do
+                if a.x0 < hi.x and a.x1 > lo.x and a.y0 < hi.y and a.y1 > lo.y and a.z >= lo.z and a.z <= hi.z then o[#o + 1] = a end
+            end
+            return o
+        end,
+        GetNavArea = function(p, below)
+            for _, a in ipairs(live()) do
+                if p.x >= a.x0 and p.x <= a.x1 and p.y >= a.y0 and p.y <= a.y1 and a.z <= p.z and a.z >= p.z - below then
+                    return a
+                end
+            end
+        end,
+    }
+end
+
+T.test("nav: a remesh round a piece leaves no ground covered twice, and the new ground is linked to the old", function()
+    local E, sv = env()
+    local N = E.BMX.Nav
+    local nm = fakeNavmesh(E)
+    E.navmesh = nm
+    E.SysTime = E.SysTime or os.clock
+    local g = sv.world.groundZ
+    E.game.GetWorld().GetModelBounds = function() return E.Vector(-700, -700, g - 64), E.Vector(700, 700, g + 300) end
+    local lo, hi = N.WorldBox()
+    -- A whole build on a coarser grid (a big map's is: Build widens the cell until
+    -- the map fits maxCells), so the remesh's own grid does not line up with it and
+    -- the grown box's edges run through areas that stay.
+    local cell = N.Config.cell
+    N.Config.cell = 48
+    N.Build(lo, hi)
+    N.Config.cell = cell
+    local before = #nm.live()
+    T.ok(before > 4, "a floor of areas: " .. before)
+    local r = N.Remesh(E.Vector(-40, -40, g), E.Vector(40, 40, g + 20))
+    T.ok(r and r.areas > 0, "the remesh built ground: " .. tostring(r and r.areas))
+    -- No point of the floor under two areas.
+    local live = nm.live()
+    local twice = 0
+    for i = 1, #live do
+        for j = i + 1, #live do
+            local a, b = live[i], live[j]
+            if a.x0 < b.x1 - 0.5 and a.x1 > b.x0 + 0.5 and a.y0 < b.y1 - 0.5 and a.y1 > b.y0 + 0.5 then twice = twice + 1 end
+        end
+    end
+    T.eq(twice, 0, "no ground covered twice")
+    -- Every area that shares an edge with another is linked to it.
+    local unlinked = 0
+    for i = 1, #live do
+        for j = 1, #live do
+            local a, b = live[i], live[j]
+            if a ~= b then
+                local touchX = (math.abs(a.x1 - b.x0) < 0.5) and a.y0 < b.y1 and a.y1 > b.y0
+                local touchY = (math.abs(a.y1 - b.y0) < 0.5) and a.x0 < b.x1 and a.x1 > b.x0
+                if (touchX or touchY) and not (a:IsConnected(b) and b:IsConnected(a)) then unlinked = unlinked + 1 end
+            end
+        end
+    end
+    T.eq(unlinked, 0, "every neighbour linked both ways")
+    T.eq(#sv.errors, 0, "no errors: " .. table.concat(sv.errors, " | "))
 end)

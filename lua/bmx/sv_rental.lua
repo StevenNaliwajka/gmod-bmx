@@ -48,7 +48,7 @@ function R.Rent(ply, machine, id)
     -- Skates are worn, not parked: the machine hands them over (BMX.Worn.Give
     -- asks the same doors).
     if def.worn then
-        if BMX.Worn.Give(ply, id) then return ply end
+        if BMX.Worn.Give(ply, id, true) then return ply end
         return nil, "refused"
     end
 

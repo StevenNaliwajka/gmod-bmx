@@ -354,6 +354,10 @@ function Nav.Build(lo, hi, opts)
     -- 2. Cells: one per surface the centre column has.
     local CELLS, why = {}, {}
     local function count(w) why[w] = (why[w] or 0) + 1 end
+    local function kept(x, y, z)
+        local o = navmesh.GetNavArea(Vector(x, y, z + 8), 24)
+        return IsValid(o) and abs(o:GetZ(Vector(x, y, 0)) - z) <= 6
+    end
     for j = 0, ny - 1 do
         for i = 0, nx - 1 do
             local cx, cy = x0 + (i + 0.5) * s, y0 + (j + 0.5) * s
@@ -368,6 +372,10 @@ function Nav.Build(lo, hi, opts)
                     ok = roomAbove(cx, cy, max(c.z00, c.z10, c.z01, c.z11), s * 0.5, C)
                     if not ok then w = "no room above" end
                 end
+                -- A REMESH builds only ground no kept area covers: the box is grown to
+                -- the areas it took away, and its edges run through others that stay.
+                -- Built over as well, they were overlapping copies with no links.
+                if ok and opts.keep and kept(cx, cy, zc) then ok, w = false, "kept" end
                 count(w or "ok")
                 if ok then c.slope = slope list[#list + 1] = c end
             end
@@ -480,7 +488,19 @@ function Nav.Build(lo, hi, opts)
     for _, l in pairs(links) do
         if areaOf[l[1]] and areaOf[l[2]] then link(areaOf[l[1]], areaOf[l[2]]) end
     end
-    -- A remesh: link to the kept areas just outside the box.
+    -- A remesh: link to the kept areas round what was built -- just outside the box,
+    -- and inside it wherever a kept area stands (no new cell meets this one there).
+    local function builtNext(c, ni, nj, d)
+        for _, r in ipairs(CELLS[vk(ni, nj)] or {}) do
+            if r.rect and areaOf[r.rect] then
+                if d[1] > 0 and same(c.z10, r.z00) and same(c.z11, r.z01) then return true end
+                if d[1] < 0 and same(c.z00, r.z10) and same(c.z01, r.z11) then return true end
+                if d[2] > 0 and same(c.z01, r.z00) and same(c.z11, r.z10) then return true end
+                if d[2] < 0 and same(c.z00, r.z01) and same(c.z10, r.z11) then return true end
+            end
+        end
+        return false
+    end
     if opts.keep then
         for j = 0, ny - 1 do
             for i = 0, nx - 1 do
@@ -489,7 +509,7 @@ function Nav.Build(lo, hi, opts)
                     if area then
                         for _, d in ipairs({ { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }) do
                             local ni, nj = i + d[1], j + d[2]
-                            if ni < 0 or nj < 0 or ni >= nx or nj >= ny then
+                            if ni < 0 or nj < 0 or ni >= nx or nj >= ny or not builtNext(c, ni, nj, d) then
                                 local ex, ey = x0 + (i + 0.5 + d[1] * 0.75) * s, y0 + (j + 0.5 + d[2] * 0.75) * s
                                 local ez
                                 if d[1] ~= 0 then ez = d[1] > 0 and (c.z10 + c.z11) * 0.5 or (c.z00 + c.z01) * 0.5
@@ -516,25 +536,18 @@ end
 -- again and linked into what is left.
 --------------------------------------------------------------------------
 --
--- THE BOX GROWS UNTIL IT TOUCHES NOTHING MORE. Grown once, to the areas the first
--- box touched, its new edges cut through areas that were then left standing, and
--- the build laid new areas over them: every piece placed added overlapping
--- duplicates with no links to the rest (GetNavArea answered either copy, and a bot's
--- path could fail). `find(lo, hi)` is navmesh.FindInBox over that rectangle.
+-- The grown box's edges run through other areas, which stay. Building over them
+-- made overlapping copies with no links (GetNavArea answered either, and a bot's path
+-- could fail); a keep build lays no ground a kept area covers, and links to it.
+-- (Growing until the box cut through nothing was tried: on a real mesh, whose rows
+-- do not line up, that is most of the map for every piece.) `find(lo, hi)` is
+-- navmesh.FindInBox over that rectangle.
 function Nav.RemeshBox(lo, hi, find)
-    local seen, areas = {}, {}
-    for _ = 1, 64 do
-        local more = false
-        for _, a in ipairs(find(lo, hi) or {}) do
-            if not seen[a] then
-                seen[a], more = true, true
-                areas[#areas + 1] = a
-                local e = a:GetExtentInfo()
-                lo = Vector(min(lo.x, e.lo.x), min(lo.y, e.lo.y), lo.z)
-                hi = Vector(max(hi.x, e.hi.x), max(hi.y, e.hi.y), hi.z)
-            end
-        end
-        if not more then break end
+    local areas = find(lo, hi) or {}
+    for _, a in ipairs(areas) do
+        local e = a:GetExtentInfo()
+        lo = Vector(min(lo.x, e.lo.x), min(lo.y, e.lo.y), lo.z)
+        hi = Vector(max(hi.x, e.hi.x), max(hi.y, e.hi.y), hi.z)
     end
     return areas, lo, hi
 end

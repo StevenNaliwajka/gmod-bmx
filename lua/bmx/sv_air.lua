@@ -523,13 +523,16 @@ function BMX.AirControl(ent, phys, cfg, dt, inp, st)
     st.spinPitch = (st.spinPitch or 0) + wPitch * dt
     st.spinRoll  = (st.spinRoll  or 0) + wRoll  * dt
     st.spinYaw   = (st.spinYaw   or 0) + wYaw   * dt
-    -- AIR TIME IS TIME FLYING. A bike stalled with no wheel on anything -- hung on
-    -- a pipe by its frame after a slow grind, wedged on a narrow wall -- is "in the
-    -- air" to its wheels, and its Air Time ran for as long as the rider waited
-    -- there (120 points a second, and a score table's "biggest air"). A real flight
-    -- is below this speed only for a moment, at the top of a straight-up vert air.
+    st.airTime   = (st.airTime   or 0) + dt
+    -- THE AIR TIME THAT PAYS is time flying. A bike stalled with no wheel on
+    -- anything -- hung on a pipe by its frame after a slow grind, wedged on a narrow
+    -- wall -- is "in the air" to its wheels, and its Air Time ran for as long as the
+    -- rider waited there (120 points a second, and a score table's "biggest air"). A
+    -- real flight is below this speed only for a moment, at the top of a straight-up
+    -- vert air. airTime above stays the clock: the tip rule's vert grace reads it, and
+    -- a bike lying on its side must still come to the end of it.
     if phys:GetVelocity():LengthSqr() > AIR_STALL * AIR_STALL then
-        st.airTime = (st.airTime or 0) + dt
+        st.airFlown = (st.airFlown or 0) + dt
     end
 end
 
@@ -541,6 +544,7 @@ function BMX.AirReset(st)
     st.spinRoll  = 0
     st.spinYaw   = 0
     st.airTime   = 0
+    st.airFlown  = 0
     -- Vert flights (VertAir): nothing carried over from the last air.
     st.vertSpin, st.vertTarget, st.vertTurning, st.vertDir = 0, nil, false, nil
     st.spineTarget, st.spineSeen, st.spineBlend, st.spineDone, st.spineAim, st.spineLog = nil, nil, nil, nil, nil, nil
@@ -595,7 +599,7 @@ function BMX.ScoreAir(st)
 
     -- Air time is worth something on its own, so a big gap with no rotation is
     -- still rewarded. Threshold is above what a bunny hop can produce.
-    local t = st.airTime or 0
+    local t = st.airFlown or st.airTime or 0
     if t > 1.1 then
         out[#out + 1] = { name = "Air Time", count = 1, points = math.floor(t * 120) }
     end
@@ -606,7 +610,7 @@ function BMX.ScoreAir(st)
     -- Every trick of this landing says how long the bike was up, so a score
     -- table (BMX (Mode)'s sv_scores.lua) can keep "biggest air" without a second hook. The
     -- table is the same shape it always was, with one more field.
-    for _, o in ipairs(out) do o.air = st.airTime or 0 end
+    for _, o in ipairs(out) do o.air = st.airFlown or st.airTime or 0 end
 
     return out
 end

@@ -129,6 +129,19 @@ if SERVER then
     end
     BMX.BikeFor = bikeFor
 
+    -- Sandbox and its children: what the context menu asks. Elsewhere (TTT, the base
+    -- gamemode) CanProperty is always no and there is no context menu: your own bike
+    -- or nobody's, that the lock lets you at.
+    local function mayPaint(ply, bike)
+        if GAMEMODE and GAMEMODE.IsSandboxDerived then
+            if properties and properties.CanBeTargeted and not properties.CanBeTargeted(bike, ply) then return false end
+            return gamemode.Call("CanProperty", ply, "bmx_color", bike) and true or false
+        end
+        if IsValid(bike.BMXOwner) and bike.BMXOwner ~= ply then return false end
+        local L = BMX.Lock
+        return not (L and L.Of and L.Of(bike) and not L.CanUnlock(bike, ply))
+    end
+
     concommand.Add("bmx_color", function(ply, _, args)
         if not IsValid(ply) then return end
         local names = {}
@@ -146,12 +159,9 @@ if SERVER then
         -- A PARKED BIKE through the same door as the context menu's "Bike colour": the
         -- lock and the prop protection have their say there (CanProperty), and this
         -- command painted anybody's bike, a locked one too, with smoke for everyone.
-        if bike:GetDriver() ~= ply then
-            if (properties and properties.CanBeTargeted and not properties.CanBeTargeted(bike, ply))
-                or not gamemode.Call("CanProperty", ply, "bmx_color", bike) then
-                ply:ChatPrint("[BMX] that bike is not yours to paint.")
-                return
-            end
+        if bike:GetDriver() ~= ply and not mayPaint(ply, bike) then
+            ply:ChatPrint("[BMX] that bike is not yours to paint.")
+            return
         end
         if CurTime() < (ply.BMXNextRecolor or 0) then return end
         ply.BMXNextRecolor = CurTime() + COOLDOWN

@@ -427,6 +427,9 @@ function Mode.Pause(ply, w)
     end
     w.airT, w.sk.spin = 0, 0
     st.airMode, st.airSince = false, 0
+    -- And say so: the networked grind stayed on, so everyone else saw sparks and the
+    -- grind's pose for the whole noclip.
+    sync(ply, w)
 end
 
 function Mode.Resume(ply, w)

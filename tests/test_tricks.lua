@@ -856,16 +856,23 @@ T.test("air time counts only while the bike is flying, not stalled with its whee
     local sv, bike = rig()
     local B = sv.env.BMX
     local phys = bike:GetPhysicsObject()
-    bike.st.airMode, bike.st.airTime = true, 0
+    bike.st.airMode = true
+    B.AirReset(bike.st)
     for _ = 1, 66 * 5 do
         phys:SetVelocity(sv.env.Vector(0, 0, 0))
         B.AirControl(bike, phys, bike:Cfg(), DT, bike.input, bike.st)
     end
-    T.near(bike.st.airTime, 0, 1e-9, "five seconds stalled: no air time")
+    T.near(bike.st.airFlown, 0, 1e-9, "five seconds stalled: no air time flown")
     T.eq(#B.ScoreAir(bike.st), 0, "and nothing to pay")
+    -- The clock itself runs on: the tip rule's vert grace reads it, and a bike lying
+    -- on its side after a vert air must still come to the end of the grace.
+    T.near(bike.st.airTime, 5, 0.05, "the air's clock still ran")
+    B.AirReset(bike.st)
     for _ = 1, 66 * 2 do
         phys:SetVelocity(sv.env.Vector(250, 0, -80))
         B.AirControl(bike, phys, bike:Cfg(), DT, bike.input, bike.st)
     end
-    T.near(bike.st.airTime, 2, 0.05, "two seconds flying: two seconds")
+    T.near(bike.st.airFlown, 2, 0.05, "two seconds flying: two seconds")
+    local paid = B.ScoreAir(bike.st)
+    T.ok(#paid == 1 and paid[1].name == "Air Time" and paid[1].air > 1.9, "paid as Air Time")
 end)

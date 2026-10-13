@@ -92,6 +92,10 @@ hook.Add("BMX_Mounted", "BMX.Board.Stance", function(ply, bike)
     local b = BMX.BoardState(bike.st)
     b.nextPoll = 0
     b.podStance = nil
+    -- A rider steps on in their own stance, not switch: the last rider's swap stayed
+    -- on the board, so the next one was seated the wrong way round and every trick
+    -- was named and paid "Switch".
+    b.switch = false
     readStance(bike, ply, b)
 end)
 

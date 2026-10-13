@@ -583,3 +583,18 @@ T.test("board draw: the push moves the back foot to the ground and back, driven 
     local fe = B.PushFoot(0.99, bolt)
     T.near((fe - bolt):Length(), 0, 1e-6, "and it is home at the end")
 end)
+
+-- A switch is the rider's, not the board's: the last rider's swap stayed on it, so
+-- the next one stood the wrong way round and every trick was paid as "Switch".
+T.test("board: the next rider steps on in their own stance, not the last rider's switch", function()
+    local sv, e = BF.ridden()
+    local b = sv.env.BMX.BoardState(e.st)
+    b.switch = true
+    local first = e:GetDriver()
+    first:ExitVehicle()
+    sv:run(0.3)
+    local ply = F.rider(sv, e, { name = "Next" })
+    sv:run(0.3)
+    T.eq(e:GetDriver(), ply, "a new rider is on")
+    T.eq(b.switch, false, "in their own stance")
+end)

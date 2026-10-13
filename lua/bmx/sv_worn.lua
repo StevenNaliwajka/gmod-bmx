@@ -24,6 +24,8 @@
         Move(ply, w, mv, dt)        return true to take the movement over entirely (a
                                     grind sets the position itself)
         Equip(ply, w) / Unequip(ply, w)     the mode's own set-up and tear-down
+        Pause(ply, w) / Resume(ply, w)      optional: the engine took the player over
+                                    (noclip, a ladder) / gave them back
 
     THE WEARER STANDS IN FOR THE ENTITY. The scoring (ENT:AwardTricks), the combo chain
     (sv_combo.lua) and the trick tracking (sv_tricks.lua) take an entity and ask it for
@@ -167,7 +169,11 @@ hook.Add("SetupMove", "BMX.Worn.Setup", function(ply, mv, cmd)
     local w = ply.BMXWorn
     if not w then return end
     -- Not while the engine owns the player: a vehicle, a ladder, noclip, a ragdoll tumble.
+    -- The mode is told when that starts (Pause: what was going on is over) and when it
+    -- ends (Resume: read the player afresh), or its state ran on frozen underneath --
+    -- a skates grind's clock through a whole noclip, paid on the way out.
     if ply:InVehicle() or ply.BMXTumbling or ply:GetMoveType() ~= MOVETYPE_WALK or not ply:Alive() then
+        if not w.inactive and w.mode.Pause then w.mode.Pause(ply, w) end
         w.inactive = true
         return
     end
@@ -176,6 +182,7 @@ hook.Add("SetupMove", "BMX.Worn.Setup", function(ply, mv, cmd)
         W.Unequip(ply)
         return
     end
+    if w.inactive and w.mode.Resume then w.mode.Resume(ply, w) end
     w.inactive = false
     w.mode.Setup(ply, w, mv, FrameTime())
 end)
@@ -211,13 +218,20 @@ function W.Give(ply, id)
     local mode = BMX.WornModes[def.balance]
     local class = mode and mode.Weapon
     if not class then return false end
+    -- Not for the dead or a spectator, and not past bmx_max_per_player (the skates in
+    -- a hand count, BMX.BikesOwnedBy): the doors every other spawn goes through
+    -- (PlayerSpawnSENT's BMX.Alive and BMX.Limit), which a worn vehicle has no class
+    -- to be asked through. Already wearing them is not a second pair.
+    if ply:HasWeapon(class) then ply:SelectWeapon(class) return true end
+    if BMX.MaySpawn and not BMX.MaySpawn(ply) then return false end
+    if BMX.AtBikeLimit and BMX.AtBikeLimit(ply) then return false end
     if hook.Run("BMX_CanSpawn", ply, def.id) == false then return false end
     if not BMX.VehicleEnabled(def.id) then
         ply:ChatPrint("[BMX] " .. string.lower(BMX.Families[def.family].category) ..
             " are switched off on this server (bmx_allow_" .. BMX.Families[def.family].key .. " 0).")
         return false
     end
-    if not ply:HasWeapon(class) then ply:Give(class) end
+    ply:Give(class)
     ply:SelectWeapon(class)
     return true
 end

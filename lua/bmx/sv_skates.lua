@@ -126,7 +126,18 @@ function S.Bail(ply, w, reason, severity, vel)
             return
         end
         if GetConVar("bmx_crash_ragdoll"):GetBool() and BMX.Tumble and BMX.Tumble(ply, throw, hurt) then return end
-        ply:SetVelocity(throw)
+        -- THE SHOVE (no ragdoll: bmx_crash_ragdoll 0, or not a sandbox gamemode). A
+        -- player's SetVelocity ADDS: a bike's rider has just left the seat and is near
+        -- still, but a skater is rolling at full speed, so it was twice that for a tick,
+        -- and then the skates put their own speed back (S.Observe keeps the speed they
+        -- wrote over a faster one), and the bail was only the damage. The throw is the
+        -- velocity now, and the skates forget the one they wrote.
+        ply:SetVelocity(throw - ply:GetVelocity())
+        local wn = ply.BMXWorn
+        if wn and wn.sk then
+            wn.expect = nil
+            wn.sk.vx, wn.sk.vy = throw.x, throw.y
+        end
         hurt()
     end)
 end
@@ -398,6 +409,33 @@ function Mode.Setup(ply, w, mv, dt)
     end
     sync(ply, w)
     if BMX.ComboThink then BMX.ComboThink(w.proxy, st) end
+end
+
+-- NOCLIP OR A LADDER, mid-whatever. A grind left on ran its clock through the whole
+-- noclip (140 points a second, paid on the way out, the skater put back on the rail
+-- where it was), and an air left on was landed on stale numbers. The grind ends unpaid;
+-- the air is forgotten. Back on their feet the skater is read afresh: the way they
+-- face, the velocity the engine has, the ground.
+function Mode.Pause(ply, w)
+    local st = w.st
+    local g = st.grind
+    if g then
+        st.grind = nil
+        st.grindReady = CurTime() + BMX.ConfigFor(w.def).Grind.cooldown
+        w.meter = nil
+        hook.Run("BMX_WornGrindEnded", ply, w.id, g.move, "rider", CurTime() - g.started)
+    end
+    w.airT, w.sk.spin = 0, 0
+    st.airMode, st.airSince = false, 0
+end
+
+function Mode.Resume(ply, w)
+    local v = ply:GetVelocity()
+    w.sk.heading = math.rad(ply:EyeAngles().y)
+    w.sk.vx, w.sk.vy = v.x, v.y
+    w.expect, w.lastOrigin, w.lastVz = nil, nil, v.z
+    w.airT = 0
+    w.st.grounded = ply:IsOnGround()
 end
 
 -- On a rail the movement is ours alone (the skater was placed by Setup).

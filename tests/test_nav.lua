@@ -121,3 +121,49 @@ T.test("park: a piece rests on the highest ground under its footprint", function
     z = P.GroundZ(b, E.Vector(0, 0, 40), 90, function(_, y) return y > b.hl * 0.5 and 7 or 0 end)
     T.eq(z, 7, "turned, it still finds the high side")
 end)
+
+-- A remesh takes away the areas round a placed piece and builds that ground again.
+-- The box was grown ONCE, to the areas the first box touched; its new edges cut
+-- through areas that were left standing, and the build laid new ones over them.
+T.test("nav: a remesh's box grows until no area left standing overlaps it", function()
+    local E = env()
+    local N = E.BMX.Nav
+    -- A floor of areas in rows that do not line up (a brick wall): every row's joints
+    -- are offset from the next one's, as a mesh built at another cell size is.
+    local function floor(brick)
+        local areas = {}
+        for row = 0, 7 do
+            local off = brick and (row % 2) * 48 or 0
+            for col = -1, 7 do
+                local lo = E.Vector(col * 96 + off, row * 64, 0)
+                local a = { e = { lo = lo, hi = lo + E.Vector(96, 64, 0) } }
+                function a:GetExtentInfo() return self.e end
+                areas[#areas + 1] = a
+            end
+        end
+        -- FindInBox: what OVERLAPS the rectangle (an edge shared is not an overlap).
+        return function(lo, hi)
+            local o = {}
+            for _, a in ipairs(areas) do
+                if a.e.lo.x < hi.x and a.e.hi.x > lo.x and a.e.lo.y < hi.y and a.e.hi.y > lo.y then o[#o + 1] = a end
+            end
+            return o
+        end
+    end
+    local function standing(find, gone, lo, hi)
+        local removed, left = {}, 0
+        for _, a in ipairs(gone) do removed[a] = true end
+        for _, a in ipairs(find(lo, hi)) do if not removed[a] then left = left + 1 end end
+        return left
+    end
+    local find = floor(true)
+    local gone, lo, hi = N.RemeshBox(E.Vector(200, 150, 0), E.Vector(260, 200, 0), find)
+    T.eq(standing(find, gone, lo, hi), 0, "nothing left standing under the box it builds")
+    T.ok(#gone > 2, "the areas round it go: " .. #gone)
+    -- On a floor whose joints line up, it stops at the areas the first box touched.
+    find = floor(false)
+    gone, lo, hi = N.RemeshBox(E.Vector(200, 150, 0), E.Vector(260, 200, 0), find)
+    T.eq(standing(find, gone, lo, hi), 0, "lined up: nothing left standing either")
+    T.eq(#gone, 2, "two areas touched, two gone")
+    T.eq(hi.x - lo.x, 96, "and the box is theirs: " .. (hi.x - lo.x))
+end)

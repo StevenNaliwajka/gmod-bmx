@@ -515,17 +515,39 @@ end
 -- the areas touching it go, and the box -- grown to cover them -- is built
 -- again and linked into what is left.
 --------------------------------------------------------------------------
+--
+-- THE BOX GROWS UNTIL IT TOUCHES NOTHING MORE. Grown once, to the areas the first
+-- box touched, its new edges cut through areas that were then left standing, and
+-- the build laid new areas over them: every piece placed added overlapping
+-- duplicates with no links to the rest (GetNavArea answered either copy, and a bot's
+-- path could fail). `find(lo, hi)` is navmesh.FindInBox over that rectangle.
+function Nav.RemeshBox(lo, hi, find)
+    local seen, areas = {}, {}
+    for _ = 1, 64 do
+        local more = false
+        for _, a in ipairs(find(lo, hi) or {}) do
+            if not seen[a] then
+                seen[a], more = true, true
+                areas[#areas + 1] = a
+                local e = a:GetExtentInfo()
+                lo = Vector(min(lo.x, e.lo.x), min(lo.y, e.lo.y), lo.z)
+                hi = Vector(max(hi.x, e.hi.x), max(hi.y, e.hi.y), hi.z)
+            end
+        end
+        if not more then break end
+    end
+    return areas, lo, hi
+end
+
 function Nav.Remesh(lo, hi)
     if not meshed() then return nil, "no navmesh" end
     local pad = Nav.Config.cell * 2
     lo, hi = lo - Vector(pad, pad, 0), hi + Vector(pad, pad, 0)
     local wlo, whi = Nav.WorldBox()
-    local areas = navmesh.FindInBox(Vector(lo.x, lo.y, wlo.z), Vector(hi.x, hi.y, whi.z), 1e5, 1e5) or {}
-    for _, a in ipairs(areas) do
-        local e = a:GetExtentInfo()
-        lo = Vector(min(lo.x, e.lo.x), min(lo.y, e.lo.y), lo.z)
-        hi = Vector(max(hi.x, e.hi.x), max(hi.y, e.hi.y), hi.z)
-    end
+    local areas
+    areas, lo, hi = Nav.RemeshBox(lo, hi, function(a, b)
+        return navmesh.FindInBox(Vector(a.x, a.y, wlo.z), Vector(b.x, b.y, whi.z), 1e5, 1e5)
+    end)
     for _, a in ipairs(areas) do a:Remove() end
     return Nav.Build(Vector(lo.x, lo.y, wlo.z), Vector(hi.x, hi.y, whi.z), { keep = true })
 end

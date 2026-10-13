@@ -463,6 +463,38 @@ T.test("skates equip: bmx_spawn skates and bmx_give_skates give the weapon, thro
     T.ok(p5._chat and p5._chat[#p5._chat]:find("no such bike", 1, true), "an unknown id is still an error")
 end)
 
+-- The worn vehicle's door skipped two of the rules every other spawn keeps: a dead
+-- player or a spectator was given skates, and so was a player at bmx_max_per_player.
+T.test("skates equip: not for the dead or a spectator, and not past bmx_max_per_player", function()
+    local sv = F.server()
+    local E = sv.env
+    local ghost = sv:player("Ghost")
+    ghost.Alive = function() return false end
+    sv:command("bmx_give_skates", ghost)
+    T.ok(not ghost:HasWeapon("weapon_bmx_skates"), "the dead get none")
+    sv:command("bmx_spawn", ghost, "skates")
+    T.ok(not ghost:HasWeapon("weapon_bmx_skates"), "by either command")
+    local spec = sv:player("Spec")
+    spec.IsSpec = function() return true end
+    sv:command("bmx_give_skates", spec)
+    T.ok(not spec:HasWeapon("weapon_bmx_skates"), "nor TTT's spectators")
+    E.GetConVar("bmx_max_per_player"):SetString("1")
+    local ply = sv:player("Rider")
+    ply:SetPos(E.Vector(0, 0, 0))
+    ply._eyeTrace = { Hit = true, HitPos = E.Vector(100, 0, 0), HitNormal = E.Vector(0, 0, 1) }
+    sv:command("bmx_spawn", ply, "stock")
+    T.eq(E.BMX.BikesOwnedBy(ply), 1, "a bike out")
+    ply._chat = {}
+    sv:command("bmx_give_skates", ply)
+    T.ok(not ply:HasWeapon("weapon_bmx_skates"), "at the limit: no skates")
+    T.ok(table.concat(ply._chat, " "):find("bmx_max_per_player 1", 1, true), "and told why")
+    local skater = sv:player("Skater")
+    sv:command("bmx_give_skates", skater)
+    T.ok(skater:HasWeapon("weapon_bmx_skates"), "one pair for a player with nothing out")
+    sv:command("bmx_give_skates", skater)
+    T.ok(skater:HasWeapon("weapon_bmx_skates"), "asking again while wearing them is not refused")
+end)
+
 T.test("skates equip: death, leaving and getting into a vehicle take them off", function()
     local sv = F.server()
     local E = sv.env
@@ -753,6 +785,47 @@ T.test("skates grind: on a ledge it stands on the top over the edge; it pays by 
     T.ok(p and p.points > 30, "a Soul Grind was paid: " .. tostring(p and p.points))
     T.ok(not w.st.grind, "off the rail")
     T.eq(#sv.errors, 0, "no errors: " .. table.concat(sv.errors, " | "))
+end)
+
+-- Noclip mid-grind: the decoder and the grind stopped while the engine had the player,
+-- but the grind's clock did not, so coming back and letting go of SPACE paid every
+-- second of the noclip (140 a second) and threw them off at the old grind speed.
+T.test("skates grind: noclip mid-grind ends it unpaid; coming back is a fresh start", function()
+    local sv, ply, mv, w, gz = overRail(function(E) return { pipe(E, 3000) } end, { x = -2500 })
+    local E = sv.env
+    T.ok(tickUntilGrind(sv, ply, mv, w, gz), "on the rail")
+    local paid, ended = {}, {}
+    E.hook.Add("BMX_TrickLanded", "t", function(p, t) paid[#paid + 1] = t end)
+    E.hook.Add("BMX_WornGrindEnded", "t", function(p, id, move, why) ended[#ended + 1] = why end)
+    ply._moveType = E.MOVETYPE_NOCLIP
+    for _ = 1, 66 * 5 do tick(sv, ply, mv, gz) end
+    T.eq(w.st.grind, nil, "the grind is over")
+    T.eq(ended[1], "rider", "ended by the rider")
+    ply._moveType = nil
+    w.input.jump = false
+    for _ = 1, 10 do tick(sv, ply, mv, gz) end
+    local grind
+    for _, t in ipairs(paid) do if t.name == "Soul Grind" then grind = t end end
+    T.eq(grind, nil, "nothing paid for the time in noclip")
+    T.eq(#ended, 1, "and it ended once")
+    T.eq(#sv.errors, 0, "no errors: " .. table.concat(sv.errors, " | "))
+end)
+
+-- With no ragdoll (bmx_crash_ragdoll 0, TTT) a bail is a shove: SetVelocity ADDS on a
+-- player, so a skater at full speed went twice as fast for a tick, then the skates put
+-- their own speed back and the bail was only the damage.
+T.test("skates bail without a ragdoll: the throw is the velocity, and the skates let theirs go", function()
+    local sv, ply, mv, w, gz = skater()
+    local E = sv.env
+    E.GetConVar("bmx_crash_ragdoll"):SetString("0")
+    ply._vel = E.Vector(300, 0, 0)
+    w.expect = { x = 300, y = 0 }
+    E.BMX.Skates.Bail(ply, w, "fall", 0.6, E.Vector(300, 0, -200))
+    sv:run(0.05)
+    local final = ply._vel + (ply._velocity or E.Vector(0, 0, 0))
+    T.near(final.x, 300, 0.5, "thrown at the speed it had, not twice it: " .. final.x)
+    T.ok(final.z > -200, "with the lift")
+    T.eq(w.expect, nil, "the skates forget the speed they wrote")
 end)
 
 T.test("skates grind: let go of SPACE to pop off it, unattended it is lost and bails, and the contact rules", function()

@@ -51,12 +51,18 @@ done < <(find "$ROOT/lua" -name '*.lua' -print0)
 # One script, run either directly or inside the container. Keeping it in a
 # variable rather than duplicating it is what stops the two paths drifting apart
 # and reporting different results on CI than on a workstation.
+#
+# AND NO GLOBAL BUT BMX. A missing `local` is a global every other addon on the
+# server shares (sv_unicycle.lua wrote `gP` into _G every substep): the listing
+# names every global a file assigns, and BMX is the only one this addon owns.
 CHECK='rc=0; for f in $(find . -name "*.lua" | sort); do
          if ! LUACBIN -p "$f" 2>/tmp/bmx_e; then
            echo "FAIL ${f#./}"; sed "s/^/     /" /tmp/bmx_e; rc=1
+         elif LUACBIN -p -l "$f" | grep "SETGLOBAL" | grep -v "; BMX\$" >/tmp/bmx_g; then
+           echo "FAIL ${f#./} sets a global (a missing local?)"; sed "s/^/     /" /tmp/bmx_g; rc=1
          fi
        done
-       [ $rc -eq 0 ] && echo "all files parse clean"
+       [ $rc -eq 0 ] && echo "all files parse clean, no stray globals"
        exit $rc'
 
 if [ -n "$LUAC" ]; then

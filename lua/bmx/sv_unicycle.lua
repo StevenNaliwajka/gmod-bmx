@@ -143,7 +143,7 @@ local function ground(ent, phys, C, dt, inp, st, wheels, groundNormal, speed)
 
         -- The gradients, from the inertia the engine measured (see the header).
         local gR = C.Chassis.mass * g * h / BMX.IRoll(ent)
-        gP = C.Chassis.mass * g * h / BMX.IPitch(ent)
+        local gP = C.Chassis.mass * g * h / BMX.IPitch(ent)
         local kpR, kpP = UC.holdRoll * gR, UC.holdPitch * gP
         local kdR, kdP = 2 * UC.zeta * math.sqrt(kpR), 2 * UC.zeta * math.sqrt(kpP)
         local aR = -assist * topR + kpR * (targetRoll  - roll)  - kdR * st.rollRate

@@ -152,16 +152,23 @@ hook.Add("PlayerSpawnSENT", "BMX.Alive", function(ply, class)
     if not BMX.MaySpawn(ply) then return false end
 end)
 
-hook.Add("PlayerSpawnSENT", "BMX.Limit", function(ply, class)
-    if not isBikeClass(class) then return end
+-- At bmx_max_per_player? Says so to the player and returns true. Asked by the spawn
+-- menu's door below and by the worn vehicles' (BMX.Worn.Give), which have no class.
+function BMX.AtBikeLimit(ply)
     local limit = maxPer:GetInt()
-    if limit <= 0 or not IsValid(ply) then return end
+    if limit <= 0 or not IsValid(ply) then return false end
     if BMX.BikesOwnedBy(ply) >= limit then
         ply:ChatPrint(string.format("[BMX] you already have %d bike%s out " ..
             "(bmx_max_per_player %d). Remove one first.",
             limit, limit == 1 and "" or "s", limit))
-        return false
+        return true
     end
+    return false
+end
+
+hook.Add("PlayerSpawnSENT", "BMX.Limit", function(ply, class)
+    if not isBikeClass(class) then return end
+    if BMX.AtBikeLimit(ply) then return false end
 end)
 
 -- Whoever spawned it owns it, by either door. Set here rather than in

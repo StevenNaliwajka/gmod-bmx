@@ -357,3 +357,82 @@ T.test("replay stand-in: round tyres on the axle line, a fork that steers", func
         T.finite(seg[1], "no NaN in any segment"); T.finite(seg[2], "no NaN")
     end
 end)
+
+--------------------------------------------------------------------------
+-- Who was riding
+--------------------------------------------------------------------------
+-- Every bike near was recorded and every one got a rider drawn on it in the replay:
+-- a parked bike, a rental, a racked one had Kleiner sitting on it. And a bike's
+-- name and model were noted the first time it was seen, so one first seen parked
+-- kept a blank name and Kleiner after somebody got on it.
+T.test("replay: a parked bike is recorded riderless, and drawn with no rider; its rider is noted when one gets on", function()
+    local s = scene()
+    local E, R = s.cl.env, s.cl.env.BMX.Replay
+    local parked = s.cl:clientEntity("bmx_base")
+    parked:SetPos(s.cb:GetPos() + E.Vector(200, 0, 0))
+    for i = 0, 40 do s.world.time = 50 + i / 33; R.Record(s.world.time) end
+    local last = R.RingToArray(R.Ring)
+    local byId = {}
+    for _, e in ipairs(last[#last].e) do byId[e.id] = e end
+    T.eq(byId[s.cb:EntIndex()].dr, 1, "the ridden bike: ridden")
+    T.eq(byId[parked:EntIndex()].dr, 0, "the parked one: nobody on it")
+
+    s.cl:command("bmx_replay", s.me)
+    s.cl.drawnCS = {}
+    E.hook.Run("PostDrawOpaqueRenderables", false, false)
+    local riders = 0
+    for _, d in ipairs(s.cl.drawnCS) do if d.model:find("models/player/", 1, true) then riders = riders + 1 end end
+    T.eq(riders, 1, "one rider drawn, on the bike that had one")
+    s.cl.drawnCS = {}
+    E.hook.Run("PostDrawOpaqueRenderables", false, true)
+    T.eq(#s.cl.drawnCS, 0, "and nothing in the 3D skybox's pass")
+    s.cl:command("bmx_replay", s.me)
+
+    local bob = s.cl:player("Bob")
+    bob._model = "models/player/group01/male_02.mdl"
+    parked:SetDriver(bob)
+    s.world.time = s.world.time + 0.1
+    R.Record(s.world.time)
+    local m
+    for _, x in ipairs(R.Snapshot().meta) do if x.id == parked:EntIndex() then m = x end end
+    T.eq(m and m.name, "Bob", "its rider's name once somebody rides it")
+    T.eq(m and m.model, "models/player/group01/male_02.mdl", "and their model")
+end)
+
+T.test("replay file: a version 1 file still loads, with a rider on every bike as before", function()
+    local _, cl = client()
+    local R, U = cl.env.BMX.Replay, cl.env.util
+    local d = U.JSONToTable(R.Encode(sampleReplay()))
+    T.eq(d.v, 2, "written as version 2")
+    for _, row in ipairs(d.f) do
+        local out = { row[1], row[2] }
+        for j = 0, row[2] - 1 do
+            for k = 1, 16 do out[#out + 1] = row[2 + j * 17 + k] end
+        end
+        for i = 1, #row do row[i] = out[i] end
+    end
+    d.v = 1
+    local back = R.Decode(U.TableToJSON(d))
+    T.ok(back, "a version 1 file decodes")
+    T.eq(back.frames[1].e[1].dr, 1, "and says every bike had a rider, as it drew them")
+end)
+
+-- Only the frames were checked: an event with no time, or a model that was not a
+-- string, errored every frame in the replay's HUD and its stand-ins.
+T.test("replay file: damaged names and events are dropped, not believed", function()
+    local _, cl = client()
+    local R, U = cl.env.BMX.Replay, cl.env.util
+    local d = U.JSONToTable(R.Encode(sampleReplay()))
+    d.meta = { { id = "x" }, { id = 12, model = 5, name = {} }, "junk" }
+    d.ev = { { k = "trick" }, { t = 1, k = "combo" }, { t = "a" }, { t = 3, k = "trick", text = "ok", pts = 10 },
+             { t = 2, k = "trick", text = "earlier" } }
+    local back = R.Decode(U.TableToJSON(d))
+    T.ok(back, "the frames are fine, so it loads")
+    T.eq(#back.meta, 1, "one usable name")
+    T.eq(back.meta[1].model, "", "its model, which was not a string, is none")
+    T.eq(back.meta[1].name, "", "nor its name")
+    T.eq(#back.events, 2, "two usable events")
+    T.eq(back.events[1].text, "earlier", "in time order")
+    local shown, tricks = R.OverlayAt(back.events, 3.5)
+    T.eq(#tricks, 2, "and the overlay reads them")
+end)

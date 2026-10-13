@@ -175,6 +175,9 @@ end
 -- against every other parented seat in every other addon.
 --------------------------------------------------------------------------
 function BMX.LocalBike(ply)
+    -- Not yet a player (the first frames after joining, when HUDShouldDraw already
+    -- runs): no bike, rather than an error every call.
+    if not IsValid(ply) then return nil end
     local veh = ply:GetVehicle()
     if not IsValid(veh) then return nil end
 

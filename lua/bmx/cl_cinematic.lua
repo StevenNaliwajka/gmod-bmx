@@ -226,8 +226,14 @@ function BMX.CinematicTumbling(ply)
     return nil
 end
 
+-- The RIDER's: a passenger's view is their own (cl_view.lua), so on a passenger it
+-- was only the letterbox bars and a hidden HUD, with no camera.
+local function riding(ply)
+    return BMX.LocalBike(ply) ~= nil and not (BMX.IsPassenger and BMX.IsPassenger(ply))
+end
+
 function BMX.CinematicActive(ply)
-    return cv:GetBool() and (BMX.LocalBike(ply) ~= nil or BMX.CinematicTumbling(ply) ~= nil)
+    return cv:GetBool() and (riding(ply) or BMX.CinematicTumbling(ply) ~= nil)
 end
 
 -- The crash shot: one held shot, no cuts. It starts from where the camera
@@ -262,7 +268,7 @@ end
 --------------------------------------------------------------------------
 BMX.ClientButton("BMX.CinematicKey", function(ply, button)
     if button ~= KEY_L then return end
-    if not BMX.LocalBike(ply) then return end
+    if not riding(ply) then return end
     cv:SetBool(not cv:GetBool())
     state.shot = nil
 end)

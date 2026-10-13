@@ -1245,6 +1245,20 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
 
     local C = bike:Cfg()
     local useIK = cv_ik:GetBool() and bike.ikTargets ~= nil
+    -- IK SWITCHED OFF MID-RIDE (bmx_rider_ik 0, the options panel): what the solver
+    -- had posed -- forearms, hands, fingers, feet, a board rider's crouch -- stayed
+    -- where it last put them, and came apart from the bike until the rider got off.
+    -- Back to rest; the pose layer below has the limbs now.
+    if not useIK and ply.bmxIK then
+        for b in pairs(ply.bmxIK) do ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
+        ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
+        ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
+        ply.bmxGripOff, ply.bmxIKJump = nil, nil
+        if ply.bmxPelvis then
+            ply:ManipulateBonePosition(ply.bmxPelvis, Vector(0, 0, 0))
+            ply.bmxPelvis = nil
+        end
+    end
     local dt = FrameTime()
     local st = bike.bmxSm or {}
     bike.bmxSm = st
@@ -1397,11 +1411,22 @@ end)
 -- arrived yet, so the ragdoll kept the default colour: a rider in red tumbled
 -- off in the stock grey-blue. Every ragdoll now answers GetPlayerColor
 -- itself, from the networked value or, failing that, from its rider.
+--
+-- EVERY ragdoll, so every ragdoll must answer: the PlayerColor proxy (matproxy/
+-- player_color.lua) sets nothing at all when GetPlayerColor gives no vector, and the
+-- shared material kept the last colour drawn with it -- a sandbox ragdoll or a TTT
+-- corpse turned up in some other player's colour. Not a crash ragdoll of ours (or not
+-- yet told whose), it answers what the proxy would without the method. The
+-- networked colour is read against a value no colour can be, so the answer does not
+-- hang on what GetNWVector gives for an unset key.
+local NO_COLOUR = Vector(-1, -1, -1)
+local DEFAULT_COLOUR = Vector(62 / 255, 88 / 255, 106 / 255)
 local function ragdollColour(self)
-    local col = self:GetNWVector("BMXPlayerColor", nil)
-    if col then return col end
+    local col = self:GetNWVector("BMXPlayerColor", NO_COLOUR)
+    if col and col ~= NO_COLOUR then return col end
     local rider = self:GetNWEntity("BMXRider", NULL)
     if IsValid(rider) and rider.GetPlayerColor then return rider:GetPlayerColor() end
+    return DEFAULT_COLOUR
 end
 
 hook.Add("OnEntityCreated", "BMX.RagdollColour", function(e)

@@ -169,6 +169,26 @@ T.test("IK off: the simple swing still pedals in time with the cranks", function
     T.near(ply._bones["ValveBiped.Bip01_R_Thigh"].y, want, 1e-9, "thigh on the crank angle")
 end)
 
+-- The solver's bones (forearms, hands, fingers, feet) stayed where it last put them
+-- when bmx_rider_ik was switched off mid-ride, apart from the bike until dismount.
+T.test("IK switched off mid-ride: the bones only the solver poses go back to rest", function()
+    local cl, bike, ply = seated()
+    bike._vel = bike:GetForward() * 200
+    for _ = 1, 10 do frame(cl, bike, ply) end
+    local hand = "ValveBiped.Bip01_R_Hand"
+    T.ok(ply.bmxIK and next(ply.bmxIK), "the solver has posed bones")
+    local a = ply._bones[hand]
+    T.ok(a and (a.p ~= 0 or a.y ~= 0 or a.r ~= 0), "the right hand among them")
+    cl.env.GetConVar("bmx_rider_ik"):SetString("0")
+    frame(cl, bike, ply)
+    a = ply._bones[hand]
+    T.ok(a.p == 0 and a.y == 0 and a.r == 0, "the hand is back at rest")
+    T.eq(ply.bmxIK, nil, "and the solver's record is gone")
+    cl.env.GetConVar("bmx_rider_ik"):SetString("1")
+    for _ = 1, 3 do frame(cl, bike, ply) end
+    T.ok(ply.bmxIK and next(ply.bmxIK), "switched back on, it solves again")
+end)
+
 T.test("getting off, or bmx_rider_anim 0, puts every bone back", function()
     local cl, bike, ply = client()
     bike:SetCadence(10)

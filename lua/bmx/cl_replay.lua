@@ -70,7 +70,7 @@ R.HZ       = 33            -- samples a second
 R.CAP      = R.WINDOW * R.HZ + 2
 R.RANGE    = 3000          -- units: other riders this near are recorded too
 R.MAXGAP   = 0.25          -- seconds: a bigger hole between samples is not interpolated
-R.VERSION  = 1
+R.VERSION  = 2             -- 2: each entry says whether the bike had a rider (1 is read too)
 R.DIR      = "bmx/replays"
 R.MAX_FRAMES, R.MAX_ENTS = 4000, 64      -- what a loaded file may claim
 
@@ -141,7 +141,7 @@ local function blend(a, b, f)
     o.wp, o.br = wrap(a.wp, b.wp), wrap(a.br, b.br)
     -- Discrete things switch at the half way mark.
     local from = f < 0.5 and a or b
-    o.pose, o.stance, o.air = from.pose, from.stance, from.air
+    o.pose, o.stance, o.air, o.dr = from.pose, from.stance, from.air, from.dr
     return o
 end
 
@@ -209,6 +209,7 @@ function R.Encode(rep)
                 q(e.wr, 100), q(e.cr, 100)
             row[n + 12], row[n + 13] = q(e.wp, 100), q(e.br, 100)
             row[n + 14], row[n + 15], row[n + 16] = e.pose, e.stance, e.air
+            row[n + 17] = e.dr or 1
         end
         rows[i] = row
     end
@@ -225,16 +226,52 @@ function R.Encode(rep)
     })
 end
 
-local STRIDE = 16
+local STRIDES = { [1] = 16, [2] = 17 }     -- numbers per entry, by file version
+
+-- What a loaded file's names and events must be, or the HUD and the stand-ins
+-- errored every frame on a damaged or hand-edited file (an event with no time, a
+-- model that is not a string): only the frames were checked.
+local function cleanMeta(list)
+    local out = {}
+    for _, m in ipairs(type(list) == "table" and list or {}) do
+        if type(m) == "table" and type(m.id) == "number" then
+            out[#out + 1] = { id = m.id, bike = type(m.bike) == "string" and m.bike or "stock",
+                color = tonumber(m.color) or 1, name = type(m.name) == "string" and m.name or "",
+                model = type(m.model) == "string" and m.model or "" }
+        end
+    end
+    return out
+end
+
+local function cleanEvents(list)
+    local out = {}
+    for _, e in ipairs(type(list) == "table" and list or {}) do
+        if type(e) == "table" and type(e.t) == "number" then
+            if e.k == "trick" and type(e.text) == "string" then
+                out[#out + 1] = { t = e.t, k = "trick", text = e.text, pts = tonumber(e.pts) or 0 }
+            elseif e.k == "combo" and tonumber(e.state) and tonumber(e.n) then
+                local names = {}
+                for _, nm in ipairs(type(e.names) == "table" and e.names or {}) do
+                    if type(nm) == "string" then names[#names + 1] = nm end
+                end
+                out[#out + 1] = { t = e.t, k = "combo", state = tonumber(e.state), n = tonumber(e.n),
+                    base = tonumber(e.base) or 0, bonus = tonumber(e.bonus) or 0, names = names }
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.t < b.t end)
+    return out
+end
 
 -- JSON text back to a replay, or nil and why.
 function R.Decode(json)
     local d = util.JSONToTable(json or "")
-    if type(d) ~= "table" or d.v ~= R.VERSION then return nil, "not a BMX replay (or a newer version)" end
+    local STRIDE = type(d) == "table" and STRIDES[d.v]
+    if not STRIDE then return nil, "not a BMX replay (or a newer version)" end
     if type(d.f) ~= "table" or #d.f < 2 or #d.f > R.MAX_FRAMES then return nil, "bad frame count" end
     local frames = {}
     for i, row in ipairs(d.f) do
-        local n = row[2]
+        local n = type(row) == "table" and row[2]
         if type(n) ~= "number" or n < 0 or n > R.MAX_ENTS or #row ~= 2 + n * STRIDE then
             return nil, "damaged frame " .. i
         end
@@ -249,13 +286,12 @@ function R.Decode(json)
                 r = row[o + 7] / 10, st = row[o + 8] / 1000, wf = row[o + 9] / 100,
                 wr = row[o + 10] / 100, cr = row[o + 11] / 100, wp = row[o + 12] / 100,
                 br = row[o + 13] / 100, pose = row[o + 14], stance = row[o + 15],
-                air = row[o + 16] }
+                air = row[o + 16], dr = STRIDE >= 17 and row[o + 17] or 1 }
         end
         frames[i] = fr
     end
-    return { map = tostring(d.map or ""), date = d.date, subject = d.subject,
-             meta = type(d.meta) == "table" and d.meta or {}, frames = frames,
-             events = type(d.ev) == "table" and d.ev or {} }
+    return { map = tostring(d.map or ""), date = tonumber(d.date), subject = tonumber(d.subject),
+             meta = cleanMeta(d.meta), frames = frames, events = cleanEvents(d.ev) }
 end
 
 -- Compressed where the engine can, plain where it cannot. The first line says
@@ -423,7 +459,9 @@ local function entryFor(b)
              st = b:GetSteer(), wf = sp.front and sp.front.angle or 0,
              wr = sp.rear and sp.rear.angle or 0, cr = b.crankAngle or 0,
              wp = whip, br = bar, pose = pose or 0, stance = stance,
-             air = b:GetGrounded() and 0 or 1 }
+             air = b:GetGrounded() and 0 or 1,
+             -- Ridden: a parked bike, a rental, a racked one has no rider drawn on it.
+             dr = IsValid(drv) and 1 or 0 }
 end
 
 local function noteMeta(b)
@@ -431,7 +469,17 @@ local function noteMeta(b)
     meta[b:EntIndex()] = { bike = b.BikeID or "stock",
         color = b:GetColorIndex(),
         name = IsValid(drv) and drv:Nick() or "",
-        model = IsValid(drv) and drv:GetModel() or "" }
+        model = IsValid(drv) and drv:GetModel() or "",
+        drv = IsValid(drv) and drv or nil }
+end
+
+-- Noted again when somebody else gets on (a bike first seen parked kept a blank name
+-- and Kleiner for the rest of the session), and when the number is another bike's now.
+local function metaStale(b)
+    local m = meta[b:EntIndex()]
+    if not m or m.bike ~= (b.BikeID or "stock") then return true end
+    local drv = b:GetDriver()
+    return IsValid(drv) and m.drv ~= drv
 end
 
 -- One sample. Split from the hook so the tests can call it with a clock.
@@ -446,7 +494,7 @@ function R.Record(now)
         if IsValid(b) and not (b.IsDormant and b:IsDormant())
             and (b:GetPos() - centre):LengthSqr() < near then
             es[#es + 1] = entryFor(b)
-            if not meta[b:EntIndex()] or b == own then noteMeta(b) end
+            if b == own or metaStale(b) then noteMeta(b) end
             if b == own then ownId = b:EntIndex() end
         end
     end
@@ -735,8 +783,9 @@ local function riderModel(id, m)
     return cs
 end
 
-hook.Add("PostDrawOpaqueRenderables", "BMX.ReplayDraw", function()
-    if not pb then return end
+hook.Add("PostDrawOpaqueRenderables", "BMX.ReplayDraw", function(_, sky)
+    -- Not in the 3D skybox's pass: world positions drawn there are in the sky.
+    if not pb or sky then return end
     local sample = R.Sample(pb.rep.frames, pb.t)
     render.SetColorMaterial()
     for id, e in pairs(sample) do
@@ -749,7 +798,8 @@ hook.Add("PostDrawOpaqueRenderables", "BMX.ReplayDraw", function()
             render.DrawBeam(seg[1], seg[2], seg[3] == "tyre" and 1.6 or 0.8, 0, 1, c)
         end
 
-        local cs = riderModel(id, m)
+        -- A rider only on a bike that had one (files before version 2 do not say).
+        local cs = e.dr ~= 0 and riderModel(id, m)
         if cs then
             local ang = Angle(e.p, e.yw, e.r)
             local o = R.RiderOffset

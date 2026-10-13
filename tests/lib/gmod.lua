@@ -1663,6 +1663,11 @@ function M.Realm(world, which)
             function m:DisableMatrix(k) self.matrix = nil end
             function m:SetLOD(l) self.lod = l end
             function m:SetupBones() end
+            -- A replay's stand-in rider (cl_replay.lua): a sequence, and no bones here.
+            function m:LookupSequence() return -1 end
+            function m:SetSequence(q) self.seq = q end
+            function m:SetPlaybackRate(r) self.rate = r end
+            function m:LookupBone() return nil end
             function m:SetMaterial(mat) self.material = mat end
             function m:DrawModel()
                 assert(not self.removed, "drew a removed clientside model")

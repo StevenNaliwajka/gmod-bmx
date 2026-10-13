@@ -135,6 +135,33 @@ T.test("the bars turn with the steer angle", function()
     T.near(math.abs(math.AngleDifference(turned, straight)), 20, 1.5, "bars rotated by the steer")
 end)
 
+-- A bike in view of a water reflection, a mirror or a camera screen is drawn more
+-- than once a frame. Every pass turned the wheels and the cranks again, so they span
+-- (and the rider pedalled) two or three times too fast.
+T.test("drawn twice in one frame (a reflection), the wheels and cranks turn once", function()
+    local s = scene()
+    local E = s.cl.env
+    s.cb:SetGrounded(true)
+    s.cb:SetPedalling(true)
+    s.cb._vel = s.cb:GetForward() * 200
+    local frame = 1
+    E.FrameNumber = function() return frame end
+    draw(s)
+    frame = 2
+    local w0, c0 = s.cb.spin.rear.angle, s.cb.crankAngle
+    draw(s)
+    local once = s.cb.spin.rear.angle - w0
+    T.ok(once > 0, "a frame turns the wheel")
+    draw(s)
+    draw(s)
+    T.near(s.cb.spin.rear.angle - w0, once, 1e-9, "three passes in the frame turn it once")
+    T.near(s.cb.crankAngle - c0, once / s.cb:Cfg().Drive.gearRatio, 1e-9, "and the cranks once")
+    frame = 3
+    draw(s)
+    T.near(s.cb.spin.rear.angle - w0, once * 2, 1e-6, "the next frame turns it again")
+    E.FrameNumber = nil
+end)
+
 T.test("the pedals are geared to the rear wheel: still with it, forward with it, back with it", function()
     local s = scene()
     local C = s.cb:Cfg()
@@ -622,7 +649,11 @@ T.test("a crash ragdoll shows its rider's colour even if the colour arrives late
     local rag = s.cl.makeEntity("prop_ragdoll")
     E.hook.Run("OnEntityCreated", rag)          -- created before any networked vars
     T.ok(rag.GetPlayerColor, "the ragdoll can answer the PlayerColor proxy")
-    T.eq(rag:GetPlayerColor(), nil, "nothing yet")
+    -- Not nil: the PlayerColor proxy sets nothing for a non-vector, and the shared
+    -- material kept whichever player's colour was drawn last.
+    local def = rag:GetPlayerColor()
+    T.ok(def and math.abs(def.x - 62 / 255) < 1e-6 and math.abs(def.z - 106 / 255) < 1e-6,
+        "nothing yet: the proxy's own default, not nil")
     local red = E.Vector(0.9, 0.1, 0.1)
     rag:SetNWVector("BMXPlayerColor", red)      -- arrives a moment later
     T.ok(rag:GetPlayerColor() == red, "and shows it once it arrives")

@@ -681,3 +681,31 @@ T.test("client: the child seat is drawn when it is on, and only then", function(
     T.ok(#cl.beams > off, string.format("%d tubes with the seat, %d without", #cl.beams, off))
     T.eq(#cl.errors, 0, table.concat(cl.errors, " | "))
 end)
+
+-- A passenger's view is their own (cl_view.lua), so L on the pegs gave them the
+-- letterbox bars and a hidden HUD with no cinematic camera, until they got off.
+T.test("client: L does nothing for a passenger; the rider's cinematic is the rider's", function()
+    local _, world = F.server()
+    local cl, cb, rider, pax = clientScene(world)
+    local B, E = cl.env.BMX, cl.env
+    cl.localPlayer = pax
+    E.hook.Run("PlayerButtonDown", pax, E.KEY_L)
+    T.ok(not E.GetConVar("bmx_cinematic"):GetBool(), "L on the pegs: no cinematic")
+    E.GetConVar("bmx_cinematic"):SetString("1")
+    T.ok(not B.CinematicActive(pax), "and it is not the passenger's even when it is on")
+    T.ok(B.CinematicActive(rider), "the rider's, yes")
+    E.GetConVar("bmx_cinematic"):SetString("0")
+    cl.localPlayer = rider
+    E.hook.Run("PlayerButtonDown", rider, E.KEY_L)
+    T.ok(E.GetConVar("bmx_cinematic"):GetBool(), "L for the rider turns it on")
+end)
+
+-- HUDShouldDraw runs before there is a local player: BMX.LocalBike(NULL) threw.
+T.test("client: no player yet is no bike, not an error", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    T.eq(cl.env.BMX.LocalBike(cl.env.NULL), nil, "LocalBike(NULL) is nil")
+    cl.localPlayer = cl.env.NULL
+    T.eq(cl.env.hook.Run("HUDShouldDraw", "CHudCrosshair"), nil, "and the crosshair hook asks nothing of it")
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)

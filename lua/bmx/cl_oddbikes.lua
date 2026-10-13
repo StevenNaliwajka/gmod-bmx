@@ -172,7 +172,7 @@ end
 
 BMX.Drawers.unicycle = function(ent, H, lod, debug)
     local bike, C = ent:Bike(), ent:Cfg()
-    local dt = FrameTime()
+    local dt = BMX.DrawDT(ent)
     local fwd, up, right = ent:GetForward(), ent:GetUp(), ent:GetRight()
     local sag = sagOf(C)
     local wd = wheelDefs(ent)[1]
@@ -282,7 +282,7 @@ end
 
 BMX.Drawers.pennyfarthing = function(ent, H, lod, debug)
     local bike, C = ent:Bike(), ent:Cfg()
-    local dt = FrameTime()
+    local dt = BMX.DrawDT(ent)
     local fwd, up, right = ent:GetForward(), ent:GetUp(), ent:GetRight()
     local sag = sagOf(C)
     local wds = wheelDefs(ent)

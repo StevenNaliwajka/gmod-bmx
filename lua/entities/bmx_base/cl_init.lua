@@ -34,6 +34,19 @@ local COL_AIR    = Color(235, 90, 60)
 -- by the hidden model's bounds, and the bike vanishes at the edge of the view.
 local BOUNDS_MIN, BOUNDS_MAX = Vector(-36, -18, -14), Vector(36, 18, 72)
 
+-- THE TIME A DRAW MOVES THINGS ON BY: this frame's, the first time the vehicle is
+-- drawn in it, and none after. A bike in view of a water reflection, a mirror or a
+-- camera screen is drawn two or three times a frame, and each pass spun the wheels,
+-- turned the cranks (so the rider pedalled faster) and blended the tricks and poses
+-- again: two or three times too fast. (cl_rider.lua guards the rider the same way.)
+function BMX.DrawDT(ent)
+    local frame = FrameNumber and FrameNumber()
+    if not frame then return FrameTime() end
+    if ent.bmxDrawFrame == frame then return 0 end
+    ent.bmxDrawFrame = frame
+    return FrameTime()
+end
+
 function ENT:Initialize()
     self.spinAngle  = 0
     self.crankAngle = 0
@@ -932,7 +945,6 @@ function ENT:Draw()
     local C    = self:Cfg()
     local WC   = C.Wheel
     local half = WC.wheelbase * 0.5
-    local dt   = FrameTime()
     local debug = GetConVar("bmx_debug") and GetConVar("bmx_debug"):GetInt() > 0
     local lod = debug and 0 or BMX.BikeLOD(self)
     local debug2 = GetConVar("bmx_debug") and GetConVar("bmx_debug"):GetInt() >= 2
@@ -947,6 +959,8 @@ function ENT:Draw()
         if BMX.DrawLock and self:GetLocked() then BMX.DrawLock(self) end
         return
     end
+    -- Asked once per draw, after the drawers above have asked for theirs.
+    local dt = BMX.DrawDT(self)
 
     ----------------------------------------------------------------------
     -- A bike that ships a real model draws it, through a pushed matrix so

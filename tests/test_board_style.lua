@@ -196,6 +196,11 @@ T.test("carry: the board SWEP drops a board in front of the player and is spent;
     local e = B.BoardCarry.Drop(ply)
     T.ok(E.IsValid(e) and e:GetClass() == "bmx_skateboard", "a skateboard stands there")
     T.eq(e.BMXOwner, ply, "and it is theirs")
+    local u = sv.undo[#sv.undo]
+    T.ok(u and u.ents[1] == e and u.ply == ply, "Z takes it away")
+    local filed
+    for _, c in ipairs(sv.cleanup.added) do if c[3] == e and c[2] == "bmx" then filed = c end end
+    T.ok(filed, "and it is in their cleanup")
     T.eq(B.BikesOwnedBy(ply), 1, "one board, out now")
     T.ok(not ply:HasWeapon("weapon_bmx_board"), "the SWEP is spent")
     -- And pick it up again.
@@ -216,3 +221,17 @@ T.test("carry: dropping a board respects bmx_allow_boards and the per-player lim
     T.ok(E.BMX.BoardCarry.Drop(ply), "back on")
 end)
 
+
+-- A rental is the machine's: picked up, it became the player's board for good, out of
+-- the reach of the sweep that takes back what nobody rides.
+T.test("carry: a rented board cannot be picked up and carried off", function()
+    local sv = F.server()
+    local E = sv.env
+    local ply = sv:player("Renter")
+    local e = E.ents.Create("bmx_skateboard")
+    e:SetPos(ply:GetPos() + E.Vector(40, 0, 0))
+    e:Spawn()
+    e.BMXRented, e.BMXOwner = true, ply
+    T.eq(E.BMX.BoardCarry.PickUp(ply, e), false, "not picked up")
+    T.ok(E.IsValid(e) and not ply:HasWeapon("weapon_bmx_board"), "it stays the machine's")
+end)

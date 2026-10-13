@@ -1026,6 +1026,21 @@ T.test("skates client: the sparks come off both boots while a grind is networked
     me:SetNWFloat("BMXSkateMeter", 0.3)
     E.hook.Run("HUDPaint")
     T.ok(true, "the HUD draws the meter without an error")
+    -- A skater who leaves mid-grind: their emitter is finished, not kept for the session.
+    me:SetNWInt("BMXSkateGrind", 0)
+    E.hook.Run("Think")
+    local made = {}
+    local pe = E.ParticleEmitter
+    E.ParticleEmitter = function(...) local em = pe(...) made[#made + 1] = em return em end
+    local other = cl:player("Leaver")
+    other:SetNWString("BMXWorn", "skates")
+    other:SetNWInt("BMXSkateGrind", 1)
+    E.hook.Run("Think")
+    T.ok(#made >= 1, "their sparks have an emitter")
+    other:Remove()
+    E.hook.Run("Think")
+    for _, em in ipairs(made) do T.ok(em.finished, "finished once they are gone") end
+    E.ParticleEmitter = pe
 end)
 
 --------------------------------------------------------------------------

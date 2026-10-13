@@ -356,7 +356,8 @@ local emitters = {}
 
 hook.Add("Think", "BMX.Skates.Sparks", function()
     for _, ply in ipairs(player.GetAll()) do
-        if wearing(ply) and ply:GetNWInt("BMXSkateGrind", 0) > 0 then
+        -- Not one out of sight (dormant: its grind flag and position are stale).
+        if wearing(ply) and not (ply.IsDormant and ply:IsDormant()) and ply:GetNWInt("BMXSkateGrind", 0) > 0 then
             local em = emitters[ply]
             if not em then em = ParticleEmitter(ply:GetPos()) emitters[ply] = em end
             if em then
@@ -383,6 +384,14 @@ hook.Add("Think", "BMX.Skates.Sparks", function()
             end
         elseif emitters[ply] then
             emitters[ply]:Finish()
+            emitters[ply] = nil
+        end
+    end
+    -- A skater who left mid-grind is not in that list any more: their emitter was kept
+    -- for the rest of the session.
+    for ply, em in pairs(emitters) do
+        if not IsValid(ply) then
+            em:Finish()
             emitters[ply] = nil
         end
     end

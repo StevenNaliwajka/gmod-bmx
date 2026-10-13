@@ -94,7 +94,18 @@ end
 
 --------------------------------------------------------------------------
 -- Catching and releasing.
+--
+-- BMX.RiderPassthrough (sv_seat.lua) answers differently for a prop once it is in the
+-- basket and once it is out, and the engine caches a pair's answer: it has to be told
+-- (CollisionRulesChanged), or the prop goes on colliding with the bike it rides in, or
+-- not with the bike it left -- and the wiki's warning is that VPhysics can crash on a
+-- changed answer it was not told about. All of this runs from Think and timers, never
+-- inside a physics callback, where telling it is itself the crash.
 --------------------------------------------------------------------------
+local function rulesChanged(e)
+    if IsValid(e) and e.CollisionRulesChanged then e:CollisionRulesChanged() end
+end
+
 function B.Capture(bike, e)
     local b = B.Of(bike)
     if not b then return false end
@@ -105,6 +116,7 @@ function B.Capture(bike, e)
     local ang = bike.WorldToLocalAngles and bike:WorldToLocalAngles(e:GetAngles()) or Angle()
     bike.basketHeld[e] = { at = at, ang = ang }
     e.BMXBasket = bike
+    rulesChanged(e)
     po:EnableGravity(false)
     po:SetVelocity(bike:GetPhysicsObject():GetVelocity())
     po:Wake()
@@ -119,6 +131,7 @@ function B.ReleaseOne(bike, e, why)
     held[e] = nil
     if not IsValid(e) then return end
     e.BMXBasket = nil
+    rulesChanged(e)
     e.BMXBasketUntil = CurTime() + B.COOLDOWN
     local po = e:GetPhysicsObject()
     if IsValid(po) then
@@ -183,6 +196,7 @@ function B.Tick(bike, now)
                     bike.basketHeld[e] = nil
                     if IsValid(e) then
                         e.BMXBasket = nil
+                        rulesChanged(e)
                         local po = e:GetPhysicsObject()
                         if IsValid(po) then po:EnableGravity(true) end
                     end

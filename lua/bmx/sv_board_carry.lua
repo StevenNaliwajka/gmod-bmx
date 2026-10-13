@@ -61,6 +61,14 @@ function C.Drop(ply)
     ent:Activate()
     hook.Run("PlayerSpawnedSENT", ply, ent)
     if BMX.PaintAsPreferred then BMX.PaintAsPreferred(ent, ply) end
+    -- Z takes it away, and the player's cleanup does, as any spawn of theirs.
+    if undo then
+        undo.Create("BMX")
+            undo.AddEntity(ent)
+            undo.SetPlayer(ply)
+        undo.Finish()
+    end
+    if cleanup then cleanup.Add(ply, "bmx", ent) end
     return ent
 end
 
@@ -69,6 +77,9 @@ end
 function C.PickUp(ply, ent)
     if not IsValid(ply) or not IsValid(ent) or not ent.IsBMX then return false end
     if ent:Bike().id ~= VEHICLE or IsValid(ent:GetDriver()) then return false end
+    -- A RENTAL IS THE MACHINE'S (sv_rental.lua): picked up, it was a board of the
+    -- player's for good, out of the machine's reach (it takes back what nobody rides).
+    if ent.BMXRented then return false end
     if IsValid(ent.BMXOwner) and ent.BMXOwner ~= ply then return false end
     if ent:GetPos():Distance(ply:GetPos()) > 200 then return false end
     if ply:HasWeapon(C.Class) then return false end

@@ -481,6 +481,15 @@ T.test("child: switching it on seats a second player in it, scaled down, with a 
     T.eq(bike:GetChildSeat(), true, "not switched off with somebody in it")
     q:ExitVehicle()
     T.near(q._modelScale or 1, 1, 1e-9, "and full size again once off")
+    -- A player another addon had scaled: smaller than THAT, and back to it after.
+    local r = sv:player("Scaled")
+    r:SetModelScale(0.8)
+    r._eyeTrace = { Hit = true, Entity = bike, HitPos = bike:LocalToWorld(sv.env.Vector(-16, 0, 8)) }
+    bike:Use(r)
+    T.eq(bike:GetPaxChild(), r, "in the child seat")
+    T.near(r._modelScale, 0.48, 1e-9, "a child of their size")
+    r:ExitVehicle()
+    T.near(r._modelScale, 0.8, 1e-9, "and their own scale again, not 1")
     receive(owner)
     T.eq(bike:GetChildSeat(), false, "switched off when empty")
 end)

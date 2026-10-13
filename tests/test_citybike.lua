@@ -241,6 +241,11 @@ T.test("basket: a small prop put in the box is caught, and rides with the bike",
     T.ok(not e:GetPhysicsObject().gravity, "no gravity of its own while held")
     local b = B.Basket.Of(bike)
     T.ok(B.Basket.Contains(bike, b, e:GetPos()), "and it is inside the box")
+    -- BMX.RiderPassthrough's answer for it changed: the engine is told, outside physics.
+    T.eq(e._rulesChanged, 1, "the engine is told its collision with the bike changed")
+    B.Basket.Release(bike, "test")
+    T.eq(e._rulesChanged, 2, "and told again when it leaves")
+    T.eq(#sv.callbackCollisionChanges, 0, "never from inside a physics callback")
 end)
 
 T.test("basket: a heavy prop, a fast one and one somebody is holding are not caught", function()

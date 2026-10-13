@@ -190,8 +190,14 @@ function P.Bind(ply, bike, pod)
     bike.passengers[kind] = ply
     ply.BMXPax = { bike = bike, kind = kind }
     if kind == "pegs" then bike:SetPaxPegs(ply) else bike:SetPaxChild(ply) end
-    -- A child is small. (A player's own model scale, which every client sees.)
-    if kind == "child" and ply.SetModelScale then ply:SetModelScale(0.6, 0) end
+    -- A child is small. (A player's own model scale, which every client sees.) Smaller
+    -- than they were: a player another addon or the gamemode had scaled gets that scale
+    -- back after, not 1.
+    if kind == "child" and ply.SetModelScale then
+        local was = ply.GetModelScale and ply:GetModelScale() or 1
+        ply.BMXPax.scale = was
+        ply:SetModelScale(0.6 * was, 0)
+    end
     bike:RebuildTraceFilter()
     P.Refresh(bike)
 end
@@ -202,7 +208,7 @@ function P.Unbind(ply)
     if not pax then return end
     ply.BMXPax = nil
     local bike = pax.bike
-    if IsValid(ply) and pax.kind == "child" and ply.SetModelScale then ply:SetModelScale(1, 0) end
+    if IsValid(ply) and pax.kind == "child" and ply.SetModelScale then ply:SetModelScale(pax.scale or 1, 0) end
     if not IsValid(bike) then return end
     if bike.passengers and bike.passengers[pax.kind] == ply then bike.passengers[pax.kind] = nil end
     if pax.kind == "pegs" then bike:SetPaxPegs(NULL) else bike:SetPaxChild(NULL) end

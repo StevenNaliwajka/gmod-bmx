@@ -940,6 +940,14 @@ function M.Realm(world, which)
             if set then set(self, v) end
         end
     end
+    -- The engine is told a ShouldCollide answer changed. Counted; inside a physics
+    -- callback it is the crash the warning is about (callbackCollisionChanges).
+    function Ent:CollisionRulesChanged()
+        self._rulesChanged = (self._rulesChanged or 0) + 1
+        if R.inPhysics then
+            R.callbackCollisionChanges[#R.callbackCollisionChanges + 1] = { ply = self, what = "rules" }
+        end
+    end
     function Ent:NetworkVar(kind, slot, name)
         local default = ({ Entity = NULL, Bool = false, Float = 0, Int = 0,
                            String = "", Vector = Vector(), Angle = Angle() })[kind]

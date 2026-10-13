@@ -636,6 +636,8 @@ local function areaCost(a, b, opts)
     return d * k + extra
 end
 
+local PULL_AHEAD = 16
+
 function Nav.Path(from, to, opts)
     opts = opts or {}
     if not meshed() then return nil, "no navmesh" end
@@ -658,9 +660,12 @@ function Nav.Path(from, to, opts)
         pts[#pts + 1] = (p + q) * 0.5
     end
     pts[#pts + 1] = to
+    -- Looking at most PULL_AHEAD waypoints ahead: from every point to every later one
+    -- was n^2 straight-line checks, each sampling the mesh every runStep, all in one
+    -- tick -- a long path across a map stalled the server for every bot that asked.
     local out, i = { from }, 1
     while i < #pts do
-        local j = #pts
+        local j = math.min(#pts, i + PULL_AHEAD)
         while j > i + 1 and not Nav.Straight(pts[i], pts[j], { stepUp = 8 }) do j = j - 1 end
         out[#out + 1] = pts[j]
         i = j

@@ -269,3 +269,25 @@ T.test("rules: a paste asks the motor privilege, the switches and the dead, as a
     T.ok(E.duplicator.Paste(user, { bike })[1], "alive, with bikes on: pasted")
     T.ok(E.duplicator.Paste(nil, { bike })[1], "the server's own paste (no player) is not asked")
 end)
+
+-- BMX_Crash is the veto and BMX_Crashed means it went ahead (docs/MODDING.md). The
+-- crash asked the veto last: a gamemode that kept its riders on still had every crash
+-- bail the combo, empty the basket and fire BMX_Crashed.
+T.test("rules: a vetoed crash does nothing at all: the combo, the rider and BMX_Crashed", function()
+    local sv, bike, ply = riding()
+    local E = sv.env
+    bike:AwardTricks({ { name = "Backflip", count = 1, points = 500 } })
+    bike:AwardTricks({ { name = "Crank Grind", count = 1, points = 140 } })
+    T.ok(bike.st.combo, "a combo is open")
+    local crashed = 0
+    E.hook.Add("BMX_Crashed", "t", function() crashed = crashed + 1 end)
+    E.hook.Add("BMX_Crash", "veto", function() return false end)
+    bike:Crash("impact", 0.8)
+    T.ok(bike.st.combo, "the combo is still open")
+    T.eq(crashed, 0, "BMX_Crashed did not fire")
+    T.eq(bike:GetDriver(), ply, "the rider is aboard")
+    E.hook.Remove("BMX_Crash", "veto")
+    bike:Crash("impact", 0.8)
+    T.eq(crashed, 1, "without the veto it fires")
+    T.eq(bike.st.combo, nil, "and the combo is lost")
+end)

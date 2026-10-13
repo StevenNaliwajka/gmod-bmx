@@ -549,13 +549,25 @@ end
 -- Crash: throw the rider off.
 --------------------------------------------------------------------------
 function ENT:Crash(reason, severity)
+    local ply = self:GetDriver()
+    if not IsValid(ply) then
+        if BMX.ComboEnd then BMX.ComboEnd(self, false) end
+        return
+    end
+
+    severity = BMX.Clamp(severity or 0.5, 0, 1)
+
+    -- Let a gamemode veto or replace this entirely: "throw the rider" is one
+    -- opinion about what a crash is, and a deathrun server will have another.
+    -- FIRST, before anything a crash does: a vetoed crash used to bail the
+    -- combo, empty the basket and fire BMX_Crashed all the same (MODDING.md says
+    -- BMX_Crashed means no veto), and with the bike lying on its side the tip
+    -- rule asked again every tick.
+    if hook.Run("BMX_Crash", self, ply, reason, severity) == false then return end
+
     -- A crash loses the combo's bonus (sv_combo.lua), while the rider is
     -- still aboard to be told so.
     if BMX.ComboEnd then BMX.ComboEnd(self, false) end
-    local ply = self:GetDriver()
-    if not IsValid(ply) then return end
-
-    severity = BMX.Clamp(severity or 0.5, 0, 1)
     -- For anything that wants to know why a rider came off (the bot's log,
     -- a server's stats): before the rider is thrown, while they are aboard.
     hook.Run("BMX_Crashed", self, ply, reason, severity)
@@ -563,10 +575,6 @@ function ENT:Crash(reason, severity)
     local CR   = self:Cfg().Crash
     local phys = self:GetPhysicsObject()
     local vel  = IsValid(phys) and phys:GetVelocity() or Vector()
-
-    -- Let a gamemode veto or replace this entirely: "throw the rider" is one
-    -- opinion about what a crash is, and a deathrun server will have another.
-    if hook.Run("BMX_Crash", self, ply, reason, severity) == false then return end
 
     self.bmxCrashing = true             -- a thrown rider puts no stand down
     ply:ExitVehicle()

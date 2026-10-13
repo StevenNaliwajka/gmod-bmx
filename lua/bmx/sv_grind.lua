@@ -473,6 +473,11 @@ function BMX.TryGrind(ent, phys, cfg, st, vel)
     local pos, ang = BMX.GrindPose(g, cfg)
     if not BMX.GrindPoseClear(pos, ang, cfg, ent.traceFilter) then return false end
 
+    -- Not out of line: a bike part way round a tailwhip or a barspin, or a rider
+    -- still in a pose, is no landing on a rail either. It goes on through the air
+    -- and is judged where it comes down.
+    if st.airMode and BMX.AirFault and BMX.AirFault(st) then return false end
+
     -- Landed a trick onto it: that trick is paid now, the grind on its own
     -- when it ends.
     if st.airMode then

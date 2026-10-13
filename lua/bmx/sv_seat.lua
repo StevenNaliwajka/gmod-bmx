@@ -245,7 +245,13 @@ function BMX.Tumble(ply, vel, after)
         active = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or nil,
         eyes = ply:EyeAngles(),
     }
-    for _, w in ipairs(ply:GetWeapons()) do saved.weapons[#saved.weapons + 1] = w:GetClass() end
+    -- And the rounds in each magazine: Give(class, true) hands a weapon back empty,
+    -- so every crash unloaded every gun (the reserve above is the player's, not the gun's).
+    saved.clips = {}
+    for _, w in ipairs(ply:GetWeapons()) do
+        saved.weapons[#saved.weapons + 1] = w:GetClass()
+        saved.clips[w:GetClass()] = { w.Clip1 and w:Clip1(), w.Clip2 and w:Clip2() }
+    end
 
     -- Nothing in their hand while they tumble: the held weapon stayed
     -- attached to a player who was only spectating, floating by the ragdoll.
@@ -258,6 +264,11 @@ function BMX.Tumble(ply, vel, after)
 
     timer.Simple(TUMBLE_TIME, function()
         if not IsValid(ply) then SafeRemoveEntity(rag) return end
+        -- NOT THIS TUMBLE ANY MORE: killed in it (a slay, a blast), or respawned by
+        -- the gamemode or an admin. The death or the spawn stands (BMX.TumbleEnded);
+        -- getting up here brought a dead player straight back with their old health
+        -- and weapons, past any respawn wait.
+        if ply.BMXTumbling ~= rag then SafeRemoveEntity(rag) return end
         ply.BMXTumbling = nil
         local at = IsValid(rag) and rag:GetPos() or ply:GetPos()
         SafeRemoveEntity(rag)
@@ -277,7 +288,15 @@ function BMX.Tumble(ply, vel, after)
         ply:SetArmor(saved.armor)
         ply:StripWeapons()
         ply:RemoveAllAmmo()
-        for _, class in ipairs(saved.weapons) do ply:Give(class, true) end
+        for _, class in ipairs(saved.weapons) do
+            local w = ply:Give(class, true)
+            if not IsValid(w) and ply.GetWeapon then w = ply:GetWeapon(class) end
+            local c = saved.clips[class]
+            if IsValid(w) and c then
+                if c[1] and w.SetClip1 then w:SetClip1(c[1]) end
+                if c[2] and w.SetClip2 then w:SetClip2(c[2]) end
+            end
+        end
         for id, n in pairs(saved.ammo or {}) do ply:SetAmmo(n, id) end
         if saved.active then ply:SelectWeapon(saved.active) end
 
@@ -290,6 +309,19 @@ end
 hook.Add("PlayerDisconnected", "BMX.TumbleCleanup", function(ply)
     if IsValid(ply.BMXTumbling) then SafeRemoveEntity(ply.BMXTumbling) end
 end)
+
+-- Killed or respawned mid-tumble: that is the end of it. The ragdoll goes and the
+-- get-up does not happen (it checks BMXTumbling is still its ragdoll). The get-up's
+-- own Spawn comes after it has let go, so it does not end itself.
+function BMX.TumbleEnded(ply)
+    if not IsValid(ply) or not ply.BMXTumbling then return end
+    local rag = ply.BMXTumbling
+    ply.BMXTumbling = nil
+    SafeRemoveEntity(rag)
+end
+hook.Add("PlayerDeath", "BMX.TumbleEnded", function(ply) BMX.TumbleEnded(ply) end)
+hook.Add("PlayerSilentDeath", "BMX.TumbleEnded", function(ply) BMX.TumbleEnded(ply) end)
+hook.Add("PlayerSpawn", "BMX.TumbleEnded", function(ply) BMX.TumbleEnded(ply) end)
 
 local function unbind(ply, bike)
     bike = IsValid(bike) and bike or (IsValid(ply) and ply.BMXBike)

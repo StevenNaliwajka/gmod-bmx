@@ -290,3 +290,31 @@ T.test("jump onto a beam from the side at an angle (the headless grind_hop_on mo
     T.ok(rec.ended, "came off it")
     notLaunched(rec, sv, "beam from the side")
 end)
+
+-- A tailwhip half way round when the bike reaches the rail is no landing on it: it
+-- was locked on, the half turn rounded up to a whole Tailwhip and paid, where on the
+-- ground it would have been a crash ("whip"). A whole one still lands on the rail.
+T.test("onto a pipe with the frame out of line: no lock-on and no Tailwhip; a whole one locks and pays", function()
+    local function run(angle)
+        local E = F.server().env
+        local sv, bike, ply = setup({ pipe(E, 150, 700, 18) }, -3, 0, 260)
+        local set = false
+        local rec = ride(sv, bike, ply, 2.0, function(t)
+            if bike.st.airMode and not set then
+                set = true
+                bike.st.parts = { whip = { angle = angle, dir = 0 }, bar = { angle = 0, dir = 0 } }
+            end
+            return hopAt(0.02, 0.47)(t)
+        end)
+        local whip
+        for _, p in ipairs(rec.paid) do if p.name == "Tailwhip" then whip = p end end
+        return rec, whip, set
+    end
+    local rec, whip, set = run(math.rad(200))
+    T.ok(set, "the frame was put out of line in the air")
+    T.ok(not rec.started, "it did not lock onto the pipe")
+    T.eq(whip, nil, "and no Tailwhip was paid")
+    rec, whip = run(math.pi * 2)
+    T.ok(rec.started, "a whole turn locks on")
+    T.ok(whip, "and the Tailwhip is paid")
+end)

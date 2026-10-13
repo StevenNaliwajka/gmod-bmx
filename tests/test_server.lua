@@ -395,6 +395,53 @@ T.test("getting up from the tumble gives back everything the player had", functi
     T.ok((ply._damage or 0) >= 0 and ply:Health() <= 100, "health carried over, less any crash damage")
 end)
 
+-- Give(class, true) hands a weapon back empty: every crash unloaded every gun.
+T.test("getting up from the tumble gives back the rounds in each magazine", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike, ply = tipOver(sv)
+    ply:GetWeapon("weapon_smg1"):SetClip1(17)
+    ply:GetWeapon("weapon_smg1"):SetClip2(2)
+    sv:run(1, function() return not E.IsValid(bike:GetDriver()) end)
+    T.ok(ply.BMXTumbling, "tumbling")
+    sv:run(E.BMX.TumbleTime + 0.2)
+    T.ok(not ply.BMXTumbling, "back up")
+    T.eq(ply:GetWeapon("weapon_smg1"):Clip1(), 17, "the magazine as it was")
+    T.eq(ply:GetWeapon("weapon_smg1"):Clip2(), 2, "and the grenade")
+end)
+
+-- The get-up checked nothing but that the player was still there: killed mid-tumble
+-- (a slay, a blast), they were stood back up 1.6 s later with their old health and
+-- weapons, past any respawn wait; respawned by the gamemode, their new loadout was
+-- swapped for the old one.
+T.test("killed or respawned mid-tumble, the player is not stood back up", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike, ply = tipOver(sv)
+    sv:run(1, function() return not E.IsValid(bike:GetDriver()) end)
+    local rag = ply.BMXTumbling
+    T.ok(E.IsValid(rag), "tumbling")
+    local spawns = ply._spawns or 0
+    ply._health = 0
+    E.hook.Run("PlayerDeath", ply, ply, ply)
+    T.ok(not ply.BMXTumbling and not E.IsValid(rag), "the death ends the tumble and its ragdoll")
+    sv:run(E.BMX.TumbleTime + 0.2)
+    T.eq(ply._spawns or 0, spawns, "and nobody stood them up")
+    T.eq(ply:Health(), 0, "still dead")
+
+    local sv2 = F.server()
+    local E2 = sv2.env
+    local bike2, ply2 = tipOver(sv2)
+    sv2:run(1, function() return not E2.IsValid(bike2:GetDriver()) end)
+    T.ok(ply2.BMXTumbling, "tumbling")
+    ply2:Spawn()
+    E2.hook.Run("PlayerSpawn", ply2)
+    ply2:Give("weapon_pistol")
+    sv2:run(E2.BMX.TumbleTime + 0.2)
+    T.ok(ply2:HasWeapon("weapon_pistol"), "the new loadout is kept")
+    T.ok(not ply2:HasWeapon("weapon_smg1"), "not swapped for the one they crashed with")
+end)
+
 T.test("bmx_crash_ragdoll 0 keeps the plain shove", function()
     local sv = F.server()
     local E = sv.env

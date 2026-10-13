@@ -271,6 +271,17 @@ function BMX.LandingFault(st)
     if f then return f.reason, f.severity end
 end
 
+-- The fault a landing would find NOW, asked without settling or paying anything:
+-- "pose", "whip", "bars" or nil. A grind asks before it locks on (sv_grind.lua): a
+-- frame half way round a tailwhip, or a rider still in a superman, was locked onto
+-- the rail, paid, and the half turn rounded up to a whole one.
+function BMX.AirFault(st)
+    if poseState(st).cur then return "pose" end
+    local K = BMX.Config.Tricks
+    local offW, offB = BMX.PartsOffLine(st)
+    if offW > K.partMaxOut or offB > K.partMaxOut then return offW >= offB and "whip" or "bars" end
+end
+
 -- A new air: nothing carried over from the last one.
 function BMX.TricksReset(st)
     parts(st)

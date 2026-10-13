@@ -849,3 +849,23 @@ T.test("overlay: a trick registered later is listed with no change to the overla
     T.eq(found.input, "KICK", "with its input")
 end)
 
+
+-- Air mode is "no wheel on anything", which a bike hung on a pipe by its frame is
+-- too: its Air Time ran for as long as the rider waited there, 120 points a second.
+T.test("air time counts only while the bike is flying, not stalled with its wheels hanging", function()
+    local sv, bike = rig()
+    local B = sv.env.BMX
+    local phys = bike:GetPhysicsObject()
+    bike.st.airMode, bike.st.airTime = true, 0
+    for _ = 1, 66 * 5 do
+        phys:SetVelocity(sv.env.Vector(0, 0, 0))
+        B.AirControl(bike, phys, bike:Cfg(), DT, bike.input, bike.st)
+    end
+    T.near(bike.st.airTime, 0, 1e-9, "five seconds stalled: no air time")
+    T.eq(#B.ScoreAir(bike.st), 0, "and nothing to pay")
+    for _ = 1, 66 * 2 do
+        phys:SetVelocity(sv.env.Vector(250, 0, -80))
+        B.AirControl(bike, phys, bike:Cfg(), DT, bike.input, bike.st)
+    end
+    T.near(bike.st.airTime, 2, 0.05, "two seconds flying: two seconds")
+end)

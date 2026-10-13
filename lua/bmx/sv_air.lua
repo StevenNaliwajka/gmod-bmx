@@ -361,6 +361,8 @@ end
 -- sv_physics.lua from successive orientations, not from
 -- PhysObj:GetAngleVelocity(). See the note there for why.
 --------------------------------------------------------------------------
+local AIR_STALL = 40      -- u/s: slower than this, the air is not counted as Air Time
+
 function BMX.AirControl(ent, phys, cfg, dt, inp, st)
     local C = cfg
     local A = C.Air
@@ -521,7 +523,14 @@ function BMX.AirControl(ent, phys, cfg, dt, inp, st)
     st.spinPitch = (st.spinPitch or 0) + wPitch * dt
     st.spinRoll  = (st.spinRoll  or 0) + wRoll  * dt
     st.spinYaw   = (st.spinYaw   or 0) + wYaw   * dt
-    st.airTime   = (st.airTime   or 0) + dt
+    -- AIR TIME IS TIME FLYING. A bike stalled with no wheel on anything -- hung on
+    -- a pipe by its frame after a slow grind, wedged on a narrow wall -- is "in the
+    -- air" to its wheels, and its Air Time ran for as long as the rider waited
+    -- there (120 points a second, and a score table's "biggest air"). A real flight
+    -- is below this speed only for a moment, at the top of a straight-up vert air.
+    if phys:GetVelocity():LengthSqr() > AIR_STALL * AIR_STALL then
+        st.airTime = (st.airTime or 0) + dt
+    end
 end
 
 --------------------------------------------------------------------------

@@ -1294,7 +1294,18 @@ function M.Realm(world, which)
     Wep.__index = Wep
     function Wep:GetClass() return self.class end
     function Wep:IsValid() return true end
-    local function wep(c) return setmetatable({ class = c }, Wep) end
+    -- The rounds in the magazine, kept on the player per class (a weapon here is made
+    -- fresh on every ask). Give(class, true), the engine's "no ammo", leaves it empty.
+    local function clips(w)
+        w.ply._clips = w.ply._clips or {}
+        w.ply._clips[w.class] = w.ply._clips[w.class] or { 0, 0 }
+        return w.ply._clips[w.class]
+    end
+    function Wep:Clip1() return clips(self)[1] end
+    function Wep:Clip2() return clips(self)[2] end
+    function Wep:SetClip1(n) clips(self)[1] = n end
+    function Wep:SetClip2(n) clips(self)[2] = n end
+    local function wep(c, ply) return setmetatable({ class = c, ply = ply }, Wep) end
     local LOADOUT = { "weapon_physgun", "gmod_tool" }
     function Ply:Health() return self._health or 100 end
     function Ply:SetHealth(h) self._health = h end
@@ -1311,12 +1322,19 @@ function M.Realm(world, which)
     function Ply:GetModelScale() return self._modelScale or 1 end
     function Ply:GetWeapons()
         local o = {}
-        for _, c in ipairs(self._weapons or {}) do o[#o + 1] = wep(c) end
+        for _, c in ipairs(self._weapons or {}) do o[#o + 1] = wep(c, self) end
         return o
     end
-    function Ply:Give(c)
+    function Ply:Give(c, noAmmo)
         self._weapons = self._weapons or {}
         self._weapons[#self._weapons + 1] = c
+        self._clips = self._clips or {}
+        self._clips[c] = noAmmo and { 0, 0 } or { 30, 0 }
+        return wep(c, self)
+    end
+    function Ply:GetWeapon(c)
+        for _, w in ipairs(self._weapons or {}) do if w == c then return wep(c, self) end end
+        return NULL
     end
     function Ply:StripWeapons() self._weapons, self._activeWep = {}, nil end
     function Ply:HasWeapon(c)
@@ -1329,7 +1347,7 @@ function M.Realm(world, which)
         self._weapons = keep
     end
     function Ply:SelectWeapon(c) self._activeWep = c end
-    function Ply:GetActiveWeapon() return self._activeWep and wep(self._activeWep) or NULL end
+    function Ply:GetActiveWeapon() return self._activeWep and wep(self._activeWep, self) or NULL end
     function Ply:GetAmmo() return table.Copy(self._ammo or {}) end
     function Ply:SetAmmo(n, id) self._ammo = self._ammo or {}; self._ammo[id] = n end
     function Ply:RemoveAllAmmo() self._ammo = {} end

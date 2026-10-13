@@ -179,6 +179,9 @@ end)
 -- sh_bikes.lua and are not a tuning-session output.
 --------------------------------------------------------------------------
 concommand.Add("bmx_dump_config", function(ply)
+    -- Console or an admin (the host, in singleplayer): it is some 370 console lines
+    -- sent to the caller, which a bind could repeat all day.
+    if IsValid(ply) and not ply:IsAdmin() then return end
     local function out(s)
         if IsValid(ply) then ply:PrintMessage(HUD_PRINTCONSOLE, s) else print(s) end
     end

@@ -112,6 +112,9 @@ end
 
 function R.Attach(rack, carrier, ply)
     if not IsValid(rack) or not R.IsCarrier(carrier) then return false, "that is not a vehicle" end
+    -- The rack too: E on somebody's free-standing rack welded it to YOUR car, and you
+    -- drove off with it and the bikes on it.
+    if not R.MayHandle(ply, rack) then return false, "that is somebody else's rack" end
     if not R.MayWeldTo(ply, carrier) then return false, "that is somebody else's vehicle" end
     R.Detach(rack)
     local weld = constraint.Weld(rack, carrier, 0, 0, 0, true, false)
@@ -206,6 +209,11 @@ end
 function R.Release(bike, ply)
     local rack = bike and bike.BMXRack
     if not rack then return false, "that bike is not on a rack" end
+    -- A racked bike cannot be locked, so the rack is what keeps it: it comes off for
+    -- its owner, the rack's owner or an admin (a removed rack lets everything down).
+    if not (R.MayHandle(ply, bike) or (IsValid(rack) and R.MayHandle(ply, rack))) then
+        return false, "that is somebody else's bike"
+    end
     if bike.BMXRackWeld and IsValid(bike.BMXRackWeld) then bike.BMXRackWeld:Remove() end
     for _, c in ipairs(bike.BMXRackNoCollide or {}) do
         if c and IsValid(c) then c:Remove() end
@@ -288,11 +296,15 @@ function R.Use(rack, ply)
         local ok = R.Load(rack, loose, ply)
         if ok then return "loaded" end
     end
+    local refused
     for i = R.Capacity, 1, -1 do
         local b = R.Slots(rack)[i]
-        if IsValid(b) then R.Release(b, ply) return "released" end
+        if IsValid(b) then
+            if R.Release(b, ply) then return "released" end
+            refused = true
+        end
     end
-    return "nothing"
+    return refused and "notyours" or "nothing"
 end
 
 -- The racked bike's own E: let it down (the next E gets on). See ENT:Use.

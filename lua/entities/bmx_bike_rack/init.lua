@@ -57,6 +57,7 @@ function ENT:Use(ply)
         attached = "the rack is welded to the vehicle.",
         loaded   = "bike loaded (" .. BMX.Rack.Count(self) .. " of " .. BMX.Rack.Capacity .. ").",
         released = "bike let down.",
+        notyours = "the bikes on it are not yours to take off.",
         nothing  = "nothing to load: put a bike beside the rack and use it.",
     }
     ply:ChatPrint("[BMX] " .. (say[what] or ""))

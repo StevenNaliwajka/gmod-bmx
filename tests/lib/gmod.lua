@@ -721,6 +721,13 @@ function M.Realm(world, which)
         SetPlayer = function(p) R.undo[#R.undo].ply = p end,
         Finish = function() R.undo[#R.undo].done = true end,
     }
+    R.phrases = {}
+    if not SERVER then
+        env.language = {
+            Add = function(k, v) R.phrases[k] = v end,
+            GetPhrase = function(k) return R.phrases[k] or k end,
+        }
+    end
     R.cleanup = { registered = {}, added = {} }
     env.cleanup = {
         Register = function(t) R.cleanup.registered[t] = true end,

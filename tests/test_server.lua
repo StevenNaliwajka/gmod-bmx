@@ -597,6 +597,36 @@ T.test("bmx_color paints the bike you look at, but not someone else's ridden one
     T.eq(bike:GetColorIndex(), E.BMX.PaletteIndex("green"), "not while someone else rides it")
 end)
 
+-- The console command skipped the door the context menu goes through (CanProperty,
+-- where the lock and the prop protection have their say): anybody painted anybody's
+-- parked bike, a locked one too, with smoke and a sound for everyone near.
+T.test("bmx_color asks what the context menu asks before painting a parked bike", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    sv:run(1)
+    local owner = sv:player("Owner")
+    bike.BMXOwner = owner
+    local ply = sv:player("Walker")
+    ply:SetPos(bike:GetPos() + E.Vector(-60, 0, 0))
+    ply._eyeTrace = { Hit = true, Entity = bike, HitPos = bike:GetPos() }
+    T.ok(E.BMX.Lock.Lock(bike, owner), "the owner locks it")
+    local before = bike:GetColorIndex()
+    ply._chat = {}
+    sv:command("bmx_color", ply, "pink")
+    T.eq(bike:GetColorIndex(), before, "a stranger cannot paint a locked bike")
+    T.ok(table.concat(ply._chat, " "):find("not yours", 1, true), "and is told")
+    E.BMX.Lock.Unlock(bike, owner)
+    sv.gm.CanProperty = function(_, p, property, ent) if ent == bike and p == ply then return false end end
+    sv.world.time = sv.world.time + 1
+    sv:command("bmx_color", ply, "pink")
+    T.eq(bike:GetColorIndex(), before, "nor one the prop protection says is not theirs")
+    sv.gm.CanProperty = nil
+    sv.world.time = sv.world.time + 1
+    sv:command("bmx_color", ply, "pink")
+    T.eq(bike:GetColorIndex(), E.BMX.PaletteIndex("pink"), "an unlocked bike nobody guards: painted")
+end)
+
 T.test("the context menu offers every colour and paints the bike", function()
     local sv = F.server()
     local E = sv.env
@@ -695,6 +725,18 @@ T.test("bmx_selftest is for the console or a superadmin", function()
     local ply = sv:player("Joe")
     sv:command("bmx_selftest", ply)
     T.eq(#E.ents.FindByClass("prop_physics"), 0, "a player spawns nothing")
+end)
+
+T.test("bmx_dump_config is for the console or an admin", function()
+    local sv = F.server()
+    local ply = sv:player("Joe")
+    local said = 0
+    ply.PrintMessage = function() said = said + 1 end
+    sv:command("bmx_dump_config", ply)
+    T.eq(said, 0, "a player is sent nothing")
+    ply._admin = true
+    sv:command("bmx_dump_config", ply)
+    T.ok(said > 100, "an admin gets the config: " .. said .. " lines")
 end)
 
 T.test("a bike spawns in your chosen default colour, and a copy keeps its paint", function()

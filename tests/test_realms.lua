@@ -207,3 +207,15 @@ T.test("realms: every replicated convar the server creates, the client creates t
     T.ok(n >= 30, "the server makes plenty: " .. n)
     T.eq(#missing, 0, "made on the client too: missing " .. table.concat(missing, ", "))
 end)
+
+-- The client's cleanup panel lists only the types the CLIENT registered, and names
+-- them and the "Cleaned up" notice from its language table: the BMX type was the
+-- server's alone, so the panel had no button for it.
+T.test("the bmx cleanup type is registered on the client too, with its labels", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    T.ok(sv.cleanup.registered.bmx, "the server's")
+    T.ok(cl.cleanup.registered.bmx, "and the client's")
+    T.eq(cl.phrases.Cleanup_bmx, "BMX vehicles", "the panel's button")
+    T.ok(cl.phrases.Cleaned_bmx, "and the notice")
+end)

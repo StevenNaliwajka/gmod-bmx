@@ -552,6 +552,28 @@ T.test("rack: it loads your own bike or nobody's, and welds to your own car or n
     R.Detach(rack)
     car.CPPICanTool = function(_, ply, mode) return ply == me and mode == "weld" end
     T.ok(R.Attach(rack, car, me), "the prop protection's answer wins when there is one")
+    R.Detach(rack)
+
+    -- Somebody else's rack: not welded to your car (that drove off with it and its
+    -- bikes), and their bike not let down off it.
+    rack.GetCreator = function() return other end
+    car.CPPICanTool = function() return true end
+    local okR, whyR = R.Attach(rack, car, me)
+    T.ok(not okR and whyR:find("rack"), "not somebody else's rack onto my car: " .. tostring(whyR))
+    theirs.BMXOwner = other
+    T.eq(R.Use(rack, me), "nothing", "E on it: nothing of mine to do")
+    T.ok(R.Load(rack, theirs, other), "they rack their bike")
+    local okU, whyU = R.Release(theirs, me)
+    T.ok(not okU and whyU:find("somebody else"), "a stranger cannot take it off: " .. tostring(whyU))
+    T.eq(R.Use(rack, me), "notyours", "nor by E on the rack")
+    T.eq(theirs.BMXRack, rack, "still racked")
+    local mine = bikeAt(200)
+    mine.BMXOwner = me
+    T.ok(R.Load(rack, mine, me), "my own bike on their rack (a lift)")
+    T.ok(R.Release(mine, me), "and off again")
+    T.ok(R.Release(theirs, admin), "an admin may")
+    T.ok(R.Load(rack, theirs, other), "back on")
+    T.ok(R.Release(theirs, other), "the owner may")
 end)
 
 T.test("lock: you lock your own bike or nobody's; an admin may lock anybody's", function()

@@ -111,6 +111,15 @@ local function registerDuplicator(class)
     end, "Data")
 end
 
+-- THE CLEANUP TYPE every spawn is filed under (bmx_spawn, the /bike window), in BOTH
+-- realms: the client's cleanup panel lists only the types the client registered, so
+-- there was no "BMX vehicles" button, and the "Cleaned up" notice is looked up there.
+if cleanup and cleanup.Register then cleanup.Register("bmx") end
+if CLIENT and language and language.Add then
+    language.Add("Cleanup_bmx", "BMX vehicles")
+    language.Add("Cleaned_bmx", "Cleaned up BMX vehicles")
+end
+
 -- Forward declaration. RegisterBike is defined above the body of this and calls
 -- it, and a `local function` declared later would not be the same name: the
 -- earlier reference would resolve as a global and be nil at call time.

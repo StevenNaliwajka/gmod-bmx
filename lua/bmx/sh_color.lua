@@ -143,6 +143,16 @@ if SERVER then
             ply:ChatPrint("[BMX] ride a bike, or look at one nearby, to paint it.")
             return
         end
+        -- A PARKED BIKE through the same door as the context menu's "Bike colour": the
+        -- lock and the prop protection have their say there (CanProperty), and this
+        -- command painted anybody's bike, a locked one too, with smoke for everyone.
+        if bike:GetDriver() ~= ply then
+            if (properties and properties.CanBeTargeted and not properties.CanBeTargeted(bike, ply))
+                or not gamemode.Call("CanProperty", ply, "bmx_color", bike) then
+                ply:ChatPrint("[BMX] that bike is not yours to paint.")
+                return
+            end
+        end
         if CurTime() < (ply.BMXNextRecolor or 0) then return end
         ply.BMXNextRecolor = CurTime() + COOLDOWN
         BMX.SetBikeColor(bike, i, true, ply)

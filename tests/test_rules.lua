@@ -222,3 +222,50 @@ T.test("rules: a grind under bmx_scoring 0 still grinds, it just scores nothing"
     T.eq(bike:GetScore(), s0, "no points")
     T.eq(#sv.errors, 0, "and no errors: " .. table.concat(sv.errors, " | "))
 end)
+
+--------------------------------------------------------------------------
+-- The duplicator (a dupe pasted, a save loaded) calls a registered class's
+-- function and asks nothing itself: a paste went past every door below and the
+-- copy had no owner, so it was never counted and anybody could lock it.
+--------------------------------------------------------------------------
+T.test("rules: a pasted bike goes through the limit and is the paster's", function()
+    local sv = F.server()
+    local E = sv.env
+    set(sv, "bmx_max_per_player", 1)
+    local ply = looker(sv)
+    spawn(sv, ply)
+    T.eq(count(sv), 1, "one bike out")
+    local data = E.duplicator.Copy(E.ents.FindByClass("bmx_base")[1])
+    T.eq(E.duplicator.Paste(ply, { data })[1], nil, "a paste past the limit makes nothing")
+    T.eq(count(sv), 1, "still one")
+    set(sv, "bmx_max_per_player", 0)
+    local copy = E.duplicator.Paste(ply, { E.duplicator.Copy(E.ents.FindByClass("bmx_base")[1]) })[1]
+    T.ok(copy and copy:IsValid(), "under the limit it pastes")
+    T.eq(copy.BMXOwner, ply, "and is the paster's")
+    T.eq(E.BMX.BikesOwnedBy(ply), 2, "so it is counted")
+    T.eq(#sv.errors, 0, "nothing threw: " .. table.concat(sv.errors, " | "))
+end)
+
+T.test("rules: a paste asks the motor privilege, the switches and the dead, as a spawn does", function()
+    local sv = F.server()
+    local E = sv.env
+    local admin = sv:player("Admin", { superadmin = true })
+    admin:SetPos(E.Vector(0, 0, 0))
+    admin._eyeTrace = { Hit = true, HitPos = E.Vector(100, 0, 0), HitNormal = E.Vector(0, 0, 1) }
+    spawn(sv, admin, "dirtbike")
+    spawn(sv, admin, "stock")
+    local moto = E.duplicator.Copy(E.ents.FindByClass("bmx_dirtbike")[1])
+    local bike = E.duplicator.Copy(E.ents.FindByClass("bmx_base")[1])
+    local user = looker(sv, "User", 400)
+    T.eq(E.duplicator.Paste(user, { moto })[1], nil, "no dirt bike for a plain player")
+    T.eq(#E.ents.FindByClass("bmx_dirtbike"), 1, "only the admin's")
+    T.ok(E.duplicator.Paste(admin, { moto })[1], "the admin may")
+    set(sv, "bmx_allow_bikes", 0)
+    T.eq(E.duplicator.Paste(user, { bike })[1], nil, "bikes switched off: none pasted")
+    set(sv, "bmx_allow_bikes", 1)
+    user.Alive = function() return false end
+    T.eq(E.duplicator.Paste(user, { bike })[1], nil, "nor by the dead")
+    user.Alive = nil
+    T.ok(E.duplicator.Paste(user, { bike })[1], "alive, with bikes on: pasted")
+    T.ok(E.duplicator.Paste(nil, { bike })[1], "the server's own paste (no player) is not asked")
+end)

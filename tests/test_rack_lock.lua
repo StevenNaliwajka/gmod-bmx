@@ -453,6 +453,36 @@ T.test("lock: a copy of a locked bike comes up unlocked and free; the original s
     T.eq(welds(sv, bike, E.game.GetWorld()), 1, "and still welded")
 end)
 
+-- A car copied with its rack loaded: the paste brings the bike's weld and no-collides
+-- but not BMXRack, so the bike hung from the weld running its own wheels, and the rack
+-- said it was empty. The pasted bike goes back on the pasted rack.
+T.test("rack: a pasted bike that was racked is on the pasted rack again", function()
+    local sv, rack, bikeAt = scene()
+    local E, R = sv.env, sv.env.BMX.Rack
+    local owner = sv:player("Owner")
+    local bike = bikeAt(0)
+    T.ok(R.Load(rack, bike, owner), "a bike on the original")
+    -- the paste: the rack (empty, as its copy says), then the bike, then their constraints
+    local rack2 = E.ents.Create("bmx_bike_rack")
+    rack2:SetPos(E.Vector(400, 60, 6))
+    rack2:Spawn()
+    rack2:PostEntityPaste()
+    local data = E.duplicator.Copy(bike)
+    data.Pos = R.SlotPos(rack2, 1)
+    local copy = E.duplicator.Paste(owner, { data })[1]
+    T.ok(copy and copy:IsValid(), "pasted")
+    E.constraint.Weld(copy, rack2, 0, 0, 0, true, false)
+    E.constraint.NoCollide(copy, rack2, 0, 0)
+    sv:run(0.1)
+    T.eq(copy.BMXRack, rack2, "racked on the copy")
+    T.eq(R.Count(rack2), 1, "which says it holds one")
+    T.eq(welds(sv, copy, rack2), 1, "by the pasted weld, not a second one")
+    T.ok(R.Release(copy, owner), "and E lets it down as any racked bike")
+    T.eq(welds(sv, copy, rack2), 0, "weld gone")
+    T.eq(welds(sv, copy, rack2, "nocollide"), 0, "no-collide gone")
+    T.eq(R.Count(rack), 1, "the original still holds its own")
+end)
+
 -- The default copy merges the entity's table into the paste: a copied rack held the
 -- original's bikes and weld, and removing it let them down and the original fell off.
 T.test("rack: a copy starts empty: none of the original's bikes, weld or count", function()

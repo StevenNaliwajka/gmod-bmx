@@ -60,6 +60,27 @@ local function registerDuplicator(class)
     if not SERVER then return end
 
     duplicator.RegisterEntityClass(class, function(ply, data)
+        -- THROUGH THE SPAWN DOORS. The duplicator calls a registered class's function
+        -- and asks nothing itself (sandbox's own classes ask inside theirs), so a paste
+        -- skipped every rule a spawn keeps: bmx_max_per_player, the bmx_allow_*
+        -- switches, the motor vehicles' privilege, the dead and the spectators, the
+        -- server's sbox_maxsents and its admin mod -- and the copy had no owner, so it
+        -- was never counted and anybody could lock it. A save being loaded is a paste
+        -- too, and is asked the same (sandbox does that for props).
+        if IsValid(ply) then
+            local id = BMX.IdForClass and BMX.IdForClass(data.Class)
+            if id and hook.Run("BMX_CanSpawn", ply, id) == false then return end
+            if hook.Run("PlayerSpawnSENT", ply, data.Class) == false then return end
+        end
+
+        -- A LOCK IS NOT COPIED. Its owner (BMXLock) is not in the copy, but the
+        -- networked padlock and the weld to the world are, so the copy was a bike
+        -- welded down that nobody could unlock. It comes up unlocked and free. The
+        -- padlock is taken out of the COPY: the duplicator puts the networked vars
+        -- back once more after this function returns.
+        local locked = data.DT and data.DT.Locked
+        if data.DT then data.DT.Locked = false end
+
         local e = ents.Create(data.Class)
         if not IsValid(e) then return end
 
@@ -67,22 +88,25 @@ local function registerDuplicator(class)
         e:Spawn()
         e:Activate()
         duplicator.DoGenericPhysics(e, ply, data)
-        -- A LOCK IS NOT COPIED. Its owner (BMXLock) is not in the copy, but the
-        -- networked padlock and the weld to the world are, so the copy was a bike
-        -- welded down that nobody could unlock. It comes up unlocked and free; its
-        -- welds are made after this, hence the timer.
-        if e.GetLocked and e:GetLocked() then
-            e:SetLocked(false)
-            timer.Simple(0, function()
-                if not IsValid(e) or e.BMXLock or not constraint.FindConstraints then return end
+        if e.GetLocked and e:GetLocked() then e:SetLocked(false) end
+        if IsValid(ply) then hook.Run("PlayerSpawnedSENT", ply, e) end
+
+        -- Its welds are made after this, hence the timer: the weld to the world that
+        -- the lock left goes, and a bike copied off a rack goes back on the copy of
+        -- the rack (BMX.Rack.Adopt), not hanging from its weld as a bike running its
+        -- own wheels.
+        timer.Simple(0, function()
+            if not IsValid(e) or not constraint.FindConstraints then return end
+            if locked and not e.BMXLock then
                 for _, c in ipairs(constraint.FindConstraints(e, "Weld")) do
                     local other = (c.Ent1 == e) and c.Ent2 or c.Ent1
                     if other and other.IsWorld and other:IsWorld() and IsValid(c.Constraint) then
                         c.Constraint:Remove()
                     end
                 end
-            end)
-        end
+            end
+            if BMX.Rack and BMX.Rack.Adopt then BMX.Rack.Adopt(e) end
+        end)
         return e
     end, "Data")
 end

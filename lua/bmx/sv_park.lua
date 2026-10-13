@@ -93,9 +93,33 @@ end)
 hook.Add("PlayerSpawnedSENT", "BMX.ParkOwner", function(ply, ent)
     if IsValid(ent) and P.IsPiece(ent) then
         ent.BMXOwner = ply
-        P.Ground(ent)
+        -- A paste stands where the dupe had it (on the dupe's own platform, say),
+        -- which may be made after it: it is not dropped to the ground.
+        if not ent.BMXPasted then P.Ground(ent) end
     end
 end)
+
+-- A PASTE IS A DOOR TOO (a dupe, a save being loaded). The duplicator asks nothing
+-- of a class it was not told about and makes the copy with its generic function, so
+-- a dupe of two hundred kickers went past bmx_park_max, and the pieces had no owner
+-- the prop protection could see. Every piece class asks first and is the paster's
+-- after, the way the spawn menu's are.
+function P.Paste(ply, data)
+    if IsValid(ply) and hook.Run("PlayerSpawnSENT", ply, data.Class) == false then return end
+    if P.Count() >= P.Max() then return end
+    local e = duplicator.GenericDuplicatorFunction(ply, data)
+    if IsValid(e) and IsValid(ply) then
+        e.BMXPasted = true
+        hook.Run("PlayerSpawnedSENT", ply, e)
+        e.BMXPasted = nil
+    end
+    return e
+end
+
+if duplicator and duplicator.RegisterEntityClass then
+    duplicator.RegisterEntityClass("bmx_park_piece", P.Paste, "Data")
+    for class in pairs(P.Classes) do duplicator.RegisterEntityClass(class, P.Paste, "Data") end
+end
 
 --------------------------------------------------------------------------
 -- Grounding. A piece stands ON the ground: upright, frozen, its floor on

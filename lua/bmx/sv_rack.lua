@@ -220,6 +220,40 @@ function R.Release(bike, ply)
     return true
 end
 
+-- A PASTED BIKE THAT WAS ON A RACK (the duplicator, a save: a car copied with its rack
+-- loaded). The copy brings the weld and the no-collides, but not BMXRack, so the bike
+-- hung from the weld running its own wheels against it, and the rack said it was empty.
+-- The copied constraints are taken on as the rack's own, in the nearest free slot; with
+-- no free slot the bike is let go. Returns true if it is on the rack.
+function R.Adopt(bike)
+    if not (IsValid(bike) and bike.IsBMX) or bike.BMXRack or not constraint.FindConstraints then return false end
+    local rack, weld
+    for _, c in ipairs(constraint.FindConstraints(bike, "Weld")) do
+        local other = (c.Ent1 == bike) and c.Ent2 or c.Ent1
+        if IsValid(other) and other:GetClass() == "bmx_bike_rack" then rack, weld = other, c.Constraint break end
+    end
+    if not rack then return false end
+    local nc = {}
+    for _, c in ipairs(constraint.FindConstraints(bike, "NoCollide")) do nc[#nc + 1] = c.Constraint end
+    local slot, best = nil, math.huge
+    for i = 1, R.Capacity do
+        if not IsValid(R.Slots(rack)[i]) then
+            local d = R.SlotPos(rack, i):DistToSqr(bike:GetPos())
+            if d < best then slot, best = i, d end
+        end
+    end
+    if not slot then
+        if IsValid(weld) then weld:Remove() end
+        for _, c in ipairs(nc) do if IsValid(c) then c:Remove() end end
+        return false
+    end
+    bike.BMXRack, bike.BMXRackSlot, bike.BMXRackWeld, bike.BMXRackNoCollide = rack, slot, weld, nc
+    if bike.SetStandDown then bike:SetStandDown(false) end
+    R.Slots(rack)[slot] = bike
+    if rack.SetLoaded then rack:SetLoaded(R.Count(rack)) end
+    return true
+end
+
 function R.ReleaseAll(rack, ply)
     for i = 1, R.Capacity do
         local b = R.Slots(rack)[i]
@@ -262,6 +296,18 @@ function R.Use(rack, ply)
 end
 
 -- The racked bike's own E: let it down (the next E gets on). See ENT:Use.
+-- A paste asks too (the duplicator asks nothing of a class it was not told about):
+-- bikes switched off, the server's entity limit and its admin mod, and the copy is the
+-- paster's, for the prop protection and for R.MayHandle.
+if duplicator and duplicator.RegisterEntityClass then
+    duplicator.RegisterEntityClass("bmx_bike_rack", function(ply, data)
+        if IsValid(ply) and hook.Run("PlayerSpawnSENT", ply, data.Class) == false then return end
+        local e = duplicator.GenericDuplicatorFunction(ply, data)
+        if IsValid(e) and IsValid(ply) then hook.Run("PlayerSpawnedSENT", ply, e) end
+        return e
+    end, "Data")
+end
+
 hook.Add("PlayerSpawnSENT", "BMX.RackEnabled", function(ply, class)
     if class ~= "bmx_bike_rack" then return end
     if not R.AccessoriesEnabled() then

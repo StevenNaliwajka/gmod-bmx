@@ -61,6 +61,9 @@ function TOOL:LeftClick(trace)
     if not P.Shapes[shape] then return false end
     local pos, yaw = P.Placement(trace, shape, params, options(self))
     if not pos then return false end
+    -- The spawn menu's door, as the /bike window asks it (sv_menu.lua): the server's
+    -- entity limit and its admin mod's rules on the piece's class.
+    if hook.Run("PlayerSpawnSENT", ply, P.ClassName(shape, params)) == false then return false end
     local e, why = P.Place(ply, shape, params, pos, Angle(0, yaw, 0))
     if not e then
         ply:ChatPrint("[BMX] " .. tostring(why))
@@ -70,6 +73,8 @@ function TOOL:LeftClick(trace)
     undo.AddEntity(e)
     undo.SetPlayer(ply)
     undo.Finish()
+    -- And it is the builder's, for the limit's count and the prop protection.
+    hook.Run("PlayerSpawnedSENT", ply, e)
     return true
 end
 
@@ -80,13 +85,19 @@ function TOOL:RightClick()
     return true
 end
 
+-- Your own pieces, or anybody's with "BMX - Build Parks": a park somebody else built
+-- (or an admin loaded) was taken apart a piece at a time by whoever had the tool.
 function TOOL:Reload(trace)
     if CLIENT then return true end
-    if BMX.Park.IsPiece(trace.Entity) then
-        trace.Entity:Remove()
-        return true
+    local e = trace.Entity
+    if not BMX.Park.IsPiece(e) then return false end
+    local ply = self:GetOwner()
+    if e.BMXOwner ~= ply and not BMX.Can(ply, "BMX - Build Parks") then
+        ply:ChatPrint("[BMX] that piece is not yours to remove.")
+        return false
     end
-    return false
+    e:Remove()
+    return true
 end
 
 if CLIENT then

@@ -467,6 +467,26 @@ T.test("park: bmx_park_max is a setting row and a convar, and caps the toolgun, 
     T.eq(sv.env.hook.Run("PlayerSpawnSENT", ply, "bmx_park_bank_m"), nil, "room again")
 end)
 
+-- The duplicator asks nothing of a class it was not told about: a dupe of many
+-- pieces went past the cap, and the pieces had no owner.
+T.test("park: a pasted piece is capped and the paster's, and stands where the dupe had it", function()
+    local sv, world, P = server()
+    local E = sv.env
+    E.GetConVar("bmx_park_max"):SetInt(2)
+    local ply = sv:player("Builder")
+    local a = P.Place(ply, "kicker", { 2, 1 }, E.Vector(0, 0, 0))
+    local data = E.duplicator.Copy(a)
+    data.Pos = E.Vector(400, 0, 40)
+    local copy = E.duplicator.Paste(ply, { data })[1]
+    T.ok(copy and copy:IsValid(), "the second fits")
+    T.eq(copy.BMXOwner, ply, "and is the paster's")
+    T.near(copy:GetPos().z, 40, 0.01, "where the dupe put it, not dropped to the ground")
+    T.eq(E.duplicator.Paste(ply, { data })[1], nil, "a third is past the cap")
+    T.eq(E.duplicator.Paste(nil, { data })[1], nil, "for a paste with no player too")
+    T.eq(P.Count(), 2, "two stand")
+    T.eq(#sv.errors, 0, "nothing threw: " .. table.concat(sv.errors, " | "))
+end)
+
 --------------------------------------------------------------------------
 -- Saving, loading, permission
 --------------------------------------------------------------------------
@@ -640,12 +660,9 @@ T.test("park: the tool places a piece at the aim, snaps to the one it is aimed a
     T.ok(TOOL, "the tool loaded")
     T.eq(TOOL.Category, "Construction", "in the construction tab")
 
-    local owner = setmetatable({ _msgs = {} }, { __index = function(_, k)
-        if k == "IsValid" then return function() return true end end
-        if k == "EyeAngles" then return function() return E.Angle(0, 8, 0) end end
-        if k == "ChatPrint" then return function(self, m) self._msgs[#self._msgs + 1] = m end end
-        return function() end
-    end })
+    local owner = sv:player("Builder")
+    owner:SetEyeAngles(E.Angle(0, 8, 0))
+    owner._chat = {}
     local cv = { shape = "kicker", size = "2", variant = "1", rot = "0", snap = "1", slide = "0" }
     local tool = setmetatable({
         GetOwner = function() return owner end,
@@ -682,11 +699,32 @@ T.test("park: the tool places a piece at the aim, snaps to the one it is aimed a
 
     E.GetConVar("bmx_park_max"):SetInt(2)
     T.eq(tool:LeftClick({ HitPos = E.Vector(0, 900, 0), Entity = E.NULL }), false, "refused at the cap")
-    T.ok(owner._msgs[#owner._msgs]:find("bmx_park_max 2"), "and the player is told")
+    T.ok(owner._chat[#owner._chat]:find("bmx_park_max 2"), "and the player is told")
+    T.eq(b.BMXOwner, owner, "a placed piece is the builder's")
 
-    T.ok(tool:Reload({ Entity = b }), "reload removes a piece")
+    -- Somebody else's piece is not another player's to take apart; an admin may.
+    local other = sv:player("Other")
+    local otherTool = setmetatable({ GetOwner = function() return other end }, { __index = tool })
+    T.eq(otherTool:Reload({ Entity = b }), false, "not a stranger's")
+    T.ok(not b._removed, "still there")
+    local admin = sv:player("Admin", { superadmin = true })
+    local adminTool = setmetatable({ GetOwner = function() return admin end }, { __index = tool })
+    E.GetConVar("bmx_park_max"):SetInt(120)
+    local loaded = P.Place(nil, "kicker", { 1, 1 }, E.Vector(-3000, 0, 0))
+    T.ok(loaded, "a piece nobody owns")
+    T.eq(otherTool:Reload({ Entity = loaded }), false, "nor a piece nobody owns (a loaded park)")
+    T.ok(adminTool:Reload({ Entity = loaded }), "an admin may")
+
+    T.ok(tool:Reload({ Entity = b }), "reload removes your own piece")
     T.ok(b._removed, "gone")
     T.eq(tool:Reload({ Entity = E.NULL }), false, "and nothing else")
+
+    -- The spawn menu's door: an admin mod's "no park pieces" holds for the tool too.
+    sv.gm.PlayerSpawnSENT = function() return false end
+    local n = P.Count()
+    T.eq(tool:LeftClick({ HitPos = E.Vector(-1500, 400, 0), Entity = E.NULL }), false, "the door shut: nothing")
+    T.eq(P.Count(), n, "nothing placed")
+    sv.gm.PlayerSpawnSENT = nil
 
     -- the turn is the client's to send: nan or a huge number is no turn, not a broken angle
     E.GetConVar("bmx_park_max"):SetInt(120)

@@ -927,6 +927,12 @@ function M.Realm(world, which)
             if env.IsValid(o) then o:Remove() end
         end
     end
+    function Ent:RestoreNetworkVars(dt)
+        for k, v in pairs(dt or {}) do
+            local set = self["Set" .. k]
+            if set then set(self, v) end
+        end
+    end
     function Ent:NetworkVar(kind, slot, name)
         local default = ({ Entity = NULL, Bool = false, Float = 0, Int = 0,
                            String = "", Vector = Vector(), Angle = Angle() })[kind]
@@ -1534,6 +1540,10 @@ function M.Realm(world, which)
                 local reg = R.dupe[data.Class]
                 if reg then
                     out[idx] = reg.fn(ply, data)
+                    -- The real Paste puts the networked vars back once more after the
+                    -- class's function ("Spawn/Init might have stomped the values"), so
+                    -- whatever that function changed in them comes back from the copy.
+                    if out[idx] and out[idx].RestoreNetworkVars then out[idx]:RestoreNetworkVars(data.DT) end
                     for key, mod in pairs(data.EntityMods or {}) do
                         local fn = (R.dupeMods or {})[key]
                         if fn and out[idx] then fn(ply, out[idx], mod) end
@@ -1549,6 +1559,17 @@ function M.Realm(world, which)
             if data.DT then e._pendingDT = table.Copy(data.DT) end
         end,
         DoGenericPhysics = function() end,
+        -- The stock copy of a class nobody registered: made, spawned, and the copied
+        -- entity table merged in.
+        GenericDuplicatorFunction = function(ply, data)
+            local e = env.ents.Create(data.Class)
+            if not env.IsValid(e) then return end
+            env.duplicator.DoGeneric(e, data)
+            e:Spawn()
+            if e.Activate then e:Activate() end
+            for k, v in pairs(data) do e[k] = v end
+            return e
+        end,
     }
 
     ----------------------------------------------------------------------

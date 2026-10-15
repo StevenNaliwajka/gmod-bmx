@@ -498,6 +498,8 @@ end
 --   0  near   everything
 --   1  mid    the chainring in 6 pieces not 16; no joint balls, no chain,
 --             no pedal blocks or spindle: all under a few pixels there
+--   (a motorbike's coiled shock spring is drawn with fewer rings past 350, and
+--    not at all past mid)
 --   2  far    frame, fork, bars, saddle and tyres; the wheels drawn where
 --             they sit at rest instead of traced to the ground (the two
 --             traces are most of what a far bike costs)
@@ -507,6 +509,7 @@ end
 -- only what is DRAWN changes, never where the rider's limbs go.
 --------------------------------------------------------------------------
 local LOD_MID, LOD_FAR = 900, 2500
+local SPRING_NEAR = 350     -- a shock's coil in full detail this near (DrawDetailed)
 local lodScale = CreateClientConVar("bmx_lod_scale", "1", true, false,
     "BMX bike detail by distance: 1 normal, 2 = full detail twice as far, 0 = always full.")
 
@@ -817,13 +820,19 @@ function ENT:DrawDetailed(model, S)
                     local e1 = dir:Cross(up):GetNormalized()
                     local e2 = dir:Cross(e1)
                     local pts = {}
-                    local turns, n = 7, 70
+                    -- Built in Lua every frame: 70 rings of 5 sides is 1,400 vertices, the
+                    -- dearest thing a motorbike draws. Past SPRING_NEAR the coil is a few
+                    -- pixels across and its wire under one: six rings a turn and four sides
+                    -- draw the same few pixels for half the vertices (bmx_lod_scale applies).
+                    local turns, n, sides = 7, 70, 5
+                    local ks = lodScale:GetFloat()
+                    if ks > 0 and EyePos():DistToSqr(a) > (SPRING_NEAR * ks) ^ 2 then n, sides = 42, 4 end
                     for i = 0, n do
                         local t = i / n
                         local an = t * turns * math.pi * 2
                         pts[#pts + 1] = a + dir * (L * (0.12 + 0.8 * t)) + (e1 * math.cos(an) + e2 * math.sin(an)) * (r * 1.45)
                     end
-                    BM.DrawTube(pts, r * 0.22, "paint", 5, lay.shock.springPaint and paint or COL_SPRING)
+                    BM.DrawTube(pts, r * 0.22, "paint", sides, lay.shock.springPaint and paint or COL_SPRING)
                 end
             end
         end

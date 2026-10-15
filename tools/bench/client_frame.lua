@@ -49,7 +49,7 @@ do
         local a = arg[i]
         local key = a:match("^%-%-(.+)$")
         if key == "count" or key == "spikes" or key == "profile" or key == "joff" or key == "csv" or key == "hooks"
-            or key == "quiet" or key == "noik" or key == "varied" or key == "slowskel" then
+            or key == "quiet" or key == "noik" or key == "varied" or key == "slowskel" or key == "buildlog" then
             opt[key] = true
         elseif key then
             opt[key] = arg[i + 1]
@@ -542,14 +542,43 @@ local function prebuild(S)
         for _, st in pairs(BM.Status()) do if st == "building" then return true end end
         return false
     end
+    -- the time each frame spent in the builds (BikeMesh.Get, whoever asked)
+    local inGet = 0
+    local get = BM.Get
+    BM.Get = function(...)
+        local a = now()
+        local r = get(...)
+        inGet = inGet + (now() - a)
+        return r
+    end
+    local log = {}
     repeat
         f = f + 1
+        inGet = 0
         local a = now()
         frame(S, f)
-        worst = math.max(worst, now() - a)
+        local dt = now() - a
+        worst = math.max(worst, dt)
         frames = frames + 1
+        log[#log + 1] = { f = f, ms = dt * 1000, get = inGet * 1000 }
     until (frames > 30 and not pending()) or frames > 20000
+    BM.Get = get
     S.frameAt = f
+    if opt.buildlog then
+        local over = { 0, 0, 0 }
+        for _, e in ipairs(log) do
+            if e.get > 8 then over[1] = over[1] + 1 end
+            if e.get > 16 then over[2] = over[2] + 1 end
+            if e.get > 33 then over[3] = over[3] + 1 end
+        end
+        table.sort(log, function(x, y) return x.get > y.get end)
+        local parts = {}
+        for i = 1, math.min(6, #log) do
+            parts[#parts + 1] = string.format("#%d %.1f ms (build %.1f)", log[i].f, log[i].ms, log[i].get)
+        end
+        print(string.format("             build slices over 8/16/33 ms: %d/%d/%d of %d frames; worst: %s",
+            over[1], over[2], over[3], frames, table.concat(parts, ", ")))
+    end
     return { frames = frames, secs = now() - t0, worst = worst, status = BM.Status() }
 end
 
@@ -564,16 +593,22 @@ local function resetTally() for k in pairs(tally) do tally[k] = nil end end
 -- garbage with it stopped, then (--count) the engine calls.
 -- --hooks: every hook function and every entity's Draw timed on its own, so a
 -- frame's cost can be put down to what spent it (the skeleton's time included).
-local hookTime, hookKB = {}, {}
+local hookTime, hookKB, hookVec = {}, {}, {}
 local function timeHooks(S)
     local cl = S.cl
     local function timed(key, fn)
         return function(...)
             local k0 = skel.gcStopped and collectgarbage("count")
+            local v0, s0 = tally.vec, tally.SetupBones
             local t0 = now()
             local a, b, c, d = fn(...)
             hookTime[key] = (hookTime[key] or 0) + (now() - t0)
-            if k0 then hookKB[key] = (hookKB[key] or 0) + collectgarbage("count") - k0 end
+            if k0 then
+                hookKB[key] = (hookKB[key] or 0) + collectgarbage("count") - k0
+                local hv = hookVec[key] or { 0, 0 }
+                hv[1], hv[2] = hv[1] + tally.vec - v0, hv[2] + tally.SetupBones - s0
+                hookVec[key] = hv
+            end
             return a, b, c, d
         end
     end
@@ -608,6 +643,7 @@ local function measure(S)
     table.sort(hooks, function(a, z) return a[2] > z[2] end)
     for k in pairs(hookTime) do hookTime[k] = nil end
     for k in pairs(hookKB) do hookKB[k] = nil end
+    for k in pairs(hookVec) do hookVec[k] = nil end
     -- garbage: each frame with the collector stopped, collected between (a
     -- frame here can make megabytes, and the box is shared)
     skel.gcStopped, skel.kb = true, 0
@@ -628,7 +664,11 @@ local function measure(S)
     local skelKB = skel.kb / G
     local counts = {}
     for k, v in pairs(tally) do counts[k] = v / G end
-    for _, h in ipairs(hooks) do h[3] = (hookKB[h[1]] or 0) / G end
+    for _, h in ipairs(hooks) do
+        h[3] = (hookKB[h[1]] or 0) / G
+        local hv = hookVec[h[1]]
+        h[4], h[5] = hv and hv[1] / G, hv and hv[2] / G
+    end
     skel.gcStopped = false
     collectgarbage("collect")
 
@@ -788,7 +828,9 @@ local function report(id, n, S, b)
             local parts = {}
             for i = 1, math.min(12, #m.hooks) do
                 if m.hooks[i][2] >= 0.005 then
-                    parts[#parts + 1] = string.format("%s %.3f ms %.0f KB", m.hooks[i][1], m.hooks[i][2], m.hooks[i][3] or 0)
+                    local h = m.hooks[i]
+                    parts[#parts + 1] = string.format("%s %.3f ms %.0f KB", h[1], h[2], h[3] or 0)
+                        .. (opt.count and h[4] and string.format(" %.0f vec %.1f SetupBones", h[4], h[5]) or "")
                 end
             end
             print("             by hook, a frame: " .. table.concat(parts, ", "))

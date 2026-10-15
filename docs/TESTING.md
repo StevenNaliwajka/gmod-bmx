@@ -164,7 +164,10 @@ What the shim gives the tests:
 - **A cost meter**: `tests/test_perf.lua` counts the traces one physics
   substep makes in every state (parked, riding, in the air, grinding) and the
   model draws one bike costs a frame near, mid and far, and fails when a
-  change blows a budget.
+  change blows a budget. `tests/test_perf_client.lua` does the same for the
+  client's frame: how often the rider IK has the engine pose a skeleton, the
+  bones it looks up by name and the Vectors it makes (see "What a client frame
+  costs", below).
 
 Which file covers what, for the newer parts:
 
@@ -176,6 +179,7 @@ Which file covers what, for the newer parts:
 | `test_air_assist.lua` | air control off vert ramps (G06): the launch classifier on synthetic normals, the turn about the ramp face's normal settling on a half turn, the landing aim, the spine finder on a made-up profile and the transfer on the plant, scoring, `bmx_air_assist`. Headless twins: `vert_turnaround`, `spine_transfer` (park pieces) |
 | `test_nose_manual.lua` | weight forward and the nose manual (G02): the LMB / Ctrl / `bmx_lmb_mode` decode through the real `StartCommand`, the IK lean, a nose manual held over 2 s on the plant without flipping, W / S trim, the convar gate, pay by the second and chaining in a combo. Headless twin: `nose_manual_holds` |
 | `test_perf.lua` | the trace and draw budgets |
+| `test_perf_client.lua` | the client frame's budgets: SetupBones a frame for a BMX rider pedalling, a scooter and a board rider standing, a skater; bone lookups and Vectors; the shock spring's Vectors per ring; a ready model remembered and forgotten when it must be |
 | `test_platform.lua` | the vehicle platform (G22): `RegisterVehicle` validation (a 4-wheel board and a 1-wheel unicycle accepted, every bad field refused), input maps, the Vehicles settings and their spawn doors, and the hidden 4-wheel test cart driving forward with no balance mode. The headless twin is `test_cart_drives` |
 | `test_road.lua` | the road bike and the gear model (G09): the `gears` field's rejections, the cadence band, shifting through the real wire, top speed (~1.6x the BMX) and cadence on the plant, the x1.5 score. Every riding headless case also runs as `<case>@road` |
 | `test_fixie.lua` | the fixed gear (G10): the cranks locked to the wheel while coasting, the legs' drag, a skid stop under 8 m, LMB through the usercmd decode, fakie and trackstand scored. Headless: `fixie_skid_stop`, and `<case>@fixie` |

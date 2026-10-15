@@ -259,9 +259,51 @@ local TWIST = { root = 30, hinge = 8, tip = 35 }
 local MIN_BEND  = 15       -- a knee or elbow never straightens past this...
 local MAX_BEND  = 155      -- ...or folds past this, degrees
 
+-- THE SKELETON IS RE-POSED ONLY WHEN SOMETHING ON IT MOVED. Every bone read here
+-- wants the skeleton as the manipulations so far have it, and the solve used to have
+-- the engine pose the whole of it again (InvalidateBoneCache + SetupBones) before
+-- every read: about sixty times a frame for each rider near the view, half of them on
+-- a skeleton nothing had touched since the last time (measured offline,
+-- tools/bench/client_frame.lua). `posed` is the player whose bone cache shows every
+-- manipulation made through manip() and manipPos() since it was posed; a refresh of
+-- that player is then the same pose again and is skipped. What this file cannot see
+-- (another file's manipulations, the next frame's animation) it does not trust: every
+-- way in forgets (forgetPose), so the first read after it poses for real.
+local posed
 local function refresh(ply)
+    if posed == ply then return end
     ply:InvalidateBoneCache()
     ply:SetupBones()
+    posed = ply
+end
+-- BONES BY NAME, looked up once per model. A solve asks for the same thirty-odd bones
+-- by name eighty times a frame per rider, each an engine lookup; a model's bones do
+-- not move about, so each player keeps its model's answers (and asks again when the
+-- model changes: checked once at each way in). A bone not found is asked for again.
+local boneMaps = setmetatable({}, { __mode = "k" })     -- player -> { [0] = model, name -> index }
+local mapPly, boneMap
+local function lookupBone(ply, name)
+    if ply ~= mapPly then
+        local model = ply:GetModel()
+        local m = boneMaps[ply]
+        if not m or m[0] ~= model then m = { [0] = model }; boneMaps[ply] = m end
+        mapPly, boneMap = ply, m
+    end
+    local b = boneMap[name]
+    if b == nil then
+        b = ply:LookupBone(name)
+        boneMap[name] = b
+    end
+    return b
+end
+local function forgetPose() posed, mapPly = nil, nil end
+local function manip(ply, b, a)
+    if posed == ply then posed = nil end
+    ply:ManipulateBoneAngles(b, a)
+end
+local function manipPos(ply, b, v)
+    if posed == ply then posed = nil end
+    ply:ManipulateBonePosition(b, v)
 end
 
 local function bonePos(ply, b)
@@ -290,7 +332,7 @@ end
 
 local function setManip(ply, b, a)
     ply.bmxIK[b] = a
-    ply:ManipulateBoneAngles(b, a)
+    manip(ply, b, a)
 end
 
 -- Signed angle from u to v about unit axis h, both first flattened onto the
@@ -384,8 +426,8 @@ end
 -- still SOLVE_CLOSE off where it is going; an ordinary frame is done in one or two.
 local SOLVE_PASSES, SOLVE_CLOSE = 5, 0.25
 local function solveLimb(ply, limb, T, pole)
-    local rb, hb, eb = ply:LookupBone(limb.root), ply:LookupBone(limb.hinge),
-        ply:LookupBone(limb.eff)
+    local rb, hb, eb = lookupBone(ply, limb.root), lookupBone(ply, limb.hinge),
+        lookupBone(ply, limb.eff)
     if not (rb and hb and eb) then return end
     for pass = 1, SOLVE_PASSES do
         if pass > 2 then
@@ -438,14 +480,26 @@ local CURL = 55                    -- degrees at each finger joint: round a grip
 local curlAxis = {}                -- model -> side -> local axis, or false
 BMX.RiderCurlAxis = curlAxis
 
+-- Each side's bone names, made once (they were put together afresh at every use).
+local SIDE_BONES = {}
+for _, s in ipairs({ "R", "L" }) do
+    local p = "ValveBiped.Bip01_" .. s .. "_"
+    local t = { toe = p .. "Toe0", upperArm = p .. "UpperArm", forearm = p .. "Forearm", hand = p .. "Hand",
+                finger0 = p .. "Finger0", finger2 = p .. "Finger2", fingers = {}, fist = {} }
+    for _, f in ipairs(FINGERS) do t.fingers[f] = { p .. "Finger" .. f, p .. "Finger" .. f .. "1", p .. "Finger" .. f .. "2" } end
+    for _, name in ipairs({ "Finger2", "Finger21", "Finger22", "Finger0" }) do t.fist[#t.fist + 1] = p .. name end
+    SIDE_BONES[s] = t
+end
+local function sideOf(side) return side == 1 and "R" or "L" end
+
 local function fingerBones(ply, side, f)
-    local p = "ValveBiped.Bip01_" .. (side == 1 and "R" or "L") .. "_Finger" .. f
-    return ply:LookupBone(p), ply:LookupBone(p .. "1"), ply:LookupBone(p .. "2")
+    local n = SIDE_BONES[sideOf(side)].fingers[f]
+    return lookupBone(ply, n[1]), lookupBone(ply, n[2]), lookupBone(ply, n[3])
 end
 
 local function calibrateCurl(ply, side)
     local base, _, tip = fingerBones(ply, side, "1")
-    local thumb = ply:LookupBone("ValveBiped.Bip01_" .. (side == 1 and "R" or "L") .. "_Finger0")
+    local thumb = lookupBone(ply, SIDE_BONES[sideOf(side)].finger0)
     if not (base and tip and thumb) then return nil end
     local best, bestD
     local old = ply:GetManipulateBoneAngles(base)
@@ -453,13 +507,13 @@ local function calibrateCurl(ply, side)
         for _, sg in ipairs({ 1, -1 }) do
             local d = Angle(0, 0, 0)
             d:RotateAroundAxis(ax, 40 * sg)
-            ply:ManipulateBoneAngles(base, d)
+            manip(ply, base, d)
             refresh(ply)
             local dist = (bonePos(ply, tip) - bonePos(ply, thumb)):Length()
             if not bestD or dist < bestD then best, bestD = ax * sg, dist end
         end
     end
-    ply:ManipulateBoneAngles(base, old)
+    manip(ply, base, old)
     refresh(ply)
     return best
 end
@@ -475,10 +529,15 @@ local function closeHand(ply, side)
     if not ax then return end
     local curl = Angle(0, 0, 0)
     curl:RotateAroundAxis(ax, CURL)
+    -- The same curl every frame: a finger already holding it is left alone (setting it
+    -- again moves nothing, but the skeleton would be posed again to see that).
     for _, f in ipairs(FINGERS) do
         for _, b in ipairs({ fingerBones(ply, side, f) }) do
-            ply.bmxIK[b] = curl
-            ply:ManipulateBoneAngles(b, curl)
+            local had = ply.bmxIK[b]
+            if not (had and had.p == curl.p and had.y == curl.y and had.r == curl.r) then
+                ply.bmxIK[b] = curl
+                manip(ply, b, curl)
+            end
         end
     end
 end
@@ -509,9 +568,10 @@ local REACH_OUT, REACH_IN = 0.15, 0.03
 local function reachExcess(ply, targets)
     local total = 0
     for _, s in ipairs({ "R", "L" }) do
-        local sh = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_UpperArm")
-        local el = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Forearm")
-        local ha = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Hand")
+        local names = SIDE_BONES[s]
+        local sh = lookupBone(ply, names.upperArm)
+        local el = lookupBone(ply, names.forearm)
+        local ha = lookupBone(ply, names.hand)
         local key = s == "R" and "rHand" or "lHand"
         local T = targets[key .. "Wrist"] or targets[key .. "Held"] or targets[key]
         if sh and el and ha and T then
@@ -541,7 +601,7 @@ local function spineReach(ply, targets)
 end
 -- One round. True while the hands are still out of reach and the round helped.
 function spineReachOnce(ply, targets)
-    local sb = ply:LookupBone("ValveBiped.Bip01_Spine2")
+    local sb = lookupBone(ply, "ValveBiped.Bip01_Spine2")
     if not (sb and targets.rHand and targets.lHand) then return false end
     refresh(ply)
     local cur = ply:GetManipulateBoneAngles(sb)
@@ -573,7 +633,7 @@ function spineReachOnce(ply, targets)
         local nl = math.Clamp(ln + d[2], 0, SPINE_LEAN)
         -- The lean goes on the flex (y) the pose already uses; its sign is
         -- the pose's own "forward", so it needs no calibration.
-        ply:ManipulateBoneAngles(sb, Angle(baseP, baseY + nl, baseR + nt))
+        manip(ply, sb, Angle(baseP, baseY + nl, baseR + nt))
         refresh(ply)
         local e1 = reachExcess(ply, targets)
         if e0 < REACH_IN then
@@ -584,8 +644,11 @@ function spineReachOnce(ply, targets)
         end
     end
     if bestT then ply.bmxSpineTwist, ply.bmxSpineLean = bestT, bestL end
-    ply:ManipulateBoneAngles(sb, cur)
-    refresh(ply)
+    -- Put back as the pose had it (nothing to put back when nothing was tried).
+    if #tries > 0 then
+        manip(ply, sb, cur)
+        refresh(ply)
+    end
     return bestE ~= nil and bestE > REACH_OUT
 end
 
@@ -604,18 +667,18 @@ local function pelvisMap(ply, bike, pb)
     local model = ply:GetModel()
     local m = pelvisMaps[model]
     if m ~= nil then return m end
-    ply:ManipulateBonePosition(pb, Vector(0, 0, 0))
+    manipPos(ply, pb, Vector(0, 0, 0))
     refresh(ply)
     local p0 = bonePos(ply, pb)
     if not p0 then pelvisMaps[model] = false return false end
     local cols = {}
     for i, ax in ipairs({ Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1) }) do
-        ply:ManipulateBonePosition(pb, ax * 4)
+        manipPos(ply, pb, ax * 4)
         refresh(ply)
         local d = (bonePos(ply, pb) - p0) / 4
         cols[i] = Vector(d:Dot(bike:GetForward()), -d:Dot(bike:GetRight()), d:Dot(bike:GetUp()))
     end
-    ply:ManipulateBonePosition(pb, Vector(0, 0, 0))
+    manipPos(ply, pb, Vector(0, 0, 0))
     refresh(ply)
     local det = cols[1]:Dot(cols[2]:Cross(cols[3]))
     m = math.abs(det) > 0.25 and cols or false
@@ -625,7 +688,8 @@ end
 
 -- `seat`: the rider's seat in the vehicle's chassis space (its pod's offset).
 function BMX.RiderFollowFrame(ply, bike, seat)
-    local pb = ply:LookupBone("ValveBiped.Bip01_Pelvis")
+    forgetPose()
+    local pb = lookupBone(ply, "ValveBiped.Bip01_Pelvis")
     if not pb then return end
     local fm = bike.bmxFrameMap
     local shift
@@ -637,7 +701,7 @@ function BMX.RiderFollowFrame(ply, bike, seat)
     end
     if not shift then
         if ply.bmxFramePelvis then
-            ply:ManipulateBonePosition(pb, Vector(0, 0, 0))
+            manipPos(ply, pb, Vector(0, 0, 0))
             ply.bmxFramePelvis, ply.bmxPelvis = nil, nil
         end
         return
@@ -646,7 +710,7 @@ function BMX.RiderFollowFrame(ply, bike, seat)
     if not M then return end
     local det = M[1]:Dot(M[2]:Cross(M[3]))
     local x = Vector(shift:Dot(M[2]:Cross(M[3])), M[1]:Dot(shift:Cross(M[3])), M[1]:Dot(M[2]:Cross(shift))) / det
-    ply:ManipulateBonePosition(pb, x)
+    manipPos(ply, pb, x)
     ply.bmxFramePelvis, ply.bmxPelvis = pb, pb      -- (clear() puts it back)
 end
 
@@ -731,7 +795,7 @@ end
 -- pedal, as the IK always had it), until the ankle is far enough from the hip.
 local FOOT_FOLD = 135       -- degrees: the most a pedalling knee is asked to fold
 local function ankleSetback(ply, limb, T, dir, L)
-    local rb, hb, eb = ply:LookupBone(limb.root), ply:LookupBone(limb.hinge), ply:LookupBone(limb.eff)
+    local rb, hb, eb = lookupBone(ply, limb.root), lookupBone(ply, limb.hinge), lookupBone(ply, limb.eff)
     local R, K, F = rb and bonePos(ply, rb), hb and bonePos(ply, hb), eb and bonePos(ply, eb)
     if not (R and K and F) then return L end
     local la, lb = (K - R):Length(), (F - K):Length()
@@ -749,8 +813,8 @@ end
 -- centroid. nil if the model has no fingers.
 local function fistCentre(ply, s)
     local sum, n = Vector(0, 0, 0), 0
-    for _, name in ipairs({ "Finger2", "Finger21", "Finger22", "Finger0" }) do
-        local b = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_" .. name)
+    for _, name in ipairs(SIDE_BONES[s].fist) do
+        local b = lookupBone(ply, name)
         local p = b and bonePos(ply, b)
         if p then sum = sum + p; n = n + 1 end
     end
@@ -777,7 +841,7 @@ BMX.RiderFootDir = footDir
 local TOE_REACH = 35
 BMX.RiderToeReach = TOE_REACH
 local function toesFor(ply, limb, T, fwd, up, sole, L)
-    local rb, hb, eb = ply:LookupBone(limb.root), ply:LookupBone(limb.hinge), ply:LookupBone(limb.eff)
+    local rb, hb, eb = lookupBone(ply, limb.root), lookupBone(ply, limb.hinge), lookupBone(ply, limb.eff)
     local R, K, F = rb and bonePos(ply, rb), hb and bonePos(ply, hb), eb and bonePos(ply, eb)
     if not (R and K and F) or L <= 0 then return 0 end
     local reach = ((K - R):Length() + (F - K):Length()) * 0.995
@@ -839,6 +903,7 @@ local function followTarget(ply, key, T, src, o, fwd, right, up, now, dt)
 end
 
 function BMX.SolveRiderIK(ply, targets, bike)
+    forgetPose()
     ply.bmxIK = ply.bmxIK or {}
     ply.bmxGripOff = ply.bmxGripOff or {}
     local fwd, up, right = bike:GetForward(), bike:GetUp(), bike:GetRight()
@@ -856,7 +921,7 @@ function BMX.SolveRiderIK(ply, targets, bike)
         local T = targets[limb.target]
         -- A hand takes the point on its grip nearest its shoulder.
         local A, B = targets[limb.target .. "A"], targets[limb.target .. "B"]
-        local rb = ply:LookupBone(limb.root)
+        local rb = lookupBone(ply, limb.root)
         if T and A and B and rb then
             refresh(ply)
             local S = bonePos(ply, rb)
@@ -868,13 +933,13 @@ function BMX.SolveRiderIK(ply, targets, bike)
         if T then T = followTarget(ply, limb.target, T, targets.src, origin, fwd, right, up, now, frameDt) end
         if T then
             local s = limb.side == 1 and "R" or "L"
-            local eb = ply:LookupBone(limb.eff)
+            local eb = lookupBone(ply, limb.eff)
             local holding = not limb.leg and not openHands
             -- Where the wrist or the ankle has to go for the fist or the ball of
             -- the foot to be on T.
             local W, dir
             if limb.leg then
-                local toe = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Toe0")
+                local toe = lookupBone(ply, SIDE_BONES[s].toe)
                 local sole = targets[limb.target:sub(1, 1) .. "Sole"] or 0
                 local L = (eb and toe) and ballLength(ply, eb, toe) or 0
                 refresh(ply)
@@ -898,7 +963,7 @@ function BMX.SolveRiderIK(ply, targets, bike)
                 -- Until it points there (the leg solve just turned the foot with the shin,
                 -- and each aim turns it at most MAX_STEP: twice was not enough the frame a
                 -- hard landing swung the leg, and the foot stood off its pedal for two).
-                local toe = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Toe0")
+                local toe = lookupBone(ply, SIDE_BONES[s].toe)
                 if eb and toe then
                     for _ = 1, 4 do
                         aim(ply, eb, eb, toe, dir)
@@ -908,7 +973,7 @@ function BMX.SolveRiderIK(ply, targets, bike)
             elseif not holding then
                 -- Nothing to hold (a unicyclist's balancing arms): the hand relaxed and
                 -- open, fingers out and a little down, not a fist.
-                local knuck = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Finger2")
+                local knuck = lookupBone(ply, SIDE_BONES[s].finger2)
                 if eb and knuck then
                     aim(ply, eb, eb, knuck, (right * limb.side + fwd * 0.35 - up * 0.45):GetNormalized())
                 end
@@ -923,7 +988,7 @@ function BMX.SolveRiderIK(ply, targets, bike)
                 -- again with it, once. The knuckles are aimed until they point where they
                 -- go (each aim turns the wrist at most MAX_STEP: after a big swing of the
                 -- forearm one was not enough, and the fist was still turned off the bar).
-                local knuck = ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Finger2")
+                local knuck = lookupBone(ply, SIDE_BONES[s].finger2)
                 local kdir = (fwd - up * 0.3):GetNormalized()
                 local function aimKnuckles()
                     if not (eb and knuck) then return end
@@ -961,12 +1026,15 @@ function BMX.SolveRiderIK(ply, targets, bike)
     else
         spineReach(ply, targets)
     end
+    -- The engine draws the player from the bones as last posed: they show it all.
+    refresh(ply)
 end
 
 -- The two-bone solve and the bone aim, for the other riders' poses that put a
 -- limb somewhere (the skater's feet on the ground, cl_skates.lua).
-BMX.RiderSolveLimb = solveLimb
-BMX.RiderAimBone = aim
+-- (Called from another file, whose own manipulations this one has not seen.)
+function BMX.RiderSolveLimb(...) forgetPose() return solveLimb(...) end
+function BMX.RiderAimBone(...) forgetPose() return aim(...) end
 
 --------------------------------------------------------------------------
 -- STYLE POSES (G17): IK targets, blended.
@@ -1196,15 +1264,15 @@ local LIMB_KEYS = { rThigh = true, lThigh = true, rCalf = true, lCalf = true,
 local function clear(ply)
     for _, name in pairs(BONES) do
         local b = ply:LookupBone(name)
-        if b then ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
+        if b then manip(ply, b, Angle(0, 0, 0)) end
     end
-    for b in pairs(ply.bmxIK or {}) do ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
+    for b in pairs(ply.bmxIK or {}) do manip(ply, b, Angle(0, 0, 0)) end
     ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
     ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
     ply.bmxGripOff, ply.bmxPoseFrame, ply.bmxIKJump, ply.bmxFramePelvis = nil, nil, nil, nil
     -- The board's crouch lowers the pelvis (cl_board.lua); put it back.
     if ply.bmxPelvis then
-        ply:ManipulateBonePosition(ply.bmxPelvis, Vector(0, 0, 0))
+        manipPos(ply, ply.bmxPelvis, Vector(0, 0, 0))
         ply.bmxPelvis = nil
     end
     animated[ply] = nil
@@ -1223,6 +1291,7 @@ function BMX.RiderSpineLean(ply)
 end
 
 hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
+    forgetPose()
     local bike = cv_anim:GetBool() and BMX.LocalBike(ply) or nil
     if not bike then
         if animated[ply] then clear(ply) end
@@ -1250,12 +1319,12 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     -- where it last put them, and came apart from the bike until the rider got off.
     -- Back to rest; the pose layer below has the limbs now.
     if not useIK and ply.bmxIK then
-        for b in pairs(ply.bmxIK) do ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
+        for b in pairs(ply.bmxIK) do manip(ply, b, Angle(0, 0, 0)) end
         ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
         ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
         ply.bmxGripOff, ply.bmxIKJump = nil, nil
         if ply.bmxPelvis then
-            ply:ManipulateBonePosition(ply.bmxPelvis, Vector(0, 0, 0))
+            manipPos(ply, ply.bmxPelvis, Vector(0, 0, 0))
             ply.bmxPelvis = nil
         end
     end
@@ -1353,9 +1422,9 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     -- IK's reach and the twist.
     local rest = lean - reachLean
     for _, sh in ipairs(SPINE_SHARE) do
-        local b = ply:LookupBone(BONES[sh[1]])
+        local b = lookupBone(ply, BONES[sh[1]])
         if b then
-            ply:ManipulateBoneAngles(b, Angle(0, rest * sh[2], 0))
+            manip(ply, b, Angle(0, rest * sh[2], 0))
             lean = lean - rest * sh[2]
         end
     end
@@ -1363,9 +1432,9 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     for key, ang in pairs(pose) do
         -- With IK on, the limbs are the solver's; the pose keeps the body.
         if not (useIK and LIMB_KEYS[key]) then
-            local b = ply:LookupBone(BONES[key])
+            local b = lookupBone(ply, BONES[key])
             if key == "head" then ang = BMX.HeadAngle(ang) end
-            if b then ply:ManipulateBoneAngles(b, ang) end
+            if b then manip(ply, b, ang) end
         end
     end
     -- The solve re-poses the skeleton a few dozen times, which is nothing for

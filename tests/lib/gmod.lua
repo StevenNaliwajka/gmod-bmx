@@ -1328,6 +1328,16 @@ function M.Realm(world, which)
     function Ply:GetNumBodyGroups() return 3 end
     function Ply:GetBodygroup(i) return (self._bg or {})[i] or 0 end
     function Ply:GetPlayerColor() return self._pcol or Vector(0.24, 0.34, 0.41) end
+    function Ply:SetPlayerColor(v) self._pcol = v end
+    function Ply:GetWeaponColor() return self._wcol or Vector(0.3, 1.8, 2.1) end
+    function Ply:SetWeaponColor(v) self._wcol = v end
+    function Ply:SetSkin(n) self._skin = n end
+    function Ply:SetBodygroup(i, v) self._bg = self._bg or {}; self._bg[i] = v end
+    -- God mode: a flag damage respects, and one the engine's Spawn clears (measured
+    -- on a real server, 2026-10-15).
+    function Ply:HasGodMode() return self._god == true end
+    function Ply:GodEnable() self._god = true end
+    function Ply:GodDisable() self._god = nil end
     function Ply:Alive() return (self._health or 100) > 0 end
     -- A player's model scale, networked in the engine: a child in a child seat is small (G11).
     function Ply:SetModelScale(s) self._modelScale = s end
@@ -1372,6 +1382,10 @@ function M.Realm(world, which)
         self._weapons = { unpack(LOADOUT) }
         self._activeWep = LOADOUT[1]
         self._ammo = {}
+        self._god = nil
+        -- And the gamemode's PlayerSpawn, as the engine calls it: the hooks, then
+        -- GAMEMODE's (a test puts one on it to be DarkRP).
+        env.hook.Run("PlayerSpawn", self)
     end
     function Ply:SetEyeAngles(a) self._eyeAngles = a end
     function Ply:GetBonePosition(b)
@@ -1430,6 +1444,7 @@ function M.Realm(world, which)
     end
     function Ply:SetVelocity(v) self._velocity = (self._velocity or Vector()) + v end
     function Ply:TakeDamageInfo(d)
+        if self._god then return end
         self._damage = (self._damage or 0) + d:GetDamage()
         self._health = (self._health or 100) - d:GetDamage()
     end

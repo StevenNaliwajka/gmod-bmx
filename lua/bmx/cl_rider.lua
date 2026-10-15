@@ -270,11 +270,13 @@ local MAX_BEND  = 155      -- ...or folds past this, degrees
 -- (another file's manipulations, the next frame's animation) it does not trust: every
 -- way in forgets (forgetPose), so the first read after it poses for real.
 local posed
+local poseNo = 0            -- counts the real poses, for bonePos's cache
 local function refresh(ply)
     if posed == ply then return end
     ply:InvalidateBoneCache()
     ply:SetupBones()
     posed = ply
+    poseNo = poseNo + 1
 end
 -- BONES BY NAME, looked up once per model. A solve asks for the same thirty-odd bones
 -- by name eighty times a frame per rider, each an engine lookup; a model's bones do
@@ -306,9 +308,25 @@ local function manipPos(ply, b, v)
     ply:ManipulateBonePosition(b, v)
 end
 
+-- A bone's position, read off the engine's pose. The solve reads the same few bones
+-- again and again between two poses (the trial a joint is judged by, then the next
+-- step's start); while the skeleton is the one last posed (`posed`), a bone already
+-- read in this pose is handed back as it was read (a new matrix and a new Vector
+-- from the engine each time otherwise). The Vectors are only ever read, never moved.
+local readPly, readNo, read = nil, -1, {}
 local function bonePos(ply, b)
+    local clean = posed == ply
+    if clean and readPly == ply and readNo == poseNo then
+        local p = read[b]
+        if p ~= nil then return p or nil end
+    end
     local m = ply:GetBoneMatrix(b)
-    return m and m:GetTranslation()
+    local p = m and m:GetTranslation()
+    if clean then
+        if readPly ~= ply or readNo ~= poseNo then readPly, readNo, read = ply, poseNo, {} end
+        read[b] = p or false
+    end
+    return p
 end
 
 -- A world axis, in a bone's own frame (GMod matrices: -Y is GetRight).
@@ -355,7 +373,9 @@ local function tryTurn(ply, b, h, deg, better, twist)
     if not M or math.abs(deg) < 0.05 then return false end
     local axisLocal = toLocal(M, h)
     local old = ply.bmxIK[b] or Angle(0, 0, 0)
-    for _, sign in ipairs(ikSign and { ikSign } or { 1, -1 }) do
+    local fixed = ikSign            -- (the signs to try, as the loop starts: the one, or both)
+    for k = 1, fixed and 1 or 2 do
+        local sign = fixed or (k == 1 and 1 or -1)
         local cand = turned(old, axisLocal, deg * sign, twist)
         if cand then
             setManip(ply, b, cand)
@@ -820,7 +840,8 @@ local function fistCentre(ply, s)
     end
     return n >= 3 and sum / n or nil
 end
-BMX.RiderFistCentre = fistCentre
+-- (Asked from outside, after bones this file did not move: read afresh.)
+function BMX.RiderFistCentre(ply, s) forgetPose() return fistCentre(ply, s) end
 
 -- The direction from the ankle to the ball of the foot for a sole tipped `sole`
 -- degrees toe-down, in the bike's frame.

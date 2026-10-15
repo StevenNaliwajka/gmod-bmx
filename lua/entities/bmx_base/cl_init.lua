@@ -28,6 +28,7 @@ local COL_SPOKE  = Color(160, 165, 175)
 local COL_PART   = Color(34, 34, 38)       -- bars, cranks, seat, fork crown
 local COL_CHROME = Color(200, 204, 212)
 local COL_AIR    = Color(235, 90, 60)
+local COL_SPRING = Color(230, 120, 20)     -- a shock's coil, unless its model paints it
 
 -- Big enough for the frame, the bars and a rider, in chassis units at the
 -- stock wheelbase; scaled per bike. Without it the engine culls the drawing
@@ -593,6 +594,16 @@ function BMX.SimpleAtSeat(ent)
     return ent:Cfg().Wheel.wheelbase / 39 > 1.1
 end
 
+local function bikeModel(bike, C)
+    local WC = C.Wheel
+    local k = WC.wheelbase / 39
+    return BMX.BikeMesh.Get(k, WC.radius, bike.look, bike.look ~= "bmx" and {
+        wheelbase = WC.wheelbase, rearRadius = WC.rearRadius, restLength = WC.restLength,
+        seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
+        extra = BMX.ModelExtra(bike, C),
+    } or nil)
+end
+
 function BMX.BikeModelFor(ent)
     local bike = ent.Bike and ent:Bike()
     if not bike or bike.hasModel or bike.wheelModel or not bike.look or not BMX.BikeMesh then return nil end
@@ -601,13 +612,7 @@ function BMX.BikeModelFor(ent)
     if bike.family == "scooter" and BMX.ScooterModel then return BMX.ScooterModel(ent) end
     if bike.drawer and BMX.OddModel then return BMX.OddModel(ent, ent:Cfg(), false) end
     local C = ent:Cfg()
-    local WC = C.Wheel
-    local k = WC.wheelbase / 39
-    return BMX.BikeMesh.Get(k, WC.radius, bike.look, bike.look ~= "bmx" and {
-        wheelbase = WC.wheelbase, rearRadius = WC.rearRadius, restLength = WC.restLength,
-        seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
-        extra = BMX.ModelExtra(bike, C),
-    } or nil)
+    return BMX.BikeMesh.Remembered(ent, bike, C, bikeModel, bike, C)
 end
 
 -- BUILT BEFORE IT IS SEEN. A model's build only advanced while a bike asking
@@ -818,7 +823,7 @@ function ENT:DrawDetailed(model, S)
                         local an = t * turns * math.pi * 2
                         pts[#pts + 1] = a + dir * (L * (0.12 + 0.8 * t)) + (e1 * math.cos(an) + e2 * math.sin(an)) * (r * 1.45)
                     end
-                    BM.DrawTube(pts, r * 0.22, "paint", 5, lay.shock.springPaint and paint or Color(230, 120, 20))
+                    BM.DrawTube(pts, r * 0.22, "paint", 5, lay.shock.springPaint and paint or COL_SPRING)
                 end
             end
         end

@@ -117,16 +117,19 @@ end
 
 -- This vehicle's model (its `look`, at its registry's sizes), or nil: while it is
 -- being built, with bmx_bike_model 0, under bmx_debug, or with no BikeMesh at all.
+local function oddModel(bike, C)
+    local WC = C.Wheel
+    local so = C.Chassis.seatOffset
+    return BMX.BikeMesh.Get(math.max(WC.wheelbase, 1) / 39, WC.radius, bike.look, {
+        wheelbase = WC.wheelbase, rearRadius = WC.rearRadius, restLength = WC.restLength,
+        seat = { so.x, so.y, so.z },
+    })
+end
 local function modelOf(ent, C, debug)
     local bike = ent:Bike()
     local BM = BMX.BikeMesh
     if debug or not bike.look or not BM or not BM.Get then return nil end
-    local WC = C.Wheel
-    local so = C.Chassis.seatOffset
-    return BM.Get(math.max(WC.wheelbase, 1) / 39, WC.radius, bike.look, {
-        wheelbase = WC.wheelbase, rearRadius = WC.rearRadius, restLength = WC.restLength,
-        seat = { so.x, so.y, so.z },
-    })
+    return BM.Remembered(ent, bike, C, oddModel, bike, C)
 end
 BMX.OddModel = modelOf
 

@@ -186,6 +186,16 @@ function BMX.LocalBike(ply)
     return nil
 end
 
+-- EVERY BMX ENTITY ON THIS CLIENT, ONE WALK A FRAME. The sound, the motor's note and the
+-- grind's sparks each walked the whole entity list for them every frame
+-- (ents.FindByClass, all three in the same frame's Think); they share the one list now.
+local frameList, frameListAt
+function BMX.FrameVehicles()
+    local f = FrameNumber and FrameNumber()
+    if not f or f ~= frameListAt then frameList, frameListAt = ents.FindByClass("bmx_*"), f end
+    return frameList
+end
+
 hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
     -- A replay (cl_replay.lua) or a filmer camera (cl_filmer.lua) owns the view.
     if BMX.ReplayActive and BMX.ReplayActive() then return end

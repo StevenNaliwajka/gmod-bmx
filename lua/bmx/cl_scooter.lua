@@ -289,15 +289,19 @@ end
 
 BMX.DrawVehicle = BMX.DrawVehicle or {}
 -- The scooter's built model, or nil while it builds (asking advances the build).
-function BMX.ScooterModel(ent)
-    local bike, C = ent:Bike(), ent:Cfg()
-    local BM, WC = BMX.BikeMesh, C.Wheel
-    if not bike.look or not BM then return nil end
-    return BM.Get(WC.wheelbase / 39, WC.radius, bike.look, {
+local function scooterModel(bike, C)
+    local WC = C.Wheel
+    return BMX.BikeMesh.Get(WC.wheelbase / 39, WC.radius, bike.look, {
         wheelbase = WC.wheelbase, restLength = WC.restLength,
         seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
         extra = SC.ModelExtra(),
     })
+end
+function BMX.ScooterModel(ent)
+    local bike, C = ent:Bike(), ent:Cfg()
+    local BM = BMX.BikeMesh
+    if not bike.look or not BM then return nil end
+    return BM.Remembered(ent, bike, C, scooterModel, bike, C)
 end
 
 BMX.DrawVehicle.scooter = function(ent, kit)

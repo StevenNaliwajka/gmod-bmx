@@ -1203,6 +1203,8 @@ end
 -- Runs on both realms: the client draws wheels and a HUD from the same table,
 -- and a lean limit that differs between the two would show up as a camera that
 -- disagrees with the bike.
+-- Each row's "Group.key" split once (the client HUD calls this every frame).
+local pathParts = {}
 function BMX.ApplyConVars()
     local changed = false
 
@@ -1212,7 +1214,12 @@ function BMX.ApplyConVars()
         if cv then
             local v = cv:GetFloat()
             if isDegrees then v = math.rad(v) end
-            local group, key = string.match(path, "^(%w+)%.(%w+)$")
+            local parts = pathParts[path]
+            if not parts then
+                parts = { string.match(path, "^(%w+)%.(%w+)$") }
+                pathParts[path] = parts
+            end
+            local group, key = parts[1], parts[2]
             if group and C[group] and C[group][key] ~= v then
                 C[group][key] = v
                 changed = true

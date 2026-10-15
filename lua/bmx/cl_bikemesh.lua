@@ -76,6 +76,7 @@ local tex                              -- { white, normal }
 -- keyvalues ignored, so a reload of this file names its materials afresh.
 local MATSUFFIX = tostring(math.floor((SysTime and SysTime() or 0) * 1000) % 1000000)
 local mats = {}                        -- role or "paint r g b" -> IMaterial
+local paintByCol = setmetatable({}, { __mode = "k" })   -- a Color table -> { r, g, b, m = its paint }
 local texCleared = 0
 
 local function textures()
@@ -236,13 +237,19 @@ function BM.Material(role, col)
     end
     if role == "paint" then
         col = col or Color(200, 40, 40)
+        -- By the colour itself first: a frame's every paint bucket asked by formatting
+        -- a key, and the palette's colours are the same tables every time.
+        local hit = paintByCol[col]
+        if hit and hit.r == col.r and hit.g == col.g and hit.b == col.b then return hit.m end
         local key = string.format("paint %d %d %d", col.r, col.g, col.b)
         local m = mats[key]
+        if m then paintByCol[col] = { r = col.r, g = col.g, b = col.b, m = m } end
         if not m then
             -- linear-ish: the palette is sRGB, $color2 multiplies a linear base
             local c = Vector((col.r / 255) ^ 2.2, (col.g / 255) ^ 2.2, (col.b / 255) ^ 2.2) * 1.15
             m = makeMat("bmx_paint_" .. col.r .. "_" .. col.g .. "_" .. col.b, c, PAINT[1], PAINT[2], PAINT[3])
             mats[key] = m
+            paintByCol[col] = { r = col.r, g = col.g, b = col.b, m = m }
         end
         return m
     end
@@ -428,6 +435,23 @@ function BM.Get(k, radius, kind, opt)
     return nil
 end
 
+-- A VEHICLE'S MODEL, REMEMBERED. Every vehicle in the world asks for its model once or
+-- twice a frame (the prebuild Think, its own Draw), and each ask built an options table
+-- or three and two or three string.format keys to find a model built long ago. The
+-- ready model is kept on `owner` (the entity) while what chose it -- the registration,
+-- the config table and the config's revision -- is the same, and not once BM.Clear has
+-- marked it cleared or with the models switched off. `get(...)` is the full ask.
+function BM.Remembered(owner, bike, C, get, ...)
+    if not BM.Enabled() then return nil end
+    local r = owner.bmxModelMemo
+    if r and r.bike == bike and r.cfg == C and r.rev == BMX.ConfigRevision and not r.model.cleared then
+        return r.model
+    end
+    local m = get(...)
+    if m then owner.bmxModelMemo = { bike = bike, cfg = C, rev = BMX.ConfigRevision, model = m } end
+    return m
+end
+
 -- Throw every built model away (bmx_bike_model_rebuild, or a hot reload).
 -- What the cache holds, for a bug report or a probe: key -> "ready" | "building" |
 -- "failed: <error>".
@@ -465,6 +489,10 @@ local function sample(pos, dir)
     return c + d
 end
 
+local LIGHT = { type = MATERIAL_LIGHT_DIRECTIONAL, range = 0,
+                constantFalloff = 1, linearFalloff = 0, quadraticFalloff = 0 }
+local LIGHTS, NO_LIGHTS = { LIGHT }, {}
+
 -- Light the meshes drawn until BM.EndLighting as a model standing at `pos`.
 -- Samples are cached on `ent` for a few frames: lighting changes slowly
 -- and ComputeLighting is not free.
@@ -500,21 +528,18 @@ function BM.BeginLighting(pos, ent)
     if L.col:LengthSqr() > 1e-6 then
         -- Falloff given explicitly: left out, the attenuation divides by
         -- zero and the light saturates everything to flat full-bright.
-        render.SetLocalModelLights({ {
-            type = MATERIAL_LIGHT_DIRECTIONAL,
-            color = L.col,
-            dir = -L.dir,               -- the way the light travels
-            pos = pos + L.dir * 4096,
-            range = 0,
-            constantFalloff = 1, linearFalloff = 0, quadraticFalloff = 0,
-        } })
+        -- (One table, filled afresh each time: the engine copies the light.)
+        LIGHT.color = L.col
+        LIGHT.dir = -L.dir              -- the way the light travels
+        LIGHT.pos = pos + L.dir * 4096
+        render.SetLocalModelLights(LIGHTS)
     else
-        render.SetLocalModelLights({})
+        render.SetLocalModelLights(NO_LIGHTS)
     end
 end
 
 function BM.EndLighting()
-    render.SetLocalModelLights({})
+    render.SetLocalModelLights(NO_LIGHTS)
     render.SuppressEngineLighting(false)
 end
 

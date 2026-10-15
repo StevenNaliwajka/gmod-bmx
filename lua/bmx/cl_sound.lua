@@ -323,7 +323,7 @@ hook.Add("Think", "BMX.Sound", function()
         end
     end
 
-    for _, ent in ipairs(ents.FindByClass("bmx_*")) do
+    for _, ent in ipairs(BMX.FrameVehicles()) do
         if ent.IsBMX then
             live[ent] = live[ent] or {}
             update(ent, live[ent], dt)

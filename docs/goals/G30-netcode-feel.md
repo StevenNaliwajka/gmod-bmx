@@ -77,3 +77,59 @@ unverified here); the "manual and grind at 150 ms within 10% of listen-server"
 done-when; the rider's body and IK are NOT predicted (the bike is), so at high
 ping the body trails the frame a little; prediction is lean and steer only (no
 pitch, no air).
+
+### Update (2026-10-15): the skates under a ping, offline
+
+The skates (G25) are the one vehicle whose MOVEMENT the client predicts: the player is the
+chassis, so the engine runs `SetupMove` for them on the client too, and `cl_skates.lua` runs the
+shared step there. An audit found nobody had tried that with a ping. With no game client to
+hand, `tests/test_skates_ping.lua` (on `tests/lib/netsim.lua`) runs a server and a client realm
+against each other over a link (50, 100 and 200 ms RTT, +-20 ms jitter each way, 1% loss): the
+engine's client loop (a usercmd a tick predicted at once; on a snapshot the networked fields put
+back to the server's for the acknowledged command and, if they differ from the prediction, every
+later command predicted again; `cl_pred_optimize 2`), the server running commands as they come (a
+lost one replaced by the last), and one stand-in for `CGameMovement` on both ends.
+
+Riding, carving, jumping and stopping were already exact. Four things were not, and are fixed
+(1.3.4 against the fix, a one-second grind balanced with A / D from the HUD meter):
+
+| | 1.3.4, 100 ms | 1.3.4, 200 ms | fixed, 100 ms | fixed, 200 ms |
+|---|---|---|---|---|
+| On a rail: the client's picture against the server's, 95th pct / worst | 15 / 25 u | 37 / 50 u | 0 / 6 u (the lock) | 0 / 6 u |
+| On a rail: corrections over 4 units | 17 | 20 | 0 | 0 |
+| The pop off a rail: the jump when the server's answer comes | 22 u | ~40 u | none | none |
+| A carve with every snapshot replayed: worst | 22 u | | 0 | 0 |
+| Holstering while rolling: the snap | 14 u | 41 u | 0 | 0 |
+
+The causes: on a rail the client handed the move to the engine with the keys still in it (A and D
+walked the skater off the rail's side, W walked); the pop was the server's alone; the client's
+own state (heading, stride clock, last SPACE, last speed) was not wound back when the engine
+predicted commands again, so a replay disagreed and the next one did too; and the client started
+and stopped predicting on `BMXWorn`, a ping late. The fixes are in `cl_skates.lua`'s PREDICTION
+note. A bike under the same link is never corrected and drawn 13-56 units behind where it is (a
+hop seen 166 / 227 / 318 ms after the key at 50 / 100 / 200 ms): the trade the owner accepts.
+
+**Still the server's:** the LOCK onto a rail. The client has no rail finder, so for a ping it
+lands on the rail's top and rolls. Along a rail that is close to a grind (a correction of 0.4 u
+at 100 ms, 1 u at 200); turned across it (a backslide) the wheels grip, and the client is
+corrected once by 8 u at 100 ms, 30 u at 200. A ledge's lock: 4.6 u, 10 u. Predicting it means
+sharing `sv_grind.lua`'s finder (it is entity-free) and the skates' lock with the client.
+
+**What a real client must confirm** (the simulation is not the engine): a client on a LAN server
+(`sv_cheats 1`) with `net_fakelag 100` (then 200) and `cl_showerror 1` (prediction errors in the console), skates
+equipped from the WEAPON SELECTOR (that switch is predicted; `bmx_give_skates` is not):
+
+1. Stride straight, carve, jump, T-stop: no `cl_showerror` lines, no visible hitch.
+2. A soul grind on a long rail, tapping A / D for balance: the view stays on the rail, does not
+   turn with A / D, and does not slide sideways. Let go of SPACE: the pop is instant and smooth.
+3. Ride a grind off the rail's end: a short drop, no hitch.
+4. A backslide and a ledge grind: expect ONE correction as it locks on (the known limit above),
+   then nothing; a ledge's pop goes away from the ledge.
+5. Holster while rolling fast: you stop gliding at once, with no snap a ping later.
+6. Stride with `net_fakeloss 5`: corrections, if any, settle at once rather than repeating.
+
+If any of 1, 2 or 6 shows repeated errors, the engine is restoring or predicting something
+`lib/netsim.lua` assumes it does not: `cmd:CommandNumber()` in the client's `SetupMove`, the
+replay restoring the networked velocity and friction (`m_flFriction` in the player's local
+send table), the order StartCommand, weapon switch, view angles, SetupMove, and `BMXSkateFlags`
+arriving with the snapshot it belongs to (the NW vars are not predicted) are the assumptions.

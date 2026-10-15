@@ -895,6 +895,24 @@ T.test("skates client: A and D turn the view at the rate the server will follow,
     T.ok(c4.ang.y < c1.ang.y, "at speed it turns slower, as the server's turn rate does: " .. c4.ang.y .. " vs " .. c1.ang.y)
 end)
 
+-- On a rail A and D are the balance and the server holds the boots along the rail; a view
+-- they turned was carved toward the moment the grind ended.
+T.test("skates client: on a rail A and D are the balance and do not turn the view", function()
+    local cl, me, E = cscene()
+    local IN = gmod.IN
+    local c = { buttons = IN.MOVELEFT, ang = E.Angle(0, 0, 0) }
+    function c:GetButtons() return self.buttons end
+    function c:GetViewAngles() return E.Angle(self.ang.p, self.ang.y, self.ang.r) end
+    function c:SetViewAngles(a) self.ang = a end
+    me:SetNWString("BMXWorn", "skates")
+    me:SetNWInt("BMXSkateFlags", E.BMX.Skates.Flag.grind)
+    E.hook.Run("CreateMove", c)
+    T.eq(c.ang.y, 0, "grinding: A left the view alone")
+    me:SetNWInt("BMXSkateFlags", 0)
+    E.hook.Run("CreateMove", c)
+    T.ok(c.ang.y > 0, "off the rail A turns it again: " .. c.ang.y)
+end)
+
 T.test("skates client: the local player's movement is predicted with the same step, and friction is zeroed and restored", function()
     local cl, me, E = cscene()
     local IN = gmod.IN
@@ -907,6 +925,7 @@ T.test("skates client: the local player's movement is predicted with the same st
     end
     local mv = { origin = E.Vector(0, 0, cl.world.groundZ), vel = E.Vector(0, 0, 0), buttons = IN.FORWARD + IN.JUMP, fs = 400, ss = 0 }
     function mv:GetOrigin() return self.origin end
+    function mv:SetOrigin(v) self.origin = v end
     function mv:GetVelocity() return self.vel end
     function mv:SetVelocity(v) self.vel = v end
     function mv:GetButtons() return self.buttons end
@@ -926,11 +945,18 @@ T.test("skates client: the local player's movement is predicted with the same st
     T.ok(mv.vel.x > 60, "the client predicts the stride: " .. mv.vel.x)
     T.eq(mv.fs, 0, "with the walk zeroed")
     T.eq(me:GetFriction(), 0, "and the friction off")
-    -- On a rail the server places the skater and the client leaves the movement alone.
+    -- On a rail the server places the skater and skips the engine's movement; the client does the
+    -- same (it used to hand the move to the engine with the keys still in it: W and A / D walked).
     me:SetNWInt("BMXSkateFlags", E.BMX.Skates.Flag.grind)
-    local v = mv.vel.x
-    E.hook.Run("SetupMove", me, mv, cmd(IN.FORWARD))
-    T.eq(mv.vel.x, v, "on a rail: not predicted")
+    local v, x = mv.vel.x, mv.origin.x
+    mv.buttons, mv.fs, mv.ss = IN.FORWARD + IN.JUMP + IN.MOVELEFT, 400, -400
+    E.hook.Run("SetupMove", me, mv, cmd(IN.FORWARD + IN.JUMP + IN.MOVELEFT))
+    T.eq(E.hook.Run("Move", me, mv), true, "on a rail the engine's movement is skipped, as on the server")
+    T.eq(mv.fs, 0, "no walking on a rail")
+    T.eq(mv.ss, 0, "A / D are the balance, not a walk off the side")
+    T.eq(E.bit.band(mv.buttons, IN.JUMP), 0, "and no engine jump off it")
+    T.ok(mv.vel.x < v and mv.vel.x > v - 2, "carried along at the rail's speed, its friction taken: " .. v .. " -> " .. mv.vel.x)
+    T.near(mv.origin.x, x + mv.vel.x / 66, 1e-6, "and moved along it by that")
     -- Off again: the friction is back.
     me:SetNWString("BMXWorn", "")
     E.hook.Run("SetupMove", me, mv, cmd(0))

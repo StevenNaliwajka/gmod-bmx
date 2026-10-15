@@ -19,8 +19,11 @@
         speed, and the striding leg swung back on its stroke. Nobody has watched this on a
         real model: every angle is a number in a table below.
       * THE SPARKS of a grind, off both boots, and the balance meter of one.
+      * THE PREDICTION of the local skater's own movement (below): the shared step in the
+        engine's SetupMove, its state kept per command for the engine's replays, the rail
+        taken over as the server takes it over, on and off at the weapon switch.
 
-    Nothing here is simulated: it is all a function of the networked state.
+    Apart from the prediction, everything here is a function of the networked state.
 ----------------------------------------------------------------------------]]
 
 BMX = BMX or {}
@@ -43,53 +46,245 @@ S.ClientWearing = wearing
 -- as well as the server), so a client that predicted walking against a server that skates
 -- would be corrected every tick. The part of skating that is only the velocity -- the keys, the
 -- wheels' cast, the step -- is shared (sh_skates.lua: S.Decode, S.Observe, S.Apply) and run here
--- on the local player with a state of its own. Everything that scores or places the
--- skater (the air, the landing, the grinds) is the server's alone: while it says the skater is
--- on a rail the client does not predict, and the server's placing stands.
+-- on the local player with a state of its own. What scores the skater (the air, the landing, the
+-- lock onto a rail) is the server's alone.
 --
--- BEST EFFORT, NOT EXACT: the client's stride timing and heading are its own copy, kept from the
--- tick it saw the skates go on, and the engine replays commands from the last tick the
--- server acknowledged without winding that copy back. The velocity is what is corrected, so a
--- drift is a small correction and not a fight, but nobody has played it with a real ping.
+-- THE REPLAY (G30, tests/test_skates_ping.lua). When the server's answer for a command differs
+-- from what the client predicted for it, the engine puts the player back where the server had
+-- them and predicts every later command AGAIN. It knows nothing of this file's state (the
+-- heading, the stride's clock, whose foot, the last SPACE, the speed last written), so that used
+-- to run on from the NEWEST command: a replay strode early, turned twice and started from the
+-- client's own speed instead of the server's, which made the next answer differ too, and the
+-- client never settled again. Now that state is kept per command (cmd:CommandNumber()): a
+-- command predicted again starts from the state this client had going into it, and the first
+-- one of a replay takes the server's velocity the engine has just put back.
+--
+-- ON A RAIL the server places the skater and the engine's movement is skipped (sv_skates.lua,
+-- Mode.Move). The client used to leave the movement to the engine there with the keys as they
+-- were, so A and D (the balance) walked the skater off the side of the rail, W walked, and
+-- gravity and the rail's top were the engine's. Now, while the server says grind, the client
+-- does what the server does: no walking, no engine jump, the skater carried along the rail at
+-- the rail's speed (S.GrindSpeed), the boots turned the server's way (S.GrindHeading), and the
+-- engine's movement skipped. Letting go of SPACE pops off at once, as it does on the server, and
+-- a rail that has nothing left under the skates ends; the networked flag, a ping late, is then
+-- not obeyed until the server agrees or a second has gone by.
+--
+-- ON AND OFF. The server puts the skates on in the SWEP's Deploy and takes them off in its
+-- Holster, at the command that switched weapons, and a switch made from the weapon selector is
+-- predicted: the client switches at that same command. The networked BMXWorn only arrives a ping
+-- later, and the client used to wait for it, so it walked for a ping while the server skated
+-- (the strides then fell at other times than the server's for as long as W was held) and glided
+-- on for a ping after the server had put the skater back on their feet. Now the weapon in hand
+-- starts and stops the prediction at the server's command, and BMXWorn confirms it: a pair in
+-- hand the server has not confirmed within GRACE (it refused them: bmx_allow_boards 0) is
+-- walked on again. Skates worn with no weapon (a script) still go by BMXWorn alone.
 --------------------------------------------------------------------------
 local predicted        -- the local player's predicted wearer state, or nil
+local HISTORY = 132    -- commands of state kept: 2 s at 66 tick, past any replay
+local POP_WAIT = 1.0   -- s a predicted pop or end ignores a grind flag the server has not cleared
+local GRACE = 1.0      -- s skates in hand are predicted before the server has said they are on
 
-local function stopPredicting(ply)
-    if predicted then
-        if IsValid(ply) and ply.SetFriction then ply:SetFriction(predicted.friction or 1) end
-        predicted = nil
+-- The keys a fresh pair starts with, as the server's (sv_skates.lua, Mode.Equip): its first
+-- command runs before the server has read any.
+local function neutral()
+    return { fwd = 0, turn = 0, jump = false, crouch = false, brake = false, brakeMode = "tstop",
+             w = false, s = false, a = false, d = false }
+end
+
+-- The state that lives between commands, as it was after one.
+local OFF = { active = false }
+local function keep(p)
+    if not p.active and not p.since then return OFF end
+    local h = { active = p.active, since = p.since }
+    if not p.active then return h end
+    local sk, ps = p.sk, p.sk.ps
+    h.heading, h.foot, h.jumpWas = sk.heading, sk.foot, sk.jumpWas
+    h.phase, h.kicking, h.dv = ps.phase, ps.kicking, ps.dv
+    h.expect = p.expect and { x = p.expect.x, y = p.expect.y }
+    h.lastOrigin, h.nextPoll, h.brakeMode, h.auto, h.popped = p.lastOrigin, p.nextPoll, p.brakeMode, p.auto, p.popped
+    return h
+end
+
+local function takeBack(p, h)
+    p.active, p.since = h.active, h.since
+    if not h.active then return end
+    local sk = p.sk or S.New(0)
+    p.sk = sk
+    sk.heading, sk.foot, sk.jumpWas = h.heading, h.foot, h.jumpWas
+    sk.ps = { phase = h.phase, kicking = h.kicking, dv = h.dv }
+    p.expect = h.expect and { x = h.expect.x, y = h.expect.y }
+    p.lastOrigin, p.nextPoll, p.brakeMode, p.auto, p.popped = h.lastOrigin, h.nextPoll, h.brakeMode, h.auto, h.popped
+end
+
+-- Skates on, at this command: what the server's Mode.Equip does, from the angles the player had
+-- before this command's (the server equips in the weapon switch, before it reads the view).
+local function startSkating(p, ply, mv)
+    local old = mv.GetOldAngles and mv:GetOldAngles() or ply:EyeAngles()
+    p.active = true
+    p.sk = S.New(math.rad(old.y))
+    local v = ply:GetVelocity()
+    p.sk.vx, p.sk.vy = v.x, v.y
+    p.input = neutral()
+    p.expect, p.lastOrigin, p.nextPoll, p.popped = nil, nil, 0, nil
+    p.friction = ply.GetFriction and ply:GetFriction() or 1
+    ply:SetFriction(0)
+end
+
+-- Skates off, at this command: the friction back, and none of this command's keys (the server
+-- read them for the skates, which took them, before the switch took the skates off).
+local function stopSkating(p, ply, mv)
+    p.active = false
+    if ply.SetFriction then ply:SetFriction(p.friction or 1) end
+    if mv then
+        mv:SetForwardSpeed(0)
+        mv:SetSideSpeed(0)
+        mv:SetButtons(bit.band(mv:GetButtons(), bit.bnot(IN_JUMP)))
     end
+end
+
+-- On skates for this command? The weapon in hand says so at the server's own command; BMXWorn
+-- confirms it a ping later.
+local function onSkates(ply, p)
+    local nw = wearing(ply)
+    local wep = ply.GetActiveWeapon and ply:GetActiveWeapon()
+    if IsValid(wep) and wep:GetClass() == S.Class then
+        p.since = p.since or CurTime()
+        return nw or CurTime() - p.since < GRACE
+    end
+    p.since = nil
+    if ply.HasWeapon and ply:HasWeapon(S.Class) then return false end   -- holstered: BMXWorn is late
+    return nw
+end
+
+-- Is there anything under the skates? A thin box straight down from the skater's origin, as
+-- wide as the server looks for a rail round the soul plates (Grind.reach): on a rail or a
+-- ledge the rail is under it; past the rail's end nothing is.
+local function railUnder(ply, origin, G)
+    local r = G.reach or 6
+    local tr = util.TraceHull({ start = origin + Vector(0, 0, 2), endpos = origin - Vector(0, 0, 6),
+        mins = Vector(-r, -r, 0), maxs = Vector(r, r, 1), filter = ply, mask = MASK_PLAYERSOLID })
+    return tr.Hit and not tr.StartSolid
+end
+
+-- ONE COMMAND ON A RAIL the server is placing the skater on. Returns true while the skater is
+-- still on it (the move is ours: Move returns true); false when this command pops off or comes
+-- off, with the velocity it leaves with written into `mv`, and the ordinary step to follow.
+local function onRail(ply, p, mv, n, dt)
+    local i, sk = p.input, p.sk
+    mv:SetForwardSpeed(0)
+    mv:SetSideSpeed(0)
+    mv:SetButtons(bit.band(mv:GetButtons(), bit.bnot(IN_JUMP)))
+    local vel = mv:GetVelocity()
+    local speed = vel:Length()
+    local dir = speed > 1e-3 and vel / speed or Vector(0, 0, 0)
+    local G = BMX.ConfigFor(p.def).Grind
+    local function off(v)
+        mv:SetVelocity(v)
+        p.expect = { x = v.x, y = v.y }
+        sk.vx, sk.vy = v.x, v.y
+        p.popped = n
+        return false
+    end
+    -- SPACE let go: the server's pop (sv_skates.lua endGrind "hop"), at the speed it was going,
+    -- and off an edge away from its top (BMXSkateSide, zero on a rail).
+    if sk.jumpWas and not i.jump then
+        sk.jumpWas = false
+        local side = ply:GetNWVector("BMXSkateSide", vector_origin)
+        return off(vel + Vector(0, 0, G.hopSpeed) - Vector(side.x, side.y, 0) * G.hopAway)
+    end
+    sk.jumpWas = i.jump
+    local g = physenv.GetGravity()
+    local v = S.GrindSpeed(speed, dir.z, i.brake and 1 or 0, dt, G, g and g:Length() or 600)
+    if v < G.stopSpeed then return off(dir * math.max(v, 0)) end
+    local to = mv:GetOrigin() + dir * (v * dt)
+    if not railUnder(ply, to, G) then return off(dir * v) end
+    mv:SetOrigin(to)
+    mv:SetVelocity(dir * v)
+    sk.heading = S.GrindHeading(sk.heading, dir.x, dir.y, ply:GetNWInt("BMXSkateGrind", 1))
+    sk.vx, sk.vy = dir.x * v, dir.y * v
+    p.expect = { x = sk.vx, y = sk.vy }
+    return true
 end
 
 hook.Add("SetupMove", "BMX.Skates.Predict", function(ply, mv, cmd)
     if ply ~= LocalPlayer() then return end
-    if not wearing(ply) then stopPredicting(ply) return end
-    if ply:InVehicle() or ply:GetMoveType() ~= MOVETYPE_WALK or not ply:Alive() then return end
-
-    if not predicted then
-        local def = BMX.Vehicles[S.ID]
-        predicted = { id = S.ID, def = def, st = {}, input = {},
-                      sk = S.New(math.rad(ply:EyeAngles().y)), friction = ply.GetFriction and ply:GetFriction() or 1 }
-        local v = ply:GetVelocity()
-        predicted.sk.vx, predicted.sk.vy = v.x, v.y
-        ply:SetFriction(0)
+    local n = cmd and cmd.CommandNumber and cmd:CommandNumber() or 0
+    local p = predicted
+    if not p then
+        -- Nothing to predict and nothing kept: the common case, a player not on skates.
+        if not wearing(ply) and not (ply.HasWeapon and ply:HasWeapon(S.Class)) then return end
+        p = { id = S.ID, def = BMX.Vehicles[S.ID], st = {}, input = neutral(), hist = {}, newest = 0, prev = 0,
+              active = false }
+        predicted = p
     end
-    -- On a rail it is the server's placing; leave the engine's movement alone.
-    if bit.band(ply:GetNWInt("BMXSkateFlags", 0), S.Flag.grind) ~= 0 then return end
+    p.onRail = false
+    if n > 0 then
+        -- Predicted AGAIN: from the state going into this command, not the newest one's (and a
+        -- command from before any kept was not on skates).
+        if n <= p.newest then takeBack(p, p.hist[n - 1] or OFF) end
+        -- The first command of a replay: the engine has put the server's velocity back, and
+        -- that is what the step starts from, not the speed this client wrote last.
+        if n ~= p.prev + 1 then p.expect, p.lastOrigin = nil, nil end
+        p.prev = n
+        if n > p.newest then p.newest = n end
+    end
 
-    S.Decode(ply, predicted, cmd)
+    local function done()
+        if n > 0 then
+            p.hist[n] = keep(p)
+            p.hist[n - HISTORY] = nil
+        end
+    end
+    local on = onSkates(ply, p)
+    if not on then
+        if p.active then stopSkating(p, ply, mv) end
+        done()
+        -- Off them and not even carrying them, in the present (not a replay): let the state go.
+        if n >= p.newest and not wearing(ply) and not (ply.HasWeapon and ply:HasWeapon(S.Class)) then
+            predicted = nil
+        end
+        return
+    end
+    if ply:InVehicle() or ply:GetMoveType() ~= MOVETYPE_WALK or not ply:Alive() then done() return end
+    local fresh = not p.active
+    if fresh then startSkating(p, ply, mv) end
+
+    -- The server's first command on a pair it has just equipped runs on its neutral keys (the
+    -- switch came after it read them); every later one reads the usercmd.
+    if not (fresh and p.since == CurTime()) then S.Decode(ply, p, cmd) end
     local dt = FrameTime()
-    local vel, grounded, cast = S.Observe(ply, predicted, mv, dt)
-    S.Apply(ply, predicted, mv, dt, vel, grounded, cast)
+    local grinding = bit.band(ply:GetNWInt("BMXSkateFlags", 0), S.Flag.grind) ~= 0
+    if not grinding or (p.popped and (n - p.popped) * engine.TickInterval() > POP_WAIT) then p.popped = nil end
+    if grinding and not p.popped then p.onRail = onRail(ply, p, mv, n, dt) end
+    if not p.onRail then
+        local vel, grounded, cast = S.Observe(ply, p, mv, dt)
+        S.Apply(ply, p, mv, dt, vel, grounded, cast)
+    end
+    done()
+end)
+
+-- On a rail the move is ours, as it is the server's (sv_skates.lua, Mode.Move).
+hook.Add("Move", "BMX.Skates.Predict", function(ply)
+    if ply == LocalPlayer() and predicted and predicted.onRail then return true end
 end)
 
 --------------------------------------------------------------------------
 -- A AND D TURN THE VIEW, for the skater themselves, at the rate the server will follow.
--- Yaw is positive to the left, so A (left) adds.
+-- Yaw is positive to the left, so A (left) adds. Not on a rail: there A and D are the balance,
+-- the server holds the boots along the rail, and a view they had turned was carved toward the
+-- moment the grind ended.
 --------------------------------------------------------------------------
 hook.Add("CreateMove", "BMX.Skates.Turn", function(cmd)
     local ply = LocalPlayer()
-    if not wearing(ply) or ply:InVehicle() then return end
+    if not IsValid(ply) or ply:InVehicle() then return end
+    -- On skates, and on a rail, by this client's own prediction (on at the weapon switch, popped
+    -- off when SPACE was let go); without one (singleplayer, where the client predicts nothing),
+    -- by what the server networks.
+    if predicted then
+        if not predicted.active or predicted.onRail then return end
+    elseif not wearing(ply) or bit.band(ply:GetNWInt("BMXSkateFlags", 0), S.Flag.grind) ~= 0 then
+        return
+    end
     local buttons = cmd:GetButtons()
     local map = BMX.InputMaps.skates
     local turn = 0

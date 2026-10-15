@@ -5,7 +5,7 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
-## 1.3.5 -- not on the Workshop yet
+## 1.3.5 -- on the Workshop 2026-10-15
 
 The first Workshop update with the 1.3.4 fixes below, plus one more.
 
@@ -24,7 +24,7 @@ The first Workshop update with the 1.3.4 fixes below, plus one more.
   never saw this; server owners who edit or update the files without
   restarting could.
 
-## 1.3.4 -- not on the Workshop on its own (it goes out in 1.3.5)
+## 1.3.4 -- on the Workshop with 1.3.5 (2026-10-15)
 
 A bug audit of the whole addon. Nothing here was reported by a player; each was
 found by reading the code and is reproduced by a test that failed before the fix.

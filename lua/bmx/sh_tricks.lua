@@ -49,12 +49,16 @@
 
 BMX = BMX or {}
 
-BMX.Tricks     = {}     -- id -> trick
-BMX.TrickOrder = {}     -- ids, in registration order
-BMX.PoseNames  = {}     -- pose id (1..255) -> pose name; 0 is "no pose"
-BMX.PoseIDs    = {}     -- pose name -> pose id
-BMX.PoseTricks = {}     -- pose name -> the pose trick that owns it
-BMX.TickList   = {}     -- the tricks that have an onTick, in order
+-- Kept when this file runs again. Lua autorefresh re-runs a saved file ALONE, so
+-- starting these from empty threw away every trick the other files registered
+-- (sh_motor, sh_board, sh_scooter, sh_skates) and dealt the pose ids out again.
+BMX.Tricks     = BMX.Tricks     or {}     -- id -> trick
+BMX.TrickOrder = BMX.TrickOrder or {}     -- ids, in registration order
+BMX.PoseNames  = BMX.PoseNames  or {}     -- pose id (1..255) -> pose name; 0 is "no pose"
+BMX.PoseIDs    = BMX.PoseIDs    or {}     -- pose name -> pose id
+BMX.PoseTricks = BMX.PoseTricks or {}     -- pose name -> the pose trick that owns it
+BMX.TickList   = BMX.TickList   or {}     -- the tricks that have an onTick, in order
+BMX.TrickBy    = BMX.TrickBy    or {}     -- id -> { file =, chunk = } that registered it
 
 local KINDS = { spin = true, part = true, pose = true, ground = true,
                 grind = true, custom = true }
@@ -65,13 +69,39 @@ local function bad(id, why)
     error("BMX.RegisterTrick(" .. tostring(id) .. "): " .. why, 3)
 end
 
+-- Who called RegisterTrick: the file, as "bmx/sh_board.lua" whichever path the
+-- engine loaded it by (lua/..., addons/<name>/lua/...), and that file's main
+-- chunk, found up the stack through the file's own frames. Every run of a file
+-- is a freshly compiled chunk, so the chunk tells one run from the next. nil
+-- when the call is not made while the file runs (a hook, a console command).
+local function registrar()
+    local info = debug and debug.getinfo and debug.getinfo(3, "S")
+    if not info then return "?", nil end
+    local src, chunk = info.source, nil
+    for level = 3, 40 do
+        local f = debug.getinfo(level, "Sf")
+        if not f or f.source ~= src then break end
+        if f.what == "main" then chunk = f.func break end
+    end
+    local file = src:gsub("^@", "")
+    return file:match("^lua/(.+)$") or file:match(".*/lua/(.+)$") or file, chunk
+end
+
 function BMX.RegisterTrick(t)
     if type(t) ~= "table" then bad(nil, "expected a table") end
     local id = t.id
     if type(id) ~= "string" or not id:match("^[%w_]+$") then
         bad(id, "id must be a non-empty string of letters, digits and _")
     end
-    if BMX.Tricks[id] then bad(id, "duplicate id") end
+    -- The same id again from the same file, but from a NEW run of it, is that
+    -- file running again (a saved edit, autorefresh) and replaces the trick in
+    -- place. Twice in one run, or from any other file, is two tricks claiming
+    -- one name.
+    local file, chunk = registrar()
+    local old, by = BMX.Tricks[id], BMX.TrickBy[id]
+    if old and not (by and chunk and by.file == file and by.chunk ~= chunk) then
+        bad(id, "duplicate id" .. (by and " (" .. by.file .. " registered it first)" or ""))
+    end
     if type(t.name) ~= "string" or t.name == "" then bad(id, "name must be a non-empty string") end
     if type(t.input) ~= "string" or t.input == "" then bad(id, "input must be a non-empty string") end
     if type(t.points) ~= "number" or t.points ~= t.points or t.points < 0 or t.points == math.huge then
@@ -99,9 +129,26 @@ function BMX.RegisterTrick(t)
         pose = t.pose, canStart = t.canStart, onTick = t.onTick,
         axis = t.axis, sign = t.sign, part = t.part,
     }
-    BMX.Tricks[id] = trick
-    BMX.TrickOrder[#BMX.TrickOrder + 1] = id
-    if t.onTick then BMX.TickList[#BMX.TickList + 1] = trick end
+    BMX.TrickBy[id] = { file = file, chunk = chunk }
+    if old then
+        -- Into the old table, so whatever holds it (the tick list, the pose
+        -- owners, a local in another file) sees the new definition.
+        if old.pose and BMX.PoseTricks[old.pose] == old then BMX.PoseTricks[old.pose] = nil end
+        for k in pairs(old) do old[k] = nil end
+        for k, v in pairs(trick) do old[k] = v end
+        trick = old
+    else
+        BMX.Tricks[id] = trick
+        BMX.TrickOrder[#BMX.TrickOrder + 1] = id
+    end
+    -- A trick that still ticks keeps its turn in the tick order.
+    local ticking = false
+    for i = #BMX.TickList, 1, -1 do
+        if BMX.TickList[i] == trick then
+            if t.onTick then ticking = true else table.remove(BMX.TickList, i) end
+        end
+    end
+    if t.onTick and not ticking then BMX.TickList[#BMX.TickList + 1] = trick end
     if kind == "pose" and not BMX.PoseTricks[t.pose] then BMX.PoseTricks[t.pose] = trick end
 
     -- A pose gets its wire id the first time anything names it. One byte, so

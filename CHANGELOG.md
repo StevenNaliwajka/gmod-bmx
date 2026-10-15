@@ -5,7 +5,26 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
-## 1.3.4 -- not on the Workshop yet
+## 1.3.5 -- not on the Workshop yet
+
+The first Workshop update with the 1.3.4 fixes below, plus one more.
+
+- **Saving a BMX file on a running server no longer breaks the skates.** Garry's
+  Mod re-runs a file you change while the game is running (or when a new copy
+  of the addon is put over the old one). When the trick list's own file ran
+  again, it forgot every trick the other files had added. Depending on the
+  order the files ran in, the skates then refused to load ("tricks lists
+  board180, which is not a registered trick", seen on a live server),
+  motorbikes could lose the heel clicker and the cliffhanger, and the pose
+  numbers could be dealt out again in another order. The other way round, a
+  board, scooter, skates or motorbike file run again by itself stopped at its
+  first trick with "duplicate id". The list now keeps what it has, and a file
+  that runs again updates its own tricks in place. One trick name claimed
+  twice, by two files or twice in one, is still an error. Players on the Workshop version
+  never saw this; server owners who edit or update the files without
+  restarting could.
+
+## 1.3.4 -- not on the Workshop on its own (it goes out in 1.3.5)
 
 A bug audit of the whole addon. Nothing here was reported by a player; each was
 found by reading the code and is reproduced by a test that failed before the fix.

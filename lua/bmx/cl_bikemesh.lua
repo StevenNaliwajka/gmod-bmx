@@ -261,11 +261,12 @@ end
 local models = {}                     -- key -> { ready, groups, layout } or a building job
 local MAX_TRIS = 21000                -- 3 vertices a triangle, under the 65535-vertex mesh limit
 
+local Z_AXIS, X_AXIS = Vector(0, 0, 1), Vector(1, 0, 0)
 local function tangentOf(n)
     -- any unit vector perpendicular to the normal: the normal map is flat,
     -- so only the frame's orthogonality matters, not its direction
-    local t = n:Cross(Vector(0, 0, 1))
-    if t:LengthSqr() < 1e-4 then t = n:Cross(Vector(1, 0, 0)) end
+    local t = n:Cross(Z_AXIS)
+    if t:LengthSqr() < 1e-4 then t = n:Cross(X_AXIS) end
     t:Normalize()
     return t
 end
@@ -548,6 +549,7 @@ end
 
 -- A tube through `pts` (world space), drawn immediately: the parts that bend
 -- every frame (the brake cable's loop, the kickstand).
+local RING_COS, RING_SIN = {}, {}     -- sides -> cos, sin of j / sides of a turn, j = 0..sides
 function BM.DrawTube(pts, radius, role, sides, paint)
     sides = sides or 6
     local n = #pts
@@ -569,24 +571,51 @@ function BM.DrawTube(pts, radius, role, sides, paint)
         q:Normalize()
         N[i] = q
     end
+    -- EACH RING'S VERTICES ONCE. Every point of a ring is a corner of four quads
+    -- (two along the tube, two round it), and each quad used to work out its own
+    -- four corners -- the direction, its tangent frame, the position -- with a table
+    -- per quad: a motorbike's coiled shock spring (70 rings of 5) cost more than the
+    -- rest of the bike and its rider together, every frame (tools/bench). The same
+    -- vectors from the same arithmetic, worked out once a ring (j = sides is the
+    -- closing angle, 2 pi, as the last quad round has always had it), then emitted in
+    -- the same order.
+    local cs, sn = RING_COS[sides], RING_SIN[sides]
+    if not cs then
+        cs, sn = {}, {}
+        for j = 0, sides do
+            local a = j / sides * math.pi * 2
+            cs[j], sn[j] = math.cos(a), math.sin(a)
+        end
+        RING_COS[sides], RING_SIN[sides] = cs, sn
+    end
+    local P, D, TS, TT, TX, TY, TZ = {}, {}, {}, {}, {}, {}, {}
+    for i = 1, n do
+        local Ni, bi, p = N[i], T[i]:Cross(N[i]), pts[i]
+        local base = (i - 1) * (sides + 1)
+        for j = 0, sides do
+            local d = Ni * cs[j] + bi * sn[j]
+            local t = tangentOf(d)
+            local k = base + j
+            P[k], D[k], TS[k], TT[k] = p + d * radius, d, t, d:Cross(t)
+            TX[k], TY[k], TZ[k] = t.x, t.y, t.z
+        end
+    end
+    local Position, Normal, TangentS, TangentT = mesh.Position, mesh.Normal, mesh.TangentS, mesh.TangentT
+    local UserData, TexCoord, AdvanceVertex = mesh.UserData, mesh.TexCoord, mesh.AdvanceVertex
     mesh.Begin(MATERIAL_QUADS, (n - 1) * sides)
     for i = 1, n - 1 do
-        local b1, b2 = T[i]:Cross(N[i]), T[i + 1]:Cross(N[i + 1])
+        local r1, r2 = (i - 1) * (sides + 1), i * (sides + 1)
         for j = 0, sides - 1 do
-            local a1, a2 = j / sides * math.pi * 2, (j + 1) / sides * math.pi * 2
-            local d11 = N[i] * math.cos(a1) + b1 * math.sin(a1)
-            local d12 = N[i] * math.cos(a2) + b1 * math.sin(a2)
-            local d21 = N[i + 1] * math.cos(a1) + b2 * math.sin(a1)
-            local d22 = N[i + 1] * math.cos(a2) + b2 * math.sin(a2)
-            for _, v in ipairs({ { pts[i], d11 }, { pts[i + 1], d21 }, { pts[i + 1], d22 }, { pts[i], d12 } }) do
-                local t = tangentOf(v[2])
-                mesh.Position(v[1] + v[2] * radius)
-                mesh.Normal(v[2])
-                mesh.TangentS(t)
-                mesh.TangentT(v[2]:Cross(t))
-                mesh.UserData(t.x, t.y, t.z, 1)
-                mesh.TexCoord(0, 0, 0)
-                mesh.AdvanceVertex()
+            -- ring i at j, ring i+1 at j, ring i+1 at j+1, ring i at j+1
+            for q = 1, 4 do
+                local k = (q == 1 and r1 + j) or (q == 2 and r2 + j) or (q == 3 and r2 + j + 1) or (r1 + j + 1)
+                Position(P[k])
+                Normal(D[k])
+                TangentS(TS[k])
+                TangentT(TT[k])
+                UserData(TX[k], TY[k], TZ[k], 1)
+                TexCoord(0, 0, 0)
+                AdvanceVertex()
             end
         end
     end

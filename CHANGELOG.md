@@ -5,6 +5,43 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.3.6 -- not on the Workshop yet
+
+Players reported low frame rates. This is what a frame of BMX costs your game,
+cut down; measured offline, frame by frame, with every rider's pose and every
+drawn part checked identical to 1.3.5.
+
+**Frame rate**
+
+- **Riders near you are much cheaper to draw.** To keep each rider's hands on
+  the bars and feet on the pedals, the game re-posed the rider's whole skeleton
+  about 58 times a frame (49 on a scooter, 42 on a board), half of those times
+  on a skeleton nothing had moved. It now re-poses only when something moved:
+  about 11 times a frame for a rider pedalling, one to three for one standing
+  on a board or a scooter. Eight riders around you went from about 470
+  skeleton poses a frame to about 90, and every hand and foot lands exactly
+  where it did before.
+- **Motorbikes and the DH bike draw their shock spring for less.** The coil was
+  rebuilt from scratch every frame with every point worked out four times, the
+  dearest thing those bikes drew. Each point is worked out once now, and past
+  350 units, where the coil is a few pixels across, it is drawn with fewer
+  rings.
+- **Less waste every frame for every bike in the world.** A bike no longer
+  looks up its own model by name twice a frame; the sounds, the motor note and
+  the grind sparks share one look through the map's entities instead of three;
+  and the paint, the lighting and the HUD stop making throwaway text and
+  tables.
+
+**Crashes**
+
+- **Getting up from a crash is not a respawn.** On DarkRP, getting back up
+  after a crash counted as a fresh spawn: five seconds of spawn protection, so
+  crashing on purpose made you impossible to hurt and the crash itself never
+  did any damage; it also filled your hunger right up and could stand you up
+  wearing a different job model. Now you get up as you went down: same hunger,
+  same model, no protection, and the crash hurts. An admin in god mode also
+  stays in it after a crash, which they used to lose on any server.
+
 ## 1.3.5 -- on the Workshop 2026-10-15
 
 The first Workshop update with the 1.3.4 fixes below, plus one more.

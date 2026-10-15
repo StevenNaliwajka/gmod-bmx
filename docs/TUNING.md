@@ -253,6 +253,16 @@ below requirement and both times it read as a tuning problem.
   fallen (`maxRoll`).
 - `Tricks.*`. How long a wheelie (`manualMin`) or stoppie (`stoppieMin`) must
   be held to score, and what it pays per second.
+- `Combo.*`. Scoring, not feel, but it is here because it is the config. `grace`
+  0.8 is the seconds of plain riding before an open combo banks: the time a rider
+  has to link the next trick (a manual or a grind holds it open). `repeats`
+  `{ 1, 0.75, 0.5, 0.25 }` is what a trick adds to a combo's chain the 1st, 2nd,
+  3rd and 4th time it is in that combo; past the end of the list it adds nothing
+  and does not raise the multiplier (`bmx_combo_variety 1`, the default; 0 counts
+  every repeat in full). A landed combo pays `value x (n - 1)` on top of the
+  tricks' own points, where `value` is the chain after repeats and `n` the
+  multiplier. A longer list lets one trick lift a combo further; `{ 1 }` makes
+  every repeat worthless to the combo.
 
 ## Known-untuned
 

@@ -444,6 +444,42 @@ T.test("tricks: a hop is paid, once, as it leaves the ground", function()
     T.ok(sv.env.IsValid(e:GetDriver()), "still aboard after the landing")
 end)
 
+-- HOPPING ON THE SPOT. Each hop is paid as it leaves the ground, the air holds the
+-- combo open, and the next hop comes inside Combo.grace: twenty hops were one combo
+-- of twenty, 12,000 points out of 600 of hops. With bmx_combo_variety the fifth hop
+-- on adds nothing to the combo, though each still pays its own 30.
+local function hopOnTheSpot(n, variety)
+    local sv, e = ridden()
+    sv.env.GetConVar("bmx_combo_variety"):SetString(variety and "1" or "0")
+    local ended = {}
+    sv.env.hook.Add("BMX_ComboEnded", "t", function(ent, p, c) ended[#ended + 1] = c end)
+    local s0 = e:GetScore()
+    for _ = 1, n do
+        e.hopHeld, e.hopCharge = true, 0
+        ride(sv, e, 10 / 66)
+        e.hopHeld, e.hopRelease = false, true
+        ride(sv, e, 40 / 66)                  -- up, down and a moment on the wheel
+    end
+    ride(sv, e, 2)
+    return ended, e:GetScore() - s0, sv.env.IsValid(e:GetDriver()), e:Cfg()
+end
+
+T.test("tricks: hopping on the spot is one combo, and with variety it stops growing at x4", function()
+    local ended, got, aboard, cfg = hopOnTheSpot(12, true)
+    local hop = cfg.Unicycle.hopPoints
+    local four = 0
+    for _, s in ipairs(cfg.Combo.repeats) do four = four + math.floor(hop * s + 0.5) end
+    T.ok(aboard, "aboard throughout")
+    T.eq(#ended, 1, "twelve hops linked into one combo")
+    local c = ended[1]
+    T.eq(c.base, 12 * hop, "each hop paid its own points")
+    T.eq(c.n, 4, "only four count")
+    T.eq(got, 12 * hop + four * 3, "the hops, and a bonus of the first four's " .. four .. " x 3")
+    local old, oldGot = hopOnTheSpot(12, false)
+    T.eq(old[1].n, 12, "the old rule: x12")
+    T.eq(oldGot, 12 * hop * 12, "twelve times the hops")
+end)
+
 T.test("tricks: idle is rocking in place, paid a second at a time; riding is not idle", function()
     local sv, e = ridden()
     local names = {}

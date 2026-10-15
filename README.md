@@ -193,15 +193,25 @@ tricks working and tricks being an accident:
   is not vert, `A` and `D` are still the barrel roll. `bmx_air_assist 0` turns
   it all off.
 
+Tricks linked together (an air into a grind, the grind into a manual, the
+manual into a hop) build a **combo**: land it and the chain pays again for every
+trick past the first, so three tricks pay three times. Crash first and that
+bonus is gone. **Variety counts:** the same trick again in the same combo adds
+less to it each time (all of it, then 3/4, 1/2, 1/4) and from the fifth time
+nothing, not even to the multiplier, so ten different tricks out-score ten
+backflips. Each trick still pays its own points every time. `bmx_combo_variety 0`
+brings back the old rule, where every repeat counted in full.
+
 ## Server settings
 
-Server console or `server.cfg`; all three are saved.
+Server console or `server.cfg`; all of them are saved.
 
 | Convar | Default | What it does |
 |---|---|---|
 | `bmx_max_per_player N` | `0` | Bikes one player may have out at once, every kind counted together. `0` is no limit of ours; `sbox_maxsents` still applies. Holds for the spawn menu and `bmx_spawn` alike. |
 | `bmx_scoring 0` | `1` | No scoring at all: no points, callouts or combos, and the `BMX_TricksLanded` hook does not fire. |
 | `bmx_combos 0` | `1` | Tricks still score, but chaining them pays no combo bonus. |
+| `bmx_combo_variety 0` | `1` | Every repeat of a trick counts in full in a combo, as it used to. At `1` a repeat adds less each time and nothing after the fourth, so a combo grows by doing different tricks. |
 | `bmx_crash_ragdoll 0` | `1` | A crash shoves the rider off instead of ragdolling them. |
 | `bmx_nose_manual 1` | `0` | Lets a rider holding weight forward (`Ctrl` + `LMB`) keep rolling on the front wheel after the brake comes off. Off until it has been ridden live: with it off, a stoppie ends when the brake does. |
 | `bmx_air_assist 0` | `1` | No air turn, landing aim or spine transfer off vertical ramps: `A` / `D` stay the barrel roll everywhere. |

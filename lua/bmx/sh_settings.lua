@@ -322,6 +322,9 @@ server{ name = "bmx_scoring", kind = "bool", default = true, category = "rules",
 server{ name = "bmx_combos", kind = "bool", default = true, category = "rules",
     label = "Combos",
     help = "Tricks chained together build a combo that pays a bonus when the rider lands it." }
+server{ name = "bmx_combo_variety", kind = "bool", default = true, category = "rules",
+    label = "Combos reward variety",
+    help = "A trick repeated in one combo adds less to it each time (all of it, then 3/4, 1/2, 1/4) and after the fourth nothing, not even to the multiplier, so a combo grows by doing different tricks. Every trick still pays its own points. Off: every repeat counts in full." }
 server{ name = "bmx_autoride_allow", kind = "bool", default = true, category = "rules",
     label = "Auto ride",
     help = "Riders may let their bike ride itself (O, or bmx_autoride), the way the trick bot rides. Needs the BMX (Mode) gamemode, which has the bot. What an auto ride lands never counts towards scores." }

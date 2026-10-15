@@ -548,9 +548,20 @@ Does not fire with `bmx_scoring 0`. Replaces the per-landing
 ### `BMX_ComboBanked` (ply, chain, total)
 
 *Server.* A combo of two or more tricks landed and paid its bonus. `chain` is
-`{ n, base, bonus, total, names }`; `total` is `base + bonus`, the whole
-combo's value. The tricks' own points (`base`) were already paid when they
-landed, so a game that adds to a score adds `chain.bonus`.
+`{ n, base, value, bonus, total, names }`:
+
+- `n`, the multiplier: the tricks that counted.
+- `base`, the tricks' own points. They were already paid as each trick landed.
+- `value`, the chain's points once repeats are scaled (`bmx_combo_variety`):
+  the k-th time one trick (by name) is in the chain it adds `Combo.repeats[k]`
+  of its points (all of it, then 3/4, 1/2, 1/4) and from the fifth time
+  nothing, not even to `n`. With no repeats, or the setting off, `value` is
+  `base`.
+- `bonus` is `value x (n - 1)`: what the combo adds to the score on top.
+- `total` is `value + bonus` (that is, `value x n`): the combo's worth.
+
+A game that adds to a score adds `chain.bonus`. A game that ranks combos ranks
+`total`.
 
 ### `BMX_ComboBailed` (ply, chain)
 
@@ -687,4 +698,5 @@ trick bot are not part of this addon: they are the **BMX (Mode)** gamemode
 | Command | |
 |---|---|
 | `bmx_scoring 0\|1`, `bmx_combos 0\|1` | Turn scoring or combos off. |
+| `bmx_combo_variety 0\|1` | 1 (default): a trick repeated in one combo adds less to it each time and nothing after the fourth. 0: every repeat counts in full. |
 | `bmx_max_per_player N` | Bikes per player. |

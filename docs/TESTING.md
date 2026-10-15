@@ -199,6 +199,68 @@ versus the cadence ceiling), and a minute of random riding checking for NaNs.
 Every bug fixed alongside it was mutation-checked: revert the fix and a test
 fails.
 
+### What a client frame costs
+
+Players feel the client's frame rate, and nothing on a dedicated server runs the
+client's Lua. `tools/bench/client_frame.lua` drives the real client files -- each
+bike's `Draw`, the rider's pose and IK (`PrePlayerDraw`), the chase camera, the
+HUD, the sound, the prediction, the skates and the board -- through the same shim,
+with 1, 8 or 16 riders in view, frame after frame, under LuaJIT (GMod's Lua):
+
+```
+sudo apt install luajit
+luajit tools/bench/client_frame.lua                    # six vehicles, 1 8 16 riders
+luajit tools/bench/client_frame.lua stock,scooter 8 --varied --count --hooks
+luajit tools/bench/client_frame.lua --root ../older-checkout stock 8   # the same scene on older code
+```
+
+What it reports, a frame: milliseconds (and the worst frames, `--spikes`), the Lua
+garbage made (the collector stopped for the measure: LuaJIT's pauses are a
+stutter), and with `--count` the engine calls made -- SetupBones above all, each
+one the engine posing a player's whole skeleton again. `--hooks` puts the time,
+garbage, Vectors and SetupBones down to the hook that spent them; `--varied` rides
+as riders do (steering, bumps, hops, airs with tricks and style poses, landings,
+stances, kicks) instead of straight on; `--buildlog` lists a model build's slices
+over 8/16/33 ms; `--dump FILE` writes every rider's bone manipulations and a
+checksum of everything drawn, frame by frame, so a change can be shown to pose and
+draw exactly as before (diff two dumps). `--joff` runs with the JIT off.
+
+Read the counts and the `lua` column, not the total: the shim's skeleton and its
+table Vectors are slower than the engine's C++ (a shim Vector is a table, about
+three times the bytes of GMod's), and a GPU is not here at all. The SetupBones
+count is the number to watch: tests/test_perf_client.lua holds it to a budget.
+
+Measured when the IK learned to pose only what moved (LuaJIT, riders 120 units
+apart, all near the view):
+
+| a frame, riding steady | 1.3.2 | 1.3.4 | after |
+|---|---|---|---|
+| SetupBones, one BMX rider | 56.4 | 58.4 | 11.5 |
+| SetupBones, one scooter / board rider | 47 / 40 | 49 / 42 | 3 / 1 |
+| SetupBones, one skater | 19.1 | 21.1 | 4.7 |
+| SetupBones, 8 BMX riders | 452 | 468 | 93 |
+| bone matrices read, 4 BMX riders, varied riding | -- | 760 | 292 |
+
+1.3.3 made the IK dearer by 2-10% (the extra passes for a fast-moving body, the
+foot and knuckle aimed until they point, the frame follow); the IK was already
+57 skeleton poses a frame per rider before it.
+
+WHAT STILL STUTTERS: a vehicle kind's first model build. Each kind and size is
+built once per session (BikeMesh.Get, in slices of `bmx_bike_build_ms`), and the
+prebuild Think starts it for every vehicle in the world, in view or not. Offline the
+BMX's build takes about 240 frames, of which some 40 spend over 16 ms building
+(worst about 90 ms): not the slices' own work but LuaJIT's collector, which spends
+more than half the build walking the build's 100-plus MB of short-lived tables.
+In the game each mesh is also handed to BuildFromTriangles in one call (the BMX's
+largest is 31,000 vertices), which the shim does not cost. A client should measure
+both (below).
+
+ON A REAL CLIENT, the checks this cannot make: with `net_graph 1` (or
+`cl_showfps 2`), eight bots riding BMXs within 1,000 units of the camera, compare
+1.3.4 and this build's frame times; then spawn a vehicle kind not yet seen this session
+and watch the frame time while it builds (`bmx_bike_model_rebuild` builds the
+ones in view again).
+
 ## Headless, and automatic
 
 Everything above the offline section is a human looking at a bike. This

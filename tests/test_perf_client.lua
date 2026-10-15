@@ -7,7 +7,7 @@
 
     The dearest thing a client does for this addon is have the engine pose a
     rider's whole skeleton (InvalidateBoneCache + SetupBones): the IK reads bones
-    after every joint it turns. Until 1.3.5 it posed 58 times a frame for each
+    after every joint it turns. 1.3.4 posed 58 times a frame for each
     BMX rider in view, 49 for a scooter's, 42 for a board's, about half of them on
     a skeleton nothing had touched (tools/bench/client_frame.lua). The budgets carry
     headroom: they catch a doubling, not noise. tools/bench/client_frame.lua is

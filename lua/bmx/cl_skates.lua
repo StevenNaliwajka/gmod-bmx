@@ -253,14 +253,19 @@ local FEET = { "ValveBiped.Bip01_L_Foot", "ValveBiped.Bip01_R_Foot" }
 -- THE MODEL (cl_geo_board.lua's "skates"): one boot built about BootFrame's sole point,
 -- its wheels standing where BootFrame stands them. nil until it is built, with
 -- bmx_bike_model 0, or without Mesh support: the boxes below stand in.
+local function skatesModel(def, cfg)
+    return BMX.BikeMesh.Get(1, cfg.Wheel.radius, def.look, {
+        wheelbase = cfg.Wheel.wheelbase, extra = { wheelPitch = T.wheelPitch },
+    })
+end
+local remembered = {}       -- (BikeMesh.Remembered's place for the one pair of skates)
 function S.Model()
     local BM = BMX.BikeMesh
     local def = BMX.Vehicles and BMX.Vehicles[S.ID]
     if not (BM and def and def.look) then return nil end
     local cfg = BMX.ConfigFor(def)
-    return BM.Get(1, cfg.Wheel.radius, def.look, {
-        wheelbase = cfg.Wheel.wheelbase, extra = { wheelPitch = T.wheelPitch },
-    })
+    if not BM.Remembered then return skatesModel(def, cfg) end
+    return BM.Remembered(remembered, def, cfg, skatesModel, def, cfg)
 end
 
 -- The skates' colour: the registration's palette entry, else the first.

@@ -76,6 +76,7 @@ local tex                              -- { white, normal }
 -- keyvalues ignored, so a reload of this file names its materials afresh.
 local MATSUFFIX = tostring(math.floor((SysTime and SysTime() or 0) * 1000) % 1000000)
 local mats = {}                        -- role or "paint r g b" -> IMaterial
+local paintByCol = setmetatable({}, { __mode = "k" })   -- a Color table -> { r, g, b, m = its paint }
 local texCleared = 0
 
 local function textures()
@@ -236,13 +237,19 @@ function BM.Material(role, col)
     end
     if role == "paint" then
         col = col or Color(200, 40, 40)
+        -- By the colour itself first: a frame's every paint bucket asked by formatting
+        -- a key, and the palette's colours are the same tables every time.
+        local hit = paintByCol[col]
+        if hit and hit.r == col.r and hit.g == col.g and hit.b == col.b then return hit.m end
         local key = string.format("paint %d %d %d", col.r, col.g, col.b)
         local m = mats[key]
+        if m then paintByCol[col] = { r = col.r, g = col.g, b = col.b, m = m } end
         if not m then
             -- linear-ish: the palette is sRGB, $color2 multiplies a linear base
             local c = Vector((col.r / 255) ^ 2.2, (col.g / 255) ^ 2.2, (col.b / 255) ^ 2.2) * 1.15
             m = makeMat("bmx_paint_" .. col.r .. "_" .. col.g .. "_" .. col.b, c, PAINT[1], PAINT[2], PAINT[3])
             mats[key] = m
+            paintByCol[col] = { r = col.r, g = col.g, b = col.b, m = m }
         end
         return m
     end
@@ -261,11 +268,12 @@ end
 local models = {}                     -- key -> { ready, groups, layout } or a building job
 local MAX_TRIS = 21000                -- 3 vertices a triangle, under the 65535-vertex mesh limit
 
+local Z_AXIS, X_AXIS = Vector(0, 0, 1), Vector(1, 0, 0)
 local function tangentOf(n)
     -- any unit vector perpendicular to the normal: the normal map is flat,
     -- so only the frame's orthogonality matters, not its direction
-    local t = n:Cross(Vector(0, 0, 1))
-    if t:LengthSqr() < 1e-4 then t = n:Cross(Vector(1, 0, 0)) end
+    local t = n:Cross(Z_AXIS)
+    if t:LengthSqr() < 1e-4 then t = n:Cross(X_AXIS) end
     t:Normalize()
     return t
 end
@@ -427,6 +435,23 @@ function BM.Get(k, radius, kind, opt)
     return nil
 end
 
+-- A VEHICLE'S MODEL, REMEMBERED. Every vehicle in the world asks for its model once or
+-- twice a frame (the prebuild Think, its own Draw), and each ask built an options table
+-- or three and two or three string.format keys to find a model built long ago. The
+-- ready model is kept on `owner` (the entity) while what chose it -- the registration,
+-- the config table and the config's revision -- is the same, and not once BM.Clear has
+-- marked it cleared or with the models switched off. `get(...)` is the full ask.
+function BM.Remembered(owner, bike, C, get, ...)
+    if not BM.Enabled() then return nil end
+    local r = owner.bmxModelMemo
+    if r and r.bike == bike and r.cfg == C and r.rev == BMX.ConfigRevision and not r.model.cleared then
+        return r.model
+    end
+    local m = get(...)
+    if m then owner.bmxModelMemo = { bike = bike, cfg = C, rev = BMX.ConfigRevision, model = m } end
+    return m
+end
+
 -- Throw every built model away (bmx_bike_model_rebuild, or a hot reload).
 -- What the cache holds, for a bug report or a probe: key -> "ready" | "building" |
 -- "failed: <error>".
@@ -464,6 +489,10 @@ local function sample(pos, dir)
     return c + d
 end
 
+local LIGHT = { type = MATERIAL_LIGHT_DIRECTIONAL, range = 0,
+                constantFalloff = 1, linearFalloff = 0, quadraticFalloff = 0 }
+local LIGHTS, NO_LIGHTS = { LIGHT }, {}
+
 -- Light the meshes drawn until BM.EndLighting as a model standing at `pos`.
 -- Samples are cached on `ent` for a few frames: lighting changes slowly
 -- and ComputeLighting is not free.
@@ -499,21 +528,18 @@ function BM.BeginLighting(pos, ent)
     if L.col:LengthSqr() > 1e-6 then
         -- Falloff given explicitly: left out, the attenuation divides by
         -- zero and the light saturates everything to flat full-bright.
-        render.SetLocalModelLights({ {
-            type = MATERIAL_LIGHT_DIRECTIONAL,
-            color = L.col,
-            dir = -L.dir,               -- the way the light travels
-            pos = pos + L.dir * 4096,
-            range = 0,
-            constantFalloff = 1, linearFalloff = 0, quadraticFalloff = 0,
-        } })
+        -- (One table, filled afresh each time: the engine copies the light.)
+        LIGHT.color = L.col
+        LIGHT.dir = -L.dir              -- the way the light travels
+        LIGHT.pos = pos + L.dir * 4096
+        render.SetLocalModelLights(LIGHTS)
     else
-        render.SetLocalModelLights({})
+        render.SetLocalModelLights(NO_LIGHTS)
     end
 end
 
 function BM.EndLighting()
-    render.SetLocalModelLights({})
+    render.SetLocalModelLights(NO_LIGHTS)
     render.SuppressEngineLighting(false)
 end
 
@@ -548,6 +574,7 @@ end
 
 -- A tube through `pts` (world space), drawn immediately: the parts that bend
 -- every frame (the brake cable's loop, the kickstand).
+local RING_COS, RING_SIN = {}, {}     -- sides -> cos, sin of j / sides of a turn, j = 0..sides
 function BM.DrawTube(pts, radius, role, sides, paint)
     sides = sides or 6
     local n = #pts
@@ -569,24 +596,51 @@ function BM.DrawTube(pts, radius, role, sides, paint)
         q:Normalize()
         N[i] = q
     end
+    -- EACH RING'S VERTICES ONCE. Every point of a ring is a corner of four quads
+    -- (two along the tube, two round it), and each quad used to work out its own
+    -- four corners -- the direction, its tangent frame, the position -- with a table
+    -- per quad: a motorbike's coiled shock spring (70 rings of 5) cost more than the
+    -- rest of the bike and its rider together, every frame (tools/bench). The same
+    -- vectors from the same arithmetic, worked out once a ring (j = sides is the
+    -- closing angle, 2 pi, as the last quad round has always had it), then emitted in
+    -- the same order.
+    local cs, sn = RING_COS[sides], RING_SIN[sides]
+    if not cs then
+        cs, sn = {}, {}
+        for j = 0, sides do
+            local a = j / sides * math.pi * 2
+            cs[j], sn[j] = math.cos(a), math.sin(a)
+        end
+        RING_COS[sides], RING_SIN[sides] = cs, sn
+    end
+    local P, D, TS, TT, TX, TY, TZ = {}, {}, {}, {}, {}, {}, {}
+    for i = 1, n do
+        local Ni, bi, p = N[i], T[i]:Cross(N[i]), pts[i]
+        local base = (i - 1) * (sides + 1)
+        for j = 0, sides do
+            local d = Ni * cs[j] + bi * sn[j]
+            local t = tangentOf(d)
+            local k = base + j
+            P[k], D[k], TS[k], TT[k] = p + d * radius, d, t, d:Cross(t)
+            TX[k], TY[k], TZ[k] = t.x, t.y, t.z
+        end
+    end
+    local Position, Normal, TangentS, TangentT = mesh.Position, mesh.Normal, mesh.TangentS, mesh.TangentT
+    local UserData, TexCoord, AdvanceVertex = mesh.UserData, mesh.TexCoord, mesh.AdvanceVertex
     mesh.Begin(MATERIAL_QUADS, (n - 1) * sides)
     for i = 1, n - 1 do
-        local b1, b2 = T[i]:Cross(N[i]), T[i + 1]:Cross(N[i + 1])
+        local r1, r2 = (i - 1) * (sides + 1), i * (sides + 1)
         for j = 0, sides - 1 do
-            local a1, a2 = j / sides * math.pi * 2, (j + 1) / sides * math.pi * 2
-            local d11 = N[i] * math.cos(a1) + b1 * math.sin(a1)
-            local d12 = N[i] * math.cos(a2) + b1 * math.sin(a2)
-            local d21 = N[i + 1] * math.cos(a1) + b2 * math.sin(a1)
-            local d22 = N[i + 1] * math.cos(a2) + b2 * math.sin(a2)
-            for _, v in ipairs({ { pts[i], d11 }, { pts[i + 1], d21 }, { pts[i + 1], d22 }, { pts[i], d12 } }) do
-                local t = tangentOf(v[2])
-                mesh.Position(v[1] + v[2] * radius)
-                mesh.Normal(v[2])
-                mesh.TangentS(t)
-                mesh.TangentT(v[2]:Cross(t))
-                mesh.UserData(t.x, t.y, t.z, 1)
-                mesh.TexCoord(0, 0, 0)
-                mesh.AdvanceVertex()
+            -- ring i at j, ring i+1 at j, ring i+1 at j+1, ring i at j+1
+            for q = 1, 4 do
+                local k = (q == 1 and r1 + j) or (q == 2 and r2 + j) or (q == 3 and r2 + j + 1) or (r1 + j + 1)
+                Position(P[k])
+                Normal(D[k])
+                TangentS(TS[k])
+                TangentT(TT[k])
+                UserData(TX[k], TY[k], TZ[k], 1)
+                TexCoord(0, 0, 0)
+                AdvanceVertex()
             end
         end
     end

@@ -806,15 +806,19 @@ end
 
 -- The board's built model, or nil while it builds (asking advances the build; the
 -- studios pump it, BMX.BikeModelFor).
-function BMX.BoardModel(ent)
-    local bike, C = ent:Bike(), ent:Cfg()
-    local BM, WC = BMX.BikeMesh, C.Wheel
-    if not bike.look or not BM then return nil end
+local function boardModel(bike, C)
+    local WC = C.Wheel
     local wheels = BMX.WheelDefs(bike, C)
-    return BM.Get(WC.wheelbase / 39, WC.radius, bike.look, {
+    return BMX.BikeMesh.Get(WC.wheelbase / 39, WC.radius, bike.look, {
         wheelbase = WC.wheelbase, restLength = WC.restLength,
         extra = { track = wheels[1] and math.abs(wheels[1].pos.y) or 4.6 },
     })
+end
+function BMX.BoardModel(ent)
+    local bike, C = ent:Bike(), ent:Cfg()
+    local BM = BMX.BikeMesh
+    if not bike.look or not BM then return nil end
+    return BM.Remembered(ent, bike, C, boardModel, bike, C)
 end
 
 BMX.DrawVehicle = BMX.DrawVehicle or {}

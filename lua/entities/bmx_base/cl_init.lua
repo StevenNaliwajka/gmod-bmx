@@ -28,6 +28,7 @@ local COL_SPOKE  = Color(160, 165, 175)
 local COL_PART   = Color(34, 34, 38)       -- bars, cranks, seat, fork crown
 local COL_CHROME = Color(200, 204, 212)
 local COL_AIR    = Color(235, 90, 60)
+local COL_SPRING = Color(230, 120, 20)     -- a shock's coil, unless its model paints it
 
 -- Big enough for the frame, the bars and a rider, in chassis units at the
 -- stock wheelbase; scaled per bike. Without it the engine culls the drawing
@@ -497,6 +498,8 @@ end
 --   0  near   everything
 --   1  mid    the chainring in 6 pieces not 16; no joint balls, no chain,
 --             no pedal blocks or spindle: all under a few pixels there
+--   (a motorbike's coiled shock spring is drawn with fewer rings past 350, and
+--    not at all past mid)
 --   2  far    frame, fork, bars, saddle and tyres; the wheels drawn where
 --             they sit at rest instead of traced to the ground (the two
 --             traces are most of what a far bike costs)
@@ -506,6 +509,7 @@ end
 -- only what is DRAWN changes, never where the rider's limbs go.
 --------------------------------------------------------------------------
 local LOD_MID, LOD_FAR = 900, 2500
+local SPRING_NEAR = 350     -- a shock's coil in full detail this near (DrawDetailed)
 local lodScale = CreateClientConVar("bmx_lod_scale", "1", true, false,
     "BMX bike detail by distance: 1 normal, 2 = full detail twice as far, 0 = always full.")
 
@@ -593,6 +597,16 @@ function BMX.SimpleAtSeat(ent)
     return ent:Cfg().Wheel.wheelbase / 39 > 1.1
 end
 
+local function bikeModel(bike, C)
+    local WC = C.Wheel
+    local k = WC.wheelbase / 39
+    return BMX.BikeMesh.Get(k, WC.radius, bike.look, bike.look ~= "bmx" and {
+        wheelbase = WC.wheelbase, rearRadius = WC.rearRadius, restLength = WC.restLength,
+        seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
+        extra = BMX.ModelExtra(bike, C),
+    } or nil)
+end
+
 function BMX.BikeModelFor(ent)
     local bike = ent.Bike and ent:Bike()
     if not bike or bike.hasModel or bike.wheelModel or not bike.look or not BMX.BikeMesh then return nil end
@@ -601,13 +615,7 @@ function BMX.BikeModelFor(ent)
     if bike.family == "scooter" and BMX.ScooterModel then return BMX.ScooterModel(ent) end
     if bike.drawer and BMX.OddModel then return BMX.OddModel(ent, ent:Cfg(), false) end
     local C = ent:Cfg()
-    local WC = C.Wheel
-    local k = WC.wheelbase / 39
-    return BMX.BikeMesh.Get(k, WC.radius, bike.look, bike.look ~= "bmx" and {
-        wheelbase = WC.wheelbase, rearRadius = WC.rearRadius, restLength = WC.restLength,
-        seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
-        extra = BMX.ModelExtra(bike, C),
-    } or nil)
+    return BMX.BikeMesh.Remembered(ent, bike, C, bikeModel, bike, C)
 end
 
 -- BUILT BEFORE IT IS SEEN. A model's build only advanced while a bike asking
@@ -812,13 +820,19 @@ function ENT:DrawDetailed(model, S)
                     local e1 = dir:Cross(up):GetNormalized()
                     local e2 = dir:Cross(e1)
                     local pts = {}
-                    local turns, n = 7, 70
+                    -- Built in Lua every frame: 70 rings of 5 sides is 1,400 vertices, the
+                    -- dearest thing a motorbike draws. Past SPRING_NEAR the coil is a few
+                    -- pixels across and its wire under one: six rings a turn and four sides
+                    -- draw the same few pixels for half the vertices (bmx_lod_scale applies).
+                    local turns, n, sides = 7, 70, 5
+                    local ks = lodScale:GetFloat()
+                    if ks > 0 and EyePos():DistToSqr(a) > (SPRING_NEAR * ks) ^ 2 then n, sides = 42, 4 end
                     for i = 0, n do
                         local t = i / n
                         local an = t * turns * math.pi * 2
                         pts[#pts + 1] = a + dir * (L * (0.12 + 0.8 * t)) + (e1 * math.cos(an) + e2 * math.sin(an)) * (r * 1.45)
                     end
-                    BM.DrawTube(pts, r * 0.22, "paint", 5, lay.shock.springPaint and paint or Color(230, 120, 20))
+                    BM.DrawTube(pts, r * 0.22, "paint", sides, lay.shock.springPaint and paint or COL_SPRING)
                 end
             end
         end

@@ -85,7 +85,7 @@ hook.Add("Think", "BMX.Grind", function()
         end
     end
 
-    for _, ent in ipairs(ents.FindByClass("bmx_*")) do
+    for _, ent in ipairs(BMX.FrameVehicles()) do
         local code = ent.IsBMX and ent.GetGrind and ent:GetGrind() or 0
         if code > 0 then
             live[ent] = live[ent] or {}

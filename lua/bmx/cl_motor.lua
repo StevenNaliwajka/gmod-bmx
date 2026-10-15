@@ -208,7 +208,7 @@ hook.Add("Think", "BMX.MotorSound", function()
     for ent, state in pairs(live) do
         if not IsValid(ent) then stopState(state); live[ent] = nil end
     end
-    for _, ent in ipairs(ents.FindByClass("bmx_*")) do
+    for _, ent in ipairs(BMX.FrameVehicles()) do
         if ent.IsBMX and ent.Bike and M.IsMotor(ent) then
             live[ent] = live[ent] or {}
             updateSound(ent, live[ent])

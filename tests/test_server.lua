@@ -458,6 +458,92 @@ T.test("killed or respawned mid-tumble, the player is not stood back up", functi
     T.ok(not ply2:HasWeapon("weapon_smg1"), "not swapped for the one they crashed with")
 end)
 
+-- DarkRP's PlayerSpawn as a real DarkRP server ran it on the get-up (2026-10-15):
+-- spawn protection (babygod: god mode for five seconds, unless the player is only
+-- waking up, ply.IsSleeping, the flag its knock-out sets), the hunger mod's full
+-- stomach (a PlayerSpawn hook), and a model picked at random from the job's list.
+local function darkrp(E, ply)
+    ply._drp = { Energy = 37 }
+    function ply:getDarkRPVar(k) return self._drp[k] end
+    function ply:setSelfDarkRPVar(k, v) self._drp[k] = v end
+    E.GAMEMODE.PlayerSpawn = function(_, p)
+        if not p.IsSleeping and not p.Babygod then p.Babygod = true p:GodEnable() end
+        p.IsSleeping = false
+        p:SetModel("models/player/group01/female_04.mdl")
+        p:SetSkin(0)
+        p:SetBodygroup(1, 0)
+        p:SetPlayerColor(E.Vector(1, 1, 1))
+    end
+    E.hook.Add("PlayerSpawn", "HMPlayerSpawn", function(p) p:setSelfDarkRPVar("Energy", 100) end)
+end
+
+local function hit(E, ply, n)
+    local d = E.DamageInfo()
+    d:SetDamage(n)
+    ply:TakeDamageInfo(d)
+end
+
+-- Getting up from a crash was a respawn on DarkRP: crash on purpose and nothing could
+-- hurt you for five seconds, and a crash filled you up and changed your face.
+T.test("getting up is not a respawn: no spawn protection, no free meal, the same face", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike, ply = tipOver(sv)
+    darkrp(E, ply)
+    ply._model, ply._skin, ply._bg = "models/player/group01/male_04.mdl", 2, { [1] = 3 }
+    ply._pcol = E.Vector(0.9, 0.1, 0.2)
+    sv:run(1, function() return not E.IsValid(bike:GetDriver()) end)
+    T.ok(ply.BMXTumbling, "tumbling")
+    sv:run(E.BMX.TumbleTime + 0.2)
+    T.ok(not ply.BMXTumbling, "back up")
+    T.eq(ply:HasGodMode(), false, "no spawn protection: crashing on purpose is not five seconds of god mode")
+    local hp = ply:Health()
+    hit(E, ply, 10)
+    T.eq(ply:Health(), hp - 10, "they can be hurt straight away")
+    T.eq(ply:getDarkRPVar("Energy"), 37, "as hungry as they were: a crash is not a meal")
+    T.eq(ply:GetModel(), "models/player/group01/male_04.mdl", "the model they crashed in")
+    T.eq(ply:GetSkin(), 2, "its skin")
+    T.eq(ply:GetBodygroup(1), 3, "its bodygroups")
+    T.ok(ply:GetPlayerColor() == E.Vector(0.9, 0.1, 0.2), "their colour")
+    T.ok(not ply.IsSleeping, "and the wake-up flag is not left set")
+    T.ok(ply:HasWeapon("weapon_smg1") and ply:Armor() == 35, "the get-up's own restoring still happens")
+
+    ply:Spawn()
+    T.eq(ply:HasGodMode(), true, "a real respawn still gets the gamemode's spawn protection")
+    T.eq(ply:getDarkRPVar("Energy"), 100, "and its meal")
+end)
+
+-- The crash's damage is dealt when the rider gets up, which was inside DarkRP's
+-- spawn protection: a crash never hurt anyone there.
+T.test("a crash's damage lands on a gamemode with spawn protection", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike = F.bike(sv)
+    local ply = F.scripted(sv, bike)
+    darkrp(E, ply)
+    sv:run(1.7)                                        -- settled, and past the grace period
+    F.place(bike, bike:GetPos() + E.Vector(0, 0, 500), E.Angle(0, 0, 165))
+    bike:GetPhysicsObject():SetVelocity(E.Vector(0, 0, -150))
+    T.ok(sv:run(4, function() return not E.IsValid(bike:GetDriver()) end), "thrown off")
+    T.ok(ply.BMXTumbling, "tumbling")
+    sv:run(E.BMX.TumbleTime + 0.2)
+    T.ok(not ply.BMXTumbling, "back up")
+    T.ok((ply._damage or 0) > 0, "and hurt by the crash")
+end)
+
+-- The engine's Spawn turns god mode off: an admin in god mode lost it to a crash.
+T.test("an admin in god mode is still in it after a crash", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike, ply = tipOver(sv)
+    ply:GodEnable()
+    sv:run(1, function() return not E.IsValid(bike:GetDriver()) end)
+    T.ok(ply.BMXTumbling, "tumbling")
+    sv:run(E.BMX.TumbleTime + 0.2)
+    T.ok(not ply.BMXTumbling, "back up")
+    T.eq(ply:HasGodMode(), true, "still in god mode")
+end)
+
 T.test("bmx_crash_ragdoll 0 keeps the plain shove", function()
     local sv = F.server()
     local E = sv.env

@@ -186,7 +186,7 @@ end
 -- gamemode's PlayerSpawn may do more than stand a player up: TTT's clears the
 -- round's state (credits, bought equipment, a detective's armour), so a traitor
 -- who crashed lost the lot. Sandbox and what derives from it (the BMX mode,
--- DarkRP) only spawn; anywhere else a crash is the shove.
+-- DarkRP) can be put back (standUp, below); anywhere else a crash is the shove.
 --------------------------------------------------------------------------
 local TUMBLE_TIME = 1.6
 BMX.TumbleTime = TUMBLE_TIME
@@ -196,6 +196,53 @@ CreateConVar("bmx_crash_ragdoll", "1", bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVA
 
 function BMX.TumbleAllowed()
     return GAMEMODE ~= nil and GAMEMODE.IsSandboxDerived == true
+end
+
+--------------------------------------------------------------------------
+-- GETTING UP IS NOT RESPAWNING. Spawn is the only thing that puts a player
+-- back together after spectating, and it runs the gamemode's PlayerSpawn.
+-- Measured on a real DarkRP server (2026-10-15), every get-up was a respawn:
+-- five seconds of spawn protection (god mode, see-through), so crashing on
+-- purpose made a rider invulnerable and the crash's own damage never landed;
+-- the hunger mod filled them up; a job with several models stood them up as
+-- somebody else. And the engine's Spawn turns off god mode, so an admin in god
+-- mode lost it to a crash anywhere.
+--
+-- So what Spawn may change and the tumble did not is noted just before it and
+-- put back after it: god mode, the look, and DarkRP's hunger. That is the
+-- recipe DarkRP's own knock-out uses to wake a player up (modules/sleep), with
+-- the same flag, IsSleeping, which tells its PlayerSpawn that this is a
+-- wake-up and starts no spawn protection. Health, armour, weapons, ammo and
+-- the spot are the get-up's own business, below.
+--------------------------------------------------------------------------
+local function standUp(ply)
+    local keep = {
+        god = ply:HasGodMode(),
+        model = ply:GetModel(), skin = ply:GetSkin(), groups = {},
+        colour = ply:GetPlayerColor(), weaponColour = ply:GetWeaponColor(),
+        -- DarkRP's hunger mod, which sets it to 100 on every spawn.
+        energy = ply.getDarkRPVar and ply:getDarkRPVar("Energy") or nil,
+    }
+    for i = 0, (ply:GetNumBodyGroups() or 1) - 1 do keep.groups[i] = ply:GetBodygroup(i) end
+
+    local sleeping = ply.IsSleeping
+    ply.IsSleeping = true
+    ply:Spawn()
+    ply.IsSleeping = sleeping
+
+    if ply:HasGodMode() ~= keep.god then
+        if keep.god then ply:GodEnable() else ply:GodDisable() end
+    end
+    if ply:GetModel() ~= keep.model then
+        ply:SetModel(keep.model)
+        -- The first-person hands are picked from the model.
+        if ply.SetupHands then ply:SetupHands() end
+    end
+    ply:SetSkin(keep.skin)
+    for i, v in pairs(keep.groups) do ply:SetBodygroup(i, v) end
+    ply:SetPlayerColor(keep.colour)
+    ply:SetWeaponColor(keep.weaponColour)
+    if keep.energy ~= nil and ply.setSelfDarkRPVar then ply:setSelfDarkRPVar("Energy", keep.energy) end
 end
 
 function BMX.Tumble(ply, vel, after)
@@ -281,7 +328,7 @@ function BMX.Tumble(ply, vel, after)
         net.Send(ply)
 
         ply:UnSpectate()
-        ply:Spawn()
+        standUp(ply)
         ply:SetPos(at + Vector(0, 0, 4))
         ply:SetEyeAngles(Angle(0, saved.eyes.y, 0))
         ply:SetHealth(saved.health)

@@ -549,17 +549,27 @@ local function closeHand(ply, side)
     if not ax then return end
     local curl = Angle(0, 0, 0)
     curl:RotateAroundAxis(ax, CURL)
-    -- The same curl every frame: a finger already holding it is left alone (setting it
-    -- again moves nothing, but the skeleton would be posed again to see that).
-    for _, f in ipairs(FINGERS) do
-        for _, b in ipairs({ fingerBones(ply, side, f) }) do
-            local had = ply.bmxIK[b]
-            if not (had and had.p == curl.p and had.y == curl.y and had.r == curl.r) then
-                ply.bmxIK[b] = curl
-                manip(ply, b, curl)
-            end
+    -- The same curl every frame: a hand whose fingers were all given it, on this model
+    -- (a new model starts its bone map afresh), and that the engine still has on the
+    -- first of them, is left alone. Setting it again moves nothing, but the skeleton
+    -- would be posed again to see that.
+    local first = fingerBones(ply, side, FINGERS[1])
+    local curled = boneMap.curled
+    if first and curled and curled[side] then
+        local had, has = ply.bmxIK[first], ply:GetManipulateBoneAngles(first)
+        if had and had.p == curl.p and had.y == curl.y and had.r == curl.r
+            and has.p == curl.p and has.y == curl.y and has.r == curl.r then
+            return
         end
     end
+    for _, f in ipairs(FINGERS) do
+        for _, b in ipairs({ fingerBones(ply, side, f) }) do
+            ply.bmxIK[b] = curl
+            manip(ply, b, curl)
+        end
+    end
+    boneMap.curled = boneMap.curled or {}
+    boneMap.curled[side] = true
 end
 
 --------------------------------------------------------------------------

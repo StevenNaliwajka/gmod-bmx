@@ -235,10 +235,12 @@ apart, all near the view):
 
 | a frame, riding steady | 1.3.2 | 1.3.4 | after |
 |---|---|---|---|
-| SetupBones, one BMX rider | 56.4 | 58.4 | 11.5 |
+| SetupBones, one BMX rider | 56.4 | 58.4 | 11.3 |
 | SetupBones, one scooter / board rider | 47 / 40 | 49 / 42 | 3 / 1 |
-| SetupBones, one skater | 19.1 | 21.1 | 4.7 |
-| SetupBones, 8 BMX riders | 452 | 468 | 93 |
+| SetupBones, one skater | 19.1 | 20.1 | 4.1 |
+| SetupBones, 8 BMX riders | 452 | 468 | 90 |
+| frame, 8 BMX riders, shim ms (JIT off) | -- | 61.5 | 22.2 |
+| frame, 8 dirt bikes, shim ms (JIT off) | -- | 88.8 | 23.0 |
 | bone matrices read, 4 BMX riders, varied riding | -- | 760 | 292 |
 
 1.3.3 made the IK dearer by 2-10% (the extra passes for a fast-moving body, the

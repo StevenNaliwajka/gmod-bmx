@@ -679,6 +679,50 @@ function(ctx)
     ctx:ok(ejected, "a hard inverted impact ejects the rider")
 end)
 
+-- The get-up's Spawn put a fire out: a rider set alight crashed on purpose to be
+-- cured (a real DarkRP server, 2026-10-15). The ragdoll burns for the tumble, and
+-- the rider gets up still burning, for the time the fire had left (sv_seat.lua).
+T.Case("crash_on_fire_gets_up_burning", { timeout = 30,
+    desc = "a rider on fire who crashes tumbles as a burning ragdoll and gets up still burning" },
+function(ctx)
+    local p = ctx.bot
+    if not ctx:ok(BMX.TumbleAllowed() and GetConVar("bmx_crash_ragdoll"):GetBool(),
+        "this server throws crashed riders off as ragdolls") then return end
+    ctx:wait(ctx.cfg.Crash.grace + 0.3)
+    p:SetHealth(1000)                       -- the fire's own damage is not the point
+    p:Ignite(20)
+    local outAt = CurTime() + 20
+    ctx:ok(p:IsOnFire(), "the rider is on fire")
+
+    local phys = ctx.bike:GetPhysicsObject()
+    if not ctx:ok(IsValid(phys), "bike has a physics object") then return end
+    phys:SetPos(ctx.ground + Vector(0, 0, 500), true)
+    phys:SetAngles(Angle(0, 0, 165))
+    phys:SetVelocity(Vector(0, 0, -150))
+    phys:Wake()
+
+    local rag
+    ctx:waitUntil(function() rag = p.BMXTumbling return IsValid(rag) end, 6, "the rider to tumble")
+    if not ctx:ok(IsValid(rag), "thrown off as a ragdoll") then p:Extinguish() return end
+    ctx:wait(0.2)
+    ctx:ok(IsValid(rag) and rag:IsOnFire(), "the ragdoll burns")
+    ctx:ok(not p:IsOnFire(), "the hidden rider does not (its flames would float where it was)")
+
+    local up = ctx:waitUntil(function() return not p.BMXTumbling end, BMX.TumbleTime + 3, "the get-up")
+    ctx:wait(0.2)
+    ctx:ok(up and p:Alive(), "back up")
+    ctx:ok(p:IsOnFire(), "still burning")
+    local left
+    for _, f in ipairs(ents.FindByClass("entityflame")) do
+        if f:GetParent() == p then left = (tonumber(f:GetInternalVariable("m_flLifetime")) or 0) - CurTime() end
+    end
+    local want = outAt - CurTime()
+    ctx:log(string.format("fire left %.2f s, expected %.2f s", left or -1, want))
+    ctx:between(left or -1, want - 0.5, want + 0.5, "the fire's time left", "s")
+    p:Extinguish()
+    p:SetHealth(100)
+end)
+
 --------------------------------------------------------------------------
 T.Case("per_bike_physics", { rider = false, timeout = 20,
     desc = "a bike's physics overrides actually reach the simulation" },

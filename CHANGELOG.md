@@ -5,6 +5,17 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.3.8 -- not on the Workshop yet
+
+A fix for crashes on fire, and the Workshop page brought up to date.
+
+- **On fire, you stay on fire after a crash.** Getting up from a crash put
+  the flames out, so a rider who was set alight could crash on purpose to be
+  cured (seen on a real DarkRP server). The ragdoll now burns while you
+  tumble, and you are still burning when you get up, for the time the fire
+  had left. If the ragdoll lands in water, the fire stays out.
+- The Workshop page's "New in" line now covers 1.3 instead of 1.2.0.
+
 ## 1.3.7 -- on the Workshop 2026-10-19
 
 No more stutter the first time a vehicle shows up; skates on a server with any

@@ -238,6 +238,53 @@ T.test("flip ride: every flip off a full pop lands, caught, and pays under its o
     end
 end)
 
+-- FLAT-GROUND KICKFLIPS, ONE AFTER ANOTHER. The crouch for the next pop (0.45 s)
+-- fits inside Combo.grace, so every kickflip linked to the last: eight were one
+-- combo of eight, 24,000 points out of 3,000 of flips, growing as the square of the
+-- flips. With bmx_combo_variety the fifth kickflip on adds nothing to the combo.
+local function kickflips(n, variety, flips)
+    local sv, e = ridden()
+    sv.env.GetConVar("bmx_combo_variety"):SetString(variety and "1" or "0")
+    local ended, bailed = {}, nil
+    sv.env.hook.Add("BMX_ComboEnded", "test", function(ent, ply, c) ended[#ended + 1] = c end)
+    sv.env.hook.Add("BMX_Crashed", "test", function(ent, ply, reason) bailed = reason end)
+    press(e, { throttle = 1, fwd = 1 })
+    sv:run(3)
+    local s0 = e:GetScore()
+    for i = 1, n do
+        local side = (flips and flips[i] == "d") and 1 or -1      -- A kickflip, D heelflip
+        press(e, { jump = true })
+        sv:run(0.45)
+        press(e, { side = side, fwd = 0, w = false, s = false })
+        sv:run(0.1)
+        press(e, { throttle = 0.4 })
+        local up = false
+        sv:run(2.0, function()
+            if not e.st.grounded then up = true end
+            return up and e.st.grounded
+        end)
+        sv:run(0.1)
+    end
+    press(e, {})
+    sv:run(2)
+    return ended, e:GetScore() - s0, bailed
+end
+
+T.test("flip ride: kickflips one after another are one combo, and with variety it stops growing at x4", function()
+    local ended, got, bailed = kickflips(8, true)
+    T.eq(bailed, nil, "every one landed")
+    T.eq(#ended, 1, "eight kickflips linked into one combo")
+    local c = ended[1]
+    T.eq(c.n, 4, "only four count")
+    T.ok(got < c.base * 2, "the combo adds less than the flips paid: " .. got .. " for " .. c.base)
+    local old, oldGot = kickflips(8, false)
+    T.eq(old[1].n, 8, "the old rule: x8")
+    T.eq(oldGot, old[1].base * 8, "eight times the flips: " .. oldGot)
+    -- Kickflip, heelflip, kickflip, heelflip...: two tricks, four of each count.
+    local mixed = kickflips(8, true, { "a", "d", "a", "d", "a", "d", "a", "d" })
+    T.eq(mixed[1].n, 8, "mixed with heelflips, all eight count")
+end)
+
 T.test("flip ride: a tap pop is too low for the board to finish a flip: the landing bails", function()
     local sv, e, landed, bailed = popAndFlip("a", 0.0)
     T.eq(bailed, "flip", "bailed on the flip")

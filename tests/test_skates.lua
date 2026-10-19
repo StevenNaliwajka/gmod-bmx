@@ -690,6 +690,48 @@ T.test("skates setup: the combo and the score are the platform's, through the st
     T.eq(w.proxy:AwardTricks({ { name = "x", count = 1, points = 500 } }), 0, "bmx_scoring 0 pays nothing")
 end)
 
+-- JUMPING ON THE SPOT. Every jump on flat ground is ~0.75 s of air, which is "Air
+-- Time" (S.ScoreAir pays from airMin 0.45 s), the air holds the combo open and the
+-- next jump comes inside Combo.grace: ten jumps were one combo of ten, 7,500 points
+-- out of 750 of jumps, and it grew as the square of the jumps (twenty: 30,000). With
+-- bmx_combo_variety the fifth Air Time on adds nothing.
+local function jumpOnTheSpot(n, variety)
+    local sv, ply, mv, w, gz = skater()
+    local E = sv.env
+    E.GetConVar("bmx_combo_variety"):SetString(variety and "1" or "0")
+    local ended = {}
+    E.hook.Add("BMX_ComboEnded", "t", function(ent, p, c) ended[#ended + 1] = c end)
+    keys(w, { fwd = 1, w = true })
+    for _ = 1, 66 * 2 do tick(sv, ply, mv, gz) end
+    local s0 = ply:GetNWInt("BMXWornScore", 0)
+    for _ = 1, n do
+        keys(w, { jump = true })
+        tick(sv, ply, mv, gz)
+        keys(w, {})
+        local air = 0
+        for _ = 1, 66 * 3 do
+            tick(sv, ply, mv, gz)
+            if not w.st.grounded then air = air + 1 end
+            if w.st.grounded and air > 5 then break end
+        end
+        for _ = 1, 20 do tick(sv, ply, mv, gz) end     -- 0.3 s rolling: inside the grace
+    end
+    for _ = 1, 66 * 2 do tick(sv, ply, mv, gz) end
+    return ended, ply:GetNWInt("BMXWornScore", 0) - s0
+end
+
+T.test("skates combo: jumping on the spot is one combo, and with variety it stops growing at x4", function()
+    local ended, got = jumpOnTheSpot(10, true)
+    T.eq(#ended, 1, "ten jumps linked into one combo")
+    local c = ended[1]
+    T.eq(c.n, 4, "only four Air Times count")
+    T.ok(c.base >= 700 and c.base <= 800, "each jump paid its own Air Time: " .. c.base)
+    T.ok(got < c.base * 2, "the combo adds less than the jumps paid: " .. got .. " for " .. c.base)
+    local old, oldGot = jumpOnTheSpot(10, false)
+    T.eq(old[1].n, 10, "the old rule: x10")
+    T.eq(oldGot, old[1].base * 10, "and ten times the jumps: " .. oldGot)
+end)
+
 --------------------------------------------------------------------------
 -- The grinds, on rails in the world
 --------------------------------------------------------------------------

@@ -1086,6 +1086,14 @@ C.Combo = {
     -- Seconds on the ground, not in a trick, before a combo banks: the time a
     -- rider has to link the next trick. A manual or a grind holds it open.
     grace = 0.8,
+    -- REPEATS (bmx_combo_variety 1, sv_combo.lua): the k-th time one trick (by
+    -- name) is in one combo, it adds repeats[k] of its points to the chain and
+    -- one to the multiplier; past the end of the list it adds nothing to
+    -- either. A trick's own points are paid in full every time regardless.
+    -- So one trick can lift a combo to x4 at most, and only a varied line goes
+    -- further: the Tony Hawk rule, without which ten backflips (50,000) beat
+    -- ten different tricks (35,550).
+    repeats = { 1, 0.75, 0.5, 0.25 },
 }
 
 --------------------------------------------------------------------------

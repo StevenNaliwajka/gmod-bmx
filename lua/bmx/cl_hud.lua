@@ -401,6 +401,10 @@ end)
 -- COMBOS (sv_combo.lua): the chain as it builds, then LANDED with the bonus
 -- or BAILED. Lower centre, under the trick callouts.
 --------------------------------------------------------------------------
+-- `base` here is the chain's points as the multiplier sees them (the server's
+-- chain.value: a trick repeated in one combo counts for less, bmx_combo_variety),
+-- and `n` the multiplier, so "base  xN" is the combo's worth and LANDED pays
+-- base x (N - 1) on top of what the tricks already paid.
 local combo = nil        -- { state, n, base, bonus, names, at }
 BMX.ComboHUD = function() return combo end
 

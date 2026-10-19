@@ -81,7 +81,7 @@ if BMX.Version then ring[#ring + 1] = "[BMX] " .. BMX.Version .. " loaded (clien
 -- CLIENT knows.
 --------------------------------------------------------------------------
 local EXTRA = {
-    { "bmx_scoring", "1" }, { "bmx_combos", "1" }, { "bmx_max_per_player", "0" },
+    { "bmx_scoring", "1" }, { "bmx_combos", "1" }, { "bmx_combo_variety", "1" }, { "bmx_max_per_player", "0" },
     { "bmx_air_assist", "1" }, { "bmx_nose_manual", "0" },
     { "bmx_crash_ragdoll", "1" }, { "bmx_ragmod", "1" },
     { "bmx_bell", "1" }, { "bmx_bell_cooldown", "0.3" },

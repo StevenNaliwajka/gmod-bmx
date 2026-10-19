@@ -8,6 +8,8 @@
                              Counted across every kind of bike.
       bmx_scoring 0|1        tricks score at all: points, callouts, combos.
       bmx_combos  0|1        tricks chain into combos for a bonus.
+      bmx_combo_variety 0|1  a trick repeated in one combo adds less to it
+                             each time, and nothing after the fourth.
       bmx_nose_manual 0|1    the nose manual: rolling on the front wheel (G02).
                              Off by default until it has been ridden live.
       bmx_air_assist 0|1     the air turn, landing aim and spine transfer off a
@@ -39,6 +41,12 @@ local scoring = CreateConVar("bmx_scoring", "1", FLAGS,
     "BMX: 1 = tricks score points, callouts and combos; 0 = no scoring at all.")
 local combos  = CreateConVar("bmx_combos", "1", FLAGS,
     "BMX: 1 = chained tricks build a combo that pays a bonus when landed; 0 = off.")
+-- COMBO VARIETY (sv_combo.lua, Combo.repeats): a trick repeated in one combo adds
+-- less to it each time, and past the fourth nothing. 0 is the old rule, where
+-- every repeat counted in full and spamming one trick out-scored a varied line.
+local variety = CreateConVar("bmx_combo_variety", "1", FLAGS,
+    "BMX: 1 = a trick repeated in one combo adds less to it each time (none after the fourth); 0 = every repeat counts in full.")
+function BMX.ComboVarietyOn() return variety:GetBool() end
 
 -- AIR ASSIST (G06): the turn off a vert ramp, the landing aim and the spine
 -- transfer (sv_air.lua, VertAir). Off leaves the air exactly as it was before

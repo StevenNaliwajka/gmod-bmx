@@ -73,6 +73,7 @@ local function cleanup()
         b:SetPos(c.ground + Vector(-200, 0, 10))
     end
     if IsValid(c.bike) then c.bike:Remove() end
+    if c.walk and IsValid(b) then b:StripWeapon("weapon_bmx_board") end
     S.cur = nil
 end
 
@@ -95,7 +96,8 @@ function S.Next()
         file.Write("ridestudio/_done.txt", "owner " .. tostring(S.ownerName) .. " is not connected")
         return
     end
-    local def = BMX.Vehicles[id]
+    -- "carry": the bot walks with a skateboard in hand (weapon_bmx_board).
+    local def = id == "carry" and { carry = true } or BMX.Vehicles[id]
     if not def then print("[ride] no vehicle " .. id) return S.Next() end
     local g, yaw, run = stage()
     local b = bot()
@@ -104,7 +106,13 @@ function S.Next()
     S.cur = c
     b.BMXScripted = true
     if IsValid(b:GetVehicle()) then b:ExitVehicle() end
-    if def.worn then
+    if def.carry then
+        b:SetPos(g + Vector(0, 0, 4))
+        b:SetEyeAngles(Angle(0, yaw, 0))
+        b:Give("weapon_bmx_board")
+        b:SelectWeapon("weapon_bmx_board")
+        c.ent, c.walk = b, true
+    elseif def.worn then
         b:SetPos(g + Vector(0, 0, 4))
         b:SetEyeAngles(Angle(0, yaw, 0))
         BMX.Worn.Equip(b, id)
@@ -129,6 +137,11 @@ function S.Next()
         if IsValid(c.bike) and IsValid(c.bike:GetPhysicsObject()) then c.bike:GetPhysicsObject():EnableMotion(false) end
         local t0
         hook.Add("Think", "ridestudio_drive", function()
+            -- CARRYING: the bot walks (StartCommand, below).
+            if c.walk then
+                if c.ready then t0 = t0 or CurTime() end
+                return
+            end
             -- WORN (the skates): the bot strides along, as a held W does.
             if not c.bike then
                 local w = BMX.Worn and BMX.Worn.Of and BMX.Worn.Of(b)
@@ -189,6 +202,17 @@ function S.Next()
         c.deadline = CurTime() + 120
     end)
 end
+
+-- The carrying bot walks forward once the client is ready, for three seconds.
+hook.Add("StartCommand", "ridestudio_walk", function(ply, cmd)
+    local c = S.cur
+    if not (c and c.walk and c.ready and ply == c.bot) then return end
+    c.walkT = c.walkT or CurTime()
+    if CurTime() - c.walkT < 3 then
+        cmd:SetForwardMove(150)
+        cmd:SetButtons(bit.bor(cmd:GetButtons(), IN_WALK))
+    end
+end)
 
 hook.Add("Think", "ridestudio_watchdog", function()
     local c = S.cur

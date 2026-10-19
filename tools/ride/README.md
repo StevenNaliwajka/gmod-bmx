@@ -14,7 +14,8 @@ Arguments: vehicle ids (comma-separated, or `all`), the throttle (0..1), and whe
 to put the JPEGs. A fourth argument films a sequence instead, a frame every 0.12 s from
 a camera that keeps its heading: `seq` (pedal off, a turn, a bunny hop), `stance`
 (seated, standing, then attack: out of the saddle) or, on the skateboard, `board`
-(pushes, the crouch, an ollie and an indy grab). Same settings as the icon studio: `BMX_STUDIO_HOST`,
+(pushes, the crouch, an ollie and an indy grab). The id `carry` photographs the bot
+walking with a skateboard in hand. Same settings as the icon studio: `BMX_STUDIO_HOST`,
 `BMX_STUDIO_PORT`, `BMX_STUDIO_SSH`, `BMX_STUDIO_GMOD`, and `BMX_STUDIO_OWNER`, which is
 required: the name of YOUR client. Nobody else's client is ever sent code or made to
 render, and with the owner not connected the run stops at once.

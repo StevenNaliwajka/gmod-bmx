@@ -102,6 +102,38 @@ local function seatPod(ent, seat)
 end
 
 local def = B.Vehicles[ID]
+-- CARRY: the skateboard in hand (weapon_bmx_board), on a player standing in the idle
+-- the "normal" hold is (the standing capture): the idle's arm, then the carry's.
+if SCEN == "carry" then
+    local ply = cl:player("Carrier")
+    ply._skel = SR.load("kleiner_standing")
+    ply:SetPos(E.Vector(0, 0, 0))
+    ply._eyeAngles = E.Angle(0, 0, 0)
+    cl.localPlayer = sv:player("Looker")
+    cl:loadWeapon("weapon_bmx_board")
+    local SW = cl.sweps.weapon_bmx_board
+    local wep = setmetatable({ GetOwner = function() return ply end, DrawModel = function() end }, { __index = SW })
+    local shots = {}
+    local function draw() drawn, tubes = {}, {} SW.DrawWorldModel(wep) end
+    for _ = 1, 8000 do draw() if #drawn > 0 then break end end    -- (the model builds)
+    local function shot(label)
+        ply:InvalidateBoneCache(); ply:SetupBones()
+        local out = {}
+        for i, b in ipairs(ply._skel.BONES) do
+            local m = ply:GetBoneMatrix(i)
+            local t, f, r, u = m:GetTranslation(), m:GetForward(), m:GetRight(), m:GetUp()
+            out[b[1]] = { t.x, t.y, t.z, f.x, f.y, f.z, -r.x, -r.y, -r.z, u.x, u.y, u.z }
+        end
+        draw()
+        shots[#shots + 1] = { label = label, bones = out, drawn = drawn, tubes = tubes, targets = {},
+            ent = { 0, 0, 0, 0, 0, 0 }, fwd = { 1, 0, 0 } }
+    end
+    shot("the idle's arm")
+    B.Board.CarryPose(ply)
+    shot("the arm brought in")
+    io.write(J.encode({ id = ID, pose = "carry", model = #drawn > 0, meshes = meshes, shots = shots, errors = cl.errors }), "\n")
+    os.exit(0)
+end
 if def.worn then
     -- WORN (the skates): the player is the vehicle.
     local ply = cl:player("Skater")

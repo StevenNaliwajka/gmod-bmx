@@ -3,9 +3,10 @@
 
     THE BOARD UNDER YOUR ARM (G23, sv_board_carry.lua). Left mouse puts it down in
     front of you; bmx_pickup_board (bind it) takes one back. It counts toward bmx_max_per_player
-    while you carry it. The model is a base-game plate, since there is no board
-    model yet (that is G23's M5); the first-person view is drawn as the same
-    procedural board when cl_board.lua is there to do it.
+    while you carry it. Others see the board itself in your hand, hanging at your
+    side by its front truck (cl_board.lua, BMX.Board.DrawCarried); the base-game
+    plate is the world model only while that model builds, or without the client
+    files.
 ----------------------------------------------------------------------------]]
 
 SWEP.PrintName    = "Skateboard"
@@ -23,7 +24,7 @@ SWEP.DrawCrosshair = true
 SWEP.ViewModel    = "models/weapons/c_arms.mdl"
 SWEP.WorldModel   = "models/hunter/plates/plate05x1.mdl"
 SWEP.UseHands     = true
-SWEP.HoldType     = "slam"
+SWEP.HoldType     = "normal"     -- the arm down at the side, the board in the hand
 
 SWEP.Primary.ClipSize     = -1
 SWEP.Primary.DefaultClip  = -1
@@ -48,6 +49,13 @@ function SWEP:SecondaryAttack() end
 function SWEP:Reload() end
 
 if CLIENT then
+    function SWEP:DrawWorldModel(flags)
+        local ply = self:GetOwner()
+        local B = BMX and BMX.Board
+        if IsValid(ply) and B and B.DrawCarried and B.DrawCarried(ply) then return end
+        self:DrawModel(flags)
+    end
+
     function SWEP:DrawHUD()
         draw.SimpleText("LMB  put the board down", "DermaDefault", ScrW() * 0.5, ScrH() - 80,
             Color(255, 255, 255, 220), TEXT_ALIGN_CENTER)

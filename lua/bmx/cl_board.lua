@@ -866,6 +866,117 @@ function BMX.BoardModel(ent)
     return BM.Remembered(ent, bike, C, boardModel, bike, C)
 end
 
+--------------------------------------------------------------------------
+-- THE BOARD IN HAND (weapon_bmx_board, sv_board_carry.lua). The carried board was the
+-- SWEP's world model, a base-game plate held out in front in the "slam" hold, from
+-- before the board had a model. It is the board itself now, the way a skater carries
+-- one walking: hanging at the side from the right hand, which holds it by the front
+-- truck's hanger, the deck against the leg and the wheels out, swinging with the arm.
+-- The same built model the ridden boards draw (built once, shared). Returns whether
+-- it drew (false while the model builds: the SWEP draws its plate meanwhile).
+--------------------------------------------------------------------------
+B.CarryOut = 1.2            -- units the grip is out from the palm, so the deck clears the leg
+
+-- THE CARRYING ARM DOWN AT THE SIDE. The "normal" hold's idle stands with the arms out
+-- in an A, and the board hung from that hand dangled a foot out from the hip (kleiner's
+-- mesh in the offline studio, 2026-10-19). The right arm is brought in: where the
+-- animation has the hand, fore and aft and up and down -- so it still swings as the
+-- player walks -- but no further out from the shoulder than CARRY_OUT, at the same
+-- reach. Put back when the board is put down (or the player is far away).
+local CARRY_OUT = 3.0
+local CARRY_RANGE = 1200
+local CARRY_BONES = { "ValveBiped.Bip01_R_UpperArm", "ValveBiped.Bip01_R_Forearm", "ValveBiped.Bip01_R_Hand" }
+local carrying = setmetatable({}, { __mode = "k" })
+local function carryRelease(ply)
+    for _, name in ipairs(CARRY_BONES) do
+        local b = ply:LookupBone(name)
+        if b then
+            ply:ManipulateBoneAngles(b, Angle(0, 0, 0))
+            if ply.bmxIK then ply.bmxIK[b] = nil end
+        end
+    end
+    carrying[ply] = nil
+end
+function B.CarryPose(ply)
+    local limb = BMX.RiderLimbs and BMX.RiderLimbs[3]
+    if not (limb and BMX.RiderSolveLimb and BMX.RiderAimBone) then return end
+    -- The arm as the animation has it, then measured.
+    for _, name in ipairs(CARRY_BONES) do
+        local b = ply:LookupBone(name)
+        if b then ply:ManipulateBoneAngles(b, Angle(0, 0, 0)) end
+    end
+    ply.bmxIK = ply.bmxIK or {}
+    for _, name in ipairs(CARRY_BONES) do
+        local b = ply:LookupBone(name)
+        if b then ply.bmxIK[b] = nil end
+    end
+    ply:InvalidateBoneCache()
+    ply:SetupBones()
+    local sb, eb, hb = ply:LookupBone(limb.root), ply:LookupBone(limb.hinge), ply:LookupBone(limb.eff)
+    local S, E, H = sb and ply:GetBoneMatrix(sb), eb and ply:GetBoneMatrix(eb), hb and ply:GetBoneMatrix(hb)
+    if not (S and E and H) then return end
+    S, E, H = S:GetTranslation(), E:GetTranslation(), H:GetTranslation()
+    local ang = ply:GetRenderAngles()
+    local f, r = ang:Forward(), ang:Right()
+    local up = Vector(0, 0, 1)
+    local d = H - S
+    local len = d:Length()
+    local x, y = d:Dot(f), math.min(d:Dot(r), CARRY_OUT)
+    local z = -math.sqrt(math.max(len * len - x * x - y * y, 1))
+    BMX.RiderSolveLimb(ply, limb, S + f * x + r * y + up * z, (r * 0.45 - f * 0.8):GetNormalized())
+    -- the wrist straight, the hand going on from the forearm
+    local fb = ply:LookupBone("ValveBiped.Bip01_R_Finger2")
+    if fb then
+        ply:InvalidateBoneCache()
+        ply:SetupBones()
+        local E2, H2 = ply:GetBoneMatrix(eb):GetTranslation(), ply:GetBoneMatrix(hb):GetTranslation()
+        BMX.RiderAimBone(ply, hb, hb, fb, (H2 - E2):GetNormalized())
+    end
+    carrying[ply] = true
+end
+
+hook.Add("PrePlayerDraw", "BMX.Board.Carry", function(ply)
+    local w = ply:GetActiveWeapon()
+    local holding = IsValid(w) and w:GetClass() == "weapon_bmx_board" and not ply:InVehicle()
+        and EyePos():Distance(ply:GetPos()) < CARRY_RANGE
+    if holding then
+        B.CarryPose(ply)
+    elseif carrying[ply] then
+        carryRelease(ply)
+    end
+end)
+function B.DrawCarried(ply, paint)
+    local def = BMX.Vehicles and BMX.Vehicles.skateboard
+    if not (def and def.look and BMX.BikeMesh and BMX.ConfigFor) then return false end
+    local C = BMX.ConfigFor(def)
+    local model = boardModel(def, C)
+    if not model then return false end
+    local hb = ply:LookupBone("ValveBiped.Bip01_R_Hand")
+    local m = hb and ply:GetBoneMatrix(hb)
+    if not m then return false end
+    -- The hand's own length (ValveBiped: its X runs out to the fingers) is the way the
+    -- board hangs from it; the deck faces back in toward the body.
+    local fingers = m:GetForward()
+    local out = ply:GetRenderAngles():Right()
+    local x = -fingers                                   -- the nose up the arm, the tail down
+    local z = -out - x * (-out):Dot(x)                   -- the deck's top against the leg
+    if z:Length() < 1e-3 then return false end
+    z:Normalize()
+    local y = z:Cross(x)
+    local lay = model.layout
+    local ta, ax = lay.truckAt, lay.axle
+    local grip = Vector(ta.x + ax.x, 0, ta.z + ax.z * 0.7)     -- on the front hanger
+    local palm = m:GetTranslation() + fingers * 3.0 + out * B.CarryOut
+    local O = palm - x * grip.x - z * grip.z
+    local function P(v) return O + x * v.x + y * v.y + z * v.z end
+    B.DrawModel(ply, model, {
+        P = P, level = { f = x, l = y, u = z }, center = P(Vector(0, 0, 0)),
+        wheels = BMX.WheelDefs(def, C), simRadius = C.Wheel.radius,
+        paint = paint or BMX.PaletteColor(1), lod = 0, steer = 0,
+    })
+    return true
+end
+
 BMX.DrawVehicle = BMX.DrawVehicle or {}
 BMX.DrawVehicle.board = function(ent, kit)
     local bike = ent:Bike()

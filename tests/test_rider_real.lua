@@ -466,3 +466,63 @@ T.test("real skeleton: standing and attack lift the rider off the saddle, on the
         if cb.Remove then cb:Remove() end
     end
 end)
+
+-- THE BOARD IN HAND. The carried board was the SWEP's world model, a base-game plate
+-- held out in front in the "slam" hold. It is the board itself now, hanging at the side
+-- from the right hand by its front truck; and the "normal" hold's idle has the arms out
+-- in an A, so the carrying arm is brought down to the side (and put back when the
+-- board is put down).
+T.test("real skeleton: a carried board hangs from the hand at the side, the arm down, put back after", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    MF.enable(cl)
+    local E, B = cl.env, cl.env.BMX
+    local ply = cl:player("Carrier")
+    ply._skel = SR.load("kleiner_standing")
+    ply:SetPos(E.Vector(0, 0, 0))
+    ply._eyeAngles = E.Angle(0, 0, 0)
+    cl.localPlayer = sv:player("Looker")
+    cl.eyePos = E.Vector(150, 0, 50)
+    cl:loadWeapon("weapon_bmx_board")
+    local SW = cl.sweps.weapon_bmx_board
+    T.eq(SW.HoldType, "normal", "held at the side, not out in front")
+    local plate = 0
+    local wep = setmetatable({ GetOwner = function() return ply end, DrawModel = function() plate = plate + 1 end },
+        { __index = SW })
+    local function hand()
+        ply:InvalidateBoneCache()
+        local S = ply:GetBoneMatrix(ply:LookupBone("ValveBiped.Bip01_R_UpperArm")):GetTranslation()
+        local H = ply:GetBoneMatrix(ply:LookupBone("ValveBiped.Bip01_R_Hand")):GetTranslation()
+        return H, S
+    end
+    local H0, S0 = hand()
+    local out0 = (H0 - S0):Dot(E.Vector(0, -1, 0))       -- (facing +x, the right is -y)
+    ply._activeWep = "weapon_bmx_board"
+    E.hook.Run("PrePlayerDraw", ply)
+    local H1, S1 = hand()
+    local out1 = (H1 - S1):Dot(E.Vector(0, -1, 0))
+    T.ok(out0 > 10, string.format("the idle's hand is out from the shoulder: %.1f", out0))
+    T.between(out1, -1, 4, "carrying, the hand is down at the side, units out from the shoulder")
+    T.between((H1 - S1):Length(), (H0 - S0):Length() - 1, (H0 - S0):Length() + 1, "at the arm's own reach")
+    -- the board is drawn, at the hand (until it is built, the plate)
+    local drew
+    for _ = 1, 8000 do
+        cl.groups = {}
+        plate = 0
+        SW.DrawWorldModel(wep)
+        if #cl.groups > 0 then drew = true break end
+    end
+    T.ok(drew and plate == 0, "the board's own model is drawn, not the plate")
+    local deck = MF.group(cl, "deck")
+    T.ok(deck and (deck:GetTranslation() - H1):Length() < 30, "the deck by the hand")
+    local truck = MF.group(cl, "truck")
+    T.ok(truck and (truck:GetTranslation() - H1):Length() < 6, "held by the front truck: "
+        .. string.format("%.1f", truck and (truck:GetTranslation() - H1):Length() or -1))
+    T.ok(deck:GetTranslation().z < H1.z - 6, "hanging below the hand")
+    -- put down: the arm goes back to the animation's
+    ply._activeWep = nil
+    E.hook.Run("PrePlayerDraw", ply)
+    local H2 = hand()
+    T.near((H2 - H0):Length(), 0, 1e-6, "the board put down, the arm is the idle's again")
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)

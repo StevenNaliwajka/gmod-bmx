@@ -71,3 +71,15 @@ end. `S.Observe` now trusts that flag only when the player has not been moved
 further than their own motion since the last tick, and asks the wheels' cast
 otherwise. The grind's balance meter starts the board's way (`B.MeterStart`).
 
+
+### Update (2026-10-15)
+
+The client's prediction of a skater has been run against a server under 50-200 ms of
+simulated ping (`tests/test_skates_ping.lua`; the numbers and what a real client must still
+confirm are in G30's update of the same date). It is no longer best effort: the client's own
+state is kept per usercmd and wound back when the engine predicts commands again; on a rail
+the client carries the skater as the server does (A and D are only the balance, the engine's
+movement is skipped, SPACE let go pops off at once, a ledge's pop goes away from it with the
+new networked `BMXSkateSide`); A and D no longer turn the view on a rail; and the skates go
+on and off at the weapon switch rather than a ping later. The lock onto a rail is still the
+server's alone.

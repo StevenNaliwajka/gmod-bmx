@@ -511,6 +511,33 @@ function S.IsAlong(angle)
     return a <= T.alongAngle
 end
 
+-- ONE TICK ON A RAIL, the speed: gravity along the rail's slope (`dirZ`, the z of its unit
+-- direction), the rail's friction and, with S held, the brake. The server's grind step and the
+-- client's prediction of it (cl_skates.lua) both use this, so they agree to the bit.
+function S.GrindSpeed(speed, dirZ, brake, dt, G, gravity)
+    return speed - gravity * dirZ * dt - (G.friction + G.brakeDecel * brake) * dt
+end
+
+-- Which way the boots point on a rail, as the server's grind pose has them (BMX.GrindPose with
+-- S.GrindMoves's yaw): along the rail (or half a turn round, for a skater facing back up it),
+-- or across it for a backslide, turned the way the skater already was. `heading` the skater's
+-- before, (dx, dy) the rail's direction of travel, `moveIndex` the move's place in S.GrindOrder
+-- (the networked BMXSkateGrind). Pure, so the client can keep its copy of the heading where the
+-- server's is while the server places the skater.
+function S.GrindHeading(heading, dx, dy, moveIndex)
+    local l = sqrt(dx * dx + dy * dy)
+    if l < 1e-6 then return heading end
+    dx, dy = dx / l, dy / l
+    local fx, fy = cos(heading), sin(heading)
+    local yaw = 0
+    if S.GrindOrder[moveIndex] == "skate_backslide" then
+        yaw = ((dx * fy - dy * fx) >= 0 and 1 or -1) * S.Grinds.skate_backslide.yaw
+    elseif fx * dx + fy * dy < 0 then
+        yaw = PI
+    end
+    return wrap(atan2(dy, dx) + yaw)
+end
+
 -- The point of the skater (own space) that rides the rail. On a ledge the skater stands on
 -- the top, a little over the edge toward the top side `sgn`; on a round rail it is under
 -- the middle.

@@ -628,7 +628,7 @@ called a manual).
 
 The first vehicle that is not an entity. A skater has no chassis and no seat: the player
 is the thing that moves, and the platform's idea of a vehicle (a registry entry, a state,
-an input map, a trick list, scoring and combos) has to work with nothing to spawn. Six
+an input map, a trick list, scoring and combos) has to work with nothing to spawn. Seven
 decisions.
 
 **`worn = true` is a registration flag and nothing else.** A worn vehicle has no entity
@@ -674,6 +674,18 @@ and is reused as it is; what a skater adds is the placing (the player's origin i
 tick and the engine's movement is taken over, `Move` returns true), the balance meter (the
 board's) and the end. The contact is the sole, at the player's origin, so a standing hull
 rests on the rail's top and is not inside it when it lets go.
+
+**The skater is predicted, as a walking player is.** Unlike a bike (section 5), a skater's
+movement is the player's, and the engine predicts that on the client: `cl_skates.lua` runs the
+same shared step in the client's `SetupMove`. Three rules keep the two ends agreeing under a
+ping (`tests/test_skates_ping.lua` measures it). The client's own state (the heading, the
+stride's clock, the last SPACE) is kept per usercmd, so when the engine predicts commands again
+after a correction it starts each from the state it had then, and the first takes the server's
+velocity. On a rail the client does what the server does: no walking, the skater carried along
+the rail and the engine's movement skipped, and SPACE let go pops off at once. And the skates
+go on and off at the weapon switch, the server's own command, not when `BMXWorn` arrives. What
+the client cannot do is the lock onto a rail (it has no rail finder): until the server's flag
+comes it lands on the rail's top and rolls.
 
 ## 7. Roadmap
 

@@ -94,6 +94,12 @@ local function sync(ply, w)
     if ply:GetNWInt("BMXSkateGrind", 0) ~= gid then ply:SetNWInt("BMXSkateGrind", gid) end
     local meter = st.grind and w.meter or 0
     if abs(ply:GetNWFloat("BMXSkateMeter", 0) - meter) > 0.02 then ply:SetNWFloat("BMXSkateMeter", meter) end
+    -- On an edge, which way is onto the top (the pop pushes the other way, endGrind): the
+    -- client's prediction of the pop needs it (cl_skates.lua).
+    local side = st.grind and st.grind.side
+    local sx, sy = side and side.x or 0, side and side.y or 0
+    local was = ply:GetNWVector("BMXSkateSide", vector_origin)
+    if abs(was.x - sx) > 1e-3 or abs(was.y - sy) > 1e-3 then ply:SetNWVector("BMXSkateSide", Vector(sx, sy, 0)) end
 end
 
 --------------------------------------------------------------------------
@@ -284,7 +290,7 @@ local function grindStep(ply, w, mv, dt)
     g.jumpWas = i.jump
 
     local brake = i.brake and 1 or 0
-    local v = g.speed - gravityZ() * g.dir.z * dt - (G.friction + G.brakeDecel * brake) * dt
+    local v = S.GrindSpeed(g.speed, g.dir.z, brake, dt, G, gravityZ())
     g.speed = v
     if v < G.stopSpeed then return endGrind(ply, w, mv, "slow") end
 
@@ -340,6 +346,7 @@ function Mode.Unequip(ply, w)
         ply:SetFriction(w.friction or 1)
         for _, k in ipairs({ "BMXSkatePhase" }) do ply:SetNWFloat(k, -1) end
         ply:SetNWFloat("BMXSkateMeter", 0)
+        ply:SetNWVector("BMXSkateSide", vector_origin)
         for _, k in ipairs({ "BMXSkateFlags", "BMXSkateGrind" }) do ply:SetNWInt(k, 0) end
     end
 end

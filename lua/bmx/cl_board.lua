@@ -751,8 +751,15 @@ SET.solveIK = function(ply, bike)
     BMX.SolveRiderIK(ply, ik, proxy)
     -- EYES UP THE BOARD: the way it is going, over the lead shoulder (the tail first,
     -- rolling fakie), not out to the side the body faces.
+    -- ...and into a turn, as a bike rider's head goes (cl_rider.lua's look, degrees left).
     if BMX.RiderLookAt then
-        BMX.RiderLookAt(ply, bike:GetForward() * (B.HasFlag(flags, "fakie") and -1 or 1))
+        local dir = bike:GetForward() * (B.HasFlag(flags, "fakie") and -1 or 1)
+        local look = math.rad(ply.bmxLook or 0)
+        if look ~= 0 then
+            local c, s = math.cos(look), math.sin(look)
+            dir = Vector(dir.x * c - dir.y * s, dir.x * s + dir.y * c, dir.z)
+        end
+        BMX.RiderLookAt(ply, dir)
     end
 end
 

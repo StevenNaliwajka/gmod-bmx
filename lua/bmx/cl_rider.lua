@@ -1627,7 +1627,7 @@ local function clear(ply)
     ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
     ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
     ply.bmxGripOff, ply.bmxPoseFrame, ply.bmxIKJump, ply.bmxFramePelvis = nil, nil, nil, nil
-    ply.bmxCurl = nil
+    ply.bmxCurl, ply.bmxLook = nil, nil
     -- The board's crouch lowers the pelvis (cl_board.lua); put it back.
     if ply.bmxPelvis then
         manipPos(ply, ply.bmxPelvis, Vector(0, 0, 0))
@@ -1812,6 +1812,7 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     end
     local dist = useIK and EyePos():Distance(ply:GetPos()) or math.huge
     if dist < IK_RANGE or (dist < IK_FAR and ((frameNo or 0) + ply:EntIndex()) % IK_FAR_EVERY == 0) then
+        ply.bmxLook = look              -- (a set that aims the head itself looks into the turn too)
         if set.solveIK then
             set.solveIK(ply, bike)      -- the board's: feet on the bolts, facing sideways
         else

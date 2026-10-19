@@ -548,7 +548,7 @@ BM.LastBuilds = {}
 
 -- The model for this size, or nil while it is being built (the caller
 -- draws the simple bike meanwhile). Building advances here, a few ms a
--- frame, whichever vehicle asks first (pick() decides which build).
+-- frame, at the frame's first ask, whoever asks (pick() decides whose build).
 -- `kind` (optional): a model kind other than the BMX's (cl_bikegeo.lua G.Kinds),
 -- with `opt` its builder's size: { wheelbase, radius, rearRadius, seat, ... }.
 function BM.Get(k, radius, kind, opt)

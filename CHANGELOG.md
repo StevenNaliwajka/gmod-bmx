@@ -7,9 +7,10 @@ a Workshop update goes out only when the owner says so.
 
 ## 1.3.6 -- not on the Workshop yet
 
-Players reported low frame rates. This is what a frame of BMX costs your game,
-cut down; measured offline, frame by frame, with every rider's pose and every
-drawn part checked identical to 1.3.5.
+Players reported low frame rates: a frame of BMX now costs your game much less
+(measured offline, frame by frame, with every rider's pose and every drawn part
+checked identical to 1.3.5). Also a DarkRP exploit closed, and combos that
+reward variety instead of spamming one trick.
 
 **Frame rate**
 
@@ -31,6 +32,19 @@ drawn part checked identical to 1.3.5.
   the grind sparks share one look through the map's entities instead of three;
   and the paint, the lighting and the HUD stop making throwaway text and
   tables.
+
+**Scoring**
+
+- **Combos reward variety.** The same trick again in one combo now adds less to
+  it each time: all of it, then three quarters, a half, a quarter, and from the
+  fifth time nothing, not even to the multiplier. Every trick still pays its
+  own points and still keeps your combo going. Before, the multiplier counted
+  every trick whatever it was, so spamming your best trick beat a real line:
+  ten backflips paid 50,000 and ten different tricks 35,550, and twenty jumps
+  on the spot on skates made a 30,000 combo. Now the backflips pay 8,750, the
+  jumps about 2,000, and the ten different tricks still 35,550. A server that
+  wants the old rule can set `bmx_combo_variety 0` (in the server settings,
+  under Rules and scoring).
 
 **Crashes**
 

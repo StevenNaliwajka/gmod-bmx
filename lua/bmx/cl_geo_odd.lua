@@ -212,7 +212,7 @@ end
 local function tidy(M)
     for _, g in ipairs(M.order) do
         local list = M.groups[g]
-        for i = #list, 1, -1 do if #list[i].v == 0 then table.remove(list, i) end end
+        for i = #list, 1, -1 do if list[i].tris == 0 then table.remove(list, i) end end
     end
     return M
 end
@@ -221,12 +221,17 @@ end
 -- each vertex passed through `f` (positions) and `fn` (normals).
 local function merge(M, to, S, from, f, fn)
     for _, b in ipairs(S.groups[from] or {}) do
-        local dst = M:bucket(to, b.mat, b.detail)
-        for i, vt in ipairs(b.v) do
-            dst.v[#dst.v + 1] = { p = f(vt.p), n = fn and fn(vt.n) or vt.n, u = vt.u, v = vt.v }
-            if i % 3 == 0 then spent(1) end
-        end
-        dst.tris = dst.tris + b.tris
+        Pm.copyVerts(M:bucket(to, b.mat, b.detail), b, function(s, o, d, k)
+            local p = f({ s[o + 1], s[o + 2], s[o + 3] })
+            d[k + 1], d[k + 2], d[k + 3] = p[1], p[2], p[3]
+            local n = fn and fn({ s[o + 4], s[o + 5], s[o + 6] })
+            if n then
+                d[k + 4], d[k + 5], d[k + 6] = n[1], n[2], n[3]
+            else
+                d[k + 4], d[k + 5], d[k + 6] = s[o + 4], s[o + 5], s[o + 6]
+            end
+            d[k + 7], d[k + 8] = s[o + 7], s[o + 8]
+        end)
     end
 end
 

@@ -59,6 +59,7 @@ local function ring(c, eu, ev, a, b, n, ex, phase)
         local t = (phase or 0) + j / n * TAU
         out[j + 1] = add(c, add(mul(eu, sgnpow(cos(t), 2 / ex) * a), mul(ev, sgnpow(sin(t), 2 / ex) * b)))
     end
+    spent(n)                 -- (the client's build looks at its clock: cl_bikegeo.lua)
     return out
 end
 
@@ -103,6 +104,7 @@ local function sheet(B, ni, nj, f, t, out, Bi)
     for i = 0, ni do
         P[i + 1] = {}
         for j = 0, nj do P[i + 1][j + 1] = f(i / ni, j / nj) end
+        spent(nj + 1)        -- (the client's build looks at its clock: cl_bikegeo.lua)
     end
     local I, J = ni + 1, nj + 1
     for i = 1, I do
@@ -115,6 +117,7 @@ local function sheet(B, ni, nj, f, t, out, Bi)
             if dot(n, o) < 0 then n = mul(n, -1) end
             N[i][j] = n
         end
+        spent(J)
     end
     grid(B, P, false, nil, N)
     if t <= 0 then return P, N end
@@ -221,19 +224,14 @@ local function tube(B, pts, r, sides, n, opt)
 end
 
 -- Copy a group of one model into another, mirrored left to right (y -> -y).
+local MIRROR_CORNERS = { 1, 3, 2 }
 local function mirrorInto(M, Mx, from, to)
+    -- each triangle's corners a, c, e written a, e, c (the mirror turns its winding)
     for _, b in ipairs(Mx.groups[from] or {}) do
-        local d = M:bucket(to, b.mat, b.detail)
-        local t = d.v
-        for i = 1, #b.v, 3 do
-            local a, c, e = b.v[i], b.v[i + 1], b.v[i + 2]
-            local function m(vt)
-                return { p = { vt.p[1], -vt.p[2], vt.p[3] }, n = { vt.n[1], -vt.n[2], vt.n[3] }, u = vt.u, v = vt.v }
-            end
-            t[#t + 1] = m(a); t[#t + 1] = m(e); t[#t + 1] = m(c)
-            d.tris = d.tris + 1
-            spent(1)
-        end
+        Pm.copyVerts(M:bucket(to, b.mat, b.detail), b, function(s, o, d, k)
+            d[k + 1], d[k + 2], d[k + 3], d[k + 4] = s[o + 1], -s[o + 2], s[o + 3], s[o + 4]
+            d[k + 5], d[k + 6], d[k + 7], d[k + 8] = -s[o + 5], s[o + 6], s[o + 7], s[o + 8]
+        end, MIRROR_CORNERS)
     end
 end
 
@@ -243,8 +241,11 @@ local function scaleGroups(M, f)
     for _, name in ipairs(M.order) do
         if name ~= "wheelF" and name ~= "wheelR" then
             for _, b in ipairs(M.groups[name]) do
-                for _, vt in ipairs(b.v) do vt.p = mul(vt.p, f) end
-                spent(b.tris)
+                local F = b.f
+                for o = 0, #F - G.VS, G.VS do
+                    F[o + 1], F[o + 2], F[o + 3] = F[o + 1] * f, F[o + 2] * f, F[o + 3] * f
+                    if o % 1536 == 0 then spent(64) end
+                end
             end
         end
     end

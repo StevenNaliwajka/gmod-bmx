@@ -110,6 +110,7 @@ local function tapeTube(B, pts, r0, ridge, pitch, sides)
             local r = r0 + ridge * (f < 0.82 and f / 0.82 or (1 - f) / 0.18)
             P[i][j] = add(pts[i], add(mul(N[i], cos(a) * r), mul(bn, sin(a) * r)))
         end
+        Pm.spent(sides)      -- (the client's build looks at its clock: cl_bikegeo.lua)
     end
     grid(B, P, true, function(i) return pts[i] end)
 end
@@ -131,6 +132,7 @@ local function loft(B, o, ex, ey, ez, st, ring, ex2, capEnds)
             local cz = (abs(sa) ^ (2 / e)) * (sa < 0 and -1 or 1)
             P[i][j + 1] = add(c, add(mul(ey, cy * s[3]), mul(ez, cz * s[4])))
         end
+        Pm.spent(ring)
     end
     grid(B, P, true, function(i) return C[i] end)
     if capEnds ~= false then
@@ -513,20 +515,22 @@ local function deepV(M, group, role, R, tip)
     end
     for _, b in ipairs(M.groups[group]) do
         if b.mat == role and not b.detail then
-            for _, vt in ipairs(b.v) do
-                local p = vt.p
-                local r = sqrt(p[1] * p[1] + p[3] * p[3])
+            local F = b.f
+            for o = 0, #F - G.VS, G.VS do
+                local px, py, pz = F[o + 1], F[o + 2], F[o + 3]
+                local r = sqrt(px * px + pz * pz)
                 if r > rBot and r < rTop + 1e-6 and r > 2.5 then
                     local fr, df = f(r)
-                    local ux, uz = p[1] / r, p[3] / r
-                    local nr = vt.n[1] * ux + vt.n[3] * uz
-                    local ny = vt.n[2]
-                    local y = p[2]
-                    vt.p = { p[1], y * fr, p[3] }
+                    local ux, uz = px / r, pz / r
+                    local nr = F[o + 4] * ux + F[o + 6] * uz
+                    local ny = F[o + 5]
+                    local y = py
+                    F[o + 2] = y * fr
                     local n2r, n2y = nr * fr - ny * y * df, ny
                     local l = sqrt(n2r * n2r + n2y * n2y)
-                    if l > 1e-9 then vt.n = { ux * n2r / l, n2y / l, uz * n2r / l } end
+                    if l > 1e-9 then F[o + 4], F[o + 5], F[o + 6] = ux * n2r / l, n2y / l, uz * n2r / l end
                 end
+                if o % 768 == 0 then Pm.spent(32) end     -- every 96 vertices
             end
         end
     end

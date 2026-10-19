@@ -363,40 +363,29 @@ T.test("bike model (client): while a new size's model builds, the bike keeps its
     T.ok(ready(S), "and the model is built again")
 end)
 
--- The build's garbage is 100-250 MB, so a model is not ready until it has been
--- collected (one build's garbage at a time, cl_bikemesh.lua GC_STEP). It used to
--- be collectgarbage("collect"): the client's whole Lua heap walked in one frame
--- at the end of every build, a second hitch after the build's own.
-T.test("bike model (client): a build's garbage is collected in steps before the model is ready, never all at once", function()
+-- THE COLLECTOR LEFT TO ITS OWN PACE. A build once ended with collectgarbage("collect")
+-- (the client's whole Lua heap walked in one frame), then with two whole rounds of the
+-- collector forced in steps before the model counted as ready: a second of slow frames
+-- for every addon's allocations on a client-sized heap. The build now makes a fraction
+-- of the garbage (tests/test_contacts.lua holds it to a budget) and forces nothing: it
+-- is ready as soon as its meshes are, and never steps or runs the collector itself.
+T.test("bike model (client): a build never runs the collector itself, and is ready as soon as its meshes are", function()
     local s = scene()
     enableMeshes(s)
     local E = s.cl.env
     local BM = E.BMX.BikeMesh
     BM.Clear()
     local had = rawget(E, "collectgarbage")
-    local collects, steps, cycleEnds = 0, 0, false
+    local calls = {}
     E.collectgarbage = function(opt, n)
-        if opt == "collect" then collects = collects + 1 end
-        if opt == "step" then
-            steps = steps + 1
-            collectgarbage("step", n)
-            return cycleEnds
-        end
+        calls[#calls + 1] = tostring(opt)
         return collectgarbage(opt, n)
     end
     local ok, err = pcall(function()
-        -- 3000 steps: the meshes' slices (~160) and then the wait, well short of
-        -- GC_MAX_STEPS, however fast this machine steps
         local a
-        for _ = 1, 50000 do a = BM.Get(1, 10) if a or steps >= 3000 then break end end
-        T.ok(steps >= 3000, "built, and waiting: " .. steps .. " steps")
-        T.eq(a, nil, "not ready while the collector has not been round")
-        local before = steps
-        cycleEnds = true
-        for _ = 1, 50 do a = BM.Get(1, 10) if a then break end end
-        T.ok(a, "ready once it has")
-        T.eq(steps - before, 2, "two cycles, a step at a time")
-        T.eq(collects, 0, "never a full collection in one frame")
+        for _ = 1, 50000 do a = BM.Get(1, 10) if a then break end end
+        T.ok(a, "built")
+        T.eq(#calls, 0, "the collector never stepped nor run by the build: " .. table.concat(calls, " "))
     end)
     E.collectgarbage = had
     BM.Clear()

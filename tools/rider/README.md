@@ -61,6 +61,7 @@ shipped code through a scenario, with the vehicle's built model as it was drawn.
     tools/rider/studio/studio.sh stock bike out.png "standing,attack" 0.6
     STUDIO_PAX=1 tools/rider/studio/studio.sh tandem        # with the stoker
     STUDIO_VIEWS="front,R hand" tools/rider/studio/studio.sh scooter
+    STUDIO_GOOFY=1 tools/rider/studio/studio.sh skateboard  # (STUDIO_FAKIE=1: rolling tail first)
 
 A row per shot (cruise, push 0.40, crouch, indy grab...), a column per camera: front,
 the left side, back three-quarter, high, and each hand close up. The scenarios are in

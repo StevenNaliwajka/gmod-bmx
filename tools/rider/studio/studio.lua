@@ -236,7 +236,17 @@ end
 
 S.board = function()
     local Bd = B.Board
-    setSpeed(220)
+    -- STUDIO_GOOFY=1: the right foot forward; STUDIO_FAKIE=1: rolling tail first.
+    local base = { goofy = os.getenv("STUDIO_GOOFY") == "1" or nil, fakie = os.getenv("STUDIO_FAKIE") == "1" or nil }
+    local function flags(t)
+        local u = { goofy = base.goofy, fakie = base.fakie }
+        for k, v in pairs(t) do u[k] = v end
+        ent:SetBoardFlags(Bd.PackFlags(u))
+    end
+    flags({})
+    -- (the server turns a goofy rider's seat round: sv_board.lua, B.Tune.seatYaw)
+    if base.goofy then ply._vehicle:SetAngles(ent:LocalToWorldAngles(E.Angle(0, Bd.Tune.seatYaw.goofy, 0))) end
+    setSpeed(base.fakie and -220 or 220)
     run(30)
     shot("cruise")
     -- pushes: a phase through a second

@@ -139,8 +139,10 @@ def main():
             else np.concatenate([gc, vc, pcols])
         hip = np.array(s['bones']['ValveBiped.Bip01_Pelvis'][:3])
         chest = hip + up * 6
-        # The rider of a board faces the board's right (-left) for a regular stance.
-        face = -l if board else f
+        # Where the rider faces: the pelvis's forward (its Z, [[valvebiped-bone-frames]]),
+        # level -- across a board, either way, and the way a bike goes.
+        pz = np.array(s['bones']['ValveBiped.Bip01_Pelvis'][9:12], float); pz[2] = 0
+        face = pz / np.linalg.norm(pz) if np.linalg.norm(pz) > 1e-3 else (-l if board else f)
         side = np.cross(up, face)          # rider's left
         rh = np.array(s['bones']['ValveBiped.Bip01_R_Hand'][:3]); lh = np.array(s['bones']['ValveBiped.Bip01_L_Hand'][:3])
         V = [('front', chest + face * 130 + up * 8 - side * 25, chest),

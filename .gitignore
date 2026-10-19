@@ -16,3 +16,7 @@ tuning/*.local.lua
 __pycache__/
 *.pyc
 dist/
+
+# The rider photo studio's build and the model it fetches (Valve's files: not ours to keep)
+tools/rider/studio/.build/
+tools/rider/studio/.model/

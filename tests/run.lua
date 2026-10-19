@@ -98,6 +98,14 @@ for _, c in ipairs(T.cases) do
             failures[#failures + 1] = { label = label, err = err }
         end
     end
+    -- A CASE LET GO ONCE IT HAS RUN. Its closure holds its file's locals: the
+    -- worlds and the built models (a finished model's vertex records, b.v, are
+    -- made from its flat arrays when first read and kept). Held to the end, the
+    -- geometry files alone kept 1.3 GB live, and the collector, pacing itself
+    -- by that, let the heap reach twice it: 4.3 GB, and the CI box (4.9 GB)
+    -- killed the run (2026-10-19, pipeline 1299). Let go, a file's data goes
+    -- when its last case has run.
+    c.fn = nil
 end
 
 if #failures > 0 then

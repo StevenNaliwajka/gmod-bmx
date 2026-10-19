@@ -5,6 +5,40 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.3.7 -- not on the Workshop yet
+
+Skates on a server with any lag, checked on a real game client at 100 and 200 ms
+of ping, and two skates faults the same run found.
+
+**Skates on a server with lag**
+
+- **Skating is predicted exactly.** On your own screen, skates kept being pulled
+  back to where the server had you: striding and carving at 100 ms of ping put
+  you up to 120 units out (196 at 200 ms), corrected over and over, and even
+  with no lag at all up to 41 units. Your game checks its guesses again every
+  few moves, and each time it did the skates' own state got muddled. Riding is
+  now exact at 100 and 200 ms.
+- **Grinding keeps you on the rail.** Tapping A or D to balance slid you
+  sideways off the rail on your screen and snapped you back, 26 units at 100 ms
+  and 48 at 200, and turned your view too. You now stay on the rail where the
+  server has you, and A and D leave the view alone.
+- **Popping off a rail is instant.** Letting go of SPACE left you on the rail for
+  a moment, then threw you up all at once. You pop off the moment you let go
+  now, and off a ledge you pop away from it.
+- **Skates settle after a lost packet.** With packets going missing, the
+  corrections used to keep coming; now they settle within a few moves.
+- **Taking the skates off stops you where you are.** Switching weapons while
+  rolling let you glide on, then snapped you back 26 to 56 units.
+- Locking onto a rail is still the server's call, so turning onto one for a
+  backslide can jump once as it locks on.
+
+**Skates**
+
+- **SPACE jumps on flat ground.** On skates the jump only worked straight after
+  being moved (a respawn, say); on flat ground the game kept you on the floor.
+- **The end of a rail is smooth.** Right at a rail's end you were moved a few
+  units along it in one step, which showed as a jolt as you dropped off.
+
 ## 1.3.6 -- not on the Workshop yet
 
 Players reported low frame rates: a frame of BMX now costs your game much less

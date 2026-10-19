@@ -241,6 +241,47 @@ T.test("client perf: a model build gives the frame back within a few thousand in
     end
 end)
 
+-- THE VEHICLE ON SCREEN FIRST. The prebuild Think asks for every vehicle in the world's
+-- model, drawn or not, and the first ask of a frame used to run its build: a bike in
+-- view could wait behind one across the map. A build a drawing asks for now runs first
+-- (and at the full budget); the prebuild's own, after it.
+T.test("client perf: the vehicle being drawn has its model built first, the rest of the world's after", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    MF.enable(cl)
+    local E, B = cl.env, cl.env.BMX
+    local BM = B.BikeMesh
+    BM.Clear()
+    local frame, t = 0, 0
+    E.FrameNumber = function() return frame end
+    E.RealTime = function() return t end
+    local away = cl:clientEntity(B.ClassFor("stock"))
+    away:SetPos(E.Vector(-3000, 0, 20))
+    local inView = cl:clientEntity(B.ClassFor("road"))
+    inView:SetPos(E.Vector(0, 0, 20))
+    cl.eyePos = E.Vector(-100, 0, 50)
+    local think = cl.hooks.Think and cl.hooks.Think["BMX.BikeModelPrebuild"]
+    T.ok(think, "the prebuild Think")
+    -- (the BMX's key is its size alone, "k/radius"; every other kind's begins with its name)
+    local roadAt, bmxAt
+    for f = 1, 40000 do
+        frame, t = f, f / 60
+        think()
+        MF.draw(cl, inView)          -- the road bike is on screen, the BMX is not
+        for key, st in pairs(BM.Status()) do
+            if st == "ready" then
+                if key:find("^road/") then roadAt = roadAt or f
+                elseif not key:find("/.*/") then bmxAt = bmxAt or f end
+            end
+        end
+        if roadAt and bmxAt then break end
+    end
+    T.ok(roadAt and bmxAt, "both built (the BMX by the prebuild alone)")
+    T.ok((roadAt or 1e9) < (bmxAt or 0), string.format("the drawn road bike first: frame %s, the BMX frame %s",
+        tostring(roadAt), tostring(bmxAt)))
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
 T.test("client perf: a vehicle's ready model is remembered, and forgotten when it must be", function()
     local _, world = F.server()
     local cl = F.client(world)

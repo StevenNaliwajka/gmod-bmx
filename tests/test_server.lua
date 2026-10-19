@@ -544,6 +544,58 @@ T.test("an admin in god mode is still in it after a crash", function()
     T.eq(ply:HasGodMode(), true, "still in god mode")
 end)
 
+-- The get-up's Spawn puts a fire out: a rider set alight who crashed got up cured
+-- (a real DarkRP server, 2026-10-15: fire=true before the crash, false after it).
+local function flameOn(E, ent)
+    for _, f in ipairs(E.ents.FindByClass("entityflame")) do
+        if f:GetParent() == ent then return f end
+    end
+end
+
+T.test("a burning rider tumbles burning and is still burning when they get up", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike, ply = tipOver(sv)
+    ply:Ignite(10)
+    local outAt = E.CurTime() + 10
+    sv:run(1, function() return not E.IsValid(bike:GetDriver()) end)
+    local rag = ply.BMXTumbling
+    T.ok(E.IsValid(rag), "tumbling")
+    T.ok(rag:IsOnFire(), "the ragdoll burns")
+    T.ok(not ply:IsOnFire(), "and not the hidden player, whose flames would float where it was")
+    sv:run(E.BMX.TumbleTime + 0.2)
+    T.ok(not ply.BMXTumbling, "back up")
+    T.ok(ply:IsOnFire(), "still burning")
+    local f = flameOn(E, ply)
+    T.ok(f and math.abs(f:GetInternalVariable("m_flLifetime") - outAt) < 0.05,
+        "for the time the fire had left, not a fresh one")
+    T.eq(#E.ents.FindByClass("entityflame"), 1, "one fire: none left behind")
+    sv:run(outAt - E.CurTime() + 0.1)
+    T.ok(not ply:IsOnFire(), "and it goes out when it would have")
+end)
+
+T.test("a rider whose ragdoll stops burning (water, say) gets up not burning, and nobody is set alight", function()
+    local sv = F.server()
+    local E = sv.env
+    local bike, ply = tipOver(sv)
+    ply:Ignite(10)
+    sv:run(1, function() return not E.IsValid(bike:GetDriver()) end)
+    local rag = ply.BMXTumbling
+    T.ok(E.IsValid(rag) and rag:IsOnFire(), "tumbling, burning")
+    rag:Extinguish()
+    sv:run(E.BMX.TumbleTime + 0.2)
+    T.ok(not ply.BMXTumbling, "back up")
+    T.ok(not ply:IsOnFire(), "the fire stays out")
+
+    local sv2 = F.server()
+    local E2 = sv2.env
+    local bike2, ply2 = tipOver(sv2)
+    sv2:run(1, function() return not E2.IsValid(bike2:GetDriver()) end)
+    T.ok(ply2.BMXTumbling and not ply2.BMXTumbling:IsOnFire(), "a rider not on fire tumbles unlit")
+    sv2:run(E2.BMX.TumbleTime + 0.2)
+    T.ok(not ply2:IsOnFire() and #E2.ents.FindByClass("entityflame") == 0, "and gets up unlit")
+end)
+
 T.test("bmx_crash_ragdoll 0 keeps the plain shove", function()
     local sv = F.server()
     local E = sv.env

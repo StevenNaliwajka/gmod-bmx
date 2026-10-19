@@ -245,6 +245,31 @@ local function standUp(ply)
     if keep.energy ~= nil and ply.setSelfDarkRPVar then ply:setSelfDarkRPVar("Energy", keep.energy) end
 end
 
+--------------------------------------------------------------------------
+-- STILL ON FIRE WHEN THEY GET UP. The get-up's Spawn puts a fire out: on a real
+-- DarkRP server (2026-10-15) a rider set alight crashed and got up cured. So the
+-- flames go onto the ragdoll for the tumble, for the time they had left, and
+-- back onto the rider when they get up -- if the ragdoll is still burning then
+-- (water puts a ragdoll out too). The hidden player does not burn meanwhile:
+-- its flames would float where it was.
+--
+-- How long a fire has left: the flame is an entityflame following the entity
+-- (its parent), and its lifetime is the time it dies. An engine that does not
+-- say gets a few seconds.
+--------------------------------------------------------------------------
+local FIRE_UNKNOWN = 5
+
+local function fireLeft(ent)
+    if not (IsValid(ent) and ent.IsOnFire and ent:IsOnFire()) then return nil end
+    for _, f in ipairs(ents.FindByClass("entityflame")) do
+        if f:GetParent() == ent or f:GetInternalVariable("m_hEntAttached") == ent then
+            local dies = tonumber(f:GetInternalVariable("m_flLifetime"))
+            if dies and dies > CurTime() then return dies - CurTime() end
+        end
+    end
+    return FIRE_UNKNOWN
+end
+
 function BMX.Tumble(ply, vel, after)
     if not IsValid(ply) or not ply:Alive() or ply.BMXTumbling then return false end
     if not BMX.TumbleAllowed() then return false end
@@ -305,6 +330,12 @@ function BMX.Tumble(ply, vel, after)
     -- Everything was saved above and is given back when they get up.
     ply:StripWeapons()
 
+    local fire = fireLeft(ply)
+    if fire then
+        ply:Extinguish()
+        rag:Ignite(fire)
+    end
+
     ply.BMXTumbling = rag
     ply:Spectate(OBS_MODE_CHASE)
     ply:SpectateEntity(rag)
@@ -318,6 +349,7 @@ function BMX.Tumble(ply, vel, after)
         if ply.BMXTumbling ~= rag then SafeRemoveEntity(rag) return end
         ply.BMXTumbling = nil
         local at = IsValid(rag) and rag:GetPos() or ply:GetPos()
+        local burning = fireLeft(rag)
         SafeRemoveEntity(rag)
 
         -- Quiet, for the moment it takes: giving everything back fires a
@@ -346,6 +378,7 @@ function BMX.Tumble(ply, vel, after)
         end
         for id, n in pairs(saved.ammo or {}) do ply:SetAmmo(n, id) end
         if saved.active then ply:SelectWeapon(saved.active) end
+        if burning then ply:Ignite(burning) end
 
         if after then after() end
     end)

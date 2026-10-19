@@ -804,6 +804,28 @@ function M.Realm(world, which)
     function Ent:SetMaterial(m) self._material = m end
     function Ent:GetMaterial() return self._material or "" end
     function Ent:GetColor() return self._color or { r = 255, g = 255, b = 255, a = 255 } end
+    -- FIRE, as the engine has it: Ignite makes an entityflame that follows the
+    -- entity (its parent) and dies at its lifetime, an absolute time
+    -- (CEntityFlame's m_flLifetime, read with GetInternalVariable); IsOnFire is
+    -- true while the flame lives; a removed entity takes its flame with it, and
+    -- a player's Spawn puts it out (Ply:Spawn).
+    function Ent:Ignite(len)
+        self:Extinguish()
+        local f = makeEntity("entityflame")
+        f._parent = self
+        f._internal = { m_flLifetime = world.time + (len or 0), m_hEntAttached = self }
+        self._flame = f
+    end
+    function Ent:IsOnFire()
+        local f = self._flame
+        if f and not f._removed and world.time >= f._internal.m_flLifetime then f:Remove() end
+        return f ~= nil and not f._removed
+    end
+    function Ent:Extinguish()
+        if self._flame and not self._flame._removed then self._flame:Remove() end
+        self._flame = nil
+    end
+    function Ent:GetInternalVariable(k) return self._internal and self._internal[k] end
     function Ent:SetNWVector(k, v) self._nw["nw_" .. k] = v end
     function Ent:GetNWVector(k, d) local v = self._nw["nw_" .. k]; if v == nil then return d end return v end
     function Ent:SetNWBool(k, v) self._nw["nw_" .. k] = v end
@@ -931,6 +953,7 @@ function M.Realm(world, which)
         -- Removing a vehicle ejects its driver first, as the engine does.
         if self._driver and env.IsValid(self._driver) then self._driver:ExitVehicle() end
         self._removed = true
+        if self._flame and not self._flame._removed then self._flame:Remove() end
         for _, o in ipairs(self._deleteOnRemove) do
             if env.IsValid(o) then o:Remove() end
         end
@@ -1383,6 +1406,7 @@ function M.Realm(world, which)
         self._activeWep = LOADOUT[1]
         self._ammo = {}
         self._god = nil
+        self:Extinguish()
         -- And the gamemode's PlayerSpawn, as the engine calls it: the hooks, then
         -- GAMEMODE's (a test puts one on it to be DarkRP).
         env.hook.Run("PlayerSpawn", self)

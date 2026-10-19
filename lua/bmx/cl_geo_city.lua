@@ -82,6 +82,7 @@ local function ext(B, frames, prof, opt)
             P[i][j] = add(f[1], add(mul(f[2], q[1]), mul(f[3], q[2])))
             N[i][j] = norm(add(mul(f[2], vn[j][1]), mul(f[3], vn[j][2])))
         end
+        Pm.spent(#pr)        -- (the client's build looks at its clock: cl_bikegeo.lua)
     end
     grid(B, P, true, function() return V(0, 0, 0) end, N)
     if opt.caps ~= false then
@@ -463,6 +464,7 @@ G.RegisterKind("city", function(opt, G)
             frames[#frames + 1] = { V(x, yc, zc), V(0, 0, 1), V(0, 1, 0) }
             local rc = min(0.32, hz * 0.95, abs(hy) * 0.95)
             profs[#profs + 1] = rrLoop(hz, abs(hy), rc, 28)
+            Pm.spent(16)
         end
         ext(P, frames, function(i) return profs[i] end)
         -- the dome over the chainring and the crank's grommet
@@ -809,6 +811,7 @@ G.RegisterKind("city", function(opt, G)
                 local side = norm(cross(tng, V(0, 0, 1)))
                 local an = i / nW * turns * TAU
                 wrap[#wrap + 1] = add(c0, add(mul(side, cos(an) * 0.47), V(0, 0, sin(an) * 0.47)))
+                if i % 8 == 0 then Pm.spent(8) end   -- (the client's build looks at its clock)
             end
             sweep(Wdd, wrap, 0.09, 4, { capStart = false, capEnd = false })
             local hx0, hy0 = sz(bz0 + 0.35)

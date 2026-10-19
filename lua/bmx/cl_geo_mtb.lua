@@ -89,6 +89,7 @@ local function ext(B, frames, prof, opt)
             P[i][j] = add(f[1], add(mul(f[2], q[1]), mul(f[3], q[2])))
             N[i][j] = norm(add(mul(f[2], vn[j][1]), mul(f[3], vn[j][2])))
         end
+        Pm.spent(#pr)        -- (the client's build looks at its clock: cl_bikegeo.lua)
     end
     grid(B, P, true, function() return V(0, 0, 0) end, N)
     if opt.caps ~= false then

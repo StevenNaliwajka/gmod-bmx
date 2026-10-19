@@ -624,9 +624,13 @@ end
 -- and then swapped to the built one. Every bike in the world now asks once a
 -- frame, drawn or not (BikeMesh.Get advances one build a frame, a few ms, and a
 -- ready model is a table lookup).
+-- These asks are the LOW-RATE kind (BikeMesh.Background): a vehicle being drawn has
+-- its model built first and at the full bmx_bike_build_ms, and one only asked for
+-- here is built at half that, nearest first, when no drawn one waits.
 local prebuild, nextScan = {}, 0
 hook.Add("Think", "BMX.BikeModelPrebuild", function()
-    if not (BMX.BikeMesh and BMX.BikeMesh.Enabled()) then return end
+    local BM = BMX.BikeMesh
+    if not (BM and BM.Enabled()) then return end
     local now = RealTime()
     if now > nextScan then
         nextScan = now + 1
@@ -634,10 +638,18 @@ hook.Add("Think", "BMX.BikeModelPrebuild", function()
         for _, e in ipairs(ents.GetAll()) do
             if e.IsBMX and e.Cfg and e.Bike then prebuild[#prebuild + 1] = e end
         end
+        local eye = EyePos and EyePos()
+        if eye and #prebuild > 1 then
+            local d = {}
+            for _, e in ipairs(prebuild) do d[e] = e:GetPos():DistToSqr(eye) end
+            table.sort(prebuild, function(a, b) return d[a] < d[b] end)
+        end
     end
+    if BM.Background then BM.Background(true) end
     for _, e in ipairs(prebuild) do
         if IsValid(e) then BMX.BikeModelFor(e) end
     end
+    if BM.Background then BM.Background(false) end
 end)
 
 -- A VEHICLE WITH NO PEDALS (sh_motor.lua Motor.HasPedals): where its footpegs are,

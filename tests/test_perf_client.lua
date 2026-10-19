@@ -12,6 +12,11 @@
     a skeleton nothing had touched (tools/bench/client_frame.lua). The budgets carry
     headroom: they catch a doubling, not noise. tools/bench/client_frame.lua is
     where to look when one fails: it times and counts every hook.
+
+    The first sight of a vehicle kind builds its model, a few ms a frame: the
+    longest stretch the build runs without looking at its clock, and the largest
+    mesh it hands the engine in one call, are budgeted here too (--build in the
+    bench times it).
 ----------------------------------------------------------------------------]]
 
 local F = require("lib.fixture")
@@ -154,6 +159,86 @@ T.test("client perf: a coiled shock spring works out each ring once, not once pe
     if os.getenv("BMX_TRACE") then print(string.format("    spring: %.1f Vectors a ring point", per)) end
     T.between(per, 0, 14, "Vectors made per ring point")
     T.eq(#cl.errors, 0, "no errors")
+end)
+
+-- A MODEL BUILD KEEPS TO ITS SLICE. The first time a client sees a vehicle kind it
+-- builds its model, a slice a frame (cl_bikemesh.lua): the build looks at the clock
+-- every few dozen triangles or vertices and gives the frame back once its
+-- bmx_bike_build_ms are spent, so a frame is the budget plus the longest stretch it
+-- runs WITHOUT looking. That stretch is counted here, not timed: a clock that moves a
+-- second at every look makes the build give the frame back at every look, and a count
+-- hook gives each resume's Lua instructions (the same on every machine). 1.3.6 gave
+-- way every 128 triangles or 1500 vertices and stepped the collector there: its steps
+-- were up to 367,000 instructions (the BMX) and 347,000 (the dirt bike), collector not
+-- counted, and its frames 20-90 ms. Now 22,000-55,000 for every kind. And no mesh is
+-- handed to the engine in one call over 12,288 vertices (it was up to 58,000).
+local MAX_MESH_VERTS = 12288      -- 4096 triangles (cl_bikemesh.lua MAX_TRIS)
+local function buildStretches(id)
+    local _, world = F.server()
+    local cl = F.client(world)
+    MF.enable(cl)
+    local E, B = cl.env, cl.env.BMX
+    local BM = B.BikeMesh
+    BM.Clear()
+    local sizes = {}
+    E.Mesh = function()
+        local m = { valid = true }
+        function m:BuildFromTriangles(v) sizes[#sizes + 1] = #v end
+        function m:Draw() end
+        function m:Destroy() self.valid = false end
+        function m:IsValid() return self.valid end
+        return m
+    end
+    local clock = 0
+    E.SysTime = function() clock = clock + 1 return clock end
+    local resumes, k = {}, 0
+    local realResume = coroutine.resume
+    E.coroutine = setmetatable({ resume = function(co, ...)
+        k = 0
+        debug.sethook(co, function() k = k + 1 end, "", 100)
+        local r = { realResume(co, ...) }
+        debug.sethook(co)
+        resumes[#resumes + 1] = k
+        return unpack(r)
+    end }, { __index = coroutine })
+    -- (the skates are worn, not an entity: their model is asked for by the skater's drawing)
+    local ask
+    if B.Vehicles[id].worn then
+        ask = B.Skates.Model
+    else
+        local ent = cl:clientEntity(B.ClassFor(id))
+        ask = function() return B.BikeModelFor(ent) end
+    end
+    cl.eyePos = E.Vector(-100, 0, 50)
+    local model
+    for _ = 1, 200000 do
+        model = ask()
+        if model then break end
+    end
+    E.coroutine = nil
+    T.ok(model, id .. ": the model was built")
+    T.eq(#cl.errors, 0, id .. ": no errors: " .. table.concat(cl.errors, " | "))
+    local worst, total = 0, 0
+    for _, n in ipairs(resumes) do worst, total = math.max(worst, n), total + n end
+    local verts, big = 0, 0
+    for _, n in ipairs(sizes) do verts, big = verts + n, math.max(big, n) end
+    if os.getenv("BMX_TRACE") then
+        print(string.format("    %s: %d resumes, longest %d00 instructions of %d00; %d meshes, the largest %d vertices",
+            id, #resumes, worst, total, #sizes, big))
+    end
+    return { worst = worst * 100, total = total * 100, resumes = #resumes, meshes = #sizes, biggest = big,
+             verts = verts, tris = model.stats.total }
+end
+
+T.test("client perf: a model build gives the frame back within a few thousand instructions, a mesh at a time", function()
+    for _, id in ipairs({ "stock", "dirtbike", "road", "scooter", "unicycle", "skates" }) do
+        local b = buildStretches(id)
+        T.eq(b.verts, b.tris * 3, id .. ": every triangle meshed, once")
+        T.ok(b.biggest <= MAX_MESH_VERTS, string.format("%s: no mesh over %d vertices in one call: %d",
+            id, MAX_MESH_VERTS, b.biggest))
+        T.ok(b.worst <= 60000, string.format("%s: the longest stretch without looking at the clock: %d instructions (budget 60000)",
+            id, b.worst))
+    end
 end)
 
 T.test("client perf: a vehicle's ready model is remembered, and forgotten when it must be", function()

@@ -497,21 +497,51 @@ T.test("contacts: the skates' wheels are on the floor, standing, striding, and h
     E.hook.Run("PrePlayerDraw", me)
 end)
 
--- A MODEL BUILD MUST GIVE ITS GARBAGE BACK. One build is 100-250 MB of short-lived
--- tables; a client that carried each build's heap into the next aborted at the
--- 32-bit address-space ceiling after about ten vehicle kinds (2026-10-08). After a
--- build completes, the heap is back near where it started.
-T.test("memory: building a vehicle's model leaves the Lua heap where it was", function()
+-- A MODEL BUILD'S GARBAGE, HELD TO A BUDGET, AND NONE OF IT KEPT. One build was 100-250
+-- MB of short-lived tables, and the working set it held 60-100 MB: a client whose
+-- collector counted that as live carried it into the next build and aborted at the
+-- 32-bit address-space ceiling after about ten vehicle kinds (2026-10-08). 1.2.0 then
+-- forced two whole rounds of the collector after every build, itself a second of slow
+-- frames on a client-sized heap (cl_bikemesh.lua). The build now makes a fraction of the
+-- garbage, and the collector is left to its pace: what it allocates is counted here
+-- (the collector stopped, only inside BikeMesh.Get, so the frames around it do not
+-- count), and after a collection nothing of it is left but the model.
+local GARBAGE_BUDGET_MB = 150
+T.test("memory: building a vehicle's model makes a budgeted amount of garbage, and keeps none", function()
     local w = world()
     local s = scene("dirtbike")
-    w.E.BMX.BikeMesh.Clear()          -- built afresh, not taken from an earlier test
-    collectgarbage("collect")
-    local before = collectgarbage("count") / 1024
-    for _ = 1, 8000 do
-        draw(s)
-        if model(s) then break end
+    local BM = w.E.BMX.BikeMesh
+    BM.Clear()                        -- built afresh, not taken from an earlier test
+    local get = BM.Get
+    local made = 0
+    BM.Get = function(...)
+        local k0 = collectgarbage("count")
+        local r = get(...)
+        made = made + collectgarbage("count") - k0
+        return r
     end
-    T.ok(model(s), "the dirt bike's model was built")
-    local after = collectgarbage("count") / 1024
-    T.ok(after - before < 40, string.format("heap %.0f MB -> %.0f MB after the build (a build is ~200 MB of garbage)", before, after))
+    -- (a build that steps the collector itself would restart it: its steps are not run)
+    local had = rawget(w.E, "collectgarbage")
+    w.E.collectgarbage = function(what, ...)
+        if what == "step" then return true end
+        if what == "collect" then return 0 end
+        return collectgarbage(what, ...)
+    end
+    collectgarbage("collect")
+    local before = collectgarbage("count")
+    collectgarbage("stop")
+    local ok, err = pcall(function()
+        setModel(true)
+        w.cl.eyePos = s.cb:GetPos() + w.E.Vector(0, -90, 30)
+        T.ok(MF.ready(w.cl, s.cb), "the dirt bike's model was built")
+    end)
+    collectgarbage("restart")
+    BM.Get, w.E.collectgarbage = get, had
+    if not ok then error(err, 0) end
+    collectgarbage("collect")
+    local kept = (collectgarbage("count") - before) / 1024
+    made = made / 1024
+    if os.getenv("BMX_TRACE") then print(string.format("    the dirt bike's build: %.1f MB made, %.1f MB kept", made, kept)) end
+    T.ok(made < GARBAGE_BUDGET_MB, string.format("garbage made building it: %.0f MB (budget %d; 1.3.6: 573)", made, GARBAGE_BUDGET_MB))
+    T.ok(kept < 8, string.format("kept after a collection: %.1f MB (the meshes are engine objects)", kept))
 end)

@@ -56,6 +56,12 @@ local function norm(a)
     if l < 1e-9 then return { 0, 0, 1 } end
     return { a[1] / l, a[2] / l, a[3] / l }
 end
+-- norm() in numbers: the same sums, no table.
+local function unit(x, y, z)
+    local l = sqrt(x * x + y * y + z * z)
+    if l < 1e-9 then return 0, 0, 1 end
+    return x / l, y / l, z / l
+end
 local function lerp(a, b, t) return { a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t } end
 -- a, b, c... weighted: madd(a, b, s) = a + b*s
 local function madd(a, b, s) return { a[1] + b[1] * s, a[2] + b[2] * s, a[3] + b[3] * s } end
@@ -79,9 +85,38 @@ G.vec = { V = V, add = add, sub = sub, mul = mul, dot = dot, cross = cross,
 
 --------------------------------------------------------------------------
 -- THE BUFFER. A model is { groups = { name = { buckets } } }; a bucket is
--- { mat = role, detail = bool, tris = n, v = { p, n, u, v, ... } } with three
--- vertices a triangle, each { p = {x,y,z}, n = {x,y,z}, u, v }.
+-- { mat = role, detail = bool, tris = n, f = { ... } } with three vertices a
+-- triangle, each vertex EIGHT NUMBERS in the flat array f (G.VS): x, y, z,
+-- nx, ny, nz, u, v.
+--
+-- FLAT NUMBERS, NOT A TABLE A VERTEX. A model is 20,000-90,000 triangles, and a
+-- vertex used to be a table { p = {x,y,z}, n = {x,y,z}, u, v }: a quarter of a
+-- million tables held by a vehicle's build until it was meshed, 60 MB that the
+-- collector walked again on every round, and that it marked all at once when a
+-- bucket's array was written during a round (LuaJIT walks such a table again, in
+-- one step, at the end of the round: the build's worst frames). Numbers in an
+-- array are not objects to the collector. They are the very numbers the tables held.
+--
+-- b.v is still there for a tool or a test reading a FINISHED model: the records
+-- above, made from f the first time b.v is read (and kept). The build itself never
+-- reads it.
 --------------------------------------------------------------------------
+local VS = 8
+G.VS = VS
+
+local BUCKET = { __index = function(b, k)
+    if k ~= "v" then return nil end
+    local f = rawget(b, "f")
+    if not f then return nil end
+    local out = {}
+    for o = 0, #f - VS, VS do
+        out[#out + 1] = { p = { f[o + 1], f[o + 2], f[o + 3] }, n = { f[o + 4], f[o + 5], f[o + 6] },
+                          u = f[o + 7], v = f[o + 8] }
+    end
+    rawset(b, "v", out)
+    return out
+end }
+
 local Model = {}
 Model.__index = Model
 
@@ -96,7 +131,7 @@ function Model:bucket(group, mat, detail)
     end
     local key = mat .. (detail and "+" or "")
     for _, b in ipairs(g) do if b.key == key then return b end end
-    local b = { key = key, mat = mat, detail = detail and true or false, tris = 0, v = {} }
+    local b = setmetatable({ key = key, mat = mat, detail = detail and true or false, tris = 0, f = {} }, BUCKET)
     g[#g + 1] = b
     return b
 end
@@ -107,8 +142,11 @@ end
 -- the game for that long. Every triangle comes through tri(), so tri() counts
 -- them and every SLICE_TRIS calls the pause of the coroutine it runs in --
 -- only one named with G.YieldIn, so a tool or a test that calls G.Build
--- directly builds straight through, as before.
-local SLICE_TRIS = 128
+-- directly builds straight through, as before. The client's pause looks at the
+-- clock and yields only once the frame's time for the build is spent
+-- (cl_bikemesh.lua), so it is asked often: a slice ends within a few dozen
+-- triangles of its deadline.
+local SLICE_TRIS = 16
 local pauses = setmetatable({}, { __mode = "k" })
 local sinceSlice = 0
 
@@ -132,21 +170,59 @@ end
 
 -- One triangle, wound counter-clockwise seen from where its normals point
 -- (right-handed): if the given order disagrees with the normals, it is
--- swapped, so no primitive has to get winding right by hand.
-local function tri(B, pa, pb, pc, na, nb, nc, ua, va, ub, vb, uc, vc)
+-- swapped, so no primitive has to get winding right by hand. Its corners as
+-- numbers: the positions a, b, c, the normals a, b, c, then each one's u, v.
+-- (The winding test is cross(b - a, c - a) . (na + nb + nc), worked out in that
+-- order as it always was, without the tables.)
+local function triN(B, ax, ay, az, bx, by, bz, cx, cy, cz, nax, nay, naz, nbx, nby, nbz, ncx, ncy, ncz,
+                    ua, va, ub, vb, uc, vc)
     sinceSlice = sinceSlice + 1
     if sinceSlice >= SLICE_TRIS then slice() end
-    local g = cross(sub(pb, pa), sub(pc, pa))
-    local s = { na[1] + nb[1] + nc[1], na[2] + nb[2] + nc[2], na[3] + nb[3] + nc[3] }
-    local t = B.v
-    local i = #t
-    if dot(g, s) < 0 then
-        pb, pc, nb, nc, ub, uc, vb, vc = pc, pb, nc, nb, uc, ub, vc, vb
+    local e1x, e1y, e1z = bx - ax, by - ay, bz - az
+    local e2x, e2y, e2z = cx - ax, cy - ay, cz - az
+    local sx, sy, sz = nax + nbx + ncx, nay + nby + ncy, naz + nbz + ncz
+    if (e1y * e2z - e1z * e2y) * sx + (e1z * e2x - e1x * e2z) * sy + (e1x * e2y - e1y * e2x) * sz < 0 then
+        bx, by, bz, cx, cy, cz = cx, cy, cz, bx, by, bz
+        nbx, nby, nbz, ncx, ncy, ncz = ncx, ncy, ncz, nbx, nby, nbz
+        ub, uc, vb, vc = uc, ub, vc, vb
     end
-    t[i + 1] = { p = pa, n = na, u = ua or 0, v = va or 0 }
-    t[i + 2] = { p = pb, n = nb, u = ub or 0, v = vb or 0 }
-    t[i + 3] = { p = pc, n = nc, u = uc or 0, v = vc or 0 }
+    local t = B.f
+    local i = #t
+    t[i + 1], t[i + 2], t[i + 3], t[i + 4], t[i + 5], t[i + 6], t[i + 7], t[i + 8] =
+        ax, ay, az, nax, nay, naz, ua or 0, va or 0
+    t[i + 9], t[i + 10], t[i + 11], t[i + 12], t[i + 13], t[i + 14], t[i + 15], t[i + 16] =
+        bx, by, bz, nbx, nby, nbz, ub or 0, vb or 0
+    t[i + 17], t[i + 18], t[i + 19], t[i + 20], t[i + 21], t[i + 22], t[i + 23], t[i + 24] =
+        cx, cy, cz, ncx, ncy, ncz, uc or 0, vc or 0
     B.tris = B.tris + 1
+end
+
+-- The same, its corners as {x, y, z} tables.
+local function tri(B, pa, pb, pc, na, nb, nc, ua, va, ub, vb, uc, vc)
+    triN(B, pa[1], pa[2], pa[3], pb[1], pb[2], pb[3], pc[1], pc[2], pc[3],
+         na[1], na[2], na[3], nb[1], nb[2], nb[3], nc[1], nc[2], nc[3], ua, va, ub, vb, uc, vc)
+end
+
+-- Bucket `src`'s vertices appended to `dst`'s, its triangles added to dst.tris and
+-- counted as spent work. `fn(s, o, d, k)` (optional) writes vertex o of s (its 8
+-- numbers from s[o + 1]) as d[k + 1..k + 8], changed; `corners` (optional) is the
+-- order each triangle's corners are written in, { 1, 3, 2 } for a mirrored copy.
+local function copyVerts(dst, src, fn, corners)
+    local s, d = src.f, dst.f
+    local k = #d
+    for t = 0, #s - 3 * VS, 3 * VS do
+        for c = 1, 3 do
+            local o = t + ((corners and corners[c] or c) - 1) * VS
+            if fn then
+                fn(s, o, d, k)
+            else
+                for q = 1, VS do d[k + q] = s[o + q] end
+            end
+            k = k + VS
+        end
+        spent(1)
+    end
+    dst.tris = dst.tris + src.tris
 end
 
 -- A quad a-b-c-d (in order round its edge) as two triangles.
@@ -177,11 +253,19 @@ local function grid(B, P, closedJ, inside, Nfix)
                 else
                     ja, jb = max(1, ja), min(nj, jb)
                 end
-                local du = sub(P[ib][j], P[ia][j])
-                local dv = sub(P[i][jb], P[i][ja])
-                n = norm(cross(du, dv))
-                local c = inside(i, j)
-                if dot(n, sub(P[i][j], c)) < 0 then n = mul(n, -1) end
+                -- norm(cross(du, dv)), turned by inside(), in numbers (the same sums)
+                local pb, pa, qb, qa = P[ib][j], P[ia][j], P[i][jb], P[i][ja]
+                local dux, duy, duz = pb[1] - pa[1], pb[2] - pa[2], pb[3] - pa[3]
+                local dvx, dvy, dvz = qb[1] - qa[1], qb[2] - qa[2], qb[3] - qa[3]
+                local cx, cy, cz = duy * dvz - duz * dvy, duz * dvx - dux * dvz, dux * dvy - duy * dvx
+                local l = sqrt(cx * cx + cy * cy + cz * cz)
+                if l < 1e-9 then cx, cy, cz = 0, 0, 1 else cx, cy, cz = cx / l, cy / l, cz / l end
+                local c, p = inside(i, j), P[i][j]
+                if cx * (p[1] - c[1]) + cy * (p[2] - c[2]) + cz * (p[3] - c[3]) < 0 then
+                    cx, cy, cz = cx * -1, cy * -1, cz * -1
+                end
+                n = { cx, cy, cz }
+                spent(1)     -- a normal: about a triangle's work (inside() can be more)
             end
             N[i][j] = n
         end
@@ -202,12 +286,15 @@ end
 -- A flat cap over a closed ring of points (convex or star-shaped about its
 -- centroid), facing `n`.
 local function cap(B, ring, n)
-    local c = { 0, 0, 0 }
-    for _, p in ipairs(ring) do c = add(c, p) end
-    c = mul(c, 1 / #ring)
+    local cx, cy, cz = 0, 0, 0
+    for _, p in ipairs(ring) do cx, cy, cz = cx + p[1], cy + p[2], cz + p[3] end
+    local s = 1 / #ring
+    cx, cy, cz = cx * s, cy * s, cz * s
+    local nx, ny, nz = n[1], n[2], n[3]
     for j = 1, #ring do
         local a, b = ring[j], ring[j % #ring + 1]
-        tri(B, c, a, b, n, n, n, 0.5, 0.5, 0, 0, 1, 0)
+        triN(B, cx, cy, cz, a[1], a[2], a[3], b[1], b[2], b[3], nx, ny, nz, nx, ny, nz, nx, ny, nz,
+             0.5, 0.5, 0, 0, 1, 0)
     end
 end
 
@@ -230,11 +317,13 @@ local function sweep(B, pts, r, sides, opt)
         local a, b = pts[max(1, i - 1)], pts[min(n, i + 1)]
         T[i] = norm(sub(b, a))
     end
+    spent(n / 2)
     local N = { perp(T[1], opt.up) }
     for i = 2, n do
         local q = sub(N[i - 1], mul(T[i], dot(N[i - 1], T[i])))
         N[i] = len(q) > 1e-6 and norm(q) or perp(T[i], opt.up)
     end
+    spent(n / 2)         -- the path's frames (a long path is many points)
     local P, NN = {}, {}
     for i = 1, n do
         local t = L[i] / total
@@ -243,11 +332,20 @@ local function sweep(B, pts, r, sides, opt)
         ry = ry or rx
         local bn = cross(T[i], N[i])
         P[i], NN[i] = {}, {}
+        local Pi, NNi = P[i], NN[i]
+        local p, Ni = pts[i], N[i]
+        local n1, n2, n3, b1, b2, b3 = Ni[1], Ni[2], Ni[3], bn[1], bn[2], bn[3]
         for j = 1, sides do
             local a = (j - 1) / sides * TAU + (opt.phase or 0)
             local ca, sa = cos(a), sin(a)
-            P[i][j] = add(pts[i], add(mul(N[i], ca * rx), mul(bn, sa * ry)))
-            NN[i][j] = norm(add(mul(N[i], ca * ry), mul(bn, sa * rx)))
+            -- pts[i] + (N * ca rx + bn * sa ry), and norm(N * ca ry + bn * sa rx): the same sums
+            local s1, s2 = ca * rx, sa * ry
+            Pi[j] = { p[1] + (n1 * s1 + b1 * s2), p[2] + (n2 * s1 + b2 * s2), p[3] + (n3 * s1 + b3 * s2) }
+            local t1, t2 = ca * ry, sa * rx
+            local x, y, z = n1 * t1 + b1 * t2, n2 * t1 + b2 * t2, n3 * t1 + b3 * t2
+            local l = sqrt(x * x + y * y + z * z)
+            NNi[j] = l < 1e-9 and { 0, 0, 1 } or { x / l, y / l, z / l }
+            spent(1)         -- a ring point: about a triangle's work
         end
     end
     grid(B, P, true, function(i) return pts[i] end, NN)
@@ -277,11 +375,28 @@ local function lathe(B, prof, o, axis, segs, opt)
         if l < 1e-9 then segN[i] = { 1, 0 } else segN[i] = { dh / l, -dr / l } end
     end
     if opt.inward then for i = 1, m - 1 do segN[i] = { -segN[i][1], -segN[i][2] } end end
-    local function radial(a)
-        local ca, sa = cos(a), sin(a)
-        return add(mul(ref, ca), mul(side, sa))
-    end
     local a0 = opt.phase or 0
+    -- radial(a) = ref cos a + side sin a at each edge angle round (k = 0..segs,
+    -- a = a0 + k / segs * TAU) and, flat, each face's middle: worked out once a
+    -- lathe instead of again for every segment of the profile, and every position
+    -- and normal below in numbers. The same sums in the same order as when each
+    -- was a table (add, mul, norm), so the very same numbers.
+    local f1, f2, f3, s1, s2, s3 = ref[1], ref[2], ref[3], side[1], side[2], side[3]
+    local RX, RY, RZ, MX, MY, MZ = {}, {}, {}, {}, {}, {}
+    for k = 0, segs do
+        local ca, sa = cos(a0 + k / segs * TAU), sin(a0 + k / segs * TAU)
+        RX[k], RY[k], RZ[k] = f1 * ca + s1 * sa, f2 * ca + s2 * sa, f3 * ca + s3 * sa
+    end
+    if opt.flat then
+        for j = 1, segs do
+            local am = ((a0 + (j - 1) / segs * TAU) + (a0 + j / segs * TAU)) * 0.5
+            local ca, sa = cos(am), sin(am)
+            MX[j], MY[j], MZ[j] = f1 * ca + s1 * sa, f2 * ca + s2 * sa, f3 * ca + s3 * sa
+        end
+    end
+    local x1, x2, x3 = axis[1], axis[2], axis[3]
+    local o1, o2, o3 = o[1], o[2], o[3]
+    local uScale = opt.uScale or 1
     for i = 1, m - 1 do
         local p1, p2 = prof[i], prof[i + 1]
         -- the normal at each end of this segment: its own if that end is a
@@ -294,34 +409,43 @@ local function lathe(B, prof, o, axis, segs, opt)
             return l > 1e-9 and { x / l, y / l } or a
         end
         local n1, n2 = endN(i, i - 1), endN(i + 1, i + 1)
-        if p1[1] > 1e-6 or p2[1] > 1e-6 then
+        local r1, h1, r2, h2 = p1[1], p1[2], p2[1], p2[2]
+        local e1, k1, e2, k2 = n1[1], n1[2], n2[1], n2[2]
+        if r1 > 1e-6 or r2 > 1e-6 then
+            local v1, v2 = (i - 1) / (m - 1), i / (m - 1)
             for j = 1, segs do
-                local aa, ab = a0 + (j - 1) / segs * TAU, a0 + j / segs * TAU
-                local ra, rb = radial(aa), radial(ab)
-                local na1, nb1, na2, nb2
+                local ra1, ra2, ra3 = RX[j - 1], RY[j - 1], RZ[j - 1]
+                local rb1, rb2, rb3 = RX[j], RY[j], RZ[j]
+                local a1x, a1y, a1z, b1x, b1y, b1z, a2x, a2y, a2z, b2x, b2y, b2z
                 if opt.flat then
-                    local rm = radial((aa + ab) * 0.5)
-                    na1 = norm(add(mul(rm, n1[1]), mul(axis, n1[2])))
-                    na2 = norm(add(mul(rm, n2[1]), mul(axis, n2[2])))
-                    nb1, nb2 = na1, na2
+                    local m1, m2, m3 = MX[j], MY[j], MZ[j]
+                    a1x, a1y, a1z = unit(m1 * e1 + x1 * k1, m2 * e1 + x2 * k1, m3 * e1 + x3 * k1)
+                    a2x, a2y, a2z = unit(m1 * e2 + x1 * k2, m2 * e2 + x2 * k2, m3 * e2 + x3 * k2)
+                    b1x, b1y, b1z, b2x, b2y, b2z = a1x, a1y, a1z, a2x, a2y, a2z
                 else
-                    na1 = norm(add(mul(ra, n1[1]), mul(axis, n1[2])))
-                    nb1 = norm(add(mul(rb, n1[1]), mul(axis, n1[2])))
-                    na2 = norm(add(mul(ra, n2[1]), mul(axis, n2[2])))
-                    nb2 = norm(add(mul(rb, n2[1]), mul(axis, n2[2])))
+                    a1x, a1y, a1z = unit(ra1 * e1 + x1 * k1, ra2 * e1 + x2 * k1, ra3 * e1 + x3 * k1)
+                    b1x, b1y, b1z = unit(rb1 * e1 + x1 * k1, rb2 * e1 + x2 * k1, rb3 * e1 + x3 * k1)
+                    a2x, a2y, a2z = unit(ra1 * e2 + x1 * k2, ra2 * e2 + x2 * k2, ra3 * e2 + x3 * k2)
+                    b2x, b2y, b2z = unit(rb1 * e2 + x1 * k2, rb2 * e2 + x2 * k2, rb3 * e2 + x3 * k2)
                 end
-                local A = add(o, add(mul(ra, p1[1]), mul(axis, p1[2])))
-                local Bp = add(o, add(mul(rb, p1[1]), mul(axis, p1[2])))
-                local C = add(o, add(mul(rb, p2[1]), mul(axis, p2[2])))
-                local D = add(o, add(mul(ra, p2[1]), mul(axis, p2[2])))
-                local u1, u2 = (j - 1) / segs * (opt.uScale or 1), j / segs * (opt.uScale or 1)
-                local v1, v2 = (i - 1) / (m - 1), i / (m - 1)
-                if p1[1] < 1e-6 then
-                    tri(B, A, C, D, na1, nb2, na2, u1, v1, u2, v2, u1, v2)
-                elseif p2[1] < 1e-6 then
-                    tri(B, A, Bp, C, na1, nb1, nb2, u1, v1, u2, v1, u2, v2)
+                -- A, B at p1 and C, D at p2: o + (radial * r + axis * h)
+                local Ax, Ay, Az = o1 + (ra1 * r1 + x1 * h1), o2 + (ra2 * r1 + x2 * h1), o3 + (ra3 * r1 + x3 * h1)
+                local Bx, By, Bz = o1 + (rb1 * r1 + x1 * h1), o2 + (rb2 * r1 + x2 * h1), o3 + (rb3 * r1 + x3 * h1)
+                local Cx, Cy, Cz = o1 + (rb1 * r2 + x1 * h2), o2 + (rb2 * r2 + x2 * h2), o3 + (rb3 * r2 + x3 * h2)
+                local Dx, Dy, Dz = o1 + (ra1 * r2 + x1 * h2), o2 + (ra2 * r2 + x2 * h2), o3 + (ra3 * r2 + x3 * h2)
+                local u1, u2 = (j - 1) / segs * uScale, j / segs * uScale
+                if r1 < 1e-6 then
+                    triN(B, Ax, Ay, Az, Cx, Cy, Cz, Dx, Dy, Dz, a1x, a1y, a1z, b2x, b2y, b2z, a2x, a2y, a2z,
+                         u1, v1, u2, v2, u1, v2)
+                elseif r2 < 1e-6 then
+                    triN(B, Ax, Ay, Az, Bx, By, Bz, Cx, Cy, Cz, a1x, a1y, a1z, b1x, b1y, b1z, b2x, b2y, b2z,
+                         u1, v1, u2, v1, u2, v2)
                 else
-                    quad(B, A, Bp, C, D, na1, nb1, nb2, na2, u1, v1, u2, v1, u2, v2, u1, v2)
+                    -- the quad A B C D: A B C, then A C D
+                    triN(B, Ax, Ay, Az, Bx, By, Bz, Cx, Cy, Cz, a1x, a1y, a1z, b1x, b1y, b1z, b2x, b2y, b2z,
+                         u1, v1, u2, v1, u2, v2)
+                    triN(B, Ax, Ay, Az, Cx, Cy, Cz, Dx, Dy, Dz, a1x, a1y, a1z, b2x, b2y, b2z, a2x, a2y, a2z,
+                         u1, v1, u2, v2, u1, v2)
                 end
             end
         end
@@ -361,6 +485,7 @@ local function earclip(loop)
     local guard = 0
     while #idx > 3 and guard < 10000 do
         guard = guard + 1
+        spent(#idx / 8)      -- an ear is looked for among all that is left
         local found = false
         for i = 1, #idx do
             local ia, ib, ic = idx[(i - 2) % #idx + 1], idx[i], idx[i % #idx + 1]
@@ -385,11 +510,19 @@ local function earclip(loop)
 end
 G.earclip = earclip
 
+-- o + ((eu q1 + ev q2) + en s): a point of a plate, one table (the sums of
+-- add(o, add(add(mul(eu, q[1]), mul(ev, q[2])), mul(en, s))), without its five).
+local function planePt(o, eu, ev, en, q, s)
+    local q1, q2 = q[1], q[2]
+    return { o[1] + ((eu[1] * q1 + ev[1] * q2) + en[1] * s), o[2] + ((eu[2] * q1 + ev[2] * q2) + en[2] * s),
+             o[3] + ((eu[3] * q1 + ev[3] * q2) + en[3] * s) }
+end
+
 local function plate(B, loop, o, eu, ev, t, opt)
     opt = opt or {}
     local en = norm(cross(eu, ev))
     local h = t * 0.5
-    local function P(q, s) return add(o, add(add(mul(eu, q[1]), mul(ev, q[2])), mul(en, s))) end
+    local function P(q, s) return planePt(o, eu, ev, en, q, s) end
     local tris = earclip(loop)
     for _, s in ipairs({ h, -h }) do
         local n = mul(en, s > 0 and 1 or -1)
@@ -430,7 +563,7 @@ local function ringPlate(B, outer, inner, o, eu, ev, t)
     local en = norm(cross(eu, ev))
     local h = t * 0.5
     local m = #outer
-    local function P(q, s) return add(o, add(add(mul(eu, q[1]), mul(ev, q[2])), mul(en, s))) end
+    local function P(q, s) return planePt(o, eu, ev, en, q, s) end
     for _, s in ipairs({ h, -h }) do
         local n = mul(en, s > 0 and 1 or -1)
         for i = 1, m do
@@ -450,7 +583,7 @@ local function ringPlate(B, outer, inner, o, eu, ev, t)
             local nu, nv = dv, -du
             if nu * mu + nv * mv < 0 then nu, nv = -nu, -nv end
             nu, nv = nu * sign, nv * sign
-            local n = norm(add(mul(eu, nu), mul(ev, nv)))
+            local n = { unit(eu[1] * nu + ev[1] * nv, eu[2] * nu + ev[2] * nv, eu[3] * nu + ev[3] * nv) }
             quad(B, P(p, h), P(q, h), P(q, -h), P(p, -h), n, n, n, n)
         end
     end
@@ -546,8 +679,8 @@ G.prim = { sweep = sweep, lathe = lathe, plate = plate, ringPlate = ringPlate,
            box = box, roundRect = roundRect, circle = circle, bez3 = bez3,
            spline = spline, tri = tri, quad = quad, grid = grid, cap = cap,
            bead = bead, earclip = earclip, area2 = area2, newModel = newModel,
-           spent = spent }
-G.vec.madd, G.vec.perp = madd, perp
+           spent = spent, triN = triN, copyVerts = copyVerts }
+G.vec.madd, G.vec.perp, G.vec.unit = madd, perp, unit
 
 --------------------------------------------------------------------------
 -- THE DESIGN. Stock dimensions in inches. cl_init.lua's FRAME points are the
@@ -1553,9 +1686,7 @@ G.parts.pedal = function(M, group)   -- one platform pedal about its own centre
     local Mx = newModel()
     buildPedal(Mx)
     for _, b in ipairs(Mx.groups.pedal) do
-        local dst = M:bucket(group, b.mat, b.detail)
-        for _, vt in ipairs(b.v) do dst.v[#dst.v + 1] = vt end
-        dst.tris = dst.tris + b.tris
+        copyVerts(M:bucket(group, b.mat, b.detail), b)
     end
 end
 G.parts.toothLoop = toothLoop
@@ -1620,8 +1751,11 @@ local function scaleModel(M, k)
     if k == 1 then return end
     for _, name in ipairs(M.order) do
         for _, b in ipairs(M.groups[name]) do
-            for _, vt in ipairs(b.v) do vt.p = mul(vt.p, k) end
-            spent(b.tris)
+            local f = b.f
+            for o = 0, #f - VS, VS do
+                f[o + 1], f[o + 2], f[o + 3] = f[o + 1] * k, f[o + 2] * k, f[o + 3] * k
+                if o % 1536 == 0 then spent(64) end       -- every 192 vertices: 64 triangles' worth
+            end
         end
     end
 end

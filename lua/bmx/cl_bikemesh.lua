@@ -9,12 +9,14 @@
     BUILT ONCE PER SIZE, over several frames. A model is ~70k triangles and
     costs up to a second to build in Lua, so it is built in a coroutine a
     slice a frame (bmx_bike_build_ms), keyed by the bike's scale and wheel
-    radius; every bike of that size shares it. The geometry gives way every
-    few hundred triangles (cl_bikegeo.lua G.YieldIn), the meshes every 1500
-    vertices, and the build's garbage is collected in steps before the model
-    counts as built (GC_STEP). Until it is
-    ready the old primitive bike is drawn, so a first spawn does not hitch
-    and never shows nothing.
+    radius; every bike of that size shares it. The build keeps to the slice
+    by the clock: the geometry looks at it every few dozen triangles
+    (cl_bikegeo.lua G.YieldIn), the meshes every few dozen vertices, and each
+    mesh (at most MAX_TRIS triangles) is handed to the engine at the start of
+    a slice. The vehicles being drawn are built first, the rest of the world's
+    at half the rate. Until it is ready the old primitive bike is drawn, so a
+    first spawn does not hitch and never shows nothing.
+    bmx_bike_build_report prints what each build cost on this client.
 
     MATERIALS are VertexLitGeneric made here: a white base, a flat normal map
     (render targets, cleared once -- nothing shipped) so Phong works, and
@@ -263,10 +265,21 @@ function BM.Material(role, col)
 end
 
 --------------------------------------------------------------------------
--- BUILDING. One model per size, shared; built in a coroutine.
+-- BUILDING. One model per size, shared; built in a coroutine, a few ms a frame.
 --------------------------------------------------------------------------
 local models = {}                     -- key -> { ready, groups, layout } or a building job
-local MAX_TRIS = 21000                -- 3 vertices a triangle, under the 65535-vertex mesh limit
+
+-- A MESH IS AT MOST MAX_TRIS TRIANGLES, so the engine takes each in one frame. The
+-- whole bucket used to go to BuildFromTriangles in one call (under the 65535-vertex
+-- limit: 21000 triangles): the BMX's rubber was 31,000 vertices in one call, the
+-- tandem's 58,000, and that call reads every vertex's table through the Lua API.
+-- A bucket bigger than this is cut into equal meshes, drawn one after the other with
+-- the same material under the same matrix: the same triangles reach the screen in
+-- the same order, so the same pixels. Each one is a draw call: 4096 adds a few to a
+-- vehicle (the BMX 48 -> 54) and keeps each call to 12,288 vertices.
+local MAX_TRIS = 4096
+BM.MAX_TRIS = MAX_TRIS
+local CHECK_VERTS = 48                -- the clock looked at every this many vertices
 
 local Z_AXIS, X_AXIS = Vector(0, 0, 1), Vector(1, 0, 0)
 local function tangentOf(n)
@@ -294,103 +307,248 @@ local function toVectors(t)
 end
 BM.LayoutVectors = toVectors
 
--- THE BUILD IS ALMOST ALL GARBAGE, AND THE COLLECTOR MUST KEEP UP WITH IT. One
--- model's source geometry and vertex tables are 100-250 MB of short-lived Lua
--- tables, of which a few hundred KB survive (the meshes are engine objects). Left
--- to LuaJIT's own pace, the heap grew by roughly that much for EVERY model a client
--- built, and a 32-bit client (GMod's default branch, about 4 GB of address space,
--- half of it the game) aborted after seeing ten or so vehicle kinds: measured
--- 2026-10-08 on a test client, 2.6 GB -> 4.0 GB over ten vehicles, then "Aborted".
--- So each part's source vertices are dropped as soon as they are meshes, the
--- collector is stepped at every mesh slice, and a model is not ready until the
--- collector has been round twice since its build let go of everything. The heap
--- then stays near ONE build's working set.
+-- THE BUILD'S GARBAGE, AND THE COLLECTOR LEFT TO ITS OWN PACE. A model's source
+-- geometry was 100-250 MB of short-lived Lua tables, and the working set it held while
+-- meshing (a table a vertex) 60-100 MB. LuaJIT starts a round when the heap has doubled
+-- since the last one, so a round that ended mid-build counted that working set as live
+-- and let the heap grow by twice as much again: a 32-bit client (GMod's default branch,
+-- about 4 GB of address space, half of it the game) aborted after seeing ten or so
+-- vehicle kinds (2026-10-08, a test client, 2.6 GB -> 4.0 GB over ten vehicles). 1.2.0
+-- answered with the collector stepped at every mesh slice and two full rounds forced in
+-- steps before a model counted as ready.
 --
--- In STEPS, not collectgarbage("collect"). A full collection walks the client's
--- whole Lua heap, every addon's, in one frame: that was a hitch at the end of
--- every build, as long as the heap is big. Two cycles, because the first one may
--- have marked the build's tables while they were still in use.
-local GC_STEP = 400          -- collectgarbage("step") size per mesh slice
-local GC_CYCLES = 2          -- full cycles a finished build waits for
-local GC_MAX_STEPS = 20000   -- ...or this many steps (a collector somebody stopped)
+-- The causes are gone instead: a vertex is eight numbers in a flat array while the
+-- model is built (cl_bikegeo.lua) and a pooled table while it is meshed, so a build
+-- makes a sixth of the garbage (the BMX about 57 MB offline, was about 340 MB) and
+-- holds a third of the working set. And the forced rounds were a hitch of their own:
+-- a round walks the WHOLE client heap, every addon's, and while one runs every
+-- allocation anywhere in the client pays for it -- two rounds forced back to back,
+-- after every build, were a second or more of slow frames with 15-25 ms ones among
+-- them (tools/bench --build --heap 200: a client-sized heap). The heap's high water
+-- during a build is the same with them or without (+118 MB, +126 MB there): it comes
+-- before the build ends.
+-- So nothing is forced: no step, no round, never collectgarbage("collect") (a whole
+-- heap in one frame). tests/test_contacts.lua holds the build's garbage to a budget.
 
+-- THE FRAME'S BUDGET, KEPT BY THE BUILD ITSELF. Whoever runs a slice of a build sets
+-- the deadline (bmx_bike_build_ms from now); the build looks at the clock every few
+-- dozen triangles (cl_bikegeo.lua G.YieldIn) or vertices and gives the frame back as
+-- soon as it has passed. It used to give way every 128 triangles or 1500 vertices
+-- and be resumed until the time was up, so a frame was the budget plus whatever one
+-- of those steps cost -- and with the collector's work landing in them, 20-60 ms.
+local deadline, sliceStart = 0, 0
 local function pause()
-    collectgarbage("step", GC_STEP)
-    coroutine.yield()
+    if SysTime() >= deadline then coroutine.yield() end
+end
+
+-- What BuildFromTriangles costs here, a vertex (seconds), learned from each call: a
+-- mesh is handed over at the start of a frame's slice unless what is left of the
+-- slice is enough for it. It starts at 1 us a vertex, about the dearest a client was
+-- thought to be, until the first one is measured.
+local commitPerVert = 1e-6
+
+-- FLAT, POOLED VERTICES. A mesh is handed to the engine as a table of vertex tables
+-- (pos, normal, u, v, userdata, tangent, binormal), and the engine copies them: the
+-- same tables, and the same Vectors in them, are filled again for the next mesh. A
+-- vertex used to be two new tables and four new Vectors, a million objects a model
+-- for the collector -- and the half-built mesh's table, written while the collector
+-- was in the middle of a round, was walked again in one step at its end (LuaJIT's
+-- "grey again" list): the 15-30 ms frames of the old build. Pooled objects stay put,
+-- and only numbers are written into them. Each value is what it was: the position
+-- and normal set from the same numbers, the tangent and binormal worked out by the
+-- same Vector calls from the same normal (once for each distinct normal, and copied:
+-- the same inputs give the same result), userdata the tangent's components and 1.
+local setv
+local function vectorSetter()
+    if Vector(0, 0, 0).SetUnpacked then
+        return function(v, x, y, z) v:SetUnpacked(x, y, z) end
+    end
+    return function(v, x, y, z) v.x, v.y, v.z = x, y, z end
+end
+
+-- The same number to the bit: -0 is not 0 here (a normal's zero's sign can reach the
+-- tangent's), and NaN is never the same.
+local function same(a, b)
+    return a == b and (a ~= 0 or 1 / a == 1 / b)
+end
+
+local function newVertex()
+    return { pos = Vector(0, 0, 0), normal = Vector(0, 0, 0), u = 0, v = 0,
+             userdata = { 0, 0, 0, 1 }, tangent = Vector(0, 0, 0), binormal = Vector(0, 0, 0) }
 end
 
 local function buildJob(key, opt)
-    return coroutine.create(function()
+    local stats = { key = key, slices = 0, ms = 0, worst = 0, commits = 0, verts = 0, commitMs = 0,
+                    commitWorst = 0, commitWorstVerts = 0 }
+    local job = { stats = stats }
+    job.co = coroutine.create(function()
         local G = BMX.BikeGeo
-        -- The geometry yields every few hundred triangles; the collector keeps
-        -- its own pace there (a step that often costs more than the slice).
-        G.YieldIn(coroutine.running())
+        setv = setv or vectorSetter()
+        -- The geometry looks at the clock every few dozen triangles.
+        G.YieldIn(coroutine.running(), pause)
         local M = G.Build(opt)
         pause()
         local layout = toVectors(M.layout or {})
         local out = { groups = {}, layout = layout, stats = G.Stats(M) }
+        job.partial = out
         local fmt = BM.Material("black")
-        local work = 0
+        local VS = G.VS
+        local pool, verts = {}, {}
+        -- Each distinct normal's tangent frame, as numbers: FN[s..s+8] = the normal,
+        -- the tangent, the binormal, found by frameAt[a number made of the normal]. A
+        -- model has a tenth as many distinct normals as vertices (spokes, teeth and
+        -- mirrored halves repeat them), and the Vector calls are made once for each.
+        local frameAt, FN, nFrames = {}, {}, 0
         for _, gname in ipairs(M.order) do
             local list = {}
+            out.groups[gname] = list
             for _, b in ipairs(M.groups[gname]) do
                 local entry = { mat = b.mat, detail = b.detail, meshes = {} }
-                local verts = {}
-                local function flush()
-                    if #verts == 0 then return end
+                list[#list + 1] = entry
+                local f, tris = b.f, b.tris
+                local chunks = math.ceil(tris / MAX_TRIS)
+                for c = 1, chunks do
+                    local t0, t1 = math.floor((c - 1) * tris / chunks), math.floor(c * tris / chunks)
+                    local n = (t1 - t0) * 3
+                    -- The builder winds triangles counter-clockwise seen from outside
+                    -- (right-handed); Source's front faces are the other way round and the
+                    -- back ones are culled, so each triangle's last two vertices are
+                    -- swapped here: 1, 3, 2.
+                    local k = 0
+                    for t = t0, t1 - 1 do
+                        for corner = 0, 2 do
+                            local o = (t * 3 + (corner == 0 and 0 or 3 - corner)) * VS
+                            k = k + 1
+                            local vt = pool[k]
+                            if not vt then
+                                vt = newVertex()
+                                pool[k] = vt
+                            end
+                            -- (written only when it changes: a table written with an object
+                            -- while the collector is mid-round is walked again at its end)
+                            if verts[k] ~= vt then verts[k] = vt end
+                            setv(vt.pos, f[o + 1], f[o + 2], f[o + 3])
+                            local nx, ny, nz = f[o + 4], f[o + 5], f[o + 6]
+                            local N = vt.normal
+                            setv(N, nx, ny, nz)
+                            -- the tangent frame of this normal: worked out once a build
+                            local key = nx + ny * 1.6180339887498949 + nz * 2.7182818284590451
+                            -- (a -0 keyed apart from its 0: mirrored parts have both)
+                            if nx == 0 and 1 / nx < 0 then key = key + 0.0625 end
+                            if ny == 0 and 1 / ny < 0 then key = key + 0.125 end
+                            if nz == 0 and 1 / nz < 0 then key = key + 0.25 end
+                            local s = key == key and frameAt[key]
+                            if not (s and same(FN[s], nx) and same(FN[s + 1], ny) and same(FN[s + 2], nz)) then
+                                local T = tangentOf(N)
+                                local Bn = N:Cross(T)
+                                if s or key ~= key then
+                                    s = 0             -- another normal has its key: worked out, not kept
+                                else
+                                    s = nFrames * 9 + 1
+                                    nFrames = nFrames + 1
+                                    frameAt[key] = s
+                                end
+                                FN[s], FN[s + 1], FN[s + 2] = nx, ny, nz
+                                FN[s + 3], FN[s + 4], FN[s + 5] = T.x, T.y, T.z
+                                FN[s + 6], FN[s + 7], FN[s + 8] = Bn.x, Bn.y, Bn.z
+                            end
+                            local tx, ty, tz = FN[s + 3], FN[s + 4], FN[s + 5]
+                            setv(vt.tangent, tx, ty, tz)
+                            setv(vt.binormal, FN[s + 6], FN[s + 7], FN[s + 8])
+                            local ud = vt.userdata
+                            ud[1], ud[2], ud[3] = tx, ty, tz
+                            vt.u, vt.v = f[o + 7], f[o + 8]
+                            if k % CHECK_VERTS == 0 and SysTime() >= deadline then coroutine.yield() end
+                        end
+                    end
+                    for i = #verts, n + 1, -1 do verts[i] = nil end
+                    -- Handed to the engine at the start of a slice, unless it fits in
+                    -- what is left of this one; the frame after it starts afresh.
+                    local now = SysTime()
+                    if now - sliceStart > 0.0002 and now + n * commitPerVert > deadline then
+                        coroutine.yield()
+                        now = SysTime()
+                    end
                     local m = Mesh(fmt)
                     m:BuildFromTriangles(verts)
+                    local dt = SysTime() - now
                     entry.meshes[#entry.meshes + 1] = m
-                    verts = {}
+                    -- (the dearest lately, fading: one slow call keeps it cautious a while)
+                    commitPerVert = math.max(dt / n, commitPerVert * 0.75, 1e-9)
+                    stats.commits, stats.verts, stats.commitMs = stats.commits + 1, stats.verts + n, stats.commitMs + dt * 1000
+                    if dt * 1000 > stats.commitWorst then stats.commitWorst, stats.commitWorstVerts = dt * 1000, n end
+                    if SysTime() >= deadline then coroutine.yield() end
                 end
-                -- The builder winds triangles counter-clockwise seen from
-                -- outside (right-handed); Source's front faces are the other
-                -- way round and the back ones are culled, so each triangle's
-                -- last two vertices are swapped here: 1, 3, 2.
-                local src = b.v
-                for i = 1, #src do
-                    local r = (i - 1) % 3
-                    local v = (r == 1) and src[i + 1] or (r == 2) and src[i - 1] or src[i]
-                    local n = Vector(v.n[1], v.n[2], v.n[3])
-                    local t = tangentOf(n)
-                    verts[#verts + 1] = {
-                        pos = Vector(v.p[1], v.p[2], v.p[3]), normal = n,
-                        u = v.u, v = v.v,
-                        userdata = { t.x, t.y, t.z, 1 },
-                        tangent = t, binormal = n:Cross(t),
-                    }
-                    if #verts >= MAX_TRIS * 3 then flush() end
-                    work = work + 1
-                    if work >= 1500 then
-                        work = 0
-                        pause()
-                    end
-                end
-                flush()
-                b.v = nil            -- this part's source vertices are meshes now
-                list[#list + 1] = entry
+                b.f = nil            -- this part's source vertices are meshes now
             end
             M.groups[gname] = nil
-            out.groups[gname] = list
         end
-        M = nil
-        -- Its garbage back before it counts as built (see GC_STEP).
-        local cycles = 0
-        for _ = 1, GC_MAX_STEPS do
-            if collectgarbage("step", GC_STEP) then
-                cycles = cycles + 1
-                if cycles >= GC_CYCLES then break end
-            end
-            coroutine.yield()
-        end
+        job.partial = nil
         return out
     end)
+    return job
 end
+
+-- Which build runs this frame, and for how long. ONE BUILD'S SLICE A FRAME, and the
+-- vehicles being DRAWN first: a build a drawing asked for this frame or the last runs
+-- for bmx_bike_build_ms; one only the prebuild asked for (cl_init.lua: every vehicle in
+-- the world, drawn or not) runs for half of it, and only when no drawn vehicle waits.
+-- A build already started is finished before another starts (two half-built models
+-- would be two working sets), unless a drawn one is waiting.
+local frameRan = -1
+local background = false
+local seq = 0
+
+-- The prebuild marks its asks as the low-rate kind (BM.Background(true) ... (false)).
+function BM.Background(on) background = on and true or false end
+
+local function pick(frame)
+    local best, bestScore
+    for _, m in pairs(models) do
+        local job = m.job
+        if job and not m.failed then
+            local drawn = (m.drawnAt or -10) >= frame - 1
+            local asked = drawn or (m.askedAt or -10) >= frame - 1
+            if asked then
+                local score = (drawn and 4 or 0) + (job.started and 2 or 0)
+                if not best or score > bestScore or (score == bestScore and m.seq < best.seq) then
+                    best, bestScore = m, score
+                end
+            end
+        end
+    end
+    return best, best and bestScore >= 4
+end
+
+-- One slice of build `m`, `ms` long. Returns the model when it is done.
+local function runSlice(key, m, ms)
+    local job = m.job
+    local t0 = SysTime()
+    sliceStart, deadline = t0, t0 + ms / 1000
+    job.started = true
+    local ok, res = coroutine.resume(job.co)
+    local st = job.stats
+    local dt = (SysTime() - t0) * 1000
+    st.slices, st.ms, st.worst = st.slices + 1, st.ms + dt, math.max(st.worst, dt)
+    if not ok then
+        m.failed, m.err = true, tostring(res)
+        MsgN("[BMX] bike model failed to build, using the simple bike: " .. tostring(res))
+        return nil
+    end
+    if coroutine.status(job.co) == "dead" then
+        res.ready = true
+        res.buildStats = st
+        models[key] = res
+        BM.LastBuilds[#BM.LastBuilds + 1] = st
+        if #BM.LastBuilds > 32 then table.remove(BM.LastBuilds, 1) end
+        return res
+    end
+end
+BM.LastBuilds = {}
 
 -- The model for this size, or nil while it is being built (the caller
 -- draws the simple bike meanwhile). Building advances here, a few ms a
--- frame, from whichever bike asks first.
-local lastStep = 0
+-- frame, whichever vehicle asks first (pick() decides which build).
 -- `kind` (optional): a model kind other than the BMX's (cl_bikegeo.lua G.Kinds),
 -- with `opt` its builder's size: { wheelbase, radius, rearRadius, seat, ... }.
 function BM.Get(k, radius, kind, opt)
@@ -412,26 +570,20 @@ function BM.Get(k, radius, kind, opt)
             for kk, v in pairs(opt or {}) do build[kk] = v end
             build.kind, build.k, build.radius = kind, k, radius
         end
-        m = { job = buildJob(key, build) }
+        seq = seq + 1
+        m = { job = buildJob(key, build), seq = seq, key = key }
         models[key] = m
     end
     local frame = FrameNumber()
-    if lastStep == frame then return nil end      -- one job's slice a frame
-    lastStep = frame
-    local deadline = SysTime() + math.max(cvBudget:GetFloat(), 0.5) / 1000
-    while SysTime() < deadline do
-        local ok, res = coroutine.resume(m.job)
-        if not ok then
-            m.failed, m.err = true, tostring(res)
-            MsgN("[BMX] bike model failed to build, using the simple bike: " .. tostring(res))
-            return nil
-        end
-        if coroutine.status(m.job) == "dead" then
-            res.ready = true
-            models[key] = res
-            return res
-        end
-    end
+    m.askedAt = frame
+    if not background then m.drawnAt = frame end
+    if frameRan == frame then return nil end      -- one build's slice a frame
+    frameRan = frame
+    local run, drawn = pick(frame)
+    if not run then return nil end
+    local budget = math.max(cvBudget:GetFloat(), 0.5)
+    local done = runSlice(run.key, run, drawn and budget or math.max(budget * 0.5, 0.5))
+    if run == m then return done end
     return nil
 end
 
@@ -452,7 +604,6 @@ function BM.Remembered(owner, bike, C, get, ...)
     return m
 end
 
--- Throw every built model away (bmx_bike_model_rebuild, or a hot reload).
 -- What the cache holds, for a bug report or a probe: key -> "ready" | "building" |
 -- "failed: <error>".
 function BM.Status()
@@ -463,20 +614,42 @@ function BM.Status()
     return out
 end
 
+local function destroyGroups(groups)
+    for _, list in pairs(groups) do
+        for _, e in ipairs(list) do
+            for _, mesh in ipairs(e.meshes) do if IsValid(mesh) then mesh:Destroy() end end
+        end
+    end
+end
+
+-- Throw every built model away (bmx_bike_model_rebuild, or a hot reload), and the
+-- meshes of any build half done.
 function BM.Clear()
     for _, m in pairs(models) do
         m.cleared = true                -- a bike still holding it must not draw it
-        if m.groups then
-            for _, list in pairs(m.groups) do
-                for _, e in ipairs(list) do
-                    for _, mesh in ipairs(e.meshes) do if IsValid(mesh) then mesh:Destroy() end end
-                end
-            end
-        end
+        if m.groups then destroyGroups(m.groups) end
+        if m.job and m.job.partial then destroyGroups(m.job.partial.groups) end
     end
     models = {}
 end
 concommand.Add("bmx_bike_model_rebuild", function() BM.Clear() end)
+
+-- WHAT THE BUILDS COST ON THIS CLIENT: each model built this session, its frames,
+-- the worst frame's build time, and what the engine took to take its meshes
+-- (BuildFromTriangles, which nothing offline can time). docs/TESTING.md.
+concommand.Add("bmx_bike_build_report", function()
+    MsgN(string.format("[BMX] model builds (bmx_bike_build_ms %.1f, at most %d triangles a mesh):",
+        cvBudget:GetFloat(), MAX_TRIS))
+    for _, st in ipairs(BM.LastBuilds) do
+        MsgN(string.format("  %s: %d frames, %.0f ms, worst frame %.2f ms | %d meshes, %d vertices, " ..
+            "BuildFromTriangles %.1f ms in all, worst %.2f ms (%d vertices), %.2f us a vertex",
+            st.key, st.slices, st.ms, st.worst, st.commits, st.verts, st.commitMs, st.commitWorst,
+            st.commitWorstVerts, st.verts > 0 and st.commitMs * 1000 / st.verts or 0))
+    end
+    for key, s in pairs(BM.Status()) do
+        if s ~= "ready" then MsgN("  " .. key .. ": " .. s) end
+    end
+end)
 
 --------------------------------------------------------------------------
 -- LIGHTING

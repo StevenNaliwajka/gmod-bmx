@@ -154,6 +154,7 @@ local function slab(M, group, st, opt)
         local c = { 0, 0, 0 }
         for _, p in ipairs(rings[i]) do c = add(c, p) end
         cen[i] = mul(c, 1 / m)
+        spent(m)
     end
     local N = {}
     for i = 1, n do
@@ -674,11 +675,10 @@ G.RegisterKind("skateboard", function(opt, G)
     if opt.extra and opt.extra.preview then
         local function copyTurned(src, dst)
             for _, b in ipairs(M.groups[src]) do
-                local d = M:bucket(dst, b.mat, b.detail)
-                for _, vt in ipairs(b.v) do
-                    d.v[#d.v + 1] = { p = V(-vt.p[1], -vt.p[2], vt.p[3]), n = V(-vt.n[1], -vt.n[2], vt.n[3]), u = vt.u, v = vt.v }
-                end
-                d.tris = d.tris + b.tris
+                Pm.copyVerts(M:bucket(dst, b.mat, b.detail), b, function(s, o, d, k)
+                    d[k + 1], d[k + 2], d[k + 3], d[k + 4] = -s[o + 1], -s[o + 2], s[o + 3], -s[o + 4]
+                    d[k + 5], d[k + 6], d[k + 7], d[k + 8] = -s[o + 5], s[o + 6], s[o + 7], s[o + 8]
+                end)
             end
         end
         copyTurned("truck", "truckRear")
@@ -990,7 +990,7 @@ G.RegisterKind("scooter", function(opt, G)
     G.parts.wheel(M, "wheel", R, { tread = "slick", wall = "rubber", mag = 6, rim = "alloy", hubRole = "alloy",
         hubHalf = D.tw * 0.5 + 0.06 })
     -- a solid urethane wheel: no sidewall lettering, no valve
-    dropBuckets(M, "wheel", function(b) return b.mat == "tyretext" or (b.mat == "steel" and b.detail) or #b.v == 0 end)
+    dropBuckets(M, "wheel", function(b) return b.mat == "tyretext" or (b.mat == "steel" and b.detail) or b.tris == 0 end)
     local half = D.barW * 0.5
     local function grip(side)
         return { A = V(D.bars[1], -(half - 3.6) * side, D.bars[3]), B = V(D.bars[1], -half * side, D.bars[3]) }
@@ -1023,6 +1023,7 @@ local function loft(M, group, rings, opt)
         local c = { 0, 0, 0 }
         for _, p in ipairs(rings[i]) do c = add(c, p) end
         cen[i] = mul(c, 1 / m)
+        spent(m)
     end
     local N = {}
     for i = 1, n do
@@ -1052,6 +1053,7 @@ local function loft(M, group, rings, opt)
                 end
             end
             N[i][j] = nn
+            spent(1)             -- (the client's build looks at its clock: cl_bikegeo.lua)
         end
     end
     -- a ring closed to a line (a toe, a heel) faces straight off the end
@@ -1140,6 +1142,7 @@ local function shellRing(x, nr)
         local cz = (abs(sa) ^ (2 / e)) * (sa < 0 and -1 or 1)
         ring[j + 1] = V(x, cy * w, zc + cz * hz)
     end
+    spent(nr)                -- (the client's build looks at its clock: cl_bikegeo.lua)
     return ring, w, zc + hz
 end
 

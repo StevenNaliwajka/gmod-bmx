@@ -12,7 +12,8 @@
 
         lua5.1 tools/rider/studio/studio.lua <id> [scenario] > shots.json
 
-    Scenarios: `bike` (pedalling, the stances, full lock, a hop, a no-hander),
+    Scenarios: `bike` (pedalling, the stances, full lock, a hop, a no-hander), `stroke`
+    (a shot every eighth of a pedal turn),
     `styles` (each style pose in the air), `board` (cruise, pushes, carves, the
     crouch, an ollie, a grab, a manual), `flips` (a kickflip and a shove-it),
     `scooter` (kicks, steer, a hop) and, for worn vehicles, the skates' strides;
@@ -342,6 +343,19 @@ S.flips = function()
         ent:SetGrounded(true)
         lift(-16)
         run(20)
+    end
+end
+
+-- A pedal stroke: a shot every eighth of a turn (the knees' tracking, the ankles).
+S.stroke = function()
+    local function pedal(n) for _ = 1, n do crank = crank + 7 * world.dt frame() end end
+    setSpeed(150)
+    pedal(40)
+    local start = crank
+    for i = 0, 7 do
+        local to = start + i * math.pi / 4
+        while crank < to do crank = math.min(to, crank + 7 * world.dt) frame() end
+        shot(string.format("crank %d", i * 45))
     end
 end
 

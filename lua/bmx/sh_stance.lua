@@ -48,12 +48,18 @@ for i, n in ipairs(BMX.RiderStances) do BMX.RiderStanceId[n] = i end
 -- them, which is the torso's lean (the IK then brings the arms and legs to the same
 -- grips and pedals from there). The limb offsets are still honoured if a row
 -- names them (a pose that really lets go would), but no stance does.
+--
+-- OUT OF THE SADDLE (cl_rider.lua, BMX.RiderFollowFrame): `rise` is how far of the
+-- way up the hips come (as far as the legs still reach the bottom of the stroke), and
+-- `over` how far of the way forward over the cranks. Standing is tall and over the
+-- pedals; attack is lower, the hips further back, the chest down over the bars.
 BMX.StanceOffsets = {
     seated   = {},
-    -- Up out of the saddle: the torso upright and back over the pedals.
-    standing = { spineLean = -6 },
-    -- Low and forward over the bars: chest down, elbows out.
-    attack   = { spineLean = 22 },
+    -- Up out of the saddle over the pedals, the chest forward over the bars (upright,
+    -- stood up off a BMX's low saddle, the bars were past arm's length).
+    standing = { spineLean = 10, rise = 1, over = 0.55 },
+    -- Low and forward over the bars: chest down, elbows out, hips back.
+    attack   = { spineLean = 22, rise = 0.6, over = 0.25 },
 }
 
 local LIMB_KEYS = { "rHand", "lHand", "rFoot", "lFoot" }

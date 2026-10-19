@@ -398,59 +398,69 @@ function B.RiderFeet(s)
 end
 
 --------------------------------------------------------------------------
--- THE ARMS. A skater's arms are for balance: loose and a little out in front at
--- a cruise, swung against the pushing leg, carried over the toes in a crouch, up
--- and out in the air, out wide and see-sawing on a manual or a grind as the meter
--- drifts. Chassis space, like the feet; `faceY` is the side the rider faces.
--- `s`: stance, lean (the deck's, rad), pushW, push, drop (units the pelvis is down),
--- crouch, airT, balance (the meter, -1..1, on a manual or a grind, else nil).
--- Returns the lead hand (the nose's side) and the trailing one.
+-- THE ARMS. A skater's arms are for balance: hanging loose at a cruise, the lead one
+-- a little toward the nose; swung fore and aft against the pushing leg, as in a walk;
+-- forward over the knees in a crouch; up and out in the air; out wide and see-sawing
+-- on a manual or a grind as the meter drifts.
+--
+-- FROM THE SHOULDERS. Each hand is an offset from its own shoulder, in the frame the
+-- rider faces (x the way they face -- up the board through a push -- y to their left,
+-- z up), units for kleiner's arm; cl_rider.lua puts it on the posed shoulder and
+-- scales it to the model's arm. They used to be points on the board, worked out for
+-- where a body would stand: the real body crouched, leaned and turned for a push, the
+-- hands stayed, and the arms reached up and out with the wrists cocked like paws, or
+-- folded into the thighs mid-push (kleiner's mesh in the offline studio, 2026-10-19).
+-- Hanging, a hand is ARM_HANG below its shoulder: the elbow a little bent, as a loose
+-- arm is, whatever the body above it does.
+-- `s`: stance, pushW, push, crouch, airT, balance (the meter, -1..1, on a manual or a
+-- grind, else nil). Returns the lead hand (the nose's side) and the trailing one.
 --------------------------------------------------------------------------
+local ARM_HANG = 22.4        -- shoulder to wrist, kleiner's 23.2 of arm a little bent
+-- Where a standing body's shoulders are over the seat, for the estimate the drawing
+-- hands out before the solver has the real ones (kleiner in idle_all_01).
+local SHOULDER_Z, SHOULDER_W = 64.6, 7.7
+local function hang(x, y, len)
+    len = len or ARM_HANG
+    return Vector(x, y, -math.sqrt(math.max(len * len - x * x - y * y, 1)))
+end
+B.ArmHang = ARM_HANG
+
 function B.RiderHands(s)
     local stance = s.stance or 1
-    local faceY = stance >= 0 and -1 or 1
-    local lead  = Vector(12, faceY * 4, 35)
-    local trail = Vector(-12, faceY * 3, 34)
+    local n = stance >= 0 and 1 or -1       -- the nose's side: the rider's left riding regular
+    local lead  = hang(2, n * 8)
+    local trail = hang(3, -n * 5.5)
 
-    -- Into the carve: the deck's top leans toward -Y for a positive lean, and the
-    -- body and its arms go with it.
-    local lean = s.lean or 0
-    local side = Vector(0, -sin(lean) * 10, -abs(sin(lean)) * 2)
-    lead, trail = lead + side, trail + side
+    -- The crouch: the hands come forward over the knees.
+    local c = math.Clamp(s.crouch or 0, 0, 1)
+    if c > 0 then
+        lead, trail = lerpV(lead, hang(9, n * 6, 21.5), c), lerpV(trail, hang(9, -n * 5, 21.5), c)
+    end
 
     -- In the air: up and out, wider, the way a rider holds their balance off a pop.
     if s.airT then
         local k = ease(s.airT / 0.15)
-        lead = lead + Vector(4, faceY * 2, 6) * k
-        trail = trail + Vector(-4, faceY * 1, 5) * k
+        lead = lerpV(lead, Vector(4, n * 15, -13), k)
+        trail = lerpV(trail, Vector(2, -n * 14, -14), k)
     end
 
     -- On a manual or a grind: out wide, see-sawing against the meter.
     if s.balance then
         local m = math.Clamp(s.balance, -1, 1)
-        lead = Vector(17, faceY * 2, 38 + 7 * m)
-        trail = Vector(-17, faceY * 2, 38 - 7 * m)
+        lead = Vector(2, n * 18, -10 + 7 * m)
+        trail = Vector(2, -n * 18, -10 - 7 * m)
     end
 
-    -- The push: the body has turned up the board, the arms hang by it and swing
-    -- against the pushing leg (as the foot goes back, its own side's arm comes
-    -- forward and the other goes back, as in a walk).
+    -- The push: the body has turned up the board and the arms swing by it, against the
+    -- pushing leg -- as the (back) foot goes back, its own side's arm comes forward and
+    -- the other goes back, as in a walk.
     local w = s.pushW or 0
     if w > 0 then
-        local g = B.PushGeo(T, faceY)
+        local g = B.PushGeo(T, -n)
         local fx = B.PushFoot(s.push or -1, Vector(T.footBack, 0, FOOT_Z), T, g).x
         local sw = math.Clamp((g.plantX - fx) / (g.plantX - g.backX), 0, 1)
-        local pl = Vector(7 - 5 * sw, faceY * 6, 32)
-        local pt = Vector(-1 + 7 * sw, faceY * 7, 31)
-        lead, trail = lerpV(lead, pl, w), lerpV(trail, pt, w)
+        lead, trail = lerpV(lead, hang(6 - 11 * sw, n * 6), w), lerpV(trail, hang(-5 + 12 * sw, -n * 7), w)
     end
-
-    -- The crouch takes the shoulders down with the pelvis, and the hands forward
-    -- over the toes.
-    local drop = s.drop or 0
-    local c = s.crouch or 0
-    lead = lead + Vector(-2 * c, faceY * 3 * c, -drop)
-    trail = trail + Vector(2 * c, faceY * 3 * c, -drop)
     return lead, trail
 end
 
@@ -545,8 +555,11 @@ local function calibratePelvis(ply, b)
     return nil
 end
 
-local CROUCH_DEPTH = 9          -- units the pelvis drops at a full crouch
-local RIDE_BEND = 5             -- ...and at rest: riding knees are always soft
+-- An ollie's preload is DEEP: knees past a right angle, the pelvis well down. At 9 it
+-- was two units under the riding bend, and nobody could see the crouch at all
+-- (kleiner's mesh in the offline studio, 2026-10-19).
+local CROUCH_DEPTH = 15         -- units the pelvis drops at a full crouch
+local RIDE_BEND = 7             -- ...and at rest: riding knees are always soft
 local PUSH_DROP = 5             -- ...further on the standing leg as the other reaches the ground
 local AIR_TUCK  = 4             -- ...and in the air, the knees up under the rider
 B.RideBend = RIDE_BEND
@@ -650,6 +663,10 @@ function B.TurnPelvis(ply, deg)
 end
 
 local PUSH_TURN = 55            -- degrees the hips come round up the board for a push
+local RIDE_LEAN = 6             -- degrees forward from upright, riding along
+local AIR_LEAN = 14             -- ...more in the air, over the pulled-up knees
+local OPEN_SHOULDERS = 12       -- degrees the chest turns toward the nose
+local GRAB_TUCK = 0.8           -- of a full crouch, held through a grab
 
 -- The bone offsets for the ride: the torso follows the carve and folds with the
 -- crouch, the hips come round for a push, the head holds the horizon. Called from
@@ -661,6 +678,11 @@ SET.rider = function(s)
     local R = bike and bike.bmxRide or {}
     local crouch = bike and bike.GetCrouch and bike:GetCrouch() or 0
     crouch = max(crouch, s.hop or 0)
+    -- A GRAB IS A TUCK: the knees come up and the board with them to the hand, rather
+    -- than the rider folding at the waist over straight legs to reach down to it.
+    local grab = 0
+    for _, w in pairs(bike and bike.poseW or {}) do grab = grab + w end
+    crouch = max(crouch, min(grab, 1) * GRAB_TUCK)
     local stance = R.stance or 1
     local faceSign = stance >= 0 and 1 or -1
     local w = R.pushW or 0
@@ -678,8 +700,15 @@ SET.rider = function(s)
     -- ...and on a manual or a grind, the meter: the body leans the way it is falling
     -- and the arms (B.RiderHands) bring it back.
     local meter = R.balance and R.balance * 6 or 0
-    local spine = crouch * 18 + math.deg(s.pitch or 0) * 0.5 + carve + w * 8 + meter
-    local twist = math.deg(lean) * 0.3
+    -- READY, NOT AT ATTENTION: a skater rides a little forward over soft knees, and in
+    -- the air folds over the knees they have pulled up (upright over folded legs, the
+    -- rider looked to be kneeling on the board).
+    local spine = RIDE_LEAN + crouch * 18 + (R.air or 0) * AIR_LEAN
+        + math.deg(s.pitch or 0) * 0.5 + carve + w * 8 + meter
+    -- The shoulders open a little toward the nose (where the eyes are, BMX.RiderLookAt),
+    -- not through a push, when the hips have come round already. A positive twist turns
+    -- the chest to the rider's left, where the nose is riding regular.
+    local twist = math.deg(lean) * 0.3 + faceSign * OPEN_SHOULDERS * (1 - w)
     return {
         spine = Angle(0, spine, twist),
         head  = Angle(0, -spine * 0.7, -twist * 0.5),
@@ -703,6 +732,10 @@ function B.FacingFor(bike, stance, pushW)
     return face, up
 end
 
+-- Elbows back and a little out, as loose arms hang (the bike's are out and down, over
+-- bars); knees forward, over the toes.
+SET.poles = { arm = Vector(-0.8, 0.45, -0.25), leg = Vector(1, 0, 0.2) }
+
 SET.solveIK = function(ply, bike)
     local ik = bike.ikTargets
     if not ik or not BMX.SolveRiderIK then return end
@@ -716,6 +749,11 @@ SET.solveIK = function(ply, bike)
         bmxPoseSet = SET,
     }
     BMX.SolveRiderIK(ply, ik, proxy)
+    -- EYES UP THE BOARD: the way it is going, over the lead shoulder (the tail first,
+    -- rolling fakie), not out to the side the body faces.
+    if BMX.RiderLookAt then
+        BMX.RiderLookAt(ply, bike:GetForward() * (B.HasFlag(flags, "fakie") and -1 or 1))
+    end
 end
 
 --------------------------------------------------------------------------
@@ -996,25 +1034,55 @@ BMX.DrawVehicle.board = function(ent, kit)
     local lFoot = stance >= 0 and frontW or backW
     local rFoot = stance >= 0 and backW or frontW
 
-    local function C2W(v) return ent:LocalToWorld(v) end
     local hc = max(ent:GetCrouch(), ent.bmxLand or 0)
     local lead, trail = B.RiderHands({
-        stance = stance, lean = ent:GetBoardLean(), pushW = R.pushW, push = push,
-        crouch = hc, airT = airT, balance = R.balance,
-        drop = B.BodyDrop({ crouch = hc, speed = ent.GetSpeedUPS and ent:GetSpeedUPS() or 0,
-                            pushBend = R.pushBend, air = R.air }) - RIDE_BEND,
+        stance = stance, pushW = R.pushW, push = push, crouch = hc, airT = airT, balance = R.balance,
     })
     -- The lead hand is on the nose's side: the left for a left-foot-forward stance.
+    local lRel, rRel = stance >= 0 and lead or trail, stance >= 0 and trail or lead
+    -- Arms out for balance are OPEN hands, and the torso does not reach for them (without
+    -- this the arms counted as holding bars, and the reach for them bent every skater 30
+    -- degrees over). The solver puts each on its shoulder (`Rel`); until then, and for
+    -- whoever reads the targets without solving, each is where a standing body's
+    -- shoulder would put it.
+    local face, fup = B.FacingFor(ent, stance, R.pushW)
+    local fleft = fup:Cross(face)
+    local drop = B.BodyDrop({ crouch = hc, speed = ent.GetSpeedUPS and ent:GetSpeedUPS() or 0,
+                              pushBend = R.pushBend, air = R.air })
+    local neck = ent:LocalToWorld(Vector(0, 0, T.seatZ)) + fup * (SHOULDER_Z - drop)
+    local function est(rel, side)
+        return neck + fleft * (SHOULDER_W * side) + face * rel.x + fleft * rel.y + fup * rel.z
+    end
     local ik = {
         lFoot = lFoot, rFoot = rFoot,
-        lHand = C2W(stance >= 0 and lead or trail),
-        rHand = C2W(stance >= 0 and trail or lead),
+        lHand = est(lRel, 1), rHand = est(rRel, -1),
+        lHandRel = lRel, rHandRel = rRel,
+        openHands = true,
     }
-    BMX.ApplyPoseTargets(ik, W, function(v) return P(v) end, rows)
-    -- Arms out for balance are open hands, and the torso does not reach for them; a
-    -- grab closes a hand on the deck (cl_rider.lua). Without this the arms counted as
-    -- holding bars, and the reach for them bent every skater 30 degrees over.
-    ik.openHands = not (W and next(W) ~= nil)
+    -- A GRAB takes its hand to its place on the deck, by the grab's weight, and closes it
+    -- there (the other hand keeps its balance, open).
+    local to, toW = {}, {}
+    for name, w in pairs(W or {}) do
+        local row = rows[name]
+        if row and w > 0 then
+            for _, key in ipairs({ "rHand", "lHand" }) do
+                if row[key] then
+                    to[key] = (to[key] or Vector(0, 0, 0)) + P(row[key]) * w
+                    toW[key] = (toW[key] or 0) + w
+                end
+            end
+        end
+    end
+    for _, key in ipairs({ "rHand", "lHand" }) do
+        local w = toW[key]
+        if w then
+            local at = to[key] / w
+            w = min(w, 1)
+            ik[key .. "To"], ik[key .. "ToW"] = at, w
+            ik[key] = ik[key] + (at - ik[key]) * w
+        end
+        ik[key .. "Open"] = not (w and w > 0.5)
+    end
     ent.ikTargets = ik
 
     if debug then

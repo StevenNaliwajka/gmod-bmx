@@ -333,3 +333,136 @@ T.test("real skeleton: a landing squashes the suspension and the rider rides the
     T.between(ply:GetManipulateBonePosition(pb):Length(), 0, 0.5, "and is back on the chassis once it is up")
     if cb.Remove then cb:Remove() end
 end)
+
+-- A SKATER, on kleiner's real standing skeleton. The arms were sent to points on the
+-- board and the open hands aimed out to the side, so every skater rode with the arms
+-- reaching out and the wrists cocked, palms down, like paws; a grab left both hands
+-- fists for the rest of the ride; and the head looked out to the side the body faces
+-- (kleiner's mesh in the offline studio, 2026-10-19). Here: the hands hang from the
+-- shoulders, the wrists straight, the fingers open again after a grab, and the eyes
+-- look up the board, level.
+T.test("real skeleton: a skater's arms hang loose, wrists straight, a grab's hand opens after it, and the eyes look up the board", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local E, B = cl.env, cl.env.BMX
+    local ent = cl:clientEntity("bmx_skateboard")
+    ent:SetPos(E.Vector(0, 0, 1.3))
+    ent:SetGrounded(true)
+    ent:SetPushPhase(-1)
+    local ply = cl:player("Skater")
+    ply._skel = SR.load("kleiner_standing")
+    ply._vehicle = seatPod(cl, ent, B.SeatFor(ent:Bike(), ent:Cfg(), "rider"))
+    ent:SetPod(ply._vehicle)
+    ent:SetDriver(ply)
+    cl.localPlayer = sv:player("Looker")
+    cl.eyePos = ent:GetPos() + E.Vector(0, 150, 50)
+    world.dt = 1 / 30
+    local function frame() world.time = world.time + world.dt ent:Draw() E.hook.Run("PrePlayerDraw", ply) end
+    local function P(name) ply:InvalidateBoneCache() return ply:GetBoneMatrix(ply:LookupBone("ValveBiped.Bip01_" .. name)) end
+    local function fingersCurled(s)
+        for _, f in ipairs({ "1", "2", "3", "4" }) do
+            local a = ply:GetManipulateBoneAngles(ply:LookupBone("ValveBiped.Bip01_" .. s .. "_Finger" .. f .. "1"))
+            if math.abs(a.p) + math.abs(a.y) + math.abs(a.r) > 1 then return true end
+        end
+        return false
+    end
+    ent._vel = ent:GetForward() * 200
+    for _ = 1, 30 do frame() end
+    for _, s in ipairs({ "R", "L" }) do
+        local sh, el, wr = P(s .. "_UpperArm"):GetTranslation(), P(s .. "_Forearm"):GetTranslation(), P(s .. "_Hand"):GetTranslation()
+        local kn = P(s .. "_Finger2"):GetTranslation()
+        T.ok(wr.z < sh.z - 15, s .. ": the hand hangs below its shoulder: " .. (sh.z - wr.z))
+        local bend = math.deg(math.acos((wr - el):GetNormalized():Dot((kn - wr):GetNormalized())))
+        T.between(bend, 0, 25, s .. ": the wrist straight, the hand going on from the forearm, degrees")
+        T.ok(not fingersCurled(s), s .. ": an open hand, not a fist")
+    end
+    -- the eyes up the board, the way it rolls, and level
+    local fb = ply:LookupBone("ValveBiped.forward")
+    ply:InvalidateBoneCache()
+    local gaze = ply:GetBoneMatrix(fb):GetForward()
+    local fwd = ent:GetForward()
+    local yaw = math.deg(math.acos(math.Clamp(E.Vector(gaze.x, gaze.y, 0):GetNormalized():Dot(E.Vector(fwd.x, fwd.y, 0):GetNormalized()), -1, 1)))
+    T.between(yaw, 0, 20, "looking up the board, not out to the side, degrees off its heading")
+    local skull = P("Head1")
+    T.between(math.abs(skull:GetUp().z), 0, 0.2, "the eyes level: the head's side axis about horizontal")
+    -- a grab closes the back hand on the deck; after it, the hand opens again
+    ent:SetGrounded(false)
+    ent:SetTrickBits(B.PoseIDs.indy * 65536)
+    for _ = 1, 15 do frame() end
+    T.ok(fingersCurled("R"), "the indy's hand (the back one, riding regular) closes on the deck")
+    T.ok(not fingersCurled("L"), "the other keeps its balance, open")
+    ent:SetTrickBits(0)
+    for _ = 1, 15 do frame() end
+    T.ok(not fingersCurled("R") and not fingersCurled("L"), "let go, both hands open again")
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
+-- OUT OF THE SADDLE. The standing and attack stances only leaned the torso, so a
+-- "standing" rider sat on the saddle (kleiner's mesh in the offline studio, 2026-10-19).
+-- Standing, the hips come up off it -- as far as the legs still reach the bottom of the
+-- stroke -- with the hands on the grips, the feet on the pedals, the elbows bent (lifted
+-- 9 units, a BMX's low bars were past arm's length and the arms locked straight). A
+-- penny-farthing's pedals are already a stretch away: its rider rises only as far as
+-- the hips brought over the hub still reach them.
+T.test("real skeleton: standing and attack lift the rider off the saddle, on the grips and pedals, elbows bent", function()
+    local sv, world, cl, n = client()
+    local E, B = cl.env, cl.env.BMX
+    local function elbow(ply, s)
+        ply:InvalidateBoneCache()
+        local function P(b) return ply:GetBoneMatrix(ply:LookupBone("ValveBiped.Bip01_" .. s .. "_" .. b)):GetTranslation() end
+        local S, El, W = P("UpperArm"), P("Forearm"), P("Hand")
+        return math.deg(math.acos(math.Clamp((El - S):GetNormalized():Dot((W - El):GetNormalized()), -1, 1)))
+    end
+    for _, id in ipairs({ "stock", "dirtbike", "penny" }) do
+        local cb = cl:clientEntity(B.ClassFor(id))
+        cb:SetPos(E.Vector(0, 0, F.restHeight(sv)))
+        cb:SetGrounded(true)
+        cb:SetPedalling(true)
+        local ply = cl:player("Stander" .. n .. id)
+        ply._skel = SR.load("kleiner_seated")
+        ply._vehicle = seatPod(cl, cb, B.SeatFor(cb:Bike(), cb:Cfg(), "rider"))
+        cb:SetPod(ply._vehicle)
+        cb:SetDriver(ply)
+        cl.eyePos = cb:GetPos() + E.Vector(0, 150, 50)
+        T.ok(MF.ready(cl, cb), id .. ": the model builds")
+        world.dt = 1 / 20
+        cb._vel = cb:GetForward() * 120
+        local pb = ply:LookupBone("ValveBiped.Bip01_Pelvis")
+        local function settle(stance)
+            ply:SetNWInt("BMXStance", B.RiderStanceId[stance])
+            local worst = 0
+            for i = 1, 30 do
+                MF.draw(cl, cb)
+                E.hook.Run("PrePlayerDraw", ply)
+                if i > 20 then
+                    -- (a hand anywhere on its grip: the stance's targets are a copy, so
+                    -- where along it the solver chose is not on the bike's own table)
+                    local t = cb.ikTargets
+                    for k, v in pairs(misses(B, ply, t)) do
+                        if k:find("Hand") and t[k .. "A"] then
+                            local fc = B.RiderFistCentre(ply, k:sub(1, 1):upper())
+                            v = segDist(fc, t[k .. "A"], t[k .. "B"])
+                        end
+                        worst = math.max(worst, v)
+                    end
+                end
+            end
+            return ply:GetManipulateBonePosition(pb):Length(), worst
+        end
+        local seated = settle("seated")
+        for _, stance in ipairs({ "standing", "attack" }) do
+            local up, worst = settle(stance)
+            if id == "penny" then
+                -- (the hub's pedals are a stretch already: up only as far as the hips over
+                -- the hub still reach the bottom of the stroke)
+                T.between(up - seated, -0.5, B.RiderStandRise + 0.5, string.format("%s %s: no higher than a stand allows", id, stance))
+            else
+                T.ok(up > seated + 2.5, string.format("%s %s: up off the saddle, %.1f units", id, stance, up))
+            end
+            T.between(worst, 0, 0.6, id .. " " .. stance .. ": hands and feet on the bike, units at worst")
+            T.ok(elbow(ply, "R") > 12 and elbow(ply, "L") > 12,
+                string.format("%s %s: elbows bent, not locked (%.0f, %.0f degrees)", id, stance, elbow(ply, "R"), elbow(ply, "L")))
+        end
+        if cb.Remove then cb:Remove() end
+    end
+end)

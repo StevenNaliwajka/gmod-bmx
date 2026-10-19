@@ -106,6 +106,8 @@ end
 -- speed and further over them through a kick, the head holds the horizon. What the
 -- drawing worked out this frame is on the scooter (bike.bmxRide).
 local KICK_DROP = 9             -- units the pelvis goes down at the bottom of a kick
+local RIDE_BEND = 6             -- ...riding along, knees soft
+local HOP_DEPTH = 9             -- ...at a hop's full preload
 local AIR_TUCK  = 3             -- ...and in the air
 SC.KickDrop = KICK_DROP
 -- STOOD OVER THE BARS. A scooter's bars are waist high, and a rider stood bolt
@@ -118,8 +120,9 @@ SC.StandLean = STAND_LEAN
 
 function SC.BodyDrop(s)
     local crouch = math.Clamp(s.crouch or 0, 0, 1)
-    -- Soft knees at rest (the board's riding bend), deeper with the crouch.
-    local depth, bend = B and B.CrouchDepth or 9, (B and B.RideBend or 5) * 1.2
+    -- Soft knees at rest, deeper with the crouch. (Its own numbers: the board's ollie
+    -- crouch goes much deeper than a scooter's hop, and its knees are softer.)
+    local depth, bend = HOP_DEPTH, RIDE_BEND
     local d = bend + crouch * (depth - bend)
     return d + (1 - crouch) * ((s.pushBend or 0) * KICK_DROP + (s.air or 0) * AIR_TUCK)
 end

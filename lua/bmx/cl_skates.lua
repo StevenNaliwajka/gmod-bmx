@@ -313,12 +313,18 @@ hook.Add("CalcMainActivity", "BMX.Skates.Pose", function(ply)
     return ACT_HL2MP_IDLE, seq
 end)
 
--- The nudges, degrees: how far the knees are bent at rest and at speed, how far the torso
--- leans into the speed, how far the striding thigh swings.
-S.Pose = { pelvis = 3.5, pelvisFast = 2.5, spine = 4, spineFast = 10, swing = 32 }
+-- The nudges: how far the pelvis is down at rest and at speed (units: the knees bend),
+-- how far the torso leans into the speed (degrees), how far the striding thigh swings.
+-- A SKATER RIDES LOW. At 3.5 units down and 4 degrees over, the knees all but straight
+-- and the back upright, a skater stood on their wheels like someone waiting for a bus
+-- (kleiner's mesh in the offline studio, 2026-10-19).
+S.Pose = { pelvis = 6, pelvisFast = 3, spine = 8, spineFast = 14, swing = 32 }
 
 local BONE = { lThigh = "ValveBiped.Bip01_L_Thigh", rThigh = "ValveBiped.Bip01_R_Thigh",
-               spine = "ValveBiped.Bip01_Spine1" }
+               spine = "ValveBiped.Bip01_Spine1", spineLow = "ValveBiped.Bip01_Spine",
+               spineHigh = "ValveBiped.Bip01_Spine2" }
+-- (the lean shared down the back, as cl_rider.lua's is: a back curves, it does not hinge)
+local SPINE_SHARE = { spineLow = 0.3, spine = 0.35, spineHigh = 0.35 }
 
 local posed = {}      -- ply -> true while we have bones moved on them
 
@@ -355,7 +361,8 @@ end
 -- Where the feet go, the player's own space: under the hips a skate's width apart,
 -- the striding one `S.StrideFoot` further back and out at the end of its push.
 --------------------------------------------------------------------------
-S.StrideFoot = { back = 8, out = 3, lift = 0.8 }
+-- (Out to the side as much as back: a skate pushes sideways off its edge.)
+S.StrideFoot = { back = 10, out = 7, lift = 0.8 }
 local IK_RANGE = 1200
 function S.FootTargets(origin, yaw, radius, stride, foot)
     local f = Vector(cos(math.rad(yaw)), sin(math.rad(yaw)), 0)
@@ -396,6 +403,39 @@ function S.LegsOnGround(ply, stride, foot)
     return true
 end
 
+--------------------------------------------------------------------------
+-- THE ARMS. idle_all_01's arms stand out from the body in an A with the hands clawed,
+-- and that is how every skater rode: a scarecrow on wheels (kleiner's mesh in the
+-- offline studio, 2026-10-19). With the rider IK they hang from the shoulders, loose,
+-- the hands open and the wrists straight (cl_rider.lua's open hands), and swing with
+-- the stride as a walker's do: as a foot pushes back, its own side's arm comes forward
+-- and the other goes back. And the eyes look up the road (BMX.RiderLookAt), level,
+-- not wherever the idle's head was turned.
+-- Offsets from each shoulder (x forward, y the rider's left, z up), a pure function.
+--------------------------------------------------------------------------
+S.ArmSwing = { fwd = 9, back = 7, hang = 22.4, out = 6.5 }
+function S.HandOffsets(stride, foot)
+    local A = S.ArmSwing
+    local function hang(x, y) return Vector(x, y, -math.sqrt(math.max(A.hang * A.hang - x * x - y * y, 1))) end
+    local s = stride or 0
+    local mine, other = 2 + A.fwd * s, 2 - A.back * s     -- the striding foot's side, and the other
+    local l = (foot or 1) > 0 and mine or other
+    local r = (foot or 1) > 0 and other or mine
+    return hang(l, A.out), hang(r, -A.out)
+end
+local ARM_SET = { openHands = true, poles = { arm = Vector(-0.8, 0.45, -0.25), leg = Vector(1, 0, 0.2) } }
+local function armsAndEyes(ply, yaw, stride, foot)
+    if not BMX.SolveRiderIK then return end
+    local f = Vector(cos(math.rad(yaw)), sin(math.rad(yaw)), 0)
+    local up = Vector(0, 0, 1)
+    local l, r = S.HandOffsets(stride, foot)
+    local proxy = { GetForward = function() return f end, GetUp = function() return up end,
+        GetRight = function() return f:Cross(up):GetNormalized() end, bmxPoseSet = ARM_SET }
+    local at = ply:GetPos()
+    BMX.SolveRiderIK(ply, { lHandRel = l, rHandRel = r, lHand = at, rHand = at, openHands = true }, proxy)
+    if BMX.RiderLookAt then BMX.RiderLookAt(ply, f) end
+end
+
 hook.Add("PrePlayerDraw", "BMX.Skates.Legs", function(ply)
     if not wearing(ply) then release(ply) return end
     local P = S.Pose
@@ -403,12 +443,21 @@ hook.Add("PrePlayerDraw", "BMX.Skates.Legs", function(ply)
     local speed = math.sqrt(v.x * v.x + v.y * v.y)
     local frac = math.Clamp(speed / T.maxSpeed, 0, 1)
     if B and B.LowerPelvis then B.LowerPelvis(ply, P.pelvis + P.pelvisFast * frac) end
-    local spine = ply:LookupBone(BONE.spine)
-    if spine then ply:ManipulateBoneAngles(spine, Angle(0, P.spine + P.spineFast * frac, 0)) end
+    local lean = P.spine + P.spineFast * frac
+    for key, share in pairs(SPINE_SHARE) do
+        local b = ply:LookupBone(BONE[key])
+        if b then ply:ManipulateBoneAngles(b, Angle(0, lean * share, 0)) end
+    end
     local stride = S.StrideSwing(ply:GetNWFloat("BMXSkatePhase", -1))
     local swing = stride * P.swing
     local foot = ply:GetNWInt("BMXSkateFoot", 1)
-    if S.LegsOnGround(ply, stride, foot) then posed[ply] = true return end
+    if S.LegsOnGround(ply, stride, foot) then
+        if EyePos():Distance(ply:GetPos()) <= IK_RANGE then
+            armsAndEyes(ply, ply:GetRenderAngles().y, stride, foot)
+        end
+        posed[ply] = true
+        return
+    end
     for _, k in ipairs({ "lThigh", "rThigh" }) do
         local b = ply:LookupBone(BONE[k])
         if b then

@@ -48,6 +48,7 @@ function BMX.PassengerKind(ply, bike)
 end
 
 local SHOULDER = { r = "ValveBiped.Bip01_R_UpperArm", l = "ValveBiped.Bip01_L_UpperArm" }
+local SHOULDER_GRIP = 0.45      -- of a full fist
 
 -- The world-space targets for a passenger's limbs, as BMX.SolveRiderIK takes them.
 -- `rider` may be nil (nobody at the bars): the hands then go to where the rider's
@@ -74,6 +75,9 @@ function BMX.PassengerTargets(ply, bike, kind, rider)
         end
         p = p or bike:LocalToWorld(Vector(so.x + 2, (s == "r") and -7 or 7, so.z + 20))
         t[s == "r" and "rHand" or "lHand"] = p + bike:GetUp() * 1.5
+        -- RESTING ON THEM, a soft grip: a full fist clamped on the rider's shoulders
+        -- read as a claw (kleiner's mesh in the offline studio, 2026-10-19).
+        t[s == "r" and "rHandCurl" or "lHandCurl"] = SHOULDER_GRIP
     end
 
     -- Feet.
@@ -94,19 +98,32 @@ end
 -- The torso: forward over the rider's back (a standing passenger leans on them),
 -- upright in a child seat, and a tandem's stoker forward to their own bars (which
 -- are low, behind the captain's saddle: a road rider's lean, not a passenger's).
-local LEAN = { pegs = 16, child = 4, stoker = 26 }
+local LEAN = { pegs = 10, child = 4, stoker = 26 }
 BMX.PassengerLean = LEAN
+
+-- A PEGS PASSENGER STANDS on the pegs, legs nearly straight, as one does on a BMX's
+-- pegs: the seat's sit had them squatting behind the rider in mid-air (kleiner's mesh
+-- in the offline studio, 2026-10-19). Up off the seat as far as the legs reach the
+-- pegs with a soft knee (cl_rider.lua's out-of-the-saddle), PEGS_RISE at most.
+local PEGS_RISE = 14
+local PEGS_STAND = { rise = 1, over = 0, max = PEGS_RISE }
 
 function BMX.PassengerPose(ply, bike)
     local kind = BMX.PassengerKind(ply, bike) or "pegs"
-    -- On the frame the bike drew, as the rider is (cl_rider.lua).
+    local stoker = kind == "pegs" and bike.ikTargetsStoker and bike.ikTargetsStoker.rFoot
+    local ik = BMX.SolveRiderIK and GetConVar("bmx_rider_ik"):GetBool()
+    local targets = ik and BMX.PassengerTargets(ply, bike, kind, bike:GetDriver()) or nil
+    -- On the frame the bike drew, as the rider is (cl_rider.lua); up on the pegs.
     if BMX.RiderFollowFrame and BMX.SeatFor then
         local seat = BMX.SeatFor(bike:Bike(), bike:Cfg(), kind)
-        if seat then BMX.RiderFollowFrame(ply, bike, seat.offset) end
+        local stand
+        if kind == "pegs" and not stoker and targets and targets.rFoot then
+            PEGS_STAND.feet = { targets.rFoot, targets.lFoot }
+            stand = PEGS_STAND
+        end
+        if seat then BMX.RiderFollowFrame(ply, bike, seat.offset, stand) end
     end
-    local stoker = kind == "pegs" and bike.ikTargetsStoker and bike.ikTargetsStoker.rFoot
     local base = LEAN[stoker and "stoker" or kind]
-    local ik = BMX.SolveRiderIK and GetConVar("bmx_rider_ik"):GetBool()
     -- ...and as far again as the IK asks to get the hands to what they hold (spineReach,
     -- cl_rider.lua), followed as a rider's is.
     local reachLean, reachTwist = 0, 0
@@ -115,10 +132,7 @@ function BMX.PassengerPose(ply, bike)
     if b then ply:ManipulateBoneAngles(b, Angle(0, base + reachLean, reachTwist)) end
     local head = ply:LookupBone("ValveBiped.Bip01_Head1")
     if head then ply:ManipulateBoneAngles(head, BMX.HeadAngle(Angle(0, -(base + reachLean) * 0.7, -reachTwist * 0.5))) end
-    if ik then
-        local targets = BMX.PassengerTargets(ply, bike, kind, bike:GetDriver())
-        BMX.SolveRiderIK(ply, targets, bike)
-    end
+    if ik then BMX.SolveRiderIK(ply, targets, bike) end
 end
 
 -- bmx_rider_anim 0 leaves every rider in the plain seated pose, a passenger too:

@@ -497,7 +497,9 @@ end
 --------------------------------------------------------------------------
 local FINGERS = { "1", "2", "3", "4" }
 local CURL = 55                    -- degrees at each finger joint: round a grip
+local THUMB_CURL = 40              -- ...and at the thumb's middle joint (its tip 0.6 of it)
 local curlAxis = {}                -- model -> side -> local axis, or false
+local thumbAxis = {}               -- the same, for the thumb
 BMX.RiderCurlAxis = curlAxis
 
 -- Each side's bone names, made once (they were put together afresh at every use).
@@ -505,7 +507,8 @@ local SIDE_BONES = {}
 for _, s in ipairs({ "R", "L" }) do
     local p = "ValveBiped.Bip01_" .. s .. "_"
     local t = { toe = p .. "Toe0", upperArm = p .. "UpperArm", forearm = p .. "Forearm", hand = p .. "Hand",
-                finger0 = p .. "Finger0", finger2 = p .. "Finger2", fingers = {}, fist = {} }
+                finger0 = p .. "Finger0", finger2 = p .. "Finger2", fingers = {}, fist = {},
+                thumb = { p .. "Finger01", p .. "Finger02" }, mid = p .. "Finger21" }
     for _, f in ipairs(FINGERS) do t.fingers[f] = { p .. "Finger" .. f, p .. "Finger" .. f .. "1", p .. "Finger" .. f .. "2" } end
     for _, name in ipairs({ "Finger2", "Finger21", "Finger22", "Finger0" }) do t.fist[#t.fist + 1] = p .. name end
     SIDE_BONES[s] = t
@@ -538,7 +541,9 @@ local function calibrateCurl(ply, side)
     return best
 end
 
-local function closeHand(ply, side)
+-- `amount`, 0..1, of the full curl: a hand closes on what it takes hold of and opens
+-- when it lets go over CURL_TIME (followed, below), not in a frame.
+local function closeHand(ply, side, amount)
     local model = ply:GetModel()
     curlAxis[model] = curlAxis[model] or {}
     local ax = curlAxis[model][side]
@@ -548,7 +553,7 @@ local function closeHand(ply, side)
     end
     if not ax then return end
     local curl = Angle(0, 0, 0)
-    curl:RotateAroundAxis(ax, CURL)
+    curl:RotateAroundAxis(ax, CURL * (amount or 1))
     -- The same curl every frame: a hand whose fingers were all given it, on this model
     -- (a new model starts its bone map afresh), and that the engine still has on the
     -- first of them, is left alone. Setting it again moves nothing, but the skeleton
@@ -568,8 +573,71 @@ local function closeHand(ply, side)
             manip(ply, b, curl)
         end
     end
+    -- THE THUMB WRAPS THE BAR. Only the fingers were curled, and every fist had its
+    -- thumb standing up out of it (kleiner's mesh in the offline studio, 2026-10-19).
+    -- Its way round is measured as the fingers' is: its middle joint turned about each
+    -- of its axes, both ways, and the turn that brings its last joint closest to the
+    -- curled middle finger is the way it closes.
+    local th = SIDE_BONES[sideOf(side)].thumb
+    local t1, t2, mid = lookupBone(ply, th[1]), lookupBone(ply, th[2]), lookupBone(ply, SIDE_BONES[sideOf(side)].mid)
+    if t1 and t2 and mid then
+        thumbAxis[model] = thumbAxis[model] or {}
+        local tax = thumbAxis[model][side]
+        if tax == nil then
+            local best, bestD
+            refresh(ply)
+            for _, a in ipairs({ Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1) }) do
+                for _, sg in ipairs({ 1, -1 }) do
+                    local d = Angle(0, 0, 0)
+                    d:RotateAroundAxis(a, 40 * sg)
+                    manip(ply, t1, d)
+                    refresh(ply)
+                    local dist = (bonePos(ply, t2) - bonePos(ply, mid)):Length()
+                    if not bestD or dist < bestD then best, bestD = a * sg, dist end
+                end
+            end
+            manip(ply, t1, Angle(0, 0, 0))
+            tax = best or false
+            thumbAxis[model][side] = tax
+        end
+        if tax then
+            for i, b in ipairs({ t1, t2 }) do
+                local a = Angle(0, 0, 0)
+                a:RotateAroundAxis(tax, THUMB_CURL * (i == 1 and 1 or 0.6) * (amount or 1))
+                ply.bmxIK[b] = a
+                manip(ply, b, a)
+            end
+        end
+    end
     boneMap.curled = boneMap.curled or {}
     boneMap.curled[side] = true
+end
+
+-- AN OPEN HAND IS THE MODEL'S OWN. A hand that had been closed (a grab, the bars before
+-- a no-hander) kept its fingers curled when it let go: every skater rode the rest of
+-- the way with two fists after one grab (seen with the offline studio on kleiner's
+-- mesh, 2026-10-19). Its fingers go back to the animation's relaxed hand.
+local function openHand(ply, side)
+    local curled = boneMap and boneMap.curled
+    local th = SIDE_BONES[sideOf(side)].thumb
+    local bones = { lookupBone(ply, th[1]), lookupBone(ply, th[2]) }
+    for _, f in ipairs(FINGERS) do
+        for _, b in ipairs({ fingerBones(ply, side, f) }) do bones[#bones + 1] = b end
+    end
+    for _, b in pairs(bones) do
+        if ply.bmxIK[b] then
+            ply.bmxIK[b] = nil
+            manip(ply, b, Angle(0, 0, 0))
+        end
+    end
+    if curled then curled[side] = nil end
+end
+
+-- How closed each hand is, 0..1, following whether it holds something.
+local CURL_TIME = 0.06
+local function curlFor(ply, side, hold, dt)
+    ply.bmxCurl = ply.bmxCurl or {}
+    return follow(ply.bmxCurl, side, hold and 1 or 0, CURL_TIME, dt)
 end
 
 --------------------------------------------------------------------------
@@ -604,7 +672,8 @@ local function reachExcess(ply, targets)
         local ha = lookupBone(ply, names.hand)
         local key = s == "R" and "rHand" or "lHand"
         local T = targets[key .. "Wrist"] or targets[key .. "Held"] or targets[key]
-        if sh and el and ha and T then
+        -- (a hand that holds nothing is not reached for: the other may be)
+        if sh and el and ha and T and not targets[key .. "Open"] then
             local S, E, H = bonePos(ply, sh), bonePos(ply, el), bonePos(ply, ha)
             local arm = (E - S):Length() + (H - E):Length()
             total = total + math.max(0, (T - S):Length() - arm * 0.97)
@@ -716,8 +785,66 @@ local function pelvisMap(ply, bike, pb)
     return m
 end
 
--- `seat`: the rider's seat in the vehicle's chassis space (its pod's offset).
-function BMX.RiderFollowFrame(ply, bike, seat)
+-- OUT OF THE SADDLE. The standing and attack stances (sh_stance.lua) and a sprint
+-- only leaned the torso, so a "standing" rider sat on the saddle with their back
+-- straighter (kleiner's mesh in the offline studio, 2026-10-19). A rider out of the
+-- saddle has their hips up and over the cranks, legs nearly straight at the bottom of
+-- the stroke: the pelvis is lifted (and brought forward toward the cranks) as far as
+-- the legs still reach the bottom of the pedal circle with a soft knee -- on a tall
+-- bike (a penny-farthing's hub) that is nowhere, and the rider stays sat. `stand`:
+-- { rise = 0..1 of STAND_RISE (or of `max`, units), over = 0..1 of the way from the hips
+-- to over the cranks, `feet` = { right, left } to stand on if not the vehicle's pedals }.
+local STAND_RISE    = 6     -- units, the most the hips come up (at 9 a BMX's low bars were
+                            -- past arm's length even with the back leaned its whole 40)
+local STAND_FWD_MAX = 6     -- units, the most they come forward
+local STAND_KNEE    = 0.93  -- of thigh and shin: the knee never quite straight...
+local STAND_ANKLE   = 0.5   -- ...and of the ankle to the ball of the foot, the ankle's give
+local function standShift(ply, bike, pb, stand)
+    local ik = bike.ikTargets
+    local rF, lF = ik and ik.rFoot, ik and ik.lFoot
+    if stand.feet then rF, lF = stand.feet[1], stand.feet[2] end
+    if not (rF and lF) then return nil end
+    manipPos(ply, pb, Vector(0, 0, 0))     -- (the hips where the seat has them)
+    refresh(ply)
+    local O, fwd, right, up = bike:GetPos(), bike:GetForward(), bike:GetRight(), bike:GetUp()
+    local function loc(v) v = v - O return Vector(v:Dot(fwd), -v:Dot(right), v:Dot(up)) end
+    local R, L = loc(rF), loc(lF)
+    local C = (R + L) * 0.5
+    local r = math.sqrt((R.x - L.x) ^ 2 + (R.z - L.z) ^ 2) * 0.5
+    local legs = {}
+    for _, sd in ipairs({ { "R", R }, { "L", L } }) do
+        local p = "ValveBiped.Bip01_" .. sd[1] .. "_"
+        local th, ca, ft, to = lookupBone(ply, p .. "Thigh"), lookupBone(ply, p .. "Calf"),
+            lookupBone(ply, p .. "Foot"), lookupBone(ply, p .. "Toe0")
+        if not (th and ca and ft and to) then return nil end
+        local Th, Ca, Ft, To = bonePos(ply, th), bonePos(ply, ca), bonePos(ply, ft), bonePos(ply, to)
+        legs[#legs + 1] = { H = loc(Th), low = Vector(C.x, sd[2].y, C.z - r),
+            reach = ((Ca - Th):Length() + (Ft - Ca):Length()) * STAND_KNEE + (To - Ft):Length() * STAND_ANKLE }
+    end
+    local dx = math.Clamp((C.x - (legs[1].H.x + legs[2].H.x) * 0.5) * stand.over, -STAND_FWD_MAX, STAND_FWD_MAX)
+    local function fits(k)
+        for _, g in ipairs(legs) do
+            if (g.H + Vector(dx, 0, k) - g.low):Length() > g.reach then return false end
+        end
+        return true
+    end
+    if not fits(0) then return nil end
+    local lo, hi = 0, (stand.max or STAND_RISE) * stand.rise
+    if not fits(hi) then
+        for _ = 1, 10 do
+            local mid = (lo + hi) * 0.5
+            if fits(mid) then lo = mid else hi = mid end
+        end
+        hi = lo
+    end
+    -- (the forward part comes with the rise: a rider stood up a hair is not pushed forward)
+    return Vector(dx * math.min(1, hi / 2), 0, hi)
+end
+BMX.RiderStandRise = STAND_RISE
+
+-- `seat`: the rider's seat in the vehicle's chassis space (its pod's offset); `stand`,
+-- out of the saddle (above), or nil.
+function BMX.RiderFollowFrame(ply, bike, seat, stand)
     forgetPose()
     local pb = lookupBone(ply, "ValveBiped.Bip01_Pelvis")
     if not pb then return end
@@ -728,6 +855,10 @@ function BMX.RiderFollowFrame(ply, bike, seat)
         local d = fm.Pf(m) - fm.P0(m)
         shift = Vector(d:Dot(bike:GetForward()), -d:Dot(bike:GetRight()), d:Dot(bike:GetUp()))
         if shift:Length() > FRAME_SHIFT_MAX or shift:Length() < 0.05 then shift = nil end
+    end
+    if stand and stand.rise > 0.01 then
+        local up = standShift(ply, bike, pb, stand)
+        if up then shift = shift and (shift + up) or up end
     end
     if not shift then
         if ply.bmxFramePelvis then
@@ -809,6 +940,9 @@ end
 -- motorcyclist rides on the balls of their feet, ready to stand.
 BMX.PegSole = 6
 local GRIP_OFF_MAX = 6      -- units: a measured wrist-to-fist offset longer than this is wrong
+local GRIP_MID = 0.5        -- of the way along a grip from its inner end: where a fist holds it
+local KNUCKLE_FOLLOW = 0.6  -- how much of the forearm's direction a gripping hand's knuckles take
+local GRIP_MID_REACH = 0.94 -- ...while the wrist is no further than this of the arm's length
 local GRIP_RESOLVE = 0.25   -- units: a fist this far from where it was used is solved for again
 
 local function ballLength(ply, foot, toe)
@@ -933,6 +1067,32 @@ local function followTarget(ply, key, T, src, o, fwd, right, up, now, dt)
     return o + fwd * shown.x + right * shown.y + up * shown.z
 end
 
+-- HANDS THAT HANG FROM THE SHOULDERS. A hand with nothing to hold (a skater's
+-- balancing arms) was given a point fixed to the vehicle, worked out for where a body
+-- would stand: when the real one leaned, crouched or turned for a push, its shoulders
+-- moved and the hands did not, so the arms reached out like paws or folded into the
+-- thighs (the offline studio on kleiner's mesh, 2026-10-19). A drawing may give a hand
+-- as an offset from its own shoulder instead (`rHandRel`: x forward, y left, z up in the
+-- vehicle's frame, units for an arm as long as kleiner's, scaled to the model's),
+-- resolved here once the body is posed, and pulled toward `rHandTo` by `rHandToW` (a
+-- grab on the deck).
+local REL_ARM = 23.2
+local function resolveRelHands(ply, targets, fwd, right, up)
+    for _, limb in ipairs(LIMBS) do
+        local rel = not limb.leg and targets[limb.target .. "Rel"]
+        local rb, hb, eb = lookupBone(ply, limb.root), lookupBone(ply, limb.hinge), lookupBone(ply, limb.eff)
+        if rel and rb and hb and eb then
+            refresh(ply)
+            local S, K, H = bonePos(ply, rb), bonePos(ply, hb), bonePos(ply, eb)
+            local k = ((K - S):Length() + (H - K):Length()) / REL_ARM
+            local T = S + (fwd * rel.x - right * rel.y + up * rel.z) * k
+            local to, w = targets[limb.target .. "To"], targets[limb.target .. "ToW"]
+            if to and w and w > 0 then T = T + (to - T) * math.min(w, 1) end
+            targets[limb.target] = T
+        end
+    end
+end
+
 function BMX.SolveRiderIK(ply, targets, bike)
     forgetPose()
     ply.bmxIK = ply.bmxIK or {}
@@ -948,16 +1108,42 @@ function BMX.SolveRiderIK(ply, targets, bike)
     -- (The frame's time for the easing, the clock only to tell a rider not solved for a
     -- while: a paused game's clock stands still, and so would a jump's easing.)
     local origin, now, frameDt = ply:GetPos(), CurTime(), FrameTime()
+    resolveRelHands(ply, targets, fwd, right, up)
+    local anyHeld = false
     for _, limb in ipairs(LIMBS) do
         local T = targets[limb.target]
-        -- A hand takes the point on its grip nearest its shoulder.
+        -- A hand holds the MIDDLE of its grip, or further out if its shoulder is (a
+        -- city bike's swept ends); in toward the stem only as far as it must to reach.
+        -- It used to take the point nearest the shoulder, which on every bike was the
+        -- grip's inner end: the fist closed half on the bare bar beside it (kleiner's
+        -- mesh in the offline studio, 2026-10-19).
         local A, B = targets[limb.target .. "A"], targets[limb.target .. "B"]
         local rb = lookupBone(ply, limb.root)
         if T and A and B and rb then
             refresh(ply)
             local S = bonePos(ply, rb)
             local g = B - A
-            local t = math.Clamp((S - A):Dot(g) / math.max(g:Dot(g), 1e-6), 0, 1)
+            local near = math.Clamp((S - A):Dot(g) / math.max(g:Dot(g), 1e-6), 0, 1)
+            local t = math.max(near, GRIP_MID)
+            if t > near then
+                local hb, eb = lookupBone(ply, limb.hinge), lookupBone(ply, limb.eff)
+                local arm = (hb and eb) and ((bonePos(ply, hb) - S):Length() + (bonePos(ply, eb) - bonePos(ply, hb)):Length()) or 0
+                -- (to the fist: its centre is past the wrist by the measured offset; and
+                -- only while it is comfortably in reach -- a stretched rider slides in at
+                -- once, rather than leaning after the middle of a grip a frame behind)
+                local o = ply.bmxGripOff and ply.bmxGripOff[limb.side]
+                arm = arm * GRIP_MID_REACH + (o and o:Length() or 0)
+                local function far(u) return ((A + g * u) - S):Length() > arm end
+                if far(t) then
+                    -- (as far out as reaches, between the middle and the nearest point)
+                    local lo, hi = near, t
+                    for _ = 1, 8 do
+                        local mid = (lo + hi) * 0.5
+                        if far(mid) then hi = mid else lo = mid end
+                    end
+                    t = lo
+                end
+            end
             T = A + g * t
             targets[limb.target .. "Held"] = T
         end
@@ -965,7 +1151,16 @@ function BMX.SolveRiderIK(ply, targets, bike)
         if T then
             local s = limb.side == 1 and "R" or "L"
             local eb = lookupBone(ply, limb.eff)
-            local holding = not limb.leg and not openHands
+            -- Each hand open or holding: the drawing may say so for one hand (a grab, a
+            -- no-hander letting go of one side), else the whole set's way.
+            local open = targets[limb.target .. "Open"]
+            if open == nil then open = openHands end
+            local holding = not limb.leg and not open
+            if holding then anyHeld = true end
+            -- How closed the hand is, followed: it closes on a grip and opens off one.
+            local curl = not limb.leg and curlFor(ply, limb.side, holding, frameDt) or 0
+            -- (a hand may hold softly: a passenger's on the rider's shoulders)
+            if holding then curl = curl * (targets[limb.target .. "Curl"] or 1) end
             -- Where the wrist or the ankle has to go for the fist or the ball of
             -- the foot to be on T.
             local W, dir
@@ -977,12 +1172,12 @@ function BMX.SolveRiderIK(ply, targets, bike)
                 sole = sole + toesFor(ply, limb, T, fwd, up, sole, L)
                 dir = footDir(fwd, up, sole)
                 W = T - dir * ankleSetback(ply, limb, T, dir, L)
-            elseif holding then
-                local o = ply.bmxGripOff[limb.side]
-                W = o and (T - fwd * o.x - right * o.y - up * o.z) or T
-                targets[limb.target .. "Wrist"] = W
             else
-                W = T
+                -- The wrist where the fist is on T, as far as the hand is closed: a hand
+                -- taking hold or letting go moves its wrist across with its fingers.
+                local o = ply.bmxGripOff[limb.side]
+                W = (o and curl > 0) and (T - (fwd * o.x + right * o.y + up * o.z) * curl) or T
+                if holding then targets[limb.target .. "Wrist"] = W end
             end
             -- Knees forward and up; elbows out, down and back (or the set's own).
             local pp = limb.leg and (poles.leg or LEG_POLE) or (poles.arm or ARM_POLE)
@@ -1002,12 +1197,20 @@ function BMX.SolveRiderIK(ply, targets, bike)
                     end
                 end
             elseif not holding then
-                -- Nothing to hold (a unicyclist's balancing arms): the hand relaxed and
-                -- open, fingers out and a little down, not a fist.
+                -- Nothing to hold (a unicyclist's balancing arms, a skater's): the wrist
+                -- STRAIGHT, the hand going on from the forearm and a little down, as a
+                -- hand hangs. It used to be aimed out to the side and down whatever the
+                -- arm did, which on a skater's hanging arms cocked both wrists and turned
+                -- the palms down: paws (kleiner's mesh, 2026-10-19). The fingers are the
+                -- model's own relaxed hand, opening from a fist as it lets go.
                 local knuck = lookupBone(ply, SIDE_BONES[s].finger2)
-                if eb and knuck then
-                    aim(ply, eb, eb, knuck, (right * limb.side + fwd * 0.35 - up * 0.45):GetNormalized())
+                local hb = lookupBone(ply, limb.hinge)
+                if eb and knuck and hb then
+                    refresh(ply)
+                    local fa = (bonePos(ply, eb) - bonePos(ply, hb)):GetNormalized()
+                    aim(ply, eb, eb, knuck, (fa - up * 0.2):GetNormalized())
                 end
+                if curl > 0.02 then closeHand(ply, limb.side, curl) else openHand(ply, limb.side) end
             else
                 -- Knuckles forward over the bar, then the fingers closed round it, and
                 -- where that fist is against the wrist, for the next frame. THE FIST IS
@@ -1021,6 +1224,16 @@ function BMX.SolveRiderIK(ply, targets, bike)
                 -- forearm one was not enough, and the fist was still turned off the bar).
                 local knuck = lookupBone(ply, SIDE_BONES[s].finger2)
                 local kdir = (fwd - up * 0.3):GetNormalized()
+                -- The wrist goes some way with the forearm: stood up out of the saddle the
+                -- forearm comes down steeply onto the bar, and knuckles held level forward
+                -- asked more of the wrist than it turns -- the fist sat rolled off the grip
+                -- (1.7 units, kleiner standing on a BMX, 2026-10-19).
+                local hb = lookupBone(ply, limb.hinge)
+                if hb and eb then
+                    refresh(ply)
+                    local fa = (bonePos(ply, eb) - bonePos(ply, hb)):GetNormalized()
+                    kdir = (kdir + fa * KNUCKLE_FOLLOW):GetNormalized()
+                end
                 local function aimKnuckles()
                     if not (eb and knuck) then return end
                     for _ = 1, 4 do
@@ -1031,7 +1244,7 @@ function BMX.SolveRiderIK(ply, targets, bike)
                 end
                 for pass = 1, 2 do
                     aimKnuckles()
-                    closeHand(ply, limb.side)
+                    closeHand(ply, limb.side, curl)
                     refresh(ply)
                     local fc, wr = fistCentre(ply, s), eb and bonePos(ply, eb)
                     if not (fc and wr) then break end
@@ -1052,7 +1265,7 @@ function BMX.SolveRiderIK(ply, targets, bike)
     -- unicyclist's or a skater's balancing arms) has nothing to reach for: the board's
     -- arms out to the side wound it to its whole 30 degrees, and every skater rode
     -- hunched over (2026-10-11). An old reach eases off.
-    if openHands then
+    if not anyHeld then
         ply.bmxSpineLean, ply.bmxSpineTwist = ply.bmxSpineLean and 0, ply.bmxSpineTwist and 0
     else
         spineReach(ply, targets)
@@ -1066,6 +1279,107 @@ end
 -- (Called from another file, whose own manipulations this one has not seen.)
 function BMX.RiderSolveLimb(...) forgetPose() return solveLimb(...) end
 function BMX.RiderAimBone(...) forgetPose() return aim(...) end
+
+--------------------------------------------------------------------------
+-- THE EYES ON THE WAY AHEAD. A rider who stands across their vehicle (a skater) looks
+-- where it is going, over the lead shoulder, not out to the side they face.
+--
+-- A WHOLE ORIENTATION, NOT A TWIST. Twisting the head round on its own length kept
+-- the pose's nod -- the head holding the horizon against a forward lean -- about the
+-- head's untwisted axis, and once the face was turned toward the nose that nod tipped
+-- it back to look at the sky (kleiner's mesh in the offline studio, 2026-10-19). So the
+-- head is set to look along `dir` (pitched LOOK_DOWN under it, at the ground ahead)
+-- with its eyes level, measured: where the face points now (the model's "forward"
+-- bone, else the head's -Y, [[valvebiped-bone-frames]]) and which way the skull's top
+-- is (its own X), and the turn that takes those to the wanted gaze and the vertical
+-- is put on the bone. The neck takes LOOK_NECK of the turn about the vertical first,
+-- so it does not all kink at the skull. A face is never turned more than LOOK_LIMIT
+-- from the way the chest faces. What the head's base pose and the engine's aim layer
+-- already did is all in what is measured, so it needs to know neither.
+--------------------------------------------------------------------------
+local LOOK_LIMIT, LOOK_NECK, LOOK_DOWN = 75, 0.4, 8
+-- Rotations as their three columns (where x, y and z go): a manipulation is applied in
+-- the bone's own frame after its pose, so a bone's world rotation is the posed one
+-- times the manipulation's.
+local function cols(a) return { a:Forward(), -a:Right(), a:Up() } end
+local function boneCols(m) return { m:GetForward(), -m:GetRight(), m:GetUp() } end
+local function apply(R, v) return R[1] * v.x + R[2] * v.y + R[3] * v.z end
+local function applyT(R, v) return Vector(R[1]:Dot(v), R[2]:Dot(v), R[3]:Dot(v)) end
+local function mul(A, B) return { apply(A, B[1]), apply(A, B[2]), apply(A, B[3]) } end
+local function toAngle(R) return R[1]:AngleEx(R[3]) end
+-- The manipulation that turns a bone whose world rotation is R (under manipulation m)
+-- by `turn`, a function on world vectors: m * R^T * turn * R.
+local function turnedManip(m, R, turn)
+    local RtQR = {}
+    for i = 1, 3 do RtQR[i] = applyT(R, turn(R[i])) end
+    return toAngle(mul(cols(m), RtQR))
+end
+local function flat(v) return Vector(v.x, v.y, 0) end
+local function yawOf(v) return math.deg(math.atan2(v.y, v.x)) end
+local function rotZ(v, deg)
+    local c, s = math.cos(math.rad(deg)), math.sin(math.rad(deg))
+    return Vector(v.x * c - v.y * s, v.x * s + v.y * c, v.z)
+end
+
+local function gazeOf(ply, hb)
+    local fb = lookupBone(ply, "ValveBiped.forward")
+    local m = ply:GetBoneMatrix(fb or hb)
+    if not m then return nil end
+    return fb and m:GetForward() or m:GetRight()
+end
+
+-- `dir`: the world direction to look along. Returns the yaw the face turned, degrees.
+function BMX.RiderLookAt(ply, dir)
+    forgetPose()
+    local hb = lookupBone(ply, "ValveBiped.Bip01_Head1")
+    local nb = lookupBone(ply, "ValveBiped.Bip01_Neck1")
+    local cb = lookupBone(ply, "ValveBiped.Bip01_Spine4") or lookupBone(ply, "ValveBiped.Bip01_Spine2")
+    if not (hb and dir) or flat(dir):Length() < 1e-3 then return end
+    ply.bmxIK = ply.bmxIK or {}
+    -- The neck is this function's alone: square again before anything is measured.
+    if nb then manip(ply, nb, Angle(0, 0, 0)) end
+    refresh(ply)
+    local g0 = gazeOf(ply, hb)
+    if not g0 or flat(g0):Length() < 1e-3 then return end
+    -- The way to look, no further round than LOOK_LIMIT from the chest's facing.
+    local want = yawOf(dir)
+    local C = cb and ply:GetBoneMatrix(cb)
+    if C then
+        local chest = yawOf(-C:GetRight())          -- (the spine's +Y faces forward)
+        want = chest + math.Clamp(math.AngleDifference(want, chest), -LOOK_LIMIT, LOOK_LIMIT)
+    end
+    local turnYaw = math.AngleDifference(want, yawOf(g0))
+    -- The neck's share, about the vertical.
+    if nb and math.abs(turnYaw) > 0.1 then
+        local N = ply:GetBoneMatrix(nb)
+        if N then
+            local a = turnedManip(Angle(0, 0, 0), boneCols(N), function(v) return rotZ(v, turnYaw * LOOK_NECK) end)
+            manip(ply, nb, a)
+            ply.bmxIK[nb] = a                       -- (put back on getting off)
+            refresh(ply)
+        end
+    end
+    -- The head: its gaze onto the wanted one, the top of the skull up.
+    local H = ply:GetBoneMatrix(hb)
+    local g = gazeOf(ply, hb)
+    if not (H and g) then return end
+    local Hc = boneCols(H)
+    local function frame(x, top)
+        x = x:GetNormalized()
+        local z = top - x * top:Dot(x)
+        if z:Length() < 1e-3 then return nil end
+        z:Normalize()
+        return { x, z:Cross(x), z }
+    end
+    local cur = frame(g, Hc[1])                    -- (the head's own X runs up the skull)
+    local d = Angle(LOOK_DOWN, want, 0):Forward()
+    local wanted = frame(d, Vector(0, 0, 1))
+    if not (cur and wanted) then return end
+    local function turn(v) return apply(wanted, applyT(cur, v)) end
+    manip(ply, hb, turnedManip(ply:GetManipulateBoneAngles(hb), Hc, turn))
+    refresh(ply)
+    return turnYaw
+end
 
 --------------------------------------------------------------------------
 -- STYLE POSES (G17): IK targets, blended.
@@ -1089,18 +1403,24 @@ function BMX.RiderAimBone(...) forgetPose() return aim(...) end
 -- over BMX.PoseBlendTime, in and out, eased (BMX.UpdatePoseWeights).
 --------------------------------------------------------------------------
 local HANDS_UP = { rHand = Vector(8, -15, 36), lHand = Vector(8, 15, 36) }
-local FEET_OUT = { rFoot = Vector(-1, -14, 5), lFoot = Vector(-1, 14, 5) }
+-- A no-footer kicks the legs out WIDE, nearly straight: at 14 out and low the knees
+-- only splayed, a squat over the top tube (kleiner's mesh in the offline studio,
+-- 2026-10-19).
+local FEET_OUT = { rFoot = Vector(0, -29, 10), lFoot = Vector(0, 29, 10) }
 
+-- `openHands`: the hands it takes off the bars hold nothing, so they OPEN (they stayed
+-- the fists that had held the grips: kleiner's mesh in the offline studio, 2026-10-19).
 BMX.RiderPoses = {
-    nohander = { rHand = HANDS_UP.rHand, lHand = HANDS_UP.lHand, spineLean = -4 },
+    nohander = { rHand = HANDS_UP.rHand, lHand = HANDS_UP.lHand, spineLean = -4, openHands = true },
     nofooter = { rFoot = FEET_OUT.rFoot, lFoot = FEET_OUT.lFoot },
     -- A can-can swings one leg over the top tube to the other side.
     cancan_r = { rFoot = Vector(-1, 9, 14) },
     cancan_l = { lFoot = Vector(-1, -9, 14) },
-    -- Superman: legs out behind, body laid forward, hands on the bars.
-    superman = { rFoot = Vector(-26, -5, 17), lFoot = Vector(-26, 5, 17), spineLean = 28 },
+    -- Superman: legs out STRAIGHT behind, body laid forward, hands on the bars (the feet
+    -- were 21 units behind the hips and the knees folded up behind like a frog's).
+    superman = { rFoot = Vector(-36, -5, 25), lFoot = Vector(-36, 5, 25), spineLean = 40 },
     nothing  = { rHand = HANDS_UP.rHand, lHand = HANDS_UP.lHand,
-                 rFoot = FEET_OUT.rFoot, lFoot = FEET_OUT.lFoot, spineLean = 6 },
+                 rFoot = FEET_OUT.rFoot, lFoot = FEET_OUT.lFoot, spineLean = 6, openHands = true },
     xup      = { barsSpin = 180, spineTwist = 10 },
     turndown = { barsTurn = 75, spineTwist = -20, spineLean = 10 },
     tabletop = { bikeRoll = 70 },
@@ -1176,6 +1496,8 @@ end
 BMX.PoseSets.unicycle.poses = {}
 -- Open hands, elbows out and a little back: arms held out for balance.
 BMX.PoseSets.unicycle.openHands = true
+-- (and a unicyclist stays on the saddle whatever the stance: it is all they have)
+BMX.PoseSets.unicycle.seatedOnly = true
 BMX.PoseSets.unicycle.poles = { arm = Vector(-0.4, 1, -0.15), leg = Vector(1, 0, 0.2) }
 
 local POSE_HANDS = { "rHand", "lHand" }
@@ -1255,6 +1577,8 @@ function BMX.ApplyPoseTargets(ik, W, toWorld, poses)
             end
             for _, key in ipairs(POSE_HANDS) do
                 if d[key] then ik[key .. "A"], ik[key .. "B"] = nil, nil end
+                -- (open once it is mostly off the bar: cl_rider.lua eases the fingers)
+                if d[key] and d.openHands and w > 0.5 then ik[key .. "Open"] = true end
             end
         end
     end
@@ -1280,6 +1604,8 @@ end)
 -- anyone who has got off, so a rider never walks away with pedalling legs.
 --------------------------------------------------------------------------
 local animated = {}     -- player -> true while we have bones moved on them
+local SPRINT_RISE, SPRINT_OVER = 0.8, 0.5     -- a sprint is out of the saddle, over the cranks
+local STAND = { rise = 0, over = 0 }          -- (reused: what RiderFollowFrame is handed)
 local LAND_MIN     = 120    -- u/s downward: gentler than this is not worth a crouch
 local LAND_FULL    = 450    -- u/s downward for the deepest crouch
 local LAND_RECOVER = 2.0    -- per second: back up in about half a second
@@ -1301,6 +1627,7 @@ local function clear(ply)
     ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
     ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
     ply.bmxGripOff, ply.bmxPoseFrame, ply.bmxIKJump, ply.bmxFramePelvis = nil, nil, nil, nil
+    ply.bmxCurl = nil
     -- The board's crouch lowers the pelvis (cl_board.lua); put it back.
     if ply.bmxPelvis then
         manipPos(ply, ply.bmxPelvis, Vector(0, 0, 0))
@@ -1353,7 +1680,7 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
         for b in pairs(ply.bmxIK) do manip(ply, b, Angle(0, 0, 0)) end
         ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
         ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
-        ply.bmxGripOff, ply.bmxIKJump = nil, nil
+        ply.bmxGripOff, ply.bmxIKJump, ply.bmxCurl = nil, nil, nil
         if ply.bmxPelvis then
             manipPos(ply, ply.bmxPelvis, Vector(0, 0, 0))
             ply.bmxPelvis = nil
@@ -1475,7 +1802,13 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     -- of their own, with their own pelvis).
     if not set.solveIK then
         local seat = BMX.SeatFor and BMX.SeatFor(bike:Bike(), C, "rider")
-        BMX.RiderFollowFrame(ply, bike, seat and seat.offset or C.Chassis.seatOffset)
+        -- Out of the saddle: the stance's, or a sprint's (a rider sprints stood up).
+        local sOff = BMX.RiderPoseOffset and BMX.RiderPoseOffset(stanceName) or {}
+        local rise = set.seatedOnly and 0 or math.max(sOff.rise or 0, sprint * SPRINT_RISE)
+        local over = math.max(sOff.over or 0, sprint * SPRINT_OVER)
+        rise = follow(st, "rise", rise, SMOOTH.stance, dt)
+        STAND.rise, STAND.over = rise, follow(st, "over", over, SMOOTH.stance, dt)
+        BMX.RiderFollowFrame(ply, bike, seat and seat.offset or C.Chassis.seatOffset, useIK and STAND or nil)
     end
     local dist = useIK and EyePos():Distance(ply:GetPos()) or math.huge
     if dist < IK_RANGE or (dist < IK_FAR and ((frameNo or 0) + ply:EntIndex()) % IK_FAR_EVERY == 0) then

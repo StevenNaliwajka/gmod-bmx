@@ -215,10 +215,13 @@ BMX.Drawers.unicycle = function(ent, H, lod, debug)
     local roll = BMX.Attitude(ent, vector_up) or 0
     local bal = math.Clamp(roll / 0.35, -1, 1)
     local sway = math.sin(CurTime() * 1.7 + ent:EntIndex()) * 0.6
+    -- (Out past the shoulders and up to the ribs: at 14 out and hip high, the elbows
+    -- bent out and the hands hung by the hips, a chicken's wings -- kleiner's mesh in
+    -- the offline studio, 2026-10-19.)
     local function hand(side)
         local lift = -bal * side * 4 + sway * side
-        local out = 14 + math.max(0, -bal * side) * 3
-        return seat + right * (out * side) + fwd * 5 + up * (12.5 + lift)
+        local out = 20 + math.max(0, -bal * side) * 3
+        return seat + right * (out * side) + fwd * 6 + up * (16 + lift)
     end
     ik.rHand = hand(1)
     ik.lHand = hand(-1)

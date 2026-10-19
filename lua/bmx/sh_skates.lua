@@ -426,6 +426,11 @@ function S.Apply(ply, w, mv, dt, vel, grounded, cast)
     local res = S.Step(sk, dt, w.input, { grounded = grounded, normal = cast.normal,
         gravity = g and g:Length() or 600 }, w.def)
     mv:SetVelocity(Vector(res.vx, res.vy, res.vz or vel.z))
+    -- A JUMP LEAVES THE GROUND. While the player has a ground entity the engine's walk
+    -- move zeroes the vertical speed, and with sv_optimizedmovement (on by default) it
+    -- lets go of the ground by itself only above 250 u/s up -- more than this jump. So
+    -- SPACE on flat ground never jumped (seen on a real client, 2026-10-19).
+    if res.vz and res.vz > 0 then ply:SetGroundEntity(NULL) end
     w.expect = { x = res.vx, y = res.vy }
     return res
 end

@@ -3760,6 +3760,37 @@ function(ctx)
     skateInput(ctx, {})
 end)
 
+-- SPACE on flat ground. The step writes the jump's speed (235 u/s up), but the engine keeps a
+-- player on the ground below 250 u/s (sv_optimizedmovement) and its walk move zeroes the
+-- vertical speed, so on a real client SPACE never jumped (2026-10-19). S.Apply lets go of
+-- the ground itself now.
+T.Case("skates_flat_jump", { vehicle = "skates", timeout = 30,
+    desc = "inline skates: SPACE on flat ground jumps the skater off the engine's ground, and they land on their skates" },
+function(ctx)
+    local p, w = ctx.bot, ctx.worn
+    skateInput(ctx, { fwd = 1 })
+    ctx:wait(1.0)
+    skateInput(ctx, {})
+    ctx:wait(0.3)
+    local z0 = p:GetPos().z
+    local top, left = z0, false
+    skateInput(ctx, { jump = true })
+    local t0 = CurTime()
+    while CurTime() - t0 < 1.2 do
+        top = math.max(top, p:GetPos().z)
+        if not p:IsOnGround() then left = true end
+        if CurTime() - t0 > 0.2 then skateInput(ctx, {}) end
+        coroutine.yield()
+    end
+    skateInput(ctx, {})
+    ctx:log(string.format("rose %.1f units", top - z0))
+    ctx:ok(left, "the engine let go of the ground")
+    ctx:between(top - z0, 25, 70, "the jump's height", "u")
+    ctx:wait(0.6)
+    ctx:ok(p:IsOnGround(), "landed")
+    ctx:ok(p:Alive() and BMX.Worn.Of(p) ~= nil, "still alive and on skates")
+end)
+
 -- It paid 'Air Time' and no 'Soul Grind' because the grind lasted 0.21 s (under
 -- Grind.minTime): put over the rail from standing, the engine's ground flag was
 -- still the floor's, so SPACE jumped the skater up past the rail and it locked

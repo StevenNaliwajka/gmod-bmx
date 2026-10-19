@@ -1394,6 +1394,7 @@ function M.Realm(world, which)
         return m:GetTranslation(), m:GetAngles()
     end
     function Ply:GetGroundEntity() return self._groundEnt or NULL end
+    function Ply:SetGroundEntity(e) self._groundEnt = e; self._onGround = e ~= nil and e ~= NULL end
     function Ply:GetRenderAngles() return Angle(0, self:EyeAngles().y, 0) end
     function Ply:ManipulateBonePosition(b, v) self._manipPos = self._manipPos or {}; self._manipPos[b] = v; self._pose = nil end
     function Ply:GetManipulateBonePosition(b) return Vector((self._manipPos or {})[b] or Vector()) end

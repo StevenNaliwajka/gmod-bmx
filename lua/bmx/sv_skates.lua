@@ -303,6 +303,13 @@ local function grindStep(ply, w, mv, dt)
         local p = rail.point
         if g.kind == "peg" then p = p + rail.side * G.pegInset end
         if abs(p.z - predicted.z) > G.maxStepZ then return endGrind(ply, w, mv, "end") end
+        -- Only back onto the rail's line and top. Where the found point lies ALONG the rail
+        -- is the middle of the probe cells that hit its top, pulled back near an end as cells
+        -- past it miss; taking it moved the skater along the rail by that much in one tick,
+        -- which a predicting client (carried along at the grind's speed) then had corrected:
+        -- 23 units at a rail's end on a real client (2026-10-19). Along it, the speed's step.
+        local off = p - predicted
+        p = p - g.dir * off:Dot(g.dir)
         local step = p - g.point
         if step:Length() > 0.25 then
             local d = step:GetNormalized()

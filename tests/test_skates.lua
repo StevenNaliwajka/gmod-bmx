@@ -784,6 +784,33 @@ T.test("skates grind: SPACE in the air over a round rail along it locks a soul g
     T.eq(#sv.errors, 0, "no errors: " .. table.concat(sv.errors, " | "))
 end)
 
+-- On a real client the end of a rail was a 23-unit correction (2026-10-19): every third tick
+-- the rail is found again and the skater was put on the point found, whose position ALONG the
+-- rail is the middle of the probe cells that hit its top -- pulled back from the end as cells
+-- past it miss. The client carries the skater along at the grind's speed, so they parted.
+-- Along the rail the skater now goes exactly the speed times the tick; the rail found again
+-- only puts them back on its line and its top.
+T.test("skates grind: along the rail every tick is the grind's speed times the tick, right to the rail's end", function()
+    local sv, ply, mv, w, gz = overRail(function(E) return { pipe(E, 300) } end, { x = -270 })
+    local g = tickUntilGrind(sv, ply, mv, w, gz)
+    T.ok(g, "locked on")
+    local worst, ticks, lastX = 0, 0, mv.origin.x
+    local dt = sv.world.dt
+    for _ = 1, 400 do
+        local v = w.st.grind and w.st.grind.speed
+        tick(sv, ply, mv, gz)
+        if not w.st.grind then break end
+        local step = mv.origin.x - lastX
+        local want = w.st.grind.speed * w.st.grind.dir.x * dt
+        worst = math.max(worst, math.abs(step - want))
+        lastX = mv.origin.x
+        ticks = ticks + 1
+    end
+    T.ok(ticks > 20, "rode it to the end: " .. ticks .. " ticks")
+    T.between(worst, 0, 0.3, "the worst tick's step along the rail against speed x tick, units")
+    T.eq(#sv.errors, 0, "no errors: " .. table.concat(sv.errors, " | "))
+end)
+
 T.test("skates grind: W as it locks on is a mizou; across the rail it is a backslide; no SPACE, no lock", function()
     local sv, ply, mv, w, gz = overRail(function(E) return { pipe(E, 600) } end, { w = true })
     local g = tickUntilGrind(sv, ply, mv, w, gz)

@@ -211,6 +211,24 @@ T.test("skates ping: straight, a carve, a jump and a T-stop are predicted exactl
     end
 end)
 
+-- SPACE on flat ground never jumped on a real client (2026-10-19): the step wrote the jump's
+-- speed, 235 u/s up, but the engine keeps a player on the ground below 250 u/s
+-- (sv_optimizedmovement) and its walk move zeroes the vertical speed. S.Apply now lets go
+-- of the ground itself, in both realms.
+T.test("skates: SPACE on flat ground jumps, on the server and on the predicting client", function()
+    local sim = NS.Skater({ rtt = 0.1, jitter = 0.02, loss = 0, seed = 11 })
+    SC.jump(sim)
+    local z0, top, cz0, ctop = nil, -math.huge, nil, -math.huge
+    for n = 1, sim.svLast do
+        local s, d = sim.svHist[n], sim.shown[n]
+        if s then z0 = z0 or s.pos.z; top = math.max(top, s.pos.z) end
+        if d then cz0 = cz0 or d.pos.z; ctop = math.max(ctop, d.pos.z) end
+    end
+    T.eq(#sim.sv.errors + #sim.cl.errors, 0, "no Lua errors")
+    T.between(top - z0, 30, 60, "the server's skater rose, units (235 u/s at 600 gravity is about 46)")
+    T.between(ctop - cz0, 30, 60, "and the client's picture with it, units")
+end)
+
 --------------------------------------------------------------------------
 -- The replay
 --------------------------------------------------------------------------

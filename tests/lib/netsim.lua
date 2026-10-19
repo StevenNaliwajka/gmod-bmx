@@ -55,7 +55,7 @@ NS.DT = 1 / 66
 -- sv_accelerate, sv_airaccelerate and its 30 u/s cap, sv_friction,
 -- sv_stopspeed, the walk speed, NON_JUMP_VELOCITY.
 NS.Move = { gravity = 600, jumpPower = 200, accelerate = 10, airAccelerate = 10, airCap = 30,
-            friction = 8, stopSpeed = 10, maxSpeed = 200, nonJump = 140 }
+            friction = 8, stopSpeed = 10, maxSpeed = 200, nonJump = 140, optimizedLift = 250 }
 -- What the prediction calls a difference: origin and velocity (Source's
 -- velocity tolerance is 0.5; the origin's here is an eighth of a unit).
 NS.TOL_POS, NS.TOL_VEL = 0.125, 0.5
@@ -200,7 +200,11 @@ function NS.engineMove(R, ply, mv, dt)
     local V = E.Vector
     local v, o = V(mv.vel), V(mv.origin)
     local ground = ply._onGround ~= false
-    if v.z > M.nonJump then ground = false end
+    -- PlayerMove, with sv_optimizedmovement 1 (the default): it does not categorize the
+    -- position again first, and lets go of the ground only above 250 u/s up. (The 140 of
+    -- CategorizePosition applies only after game code moved the player.) Below that, the
+    -- walk move zeroes the vertical speed: a Lua jump has to clear the ground entity itself.
+    if v.z > M.optimizedLift then ground = false end
     v.z = v.z - 0.5 * M.gravity * dt                                  -- StartGravity
     local jumped = false
     if band(mv.buttons, IN.JUMP) ~= 0 then                            -- CheckJumpButton

@@ -117,7 +117,8 @@ sharing `sv_grind.lua`'s finder (it is entity-free) and the skates' lock with th
 
 **What a real client must confirm** (the simulation is not the engine): a client on a LAN server
 (`sv_cheats 1`) with `net_fakelag 100` (then 200) and `cl_showerror 1` (prediction errors in the console), skates
-equipped from the WEAPON SELECTOR (that switch is predicted; `bmx_give_skates` is not):
+equipped from the WEAPON SELECTOR: number keys, the scroll wheel, `input.SelectWeapon` (that switch is predicted;
+`bmx_give_skates` and the console's `use weapon_bmx_skates` are run by the server and are not):
 
 1. Stride straight, carve, jump, T-stop: no `cl_showerror` lines, no visible hitch.
 2. A soul grind on a long rail, tapping A / D for balance: the view stays on the rail, does not
@@ -133,3 +134,32 @@ If any of 1, 2 or 6 shows repeated errors, the engine is restoring or predicting
 replay restoring the networked velocity and friction (`m_flFriction` in the player's local
 send table), the order StartCommand, weapon switch, view angles, SetupMove, and `BMXSkateFlags`
 arriving with the snapshot it belongs to (the NW vars are not predicted) are the assumptions.
+
+**Run on a real client, 2026-10-19** (the gmod-marionette, 20 fps, on a CI-box LAN server at 66
+tick; the skater driven from CreateMove; every predicted and every server command logged and
+matched by command number; `cl_showerror` prints on screen only, never to console.log). Before
+(1.3.6) against after, at 100 / 200 ms:
+
+| Step | before | after |
+|---|---|---|
+| 1. Stride, carve, crossovers, T-stop | off up to 120 / 196 u; 89 / 138 corrections over 4 u | exact (0.00 u), none |
+| 2. Soul grind, A / D taps, pop | 26 / 48 u off the rail's side; the view turned 97 degrees | on the rail (0.00 u); lock 0.6 / 1.0 u |
+| 3. Grind off the rail's end | 26 / 64 u drift | one 22.7 / 5.5 u correction (fixed since: below) |
+| 4. Ledge grind; backslide | 58 / 47 and 36 / 42 corrections over 4 u | one at the lock: 5.2 u; 34 / 49 u |
+| 5. Holster at speed (weapon selector) | 26 / 56 u snap | exact |
+| 6. Stride with `net_fakeloss 5` | 79 / 101 corrections over 4 u | 19 / 0, settling in 2-5 commands |
+
+Even with no fake lag the old client was off by up to 41 u: the engine predicts commands again
+every few commands whether or not anything differs (about 390 replays in 990 commands), and the
+old client did not wind its own state back, so every replay corrupted it. The assumptions above
+held, apart from that one and the NW vars' timing: in one lossy run `BMXWorn` arrived about 10 s
+late, and after its one-second grace the client took the skates as refused and predicted walking
+until it came (the old client did the same; a KNOWN LIMIT under heavy loss).
+
+Found by the same run and fixed after it: SPACE on flat ground never jumped (the engine keeps a
+player on the ground below 250 u/s up with `sv_optimizedmovement` 1, and its walk move zeroes the
+vertical speed; `S.Apply` lets go of the ground itself now; `lib/netsim.lua` models that branch,
+and the headless case `skates_flat_jump` checks it on the engine), and the end of a rail's 5-unit
+step along it (the rail found again every third tick put the skater on the middle of the probe
+cells that hit its top, pulled back near an end; only the line and the top are taken from it
+now, the step along the rail is the grind speed's).

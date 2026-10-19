@@ -56,7 +56,7 @@ faults the same run found.
 - **The end of a rail is smooth.** Right at a rail's end you were moved a few
   units along it in one step, which showed as a jolt as you dropped off.
 
-## 1.3.6 -- not on the Workshop yet
+## 1.3.6 -- on the Workshop 2026-10-19
 
 Players reported low frame rates: a frame of BMX now costs your game much less
 (measured offline, frame by frame, with every rider's pose and every drawn part

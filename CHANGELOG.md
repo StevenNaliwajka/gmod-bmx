@@ -5,7 +5,7 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
-## 1.3.7 -- not on the Workshop yet
+## 1.3.7 -- on the Workshop 2026-10-19
 
 No more stutter the first time a vehicle shows up; skates on a server with any
 lag, checked on a real game client at 100 and 200 ms of ping; and two skates

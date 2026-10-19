@@ -5,7 +5,7 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
-## 1.3.6 -- not on the Workshop yet
+## 1.3.6 -- on the Workshop 2026-10-19
 
 Players reported low frame rates: a frame of BMX now costs your game much less
 (measured offline, frame by frame, with every rider's pose and every drawn part

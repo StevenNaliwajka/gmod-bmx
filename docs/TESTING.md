@@ -224,7 +224,13 @@ as riders do (steering, bumps, hops, airs with tricks and style poses, landings,
 stances, kicks) instead of straight on; `--buildlog` lists a model build's slices
 over 8/16/33 ms; `--dump FILE` writes every rider's bone manipulations and a
 checksum of everything drawn, frame by frame, so a change can be shown to pose and
-draw exactly as before (diff two dumps). `--joff` runs with the JIT off.
+draw exactly as before (diff two dumps). The checksum takes in the built meshes
+too: every vertex handed to BuildFromTriangles, each number by its bits, and the
+draws of meshes one after another as one stream (a bucket cut into several meshes
+drawn in a row checksums as the one mesh it was, if the same triangles reach the
+screen in the same order). With `--dump` the models are built after the first frame
+without the world moving on, so two versions start the dumped frames alike however
+many frames their builds take. `--joff` runs with the JIT off.
 
 Read the counts and the `lua` column, not the total: the shim's skeleton and its
 table Vectors are slower than the engine's C++ (a shim Vector is a table, about
@@ -248,21 +254,121 @@ apart, all near the view):
 foot and knuckle aimed until they point, the frame follow); the IK was already
 57 skeleton poses a frame per rider before it.
 
-WHAT STILL STUTTERS: a vehicle kind's first model build. Each kind and size is
-built once per session (BikeMesh.Get, in slices of `bmx_bike_build_ms`), and the
-prebuild Think starts it for every vehicle in the world, in view or not. Offline the
-BMX's build takes about 240 frames, of which some 40 spend over 16 ms building
-(worst about 90 ms): not the slices' own work but LuaJIT's collector, which spends
-more than half the build walking the build's 100-plus MB of short-lived tables.
-In the game each mesh is also handed to BuildFromTriangles in one call (the BMX's
-largest is 31,000 vertices), which the shim does not cost. A client should measure
-both (below).
+### What a model build costs
+
+A vehicle kind's detailed model is built the first time a client sees it, once per
+kind and size a session (BikeMesh.Get, a slice of `bmx_bike_build_ms` a frame), and
+the prebuild Think asks for every vehicle in the world, drawn or not. `--build`
+measures it on its own: one rider of each vehicle drawn with the models off (the
+simple bike, as drawn while a model builds: the baseline frame), then from nothing
+built until the model is ready.
+
+```
+luajit tools/bench/client_frame.lua --build stock,road,dirtbike,skateboard,scooter,unicycle,penny,tandem,skates
+luajit tools/bench/client_frame.lua --build stock --heap 200     # a client-sized Lua heap
+luajit tools/bench/client_frame.lua --build stock --root ../older-checkout
+```
+
+`build` is the time spent in BikeMesh.Get a frame (the collector's work inside it
+included); `extra` is the whole frame less the baseline -- the build and what it
+left for the rest of the frame (LuaJIT pays a collector's debt at the next
+allocation, wherever it is). `extra` is what a player feels. `--heap MB` gives the
+process a client's heap first: the bench's own heap is a few MB, and LuaJIT paces
+its rounds by the heap (a round when it has doubled, and a round walks all of it), so
+a small heap runs a round every few MB of garbage where a client runs one every
+hundred-odd.
+
+THE STUTTER IT WAS (1.3.6, before perf/model-build), found with `--build`,
+`--framelog`, the sampling profiler and a count hook:
+
+- **The collector, behind half the build's time and all its spikes.** A model's
+  source vertices were a table each, `{ p = {...}, n = {...}, u, v }`, and the
+  meshes' vertices two tables and four Vectors each: the BMX made about 340 MB of
+  garbage and held 60 MB of tables while it meshed (JIT on: 52% of the build's time
+  in the collector, VM-state profile). And a table written while a round is under way is
+  walked again, in ONE step, when the round ends (LuaJIT's "grey again" list): the
+  half-built mesh's 63,000-entry vertex table was, every round -- the build's 15-30
+  ms frames came in pairs, one per round.
+- **Steps too long to keep to the budget.** The build gave way every 128 triangles or
+  1500 vertices and was resumed until its 4 ms were up: a frame was the budget plus
+  one step, and a step was up to 367,000 Lua instructions (lua5.1, count hook) before
+  any collector work; some builders ran long stretches of their own between two
+  triangles (a road bike's bar tape, the city bike's chain case, a deep-V rim).
+- **Two rounds of the whole heap forced after every build** (1.2.0's answer to the
+  32-bit out-of-memory crash), before the model counted as ready: on a client-sized
+  heap (`--heap 200`) a second or more during which every allocation of every addon
+  paid for the collector, with 15-25 ms frames among them.
+- **One BuildFromTriangles call a bucket**, up to 21,000 triangles: the BMX's rubber
+  31,000 vertices, the tandem's 58,000, every vertex's table read through the Lua C
+  API in one call. The shim cannot time it (below).
+- **The prebuild's asks and a drawn bike's were the same**: whichever asked first in a
+  frame ran its build, so a bike on screen could wait behind one across the map.
+
+WHAT CHANGED: a model's vertices are eight numbers in a flat array while it is built
+(cl_bikegeo.lua; `b.v` is still there, made on demand, for a tool or a test reading
+a finished model); the hot primitives (tri, grid, sweep, lathe, plate, cap) work in
+numbers, not a table per sum; meshing fills POOLED vertex tables and Vectors (the
+engine copies them) and works each distinct normal's tangent frame out once (a model
+has a tenth as many distinct normals as vertices); the build looks at SysTime every
+16 triangles or 48 vertices and yields as soon as the budget is spent (the long
+builder stretches given pause points); a bucket over 4096 triangles is cut into
+equal meshes, each handed over at the start of a slice (unless what is left of the
+slice is enough for it, learned from the calls before); drawn vehicles are built
+first and at the full budget, the prebuild's at half, nearest first; nothing forces
+the collector. Every vehicle draws to the bit what it drew before (`--dump`,
+below).
+
+RESULTS (`--build --heap 200`, LuaJIT 2.1 on this desk, `bmx_bike_build_ms` 4; the
+mean of two runs, the max the worse; "frames" are the frames the build ran in):
+
+| vehicle | | frames | build ms p50 / p95 / max | build > 16 / > 5 ms | extra ms p95 / max | extra > 16 / > 5 ms | build ms in all | garbage MB |
+|---|---|---|---|---|---|---|---|---|
+| BMX | 1.3.6 | 278 | 4.7 / 11.2 / 44.5 | 8 / 104 | 20.5 / 58.0 | 18 / 110 | 1603 | 346 |
+| | now | 84 | 4.0 / 4.5 / 5.2 | 0 / 1 | 5.3 / 6.6 | 0 / 9 | 338 | 58 |
+| road bike | 1.3.6 | 244 | 4.8 / 15.9 / 53.5 | 12 / 103 | 24.4 / 70.8 | 20 / 152 | 1596 | 373 |
+| | now | 123 | 4.0 / 4.7 / 5.3 | 0 / 2 | 4.8 / 5.6 | 0 / 3 | 500 | 66 |
+| dirt bike | 1.3.6 | 262 | 4.5 / 12.3 / 43.7 | 8 / 117 | 16.6 / 52.5 | 16 / 128 | 1558 | 346 |
+| | now | 132 | 4.1 / 4.8 / 5.4 | 0 / 4 | 5.7 / 6.8 | 0 / 24 | 541 | 69 |
+| skateboard | 1.3.6 | 90 | 5.0 / 7.7 / 10.2 | 0 / 44 | 8.4 / 15.1 | 0 / 52 | 490 | 109 |
+| | now | 48 | 4.1 / 4.4 / 5.0 | 0 / 0 | 5.3 / 5.7 | 0 / 6 | 184 | 40 |
+| scooter | 1.3.6 | 116 | 4.7 / 12.2 / 24.5 | 1 / 55 | 16.3 / 27.7 | 7 / 56 | 693 | 146 |
+| | now | 36 | 4.0 / 4.3 / 4.8 | 0 / 0 | 4.9 / 5.2 | 0 / 2 | 142 | 30 |
+| unicycle | 1.3.6 | 78 | 5.2 / 8.1 / 15.7 | 0 / 44 | 13.1 / 21.8 | 2 / 46 | 438 | 96 |
+| | now | 42 | 4.1 / 4.6 / 5.5 | 0 / 1 | 4.1 / 5.9 | 0 / 1 | 163 | 23 |
+| penny-farthing | 1.3.6 | 121 | 4.5 / 8.7 / 24.2 | 2 / 55 | 16.8 / 27.7 | 8 / 56 | 683 | 133 |
+| | now | 43 | 4.0 / 4.9 / 5.2 | 0 / 2 | 5.2 / 6.3 | 0 / 3 | 172 | 30 |
+| tandem | 1.3.6 | 239 | 4.8 / 17.5 / 59.4 | 12 / 104 | 27.4 / 85.1 | 22 / 152 | 1569 | 377 |
+| | now | 126 | 4.0 / 4.5 / 6.2 | 0 / 2 | 5.6 / 8.0 | 0 / 16 | 506 | 68 |
+| skates | 1.3.6 | 79 | 5.1 / 7.7 / 15.0 | 0 / 40 | 8.3 / 15.0 | 0 / 45 | 430 | 68 |
+| | now | 31 | 4.0 / 4.4 / 4.8 | 0 / 0 | 4.9 / 5.3 | 0 / 1 | 118 | 21 |
+
+Without `--heap` (the bench's own few-MB heap, a collector round every few MB) the
+build's own slices are the same (max 5.0-6.8 ms, none over 16), and the whole frame
+spikes where a round ends: p95 5-10 ms, max 6.5-20 ms (1.3.6: p95 16-35, max 21-72,
+2-34 frames over 16 ms) -- with frames that build nothing reaching 11 ms there too.
+The heap's high water while building, client-sized heap: the BMX +114 MB (1.3.6
++270), the tandem +152 (+291).
+
+The same-pixels proof: `--dump` over 120 frames of varied riding, 1 and 3 riders,
+on all 17 vehicles (stock, cruiser, mini, road, fixie, city, unicycle, penny,
+tandem, dh, ebike, emoto, dirtbike, moped, skateboard, scooter, skates): byte for
+byte the same file from release/1.3.6 and from this branch. The source geometry of
+all 17 kinds is bit-identical too (every bucket, every number, the layouts).
+tests/test_perf_client.lua holds the build to its step budget by count (the longest
+stretch without looking at the clock, and the largest mesh), tests/test_contacts.lua
+its garbage (the dirt bike under lua5.1: 573 MB in 1.3.6, 123 MB now, budget 150).
 
 ON A REAL CLIENT, the checks this cannot make: with `net_graph 1` (or
 `cl_showfps 2`), eight bots riding BMXs within 1,000 units of the camera, compare
-1.3.4 and this build's frame times; then spawn a vehicle kind not yet seen this session
-and watch the frame time while it builds (`bmx_bike_model_rebuild` builds the
-ones in view again).
+1.3.4 and this build's frame times. Then the model build: `bmx_bike_build_report`
+prints, for each model built this session, its frames, its worst frame's build time
+and what BuildFromTriangles took -- in all, its worst call (and that call's
+vertices) and microseconds a vertex. Spawn a vehicle kind not yet seen this session
+(or `bmx_bike_model_rebuild`, which builds the ones in view again) with `net_graph
+1` up, then run `bmx_bike_build_report`. The worst frame should be about
+`bmx_bike_build_ms` (4); if the worst BuildFromTriangles call is over ~4 ms, its
+cost a vertex says how far to lower MAX_TRIS in cl_bikemesh.lua (each mesh is a draw
+call: at 4096 one BMX in view is 56 Mesh:Draw a frame, 50 with one mesh a bucket).
 
 ## Headless, and automatic
 

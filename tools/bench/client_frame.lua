@@ -32,6 +32,19 @@
 
     The model builds (cl_bikemesh.lua) are done before the measuring starts and
     reported on their own: a build is a spike, not a frame cost.
+
+    THE MODEL BUILD ITSELF (--build): each vehicle's model built from nothing, frame
+    by frame, as a client sees a kind for the first time: the milliseconds a frame
+    spent building and the whole frame's against the frame without it, frames over
+    16 / 5 ms, the garbage made, the heap's high water. --heap MB gives the process a
+    client-sized Lua heap first (a client's heap is every addon's: the collector's
+    rounds are paced by it); --framelog prints every frame; --nogc stops the collector.
+
+        luajit tools/bench/client_frame.lua --build stock,road,dirtbike --heap 200
+        luajit tools/bench/client_frame.lua --build stock --root ../older-checkout
+
+    --dump FILE records what each frame drew, built meshes included (their every
+    vertex, hashed to the bit), so two versions can be shown to draw alike.
 ----------------------------------------------------------------------------]]
 
 local script = (arg and arg[0]) or "tools/bench/client_frame.lua"
@@ -42,6 +55,7 @@ local REPO = here .. "/../.."
 -- Arguments
 --------------------------------------------------------------------------
 local opt = { frames = 240, warm = 60, fps = 60, spread = 120 }
+local drawBuf, hashMeshes, pumpBuilds -- --dump: the frame's record of what was drawn (below)
 local positional = {}
 do
     local i = 1
@@ -49,7 +63,7 @@ do
         local a = arg[i]
         local key = a:match("^%-%-(.+)$")
         if key == "count" or key == "spikes" or key == "profile" or key == "joff" or key == "csv" or key == "hooks"
-            or key == "quiet" or key == "noik" or key == "varied" or key == "slowskel" or key == "buildlog" then
+            or key == "quiet" or key == "noik" or key == "varied" or key == "slowskel" or key == "buildlog" or key == "build" or key == "nogc" or key == "framelog" then
             opt[key] = true
         elseif key then
             opt[key] = arg[i + 1]
@@ -354,6 +368,86 @@ local function seatPod(cl, ent, seat)
     return pod
 end
 
+--------------------------------------------------------------------------
+-- --dump: WHAT A BUILT MESH HOLDS, to the bit. Every IMesh's BuildFromTriangles is
+-- hashed (every vertex's position, normal, u, v, userdata, tangent and binormal, each
+-- number by its exact bits), and each Mesh:Draw goes into the frame's record as that
+-- hash. The hash is a polynomial one over the stream of numbers, so the draws of
+-- consecutive meshes (with nothing drawn or set between them) are recorded as ONE
+-- stream: a bucket built as one mesh or as several smaller ones, drawn one after the
+-- other, records the same if the triangles reaching the screen, and their order, are
+-- the same.
+--------------------------------------------------------------------------
+local HP1, HB1, HP2, HB2 = 67108859, 1000003, 33554393, 999983
+local frexp = math.frexp
+local function numKey(x)
+    if x ~= x then return 77777 end
+    if x == 0 then return (1 / x < 0) and 3 or 1 end
+    local m, e = frexp(x)                       -- x = m * 2^e, 0.5 <= |m| < 1
+    local mi = m * 9007199254740992             -- an integer, |mi| < 2^53: m's every bit
+    return ((mi % HP1) * 2053 + e + 4100) % HP1
+end
+local VKEYS = { "pos", "normal", "tangent", "binormal" }
+local function hashVerts(verts)
+    local h1, h2, w1, w2, n = 0, 0, 1, 1, 0
+    local function put(x)
+        local k = numKey(x)
+        h1 = (h1 * HB1 + k) % HP1
+        h2 = (h2 * HB2 + k % HP2) % HP2
+        w1 = (w1 * HB1) % HP1
+        w2 = (w2 * HB2) % HP2
+        n = n + 1
+    end
+    for i = 1, #verts do
+        local v = verts[i]
+        for _, key in ipairs(VKEYS) do
+            local q = v[key]
+            if q then put(q.x) put(q.y) put(q.z) else put(-1e300) end
+        end
+        put(v.u or -2e300) put(v.v or -2e300)
+        local ud = v.userdata
+        if ud then put(ud[1]) put(ud[2]) put(ud[3]) put(ud[4]) else put(-3e300) end
+        put(v.color and 1 or 0)
+    end
+    return { h1 = h1, h2 = h2, w1 = w1, w2 = w2, n = n, verts = #verts }
+end
+-- A draw into the frame's record: merged into the run before it if that was a mesh too.
+local function recMesh(m)
+    if not drawBuf then return end
+    local h = m.bmxHash
+    if not h then drawBuf[#drawBuf + 1] = "Mempty" return end
+    local last = drawBuf[#drawBuf]
+    if type(last) == "table" then
+        last.h1 = (last.h1 * h.w1 + h.h1) % HP1
+        last.h2 = (last.h2 * h.w2 + h.h2) % HP2
+        last.w1, last.w2 = (last.w1 * h.w1) % HP1, (last.w2 * h.w2) % HP2
+        last.n, last.verts = last.n + h.n, last.verts + h.verts
+    else
+        drawBuf[#drawBuf + 1] = { h1 = h.h1, h2 = h.h2, w1 = h.w1, w2 = h.w2, n = h.n, verts = h.verts }
+    end
+end
+local function runsToStrings(buf)
+    for i, t in ipairs(buf) do
+        if type(t) == "table" then buf[i] = string.format("M%d:%d:%d", t.h1, t.h2, t.verts) end
+    end
+end
+function hashMeshes(E)
+    local mk = E.Mesh
+    E.Mesh = function(...)
+        local m = mk(...)
+        local build, draw = m.BuildFromTriangles, m.Draw
+        m.BuildFromTriangles = function(self, verts)
+            self.bmxHash = hashVerts(verts)
+            return build(self, verts)
+        end
+        m.Draw = function(self)
+            recMesh(self)
+            return draw(self)
+        end
+        return m
+    end
+end
+
 local function scene(id, n)
     local sv, world = F.server()
     local cl = F.client(world)
@@ -364,10 +458,23 @@ local function scene(id, n)
     E.FrameNumber = function() return frameNo end
     if opt.dump then
         -- Reproducible to the digit: the build's slices by a clock that only counts
-        -- (a quarter of a millisecond a look), and the same random numbers.
-        local fake = 0
-        E.SysTime = function() fake = fake + 0.00025 return fake end
+        -- (a quarter of a millisecond a look), and the same random numbers. The model
+        -- build's files have a clock of their own, so however often a build looks at
+        -- the time, the rest of the client (the prediction's input history) sees the
+        -- same clock in every version.
+        local fake, fakeBuild = 0, 0
+        local getinfo = debug.getinfo
+        E.SysTime = function()
+            local src = getinfo(2, "S").source
+            if src:find("cl_bike", 1, true) or src:find("cl_geo_", 1, true) then
+                fakeBuild = fakeBuild + 0.00025
+                return fakeBuild
+            end
+            fake = fake + 0.00025
+            return fake
+        end
         math.randomseed(1)
+        hashMeshes(E)
     end
     world.dt = 1 / opt.fps
     instrument(cl)
@@ -582,6 +689,39 @@ local function prebuild(S)
     return { frames = frames, secs = now() - t0, worst = worst, status = BM.Status() }
 end
 
+-- --dump: the models built the same way in any version of the code. One frame asks for
+-- every model the scene draws; then each is built to the end by asking for it again and
+-- again (BikeMesh.Get, a fresh frame number each time) without the world moving on, so
+-- the frames dumped start from the same world, whatever a version's build costs a frame.
+function pumpBuilds(S)
+    local BM, E = S.B.BikeMesh, S.E
+    local asked, keys = {}, {}
+    local get = BM.Get
+    BM.Get = function(...)
+        local args = { ... }
+        local key = string.format("%s|%s|%s", tostring(args[1]), tostring(args[2]), tostring(args[3]))
+        if not keys[key] then keys[key] = true asked[#asked + 1] = args end
+        return get(...)
+    end
+    frame(S, 1)
+    BM.Get = get
+    local fn = E.FrameNumber
+    local tick = 1e6
+    for _, args in ipairs(asked) do
+        for _ = 1, 200000 do
+            tick = tick + 1
+            E.FrameNumber = function() return tick end
+            if get(unpack(args, 1, 4)) then break end
+            local failed = false
+            for _, st in pairs(BM.Status()) do if tostring(st):find("^failed") then failed = true end end
+            if failed then break end
+        end
+    end
+    E.FrameNumber = fn
+    S.frameAt = 1
+    return { frames = 1, secs = 0, worst = 0, status = BM.Status() }
+end
+
 local function pct(sorted, p)
     if #sorted == 0 then return 0 end
     return sorted[math.max(1, math.min(#sorted, math.floor(#sorted * p + 0.5)))]
@@ -713,7 +853,6 @@ end
 -- What was DRAWN goes in too, as a checksum a frame: every mesh vertex's fields, every
 -- matrix a group was drawn under, every material set, model drawn, beam and box, and the
 -- lighting. Two versions that draw alike to the digit have the same line.
-local drawBuf
 local function rec(...)
     if not drawBuf then return end
     local n = select("#", ...)
@@ -774,6 +913,7 @@ local function dumpScene(S, fh)
         drawBuf = bit and {} or nil
         frame(S, f)
         if drawBuf then
+            runsToStrings(drawBuf)
             local all = table.concat(drawBuf, " ")
             fh:write(string.format("%s %d f%d draw %s %d\n", S.id, S.n, i, checksum(all), #drawBuf))
             drawBuf = nil
@@ -851,11 +991,200 @@ local function report(id, n, S, b)
     io.stdout:flush()
 end
 
+--------------------------------------------------------------------------
+-- --build: A MODEL BUILD, MEASURED ON ITS OWN. One rider of each vehicle (or N) is
+-- drawn with the models off for --warm frames (the simple bike, as it is drawn while
+-- a model builds: that frame's median is the baseline), then with them on, frame by
+-- frame from nothing built until the model is ready, as a client sees a kind for the
+-- first time. For each frame the build ran in:
+--   build   the milliseconds spent in BikeMesh.Get (whoever asked: the build's own
+--           slice, the collector's work inside it included)
+--   extra   the whole frame less the baseline: the build AND what it left for the rest
+--           of the frame (LuaJIT pays a collector's debt from the next allocation,
+--           wherever it is). The number a player feels.
+-- Then the same build again with the collector stopped, for the garbage it made (its
+-- own, inside Get). The clock the build budgets by (SysTime) is the wall clock here, as
+-- in the game. --nogc: the timed build with the collector stopped too.
+--------------------------------------------------------------------------
+-- --heap MB: a client's Lua heap is not this bench's few MB: every addon's tables live
+-- in it (100-300 MB is usual on a server with a few dozen addons), and LuaJIT's
+-- collector paces itself by the heap: a round starts when it has doubled, and every
+-- round marks and sweeps all of it. Ballast of that many MB of small long-lived tables
+-- makes this process's heap a client's, so the build's garbage is collected as it
+-- would be there (a round every hundred-odd MB, not every few).
+local ballast
+local function makeBallast()
+    local mb = tonumber(opt.heap)
+    if not mb or ballast then return end
+    -- in tables of 500, as an addon's state is many tables, not one array the
+    -- collector would walk in one step
+    ballast = {}
+    local target = collectgarbage("count") + mb * 1024
+    local i, group = 0, nil
+    while collectgarbage("count") < target do
+        i = i + 1
+        if i % 500 == 1 then group = {} ballast[#ballast + 1] = group end
+        group[#group + 1] = { id = i, name = "ent" .. (i % 977), x = i * 0.5, y = -i, flag = (i % 3 == 0), list = { i, i + 1 } }
+    end
+    collectgarbage("collect")
+end
+
+local function buildBench(id)
+    makeBallast()
+    local S = scene(id, tonumber(positional[2]) or 1)
+    S.cmd = usercmd(S.E)
+    local E, BM = S.E, S.B.BikeMesh
+    if not opt.dump then E.SysTime = now end
+    local get = BM.Get
+    local inGet, kbGet, gcStopped = 0, 0, false
+    BM.Get = function(...)
+        local k0 = gcStopped and collectgarbage("count")
+        local a = now()
+        local r = get(...)
+        inGet = inGet + (now() - a)
+        if k0 then kbGet = kbGet + collectgarbage("count") - k0 end
+        return r
+    end
+    -- every slice of the build (a coroutine resume) timed
+    local steps = {}
+    local realCo = coroutine
+    E.coroutine = setmetatable({ resume = function(co, ...)
+        local a = now()
+        local r = { realCo.resume(co, ...) }
+        steps[#steps + 1] = (now() - a) * 1000
+        return unpack(r)
+    end }, { __index = realCo })
+    local function pending()
+        for _, st in pairs(BM.Status()) do if st == "building" then return true end end
+        return false
+    end
+    local f = 0
+    -- the baseline: the simple bike, the models off
+    local cvModel = E.GetConVar("bmx_bike_model")
+    cvModel:SetInt(0)
+    local base = {}
+    for i = 1, math.max(opt.warm, 10) do
+        f = f + 1
+        local a = now()
+        frame(S, f)
+        base[i] = (now() - a) * 1000
+    end
+    table.sort(base)
+    local baseMs = pct(base, 0.5)
+    local baseP95, baseMax = pct(base, 0.95), base[#base]
+    cvModel:SetInt(1)
+    local peak = 0                       -- the heap's high water while it builds (KB)
+    local function run()
+        local log = {}
+        local f0 = f
+        repeat
+            f = f + 1
+            inGet = 0
+            local a = now()
+            frame(S, f)
+            log[#log + 1] = { ms = (now() - a) * 1000, get = inGet * 1000 }
+            peak = math.max(peak, collectgarbage("count"))
+            if opt.framelog then
+                print(string.format("  frame %d: %.2f ms, build %.2f ms, heap %.1f MB", f, log[#log].ms, log[#log].get,
+                    collectgarbage("count") / 1024))
+            end
+        until (f - f0 > 2 and not pending()) or f - f0 > 40000
+        -- the frames the build ran in (Get still spent time); the last ones may be a
+        -- finished model looked up
+        while #log > 0 and log[#log].get < 0.05 do log[#log] = nil end
+        return log
+    end
+    collectgarbage("collect")
+    local heap0 = collectgarbage("count")
+    local cg = collectgarbage
+    if opt.nogc then
+        E.collectgarbage = function(what, ...) if what == "step" then return true end return cg(what, ...) end
+        cg("stop")
+    end
+    if profiler then profiler.start(opt.profmode or "fl", opt.profout) end
+    local t0 = now()
+    local log = run()
+    local wall = now() - t0
+    if profiler then profiler.stop() end
+    if opt.nogc then cg("restart") E.collectgarbage = nil end
+    local heapAfter = collectgarbage("count")
+    local peakMB = (peak - heap0) / 1024
+    collectgarbage("collect")
+    local heapKept = collectgarbage("count") - heap0
+    -- garbage: the same build again, the collector stopped (and the build's own
+    -- collector steps made no-ops, so they do not run it)
+    local stepsTimed = steps
+    steps = {}
+    BM.Clear()
+    collectgarbage("collect")
+    E.collectgarbage = function(what, ...)
+        if what == "step" then return true end
+        return cg(what, ...)
+    end
+    gcStopped, kbGet = true, 0
+    cg("stop")
+    run()
+    cg("restart")
+    gcStopped = false
+    E.collectgarbage = nil
+    BM.Get = get
+    E.coroutine = nil
+    local garbageMB = kbGet / 1024
+    collectgarbage("collect")
+
+    local gets, extras, sum, extraSum = {}, {}, 0, 0
+    local over16, over5, xover16, xover5 = 0, 0, 0, 0
+    for i, e in ipairs(log) do
+        local x = e.ms - baseMs
+        gets[i], extras[i] = e.get, x
+        sum, extraSum = sum + e.get, extraSum + math.max(x, 0)
+        if e.get > 16 then over16 = over16 + 1 end
+        if e.get > 5 then over5 = over5 + 1 end
+        if x > 16 then xover16 = xover16 + 1 end
+        if x > 5 then xover5 = xover5 + 1 end
+    end
+    table.sort(gets)
+    table.sort(extras)
+    table.sort(stepsTimed)
+    local r = {
+        id = id, frames = #log, p50 = pct(gets, 0.5), p95 = pct(gets, 0.95), max = gets[#gets] or 0,
+        over16 = over16, over5 = over5, total = sum,
+        xp50 = pct(extras, 0.5), xp95 = pct(extras, 0.95), xmax = extras[#extras] or 0,
+        xover16 = xover16, xover5 = xover5, xtotal = extraSum, base = baseMs, baseP95 = baseP95, baseMax = baseMax,
+        wall = wall, garbage = garbageMB, kept = heapKept / 1024, peak = peakMB,
+        steps = #stepsTimed, stepMax = stepsTimed[#stepsTimed] or 0, errors = #S.cl.errors,
+    }
+    if opt.csv then
+        print(table.concat({ id, r.frames, fmt(r.p50), fmt(r.p95), fmt(r.max), r.over16, r.over5, fmt(r.total, 0),
+            fmt(r.xp50), fmt(r.xp95), fmt(r.xmax), r.xover16, r.xover5, fmt(r.xtotal, 0), fmt(r.garbage, 1),
+            fmt(r.peak, 1), fmt(r.base), fmt(r.baseP95), fmt(r.baseMax), r.errors }, ","))
+    else
+        print(string.format("%-10s %4d frames | build ms p50 %5s p95 %5s max %6s  >16 %3d >5 %3d  total %5s | extra ms p50 %5s p95 %5s max %6s  >16 %3d >5 %3d  total %5s | garbage %6s MB, heap peak +%5s MB | base frame %s ms (p95 %s, max %s)%s",
+            id, r.frames, fmt(r.p50), fmt(r.p95), fmt(r.max), r.over16, r.over5, fmt(r.total, 0),
+            fmt(r.xp50), fmt(r.xp95), fmt(r.xmax), r.xover16, r.xover5, fmt(r.xtotal, 0),
+            fmt(r.garbage, 1), fmt(r.peak, 1), fmt(r.base, 1), fmt(r.baseP95, 1), fmt(r.baseMax, 1),
+            r.errors > 0 and ("  ERRORS " .. r.errors .. ": " .. tostring(S.cl.errors[1])) or ""))
+    end
+    io.stdout:flush()
+    return r
+end
+
+if opt.build then
+    if opt.csv then
+        print("vehicle,frames,build_p50,build_p95,build_max,build_over16,build_over5,build_total,extra_p50,extra_p95,extra_max,extra_over16,extra_over5,extra_total,garbage_mb,heap_peak_mb,base_ms,base_p95_ms,base_max_ms,errors")
+    end
+    for _, id in ipairs(VEHICLES) do
+        buildBench(id)
+        collectgarbage("collect")
+    end
+    os.exit(0)
+end
+
 for _, id in ipairs(VEHICLES) do
     for _, n in ipairs(COUNTS) do
         local S = scene(id, n)
         S.cmd = usercmd(S.E)
-        local b = prebuild(S)
+        local b = opt.dump and pumpBuilds(S) or prebuild(S)
         if opt.dump then
             local fh = io.open(opt.dump, "a")
             dumpScene(S, fh)

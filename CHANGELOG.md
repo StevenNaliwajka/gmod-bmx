@@ -7,8 +7,25 @@ a Workshop update goes out only when the owner says so.
 
 ## 1.3.7 -- not on the Workshop yet
 
-Skates on a server with any lag, checked on a real game client at 100 and 200 ms
-of ping, and two skates faults the same run found.
+No more stutter the first time a vehicle shows up; skates on a server with any
+lag, checked on a real game client at 100 and 200 ms of ping; and two skates
+faults the same run found.
+
+**Frame rate**
+
+- **No more stutter the first time you see a vehicle.** The first time a kind of
+  vehicle shows up in a session, its detailed model is built while you play, a
+  few milliseconds a frame. Dozens of those frames used to jump to 20 to 90 ms
+  for a BMX, a road bike or a motorbike: the build threw out hundreds of
+  megabytes of scratch data for the game to clear away, handed each finished
+  part to your graphics card in one lump of up to 58,000 points, and then
+  forced two full clean-ups of all your game's script memory. It now throws
+  away a sixth as much, keeps strictly to its few milliseconds a frame, hands
+  its parts over in pieces small enough for one frame, builds the vehicles on
+  your screen before the ones across the map, and forces no clean-ups. A model
+  is ready in under half the frames it took, none of them over 16 ms in our
+  tests, and every vehicle looks exactly as it did. `bmx_bike_build_report`
+  prints what each build cost on your machine.
 
 **Skates on a server with lag**
 

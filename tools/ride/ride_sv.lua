@@ -69,6 +69,7 @@ local function cleanup()
         if BMX.Worn and BMX.Worn.Unequip then pcall(BMX.Worn.Unequip, b) end
         if IsValid(b:GetVehicle()) then b:ExitVehicle() end
         b.BMXScripted = nil
+        b:SetNWInt("BMXStance", 1)
         b:SetPos(c.ground + Vector(-200, 0, 10))
     end
     if IsValid(c.bike) then c.bike:Remove() end
@@ -128,6 +129,14 @@ function S.Next()
         if IsValid(c.bike) and IsValid(c.bike:GetPhysicsObject()) then c.bike:GetPhysicsObject():EnableMotion(false) end
         local t0
         hook.Add("Think", "ridestudio_drive", function()
+            -- WORN (the skates): the bot strides along, as a held W does.
+            if not c.bike then
+                local w = BMX.Worn and BMX.Worn.Of and BMX.Worn.Of(b)
+                if not (w and w.input) or not c.ready then return end
+                t0 = t0 or CurTime()
+                w.input.w = CurTime() - t0 > 0.4 and CurTime() - t0 < 3.4
+                return
+            end
             if not IsValid(c.bike) or not c.bike.input then return end
             local inp = c.bike.input
             if not c.ready then inp.throttle = 0 return end
@@ -137,6 +146,24 @@ function S.Next()
             inp.throttle = go and S.throttle or 0
             inp.leanTarget, inp.brakeRear, inp.brakeFront = 0, 0, 0
             inp.hop, inp.pose = false, nil
+            -- THE STANCES (ridestudio_run ... stance): seated, then standing, then attack.
+            -- (set every tick, as sweep_sv.lua does: sv_stance.lua puts a bot back to
+            -- seated twice a second, having no userinfo to read)
+            if S.mode == "stance" then
+                local id = BMX.RiderStanceId[t < 1.6 and "seated" or (t < 3.2 and "standing" or "attack")]
+                if b:GetNWInt("BMXStance", 1) ~= id then b:SetNWInt("BMXStance", id) end
+            end
+            -- THE BOARD (ridestudio_run skateboard ... board): pushes, then a crouch, the pop,
+            -- an indy grab in the air, and the landing. (A scripted rider's input is not
+            -- decoded from keys: the board's own record is written, as sv_test_cases does.)
+            if S.mode == "board" and BMX.Board and BMX.Board.InputOf then
+                local bi = BMX.Board.InputOf(inp)
+                local push = go and t < 2.2
+                inp.throttle, bi.fwd = push and 1 or 0, push and 1 or 0
+                bi.jump = t > 2.6 and t < 3.1
+                if bi.jump and not bi.jumpTap then bi.jumpTap, bi.jumpTapKeys = true, BMX.Board.Keys(inp) end
+                inp.pose = (t > 3.25 and t < 3.75) and "indy" or nil
+            end
             -- THE SEQUENCE (ridestudio_run ... seq): pedal off, a turn, a bunny hop
             if S.mode == "seq" then
                 if t > 2.2 and t < 3.4 then inp.leanTarget = 0.7 end

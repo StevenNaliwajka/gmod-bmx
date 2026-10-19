@@ -231,6 +231,10 @@ net.Receive("ridestudio_cap", function()
     if mode == "seq" then
         return whenBuilt(ent, function() sequence(id, ent, 26, 0.12) end)
     end
+    -- (the board's pushes, pop and grab, and the stances, take longer)
+    if mode == "board" or mode == "stance" then
+        return whenBuilt(ent, function() sequence(id, ent, 38, 0.12) end)
+    end
     local tries = 0
     local function attempt()
         if IsValid(ent) then return whenBuilt(ent, function() shoot(id, ent, rider) end) end

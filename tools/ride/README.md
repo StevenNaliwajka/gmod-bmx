@@ -11,7 +11,10 @@ standing alone; this one shoots it in use.
     BMX_RCON_PASSWORD=... tools/ride/shoot.sh stock,road 0.45 out/
 
 Arguments: vehicle ids (comma-separated, or `all`), the throttle (0..1), and where
-to put the JPEGs. Same settings as the icon studio: `BMX_STUDIO_HOST`,
+to put the JPEGs. A fourth argument films a sequence instead, a frame every 0.12 s from
+a camera that keeps its heading: `seq` (pedal off, a turn, a bunny hop), `stance`
+(seated, standing, then attack: out of the saddle) or, on the skateboard, `board`
+(pushes, the crouch, an ollie and an indy grab). Same settings as the icon studio: `BMX_STUDIO_HOST`,
 `BMX_STUDIO_PORT`, `BMX_STUDIO_SSH`, `BMX_STUDIO_GMOD`, and `BMX_STUDIO_OWNER`, which is
 required: the name of YOUR client. Nobody else's client is ever sent code or made to
 render, and with the owner not connected the run stops at once.

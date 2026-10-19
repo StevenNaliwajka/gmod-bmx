@@ -791,7 +791,7 @@ end
 -- saddle has their hips up and over the cranks, legs nearly straight at the bottom of
 -- the stroke: the pelvis is lifted (and brought forward toward the cranks) as far as
 -- the legs still reach the bottom of the pedal circle with a soft knee -- on a tall
--- bike (a penny-farthing's hub) that is nowhere, and the rider stays sat. `stand`:
+-- bike (a penny-farthing's hub) that is a few units over the hub, or none. `stand`:
 -- { rise = 0..1 of STAND_RISE (or of `max`, units), over = 0..1 of the way from the hips
 -- to over the cranks, `feet` = { right, left } to stand on if not the vehicle's pedals }.
 local STAND_RISE    = 6     -- units, the most the hips come up (at 9 a BMX's low bars were

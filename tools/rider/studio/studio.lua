@@ -317,6 +317,33 @@ S.board = function()
     shot("cruise again")
 end
 
+-- A scooter leant into a turn and steered, kicking, and the hop after: the vehicle
+-- and its seat turned and rolled together (`place`), as the game's parenting does.
+S.scooter_turn = function()
+    local seat = B.SeatFor(ent:Bike(), ent:Cfg(), "rider")
+    local base = ent:GetPos()
+    local function place(roll, yaw)
+        ent:SetAngles(E.Angle(0, yaw, roll))
+        ply._vehicle:SetPos(ent:LocalToWorld(seat.offset))
+        ply._vehicle:SetAngles(ent:LocalToWorldAngles(seat.angles or E.Angle(0, 0, 0)))
+    end
+    setSpeed(250)
+    run(30)
+    local yaw = 0
+    for i = 1, 40 do
+        local k = math.min(1, i / 10)
+        yaw = yaw + 60 * world.dt * k
+        place(-18 * k, yaw)
+        ent:SetSteer(math.rad(14 * k))
+        ent:SetPushPhase(((i / 30) % 1) < 0.95 and ((i / 30) % 1) or -1)
+        setSpeed(250)
+        frame()
+        if i == 12 or i == 24 or i == 36 then shot("turning " .. i) end
+    end
+    ent:SetPushPhase(-1)
+    place(0, yaw) ent:SetSteer(0) run(20) shot("after the turn")
+end
+
 S.scooter = function()
     setSpeed(200)
     run(30)

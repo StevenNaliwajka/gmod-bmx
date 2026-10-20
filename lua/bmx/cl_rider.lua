@@ -1627,7 +1627,7 @@ local function clear(ply)
     ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
     ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
     ply.bmxGripOff, ply.bmxPoseFrame, ply.bmxIKJump, ply.bmxFramePelvis = nil, nil, nil, nil
-    ply.bmxCurl, ply.bmxLook = nil, nil
+    ply.bmxCurl, ply.bmxLook, ply.bmxSeenDraws = nil, nil, nil
     -- The board's crouch lowers the pelvis (cl_board.lua); put it back.
     if ply.bmxPelvis then
         manipPos(ply, ply.bmxPelvis, Vector(0, 0, 0))
@@ -1672,6 +1672,14 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
 
     local C = bike:Cfg()
     local useIK = cv_ik:GetBool() and bike.ikTargets ~= nil
+    -- ONLY TARGETS THE VEHICLE HAS JUST DRAWN. The grips and pedals are where the
+    -- vehicle's own drawing put them; a rider drawn in a view the vehicle was not (out
+    -- of it, culled) was solved against the last ones it drew -- on a real client, a
+    -- scooter rider's hands trailed a foot behind and below the bars in shots taken
+    -- 0.12 s apart (2026-10-20). Then the limbs keep the pose they had, which is the
+    -- body's own and moves with it, and the next drawing's targets are solved.
+    local fresh = bike.bmxDraws == nil or bike.bmxDraws ~= ply.bmxSeenDraws
+    ply.bmxSeenDraws = bike.bmxDraws
     -- IK SWITCHED OFF MID-RIDE (bmx_rider_ik 0, the options panel): what the solver
     -- had posed -- forearms, hands, fingers, feet, a board rider's crouch -- stayed
     -- where it last put them, and came apart from the bike until the rider got off.
@@ -1800,7 +1808,7 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     -- from the view keeps the pose they last had (manipulations persist).
     -- On the saddle the bike drew (a board's and a scooter's riders stand on drawings
     -- of their own, with their own pelvis).
-    if not set.solveIK then
+    if not set.solveIK and fresh then
         local seat = BMX.SeatFor and BMX.SeatFor(bike:Bike(), C, "rider")
         -- Out of the saddle: the stance's, or a sprint's (a rider sprints stood up).
         local sOff = BMX.RiderPoseOffset and BMX.RiderPoseOffset(stanceName) or {}
@@ -1810,7 +1818,7 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
         STAND.rise, STAND.over = rise, follow(st, "over", over, SMOOTH.stance, dt)
         BMX.RiderFollowFrame(ply, bike, seat and seat.offset or C.Chassis.seatOffset, useIK and STAND or nil)
     end
-    local dist = useIK and EyePos():Distance(ply:GetPos()) or math.huge
+    local dist = (useIK and fresh) and EyePos():Distance(ply:GetPos()) or math.huge
     if dist < IK_RANGE or (dist < IK_FAR and ((frameNo or 0) + ply:EntIndex()) % IK_FAR_EVERY == 0) then
         ply.bmxLook = look              -- (a set that aims the head itself looks into the turn too)
         if set.solveIK then

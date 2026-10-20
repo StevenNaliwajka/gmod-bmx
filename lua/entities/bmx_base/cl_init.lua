@@ -960,6 +960,8 @@ end
 function ENT:Draw()
     drawing = self
     local bike = self:Bike()
+    -- (counted: a rider solves against targets only this drawing has just set, cl_rider.lua)
+    self.bmxDraws = (self.bmxDraws or 0) + 1
 
     -- A FAMILY THAT DRAWS ITSELF (cl_board.lua: BMX.DrawVehicle.board). The bike is
     -- the procedural drawing below; a skateboard has no frame, fork or bars, and

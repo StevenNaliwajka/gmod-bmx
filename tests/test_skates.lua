@@ -1190,3 +1190,18 @@ T.test("skates: the keys are left to the engine in noclip and on a ladder", func
     E.hook.Run("StartCommand", ply, climbing)
     T.eq(climbing.fwd, 10000, "a ladder: the player's own")
 end)
+
+-- NOTHING IN HAND. The SWEP's world model is a base-game plate, meant never to be
+-- drawn; with no DrawWorldModel of its own the engine drew it, and every skater had a
+-- grey plate floating at the waist (a real client, 2026-10-20).
+T.test("skates client: the SWEP draws nothing in hand (the skates are on the feet)", function()
+    local cl, me, E = cscene()
+    cl:loadWeapon("weapon_bmx_skates")
+    local swep = cl.sweps.weapon_bmx_skates
+    T.ok(swep.DrawWorldModel, "the client SWEP has its own world-model draw")
+    local drew = 0
+    local wep = setmetatable({ GetOwner = function() return me end, DrawModel = function() drew = drew + 1 end },
+        { __index = swep })
+    wep:DrawWorldModel()
+    T.eq(drew, 0, "and it draws no model")
+end)

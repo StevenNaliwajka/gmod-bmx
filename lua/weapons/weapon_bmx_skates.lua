@@ -73,6 +73,11 @@ function SWEP:SecondaryAttack() end
 function SWEP:Reload() end
 
 if CLIENT then
+    -- Nothing in hand: the skates are on the feet. Without this the engine drew the
+    -- world model, and every skater had a grey plate floating at the waist (seen on a
+    -- real client, 2026-10-20).
+    function SWEP:DrawWorldModel() end
+
     function SWEP:DrawHUD()
         draw.SimpleText("W stride   A / D crossover   S brake   SPACE jump   hold SPACE near a rail: grind",
             "DermaDefault", ScrW() * 0.5, ScrH() - 80, Color(255, 255, 255, 200), TEXT_ALIGN_CENTER)

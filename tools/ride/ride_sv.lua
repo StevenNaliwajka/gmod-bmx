@@ -67,6 +67,7 @@ local function cleanup()
     local b = c.bot
     if IsValid(b) then
         if BMX.Worn and BMX.Worn.Unequip then pcall(BMX.Worn.Unequip, b) end
+        if b:HasWeapon("weapon_bmx_skates") then b:StripWeapon("weapon_bmx_skates") end
         if IsValid(b:GetVehicle()) then b:ExitVehicle() end
         b.BMXScripted = nil
         b:SetNWInt("BMXStance", 1)
@@ -115,7 +116,10 @@ function S.Next()
     elseif def.worn then
         b:SetPos(g + Vector(0, 0, 4))
         b:SetEyeAngles(Angle(0, yaw, 0))
-        BMX.Worn.Equip(b, id)
+        -- through their SWEP, as a player puts them on (it is what is in hand)
+        local swep = "weapon_bmx_" .. id
+        if weapons.GetStored(swep) then b:Give(swep) b:SelectWeapon(swep) end
+        if not (BMX.Worn.Of and BMX.Worn.Of(b)) then BMX.Worn.Equip(b, id) end
         c.ent = b
     else
         local bike = ents.Create(BMX.ClassFor(id))
@@ -208,9 +212,11 @@ hook.Add("StartCommand", "ridestudio_walk", function(ply, cmd)
     local c = S.cur
     if not (c and c.walk and c.ready and ply == c.bot) then return end
     c.walkT = c.walkT or CurTime()
+    -- (a bot may be holding duck: bot_crouch, with the test server's sv_cheats 1)
+    cmd:ClearButtons()
     if CurTime() - c.walkT < 3 then
         cmd:SetForwardMove(150)
-        cmd:SetButtons(bit.bor(cmd:GetButtons(), IN_WALK))
+        cmd:SetButtons(IN_WALK)
     end
 end)
 

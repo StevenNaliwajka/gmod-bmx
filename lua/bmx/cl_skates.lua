@@ -452,7 +452,10 @@ hook.Add("PrePlayerDraw", "BMX.Skates.Legs", function(ply)
     local swing = stride * P.swing
     local foot = ply:GetNWInt("BMXSkateFoot", 1)
     if S.LegsOnGround(ply, stride, foot) then
-        if EyePos():Distance(ply:GetPos()) <= IK_RANGE then
+        -- (the hands free: skates are worn with their own SWEP out, which holds nothing;
+        -- a wearer with something else in hand keeps that weapon's arms)
+        local w = ply:GetActiveWeapon()
+        if EyePos():Distance(ply:GetPos()) <= IK_RANGE and (not IsValid(w) or w:GetClass() == "weapon_bmx_skates") then
             armsAndEyes(ply, ply:GetRenderAngles().y, stride, foot)
         end
         posed[ply] = true

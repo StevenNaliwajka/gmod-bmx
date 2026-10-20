@@ -876,6 +876,7 @@ end
 -- it drew (false while the model builds: the SWEP draws its plate meanwhile).
 --------------------------------------------------------------------------
 B.CarryOut = 1.2            -- units the grip is out from the palm, so the deck clears the leg
+local CARRY_TAIL = 4        -- units the kicked-up tail runs on past the rear axle
 
 -- THE CARRYING ARM DOWN AT THE SIDE. The "normal" hold's idle stands with the arms out
 -- in an A, and the board hung from that hand dangled a foot out from the hip (kleiner's
@@ -954,19 +955,25 @@ function B.DrawCarried(ply, paint)
     local hb = ply:LookupBone("ValveBiped.Bip01_R_Hand")
     local m = hb and ply:GetBoneMatrix(hb)
     if not m then return false end
-    -- The hand's own length (ValveBiped: its X runs out to the fingers) is the way the
-    -- board hangs from it; the deck faces back in toward the body.
-    local fingers = m:GetForward()
-    local out = ply:GetRenderAngles():Right()
-    local x = -fingers                                   -- the nose up the arm, the tail down
-    local z = -out - x * (-out):Dot(x)                   -- the deck's top against the leg
-    if z:Length() < 1e-3 then return false end
-    z:Normalize()
-    local y = z:Cross(x)
+    -- HANGING, as a held board does: straight down from the front truck in the hand
+    -- (it used to follow the hand's own axis, and a crouch, whose hand points up the
+    -- arm, held it up past the shoulder: seen on a real client, 2026-10-20), the deck's
+    -- top against the leg. Only when the hand is too low for the tail to clear the
+    -- ground (a crouch) does the tail swing back, as far as it must.
+    local ang = ply:GetRenderAngles()
+    local fwd, out = ang:Forward(), ang:Right()
+    fwd = Vector(fwd.x, fwd.y, 0):GetNormalized()
+    out = Vector(out.x, out.y, 0):GetNormalized()
     local lay = model.layout
     local ta, ax = lay.truckAt, lay.axle
     local grip = Vector(ta.x + ax.x, 0, ta.z + ax.z * 0.7)     -- on the front hanger
-    local palm = m:GetTranslation() + fingers * 3.0 + out * B.CarryOut
+    local palm = m:GetTranslation() + m:GetForward() * 3.0 + out * B.CarryOut
+    local below = grip.x + (lay.front.x - lay.rear.x) * 0.5 + CARRY_TAIL     -- grip to the tail's end
+    local clear = palm.z - ply:GetPos().z - 1
+    local c = math.Clamp(clear / below, 0.2, 1)
+    local x = Vector(0, 0, 1) * c + fwd * math.sqrt(1 - c * c)     -- the nose up, the tail down (and back)
+    local z = -out                                       -- the deck's top against the leg
+    local y = z:Cross(x)
     local O = palm - x * grip.x - z * grip.z
     local function P(v) return O + x * v.x + y * v.y + z * v.z end
     B.DrawModel(ply, model, {

@@ -371,6 +371,20 @@ vertices) and microseconds a vertex. Spawn a vehicle kind not yet seen this sess
 cost a vertex says how far to lower MAX_TRIS in cl_bikemesh.lua (each mesh is a draw
 call: at 4096 one BMX in view is 56 Mesh:Draw a frame, 50 with one mesh a bucket).
 
+Done on a real client, 2026-10-20 (the gmod-marionette: a 32-bit LuaJIT client that
+renders at about 20 fps, so a frame is 50 ms whatever the Lua costs; BMX's own client
+work was timed separately, by wrapping every BMX hook and the vehicles' Draw / Think):
+- The model build, singleplayer on gm_flatgrass, each vehicle kind spawned in view in
+  turn. Frames more than 16 ms over the median while a model built, the first six
+  kinds: 70 on 1.3.6, 4 on 1.3.8; the worst build frame 77-104 ms on 1.3.6, 61-78 ms
+  on 1.3.8. From the seventh kind on, 1.3.6's builds did not finish within 30 s;
+  every 1.3.8 build did (39-145 frames). The Options > BMX > Server and Rider panels
+  build in singleplayer with no error (88 and 72 controls).
+- Riders on screen, a listen server, eight bots on BMXs riding circles 700-1,600 u in
+  front of the camera: BMX's client work a frame was 8.0 ms mean, 24.4 ms at the 95th
+  percentile and 41.2 ms at worst on 1.3.5; 4.5, 8.7 and 28.9 ms on 1.3.9. The worst
+  whole frame went from 77.7 to 65.5 ms.
+
 ## Headless, and automatic
 
 Everything above the offline section is a human looking at a bike. This

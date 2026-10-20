@@ -5,7 +5,7 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
-## 1.3.9 -- not on the Workshop yet
+## 1.3.9 -- on the Workshop 2026-10-20
 
 Riders that look like riders. Every vehicle's rider was looked at on the real
 player model, pose by pose, and on a real game client.

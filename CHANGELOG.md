@@ -5,6 +5,50 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.3.9 -- not on the Workshop yet
+
+Riders that look like riders. Every vehicle's rider was looked at on the real
+player model, pose by pose, and on a real game client.
+
+**Skateboard**
+
+- **Relaxed hands.** The hands hung bent back at the wrist with the palms down,
+  like paws. They now hang loose at your sides, wrists straight.
+- **Hands open again after a grab.** One grab used to leave both hands as fists
+  for the rest of the ride. Now only the grabbing hand closes, and it opens
+  again when you let go.
+- **You look where you are going**: up the board toward the nose (the tail,
+  rolling fakie), and into turns, instead of out to the side.
+- Softer knees and a slight lean while riding, a much deeper crouch before an
+  ollie, and the knees tuck up for a grab. Pushing, the arms swing by the body
+  instead of folding into your thighs.
+- **Carrying a board shows the board**, hanging from your hand by its front
+  truck, instead of a grey plate held out in front.
+
+**Bikes**
+
+- **Standing and attack stances leave the saddle.** They used to keep you sat
+  with a straighter back. Now your hips come up, as far as your legs still reach
+  the pedals, with your elbows bent. Sprinting stands you up too.
+- **Fists on the grips**: round the middle of the grip with the thumb wrapped
+  under, instead of half on the bare bar with the thumb sticking up.
+- No-hander hands open; superman legs go straight back; a no-footer kicks the
+  legs out wide.
+- A passenger stands up on the pegs, hands resting on your shoulders. A
+  unicyclist holds the arms out for balance.
+
+**Skates and scooter**
+
+- On skates the arms hang loose and swing with each stride, the stance is lower,
+  and you look up the road. The grey plate that floated at every skater's waist
+  is gone.
+- Hands and feet stay on the bars and pedals even when a rider is drawn before
+  their vehicle, or with it off the edge of the screen (a scooter rider's hands
+  trailed behind the bars).
+
+For modders: `tools/rider/studio` draws any vehicle's rider on the real Kleiner
+model, offline, from several cameras.
+
 ## 1.3.8 -- on the Workshop 2026-10-19
 
 A fix for crashes on fire, and the Workshop page brought up to date.

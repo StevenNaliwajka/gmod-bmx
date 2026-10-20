@@ -1603,6 +1603,34 @@ end)
 -- Layer 2: motion. Applied just before each player is drawn, and cleared from
 -- anyone who has got off, so a rider never walks away with pedalling legs.
 --------------------------------------------------------------------------
+--------------------------------------------------------------------------
+-- TARGETS CARRIED WITH THE VEHICLE. The grips and pedals are where the vehicle's own
+-- drawing put them, in the world, as it stood then. A rider posed before it is drawn
+-- again -- earlier in the same frame, or in a view it was not drawn in at all (culled,
+-- off the edge of the screen) -- reached for where the bars had been: on a real
+-- client a scooter rider's hands trailed a foot behind and below the bars (2026-10-20).
+-- So they are first moved on with the vehicle since that drawing (rigidly: a turn of
+-- the bars or the cranks since is a frame's worth, and the next drawing has it). The
+-- offsets from a shoulder (`Rel`) are not points, and stay.
+--------------------------------------------------------------------------
+function BMX.CarryTargets(bike)
+    local at = bike.bmxTargetsAt
+    if not at then return end
+    local p, f, r, u = bike:GetPos(), bike:GetForward(), bike:GetRight(), bike:GetUp()
+    if p == at.p and f == at.f and u == at.u then return end
+    for _, t in ipairs({ bike.ikTargets or false, bike.ikTargetsStoker or false }) do
+        if t then
+            for k, v in pairs(t) do
+                if isvector(v) and not (isstring(k) and k:sub(-3) == "Rel") then
+                    local d = v - at.p
+                    t[k] = p + f * d:Dot(at.f) + r * d:Dot(at.r) + u * d:Dot(at.u)
+                end
+            end
+        end
+    end
+    at.p, at.f, at.r, at.u = p, f, r, u
+end
+
 local animated = {}     -- player -> true while we have bones moved on them
 local SPRINT_RISE, SPRINT_OVER = 0.8, 0.5     -- a sprint is out of the saddle, over the cranks
 local STAND = { rise = 0, over = 0 }          -- (reused: what RiderFollowFrame is handed)
@@ -1627,7 +1655,7 @@ local function clear(ply)
     ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
     ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
     ply.bmxGripOff, ply.bmxPoseFrame, ply.bmxIKJump, ply.bmxFramePelvis = nil, nil, nil, nil
-    ply.bmxCurl, ply.bmxLook, ply.bmxSeenDraws = nil, nil, nil
+    ply.bmxCurl, ply.bmxLook = nil, nil
     -- The board's crouch lowers the pelvis (cl_board.lua); put it back.
     if ply.bmxPelvis then
         manipPos(ply, ply.bmxPelvis, Vector(0, 0, 0))
@@ -1665,21 +1693,15 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
 
     -- A PASSENGER is not at the bars: their pose is their own (cl_passenger.lua).
     if BMX.IsPassenger and BMX.IsPassenger(ply) then
+        BMX.CarryTargets(bike)
         BMX.PassengerPose(ply, bike)
         animated[ply] = true
         return
     end
 
     local C = bike:Cfg()
+    BMX.CarryTargets(bike)
     local useIK = cv_ik:GetBool() and bike.ikTargets ~= nil
-    -- ONLY TARGETS THE VEHICLE HAS JUST DRAWN. The grips and pedals are where the
-    -- vehicle's own drawing put them; a rider drawn in a view the vehicle was not (out
-    -- of it, culled) was solved against the last ones it drew -- on a real client, a
-    -- scooter rider's hands trailed a foot behind and below the bars in shots taken
-    -- 0.12 s apart (2026-10-20). Then the limbs keep the pose they had, which is the
-    -- body's own and moves with it, and the next drawing's targets are solved.
-    local fresh = bike.bmxDraws == nil or bike.bmxDraws ~= ply.bmxSeenDraws
-    ply.bmxSeenDraws = bike.bmxDraws
     -- IK SWITCHED OFF MID-RIDE (bmx_rider_ik 0, the options panel): what the solver
     -- had posed -- forearms, hands, fingers, feet, a board rider's crouch -- stayed
     -- where it last put them, and came apart from the bike until the rider got off.
@@ -1808,7 +1830,7 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     -- from the view keeps the pose they last had (manipulations persist).
     -- On the saddle the bike drew (a board's and a scooter's riders stand on drawings
     -- of their own, with their own pelvis).
-    if not set.solveIK and fresh then
+    if not set.solveIK then
         local seat = BMX.SeatFor and BMX.SeatFor(bike:Bike(), C, "rider")
         -- Out of the saddle: the stance's, or a sprint's (a rider sprints stood up).
         local sOff = BMX.RiderPoseOffset and BMX.RiderPoseOffset(stanceName) or {}
@@ -1818,7 +1840,7 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
         STAND.rise, STAND.over = rise, follow(st, "over", over, SMOOTH.stance, dt)
         BMX.RiderFollowFrame(ply, bike, seat and seat.offset or C.Chassis.seatOffset, useIK and STAND or nil)
     end
-    local dist = (useIK and fresh) and EyePos():Distance(ply:GetPos()) or math.huge
+    local dist = useIK and EyePos():Distance(ply:GetPos()) or math.huge
     if dist < IK_RANGE or (dist < IK_FAR and ((frameNo or 0) + ply:EntIndex()) % IK_FAR_EVERY == 0) then
         ply.bmxLook = look              -- (a set that aims the head itself looks into the turn too)
         if set.solveIK then

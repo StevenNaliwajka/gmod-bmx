@@ -530,11 +530,11 @@ T.test("real skeleton: a carried board hangs from the hand at the side, the arm 
     T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
 end)
 
--- ONLY TARGETS THE VEHICLE HAS JUST DRAWN. A rider drawn in a view its vehicle was not
--- (out of it, culled) was solved against the grips the vehicle last drew: on a real
--- client a scooter rider's hands trailed a foot behind the bars (2026-10-20). The limbs
--- keep the pose they had until the vehicle is drawn again.
-T.test("real skeleton: a rider whose vehicle was not drawn keeps their pose, and takes the grips again when it is", function()
+-- TARGETS CARRIED WITH THE VEHICLE. A rider posed before their vehicle is drawn again
+-- (earlier in the frame, or in a view it was culled from) reached for where the bars had
+-- been: on a real client a scooter rider's hands trailed a foot behind the bars
+-- (2026-10-20). The targets move on with the vehicle first.
+T.test("real skeleton: a rider posed before their vehicle is drawn again holds the bars where they are now", function()
     local sv, world, cl, n = client()
     local E, B = cl.env, cl.env.BMX
     local cb = cl:clientEntity("bmx_base")
@@ -549,28 +549,21 @@ T.test("real skeleton: a rider whose vehicle was not drawn keeps their pose, and
     cl.eyePos = cb:GetPos() + E.Vector(0, 150, 50)
     world.dt = 1 / 20
     for _ = 1, 20 do cb:Draw() E.hook.Run("PrePlayerDraw", ply) end
-    local function manips()
-        local t = {}
-        for b, a in pairs(ply._manip or {}) do t[b] = E.Angle(a.p, a.y, a.r) end
-        return t
-    end
-    local before = manips()
-    -- the bike rolls on 30 units and the rider is drawn without it: the last targets
-    -- are 30 units behind
+    -- the bike rolls on 30 units and turns 20 degrees, and the rider is posed without it
+    -- being drawn: the targets it last drew are 30 units behind
     cb:SetPos(cb:GetPos() + cb:GetForward() * 30)
+    local a0 = cb:GetAngles()
+    cb:SetAngles(E.Angle(a0.p, a0.y + 20, a0.r))
     ply._vehicle:SetPos(cb:LocalToWorld(seat.offset))
-    E.hook.Run("PrePlayerDraw", ply)
-    local moved = 0
-    for b, a in pairs(manips()) do
-        local o = before[b]
-        if o and b ~= ply:LookupBone("ValveBiped.Bip01_Spine2") then
-            moved = math.max(moved, math.abs(a.p - o.p), math.abs(a.y - o.y), math.abs(a.r - o.r))
-        end
-    end
-    T.between(moved, 0, 1, "the limbs keep the pose they had, not reaching back for old grips, degrees")
+    ply._vehicle:SetAngles(cb:LocalToWorldAngles(seat.angles or E.Angle(0, 0, 0)))
+    for _ = 1, 3 do E.hook.Run("PrePlayerDraw", ply) end
+    local carried = cb.ikTargets
+    local w = misses(B, ply, carried)
+    T.between(math.max(w.rHand or 0, w.lHand or 0, w.rFoot or 0, w.lFoot or 0), 0, 0.5, "on the carried grips and pedals, units")
+    -- and those are where the bike now draws them
+    local was = { rHand = carried.rHand, lHand = carried.lHand }
     cb:Draw()
-    E.hook.Run("PrePlayerDraw", ply)
-    local w = misses(B, ply, cb.ikTargets)
-    T.between(math.max(w.rHand or 0, w.lHand or 0), 0, 0.5, "drawn again, the hands are on the grips, units")
+    T.between((cb.ikTargets.rHand - was.rHand):Length(), 0, 0.5, "the right grip carried to where it is drawn, units")
+    T.between((cb.ikTargets.lHand - was.lHand):Length(), 0, 0.5, "and the left")
     T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
 end)

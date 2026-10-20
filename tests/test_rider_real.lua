@@ -504,15 +504,18 @@ T.test("real skeleton: a carried board hangs from the hand at the side, the arm 
     T.ok(out0 > 10, string.format("the idle's hand is out from the shoulder: %.1f", out0))
     T.between(out1, -1, 4, "carrying, the hand is down at the side, units out from the shoulder")
     T.between((H1 - S1):Length(), (H0 - S0):Length() - 1, (H0 - S0):Length() + 1, "at the arm's own reach")
-    -- the board is drawn, at the hand (until it is built, the plate)
-    local drew
+    -- the board is drawn, at the hand; until its model is built, nothing (the plate
+    -- in this hold ran through the waist)
+    local drew, plates = nil, 0
     for _ = 1, 8000 do
         cl.groups = {}
         plate = 0
         SW.DrawWorldModel(wep)
+        plates = plates + plate
         if #cl.groups > 0 then drew = true break end
     end
-    T.ok(drew and plate == 0, "the board's own model is drawn, not the plate")
+    T.ok(drew, "the board's own model is drawn")
+    T.eq(plates, 0, "and never the plate, not even while it builds")
     local deck = MF.group(cl, "deck")
     T.ok(deck and (deck:GetTranslation() - H1):Length() < 30, "the deck by the hand")
     local truck = MF.group(cl, "truck")

@@ -5,8 +5,7 @@
     front of you; bmx_pickup_board (bind it) takes one back. It counts toward bmx_max_per_player
     while you carry it. Others see the board itself in your hand, hanging at your
     side by its front truck (cl_board.lua, BMX.Board.DrawCarried); the base-game
-    plate is the world model only while that model builds, or without the client
-    files.
+    plate is the world model only for a client without the BMX files.
 ----------------------------------------------------------------------------]]
 
 SWEP.PrintName    = "Skateboard"
@@ -49,10 +48,17 @@ function SWEP:SecondaryAttack() end
 function SWEP:Reload() end
 
 if CLIENT then
+    -- The board itself in hand (BMX.Board.DrawCarried). Until its model is built (a
+    -- moment, the first time) the hand is empty: the plate, held at the side in this
+    -- hold, ran through the player's waist (seen on a real client, 2026-10-20). It is
+    -- drawn only where the BMX client files are missing.
     function SWEP:DrawWorldModel(flags)
         local ply = self:GetOwner()
         local B = BMX and BMX.Board
-        if IsValid(ply) and B and B.DrawCarried and B.DrawCarried(ply) then return end
+        if B and B.DrawCarried then
+            if IsValid(ply) then B.DrawCarried(ply) end
+            return
+        end
         self:DrawModel(flags)
     end
 

@@ -971,6 +971,7 @@ end
 -- the spine than a bike rider's (cl_rider.lua's SPINE_SHARE), or a deep crouch was a
 -- hunch with the shoulders rolled over an upright pelvis.
 SET.spineShare = { { "spineLow", 0.45 }, { "spineMid", 0.3 } }
+SET.ownLife = true          -- B.Posture breathes and drifts the weight itself
 
 --------------------------------------------------------------------------
 -- THE RIDER'S IK: both feet on the deck, hands out for balance. The solver is the

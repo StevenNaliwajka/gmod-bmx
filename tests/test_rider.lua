@@ -403,8 +403,9 @@ T.test("smoothing: a sprint and a change of stance ease the torso over, at 30 an
         ply:SetNWInt("BMXStance", 3)                    -- attack
         local s0 = lean()
         local w2 = run(0.8)
-        T.near(lean() - s0, 22, 0.5, fps .. " fps: into the attack stance")
-        T.ok(w2 < 22 * (fps == 30 and 0.4 or 0.12), string.format("%d fps: the stance eased, %.1f a frame", fps, w2))
+        local attack = E.BMX.RiderPoseOffset("attack").spineLean
+        T.near(lean() - s0, attack, 0.5, fps .. " fps: into the attack stance")
+        T.ok(w2 < attack * (fps == 30 and 0.4 or 0.12), string.format("%d fps: the stance eased, %.1f a frame", fps, w2))
     end
     T.ok(results[30] and results[144] and math.abs(results[30] - results[144]) < 0.05,
         string.format("as quick at 30 as at 144 (%.3f s, %.3f s)", results[30] or -1, results[144] or -1))

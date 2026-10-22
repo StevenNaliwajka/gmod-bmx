@@ -62,6 +62,10 @@ local RIDER = {
     strokeBob    = 2.5,    -- degrees forward at the bottom of each downstroke
     strokeSeated = 0.2,    -- ...seated, this fraction of it
     airLook      = 12,     -- degrees the head drops in the air, to spot the landing
+    -- TOWARD THE BARS, ALWAYS. A seated rider leans to the bars from the hips; 1.3.9's sat
+    -- bolt upright at a standstill (the trunk 0-3 degrees on kleiner; 28 is the middle of a
+    -- rider on footage, tools/rider/refpose), the arms bent up to reach down for the grips.
+    seatLean     = 12,
 }
 BMX.RiderAmplitudes = RIDER
 
@@ -132,7 +136,7 @@ function BMX.RiderPose(s)
     rT, lT = rT - lean * R.leanFwdHips, lT - lean * R.leanFwdHips
     local sprint = (s.sprint == true and 1) or (tonumber(s.sprint) or 0)
     local tuck  = frac * R.tuckMax + sprint * R.sprintTuck + crouch * 0.6
-    local spine = tuck + lean * R.leanFwd + math.deg(s.pitch or 0) * R.pitchFollow
+    local spine = R.seatLean + tuck + lean * R.leanFwd + math.deg(s.pitch or 0) * R.pitchFollow
 
     -- The stroke: a twist with the cranks (one rock a turn, toward the side that
     -- pushes) and a dip with each downstroke (two a turn), as hard as the legs
@@ -1657,6 +1661,7 @@ function BMX.CarryTargets(bike)
 end
 
 local animated = {}     -- player -> true while we have bones moved on them
+local LIFE = { breathe = 0.8, drift = 1.6 }    -- degrees of the back's lean and twist
 local SPRINT_RISE, SPRINT_OVER = 0.8, 0.5     -- a sprint is out of the saddle, over the cranks
 local STAND = { rise = 0, over = 0 }          -- (reused: what RiderFollowFrame is handed)
 local LAND_MIN     = 120    -- u/s downward: gentler than this is not worth a crouch
@@ -1813,8 +1818,18 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     -- the cap, so a capped rider still gets their hands to the bars.
     local setLean = pose.spine.y
     local lean = setLean + poseLean
-    if set.maxLean and lean > set.maxLean then lean = set.maxLean end
     local twist = pose.spine.r + poseTwist
+    -- NEVER STILL: every rider breathes, and their weight drifts a little side to side,
+    -- on a clock that ticks ten times a second (cl_board.lua's B.DriftClock: the IK
+    -- re-poses only when something moved, so a rider sat still is still nearly free). A
+    -- pose set that does its own (the board's B.Posture) says so.
+    if not set.ownLife then
+        local t, seed = math.floor(CurTime() * 10) / 10, ply:EntIndex() * 1.37
+        lean = lean + LIFE.breathe * math.sin(t * math.pi * 2 * 0.25 + seed)
+        twist = twist + LIFE.drift * (0.6 * math.sin(t * math.pi * 2 * 0.11 + seed * 1.7)
+            + 0.4 * math.sin(t * math.pi * 2 * 0.29 + seed * 0.6))
+    end
+    if set.maxLean and lean > set.maxLean then lean = set.maxLean end
     local reachLean = 0
     if useIK then
         -- The IK's own lean and twist (spineReach), followed.

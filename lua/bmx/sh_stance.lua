@@ -57,9 +57,11 @@ BMX.StanceOffsets = {
     seated   = {},
     -- Up out of the saddle over the pedals, the chest forward over the bars (upright,
     -- stood up off a BMX's low saddle, the bars were past arm's length).
-    standing = { spineLean = 10, rise = 1, over = 0.55 },
-    -- Low and forward over the bars: chest down, elbows out, hips back.
-    attack   = { spineLean = 22, rise = 0.6, over = 0.25 },
+    -- Low and forward over the bars: chest down, elbows out, hips back. 1.4.0 folds both
+    -- further: a rider in the attack position on footage has the back 35-45 degrees
+    -- over (tools/rider/refpose), and 22 drew a rider stood up behind the bars.
+    standing = { spineLean = 16, rise = 1, over = 0.55 },
+    attack   = { spineLean = 34, rise = 0.6, over = 0.25 },
 }
 
 local LIMB_KEYS = { "rHand", "lHand", "rFoot", "lFoot" }

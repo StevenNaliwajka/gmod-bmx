@@ -1210,7 +1210,8 @@ function BMX.SolveRiderIK(ply, targets, bike)
             end
             -- Knees forward and up; elbows out, down and back (or the set's own).
             local pp = limb.leg and (poles.leg or LEG_POLE) or (poles.arm or ARM_POLE)
-            local pole = (lfwd * pp.x + lright * (pp.y * limb.side) + up * pp.z):GetNormalized()
+            local pole = targets[limb.target .. "Pole"]
+                or (lfwd * pp.x + lright * (pp.y * limb.side) + up * pp.z):GetNormalized()
             solveLimb(ply, limb, W, pole)
 
             if limb.leg then
@@ -1442,15 +1443,26 @@ local FEET_OUT = { rFoot = Vector(0, -29, 10), lFoot = Vector(0, 29, 10) }
 BMX.RiderPoses = {
     nohander = { rHand = HANDS_UP.rHand, lHand = HANDS_UP.lHand, spineLean = -4, openHands = true },
     nofooter = { rFoot = FEET_OUT.rFoot, lFoot = FEET_OUT.lFoot },
-    -- A can-can swings one leg over the top tube to the other side.
-    cancan_r = { rFoot = Vector(-1, 9, 14) },
-    cancan_l = { lFoot = Vector(-1, -9, 14) },
+    -- A can-can swings one leg over the top tube to the other side -- OVER it (`arc`: the
+    -- foot went straight across, through the top tube, tests/test_body_clip.lua).
+    -- It hangs out past the other leg, not against it (at 9 out the foot was in the knee).
+    cancan_r = { rFoot = Vector(2, 15, 17), arc = 10 },
+    cancan_l = { lFoot = Vector(2, -15, 17), arc = 10 },
     -- Superman: legs out STRAIGHT behind, body laid forward, hands on the bars (the feet
-    -- were 21 units behind the hips and the knees folded up behind like a frog's).
-    superman = { rFoot = Vector(-36, -5, 25), lFoot = Vector(-36, 5, 25), spineLean = 40 },
+    -- were 21 units behind the hips and the knees folded up behind like a frog's). With
+    -- someone on the pegs or a stoker behind, straight back is through them: the legs
+    -- go out wide and back past them instead.
+    superman = { rFoot = Vector(-36, -5, 25), lFoot = Vector(-36, 5, 25), spineLean = 40,
+                 behind = { rFoot = Vector(-24, -21, 24), lFoot = Vector(-24, 21, 24) } },
     nothing  = { rHand = HANDS_UP.rHand, lHand = HANDS_UP.lHand,
                  rFoot = FEET_OUT.rFoot, lFoot = FEET_OUT.lFoot, spineLean = 6, openHands = true },
-    xup      = { barsSpin = 180, spineTwist = 10 },
+    -- The bars spun round and the arms crossed. Not the whole half turn: at 180 both arms
+    -- reach straight across to grips level with each other and go through each other at
+    -- the crossing (3-4 units), whatever the elbows do. At 140 one grip comes back and the
+    -- other goes forward, and the arms pass one in front of the other, the elbows out
+    -- (`<hand>Pole`) -- the near one up, or it folded into the belly.
+    xup      = { barsSpin = 140, spineTwist = 10,
+                 rHandPole = Vector(0, -1, 0), lHandPole = Vector(0.3, 1, 0.4) },
     turndown = { barsTurn = 75, spineTwist = -20, spineLean = 10 },
     tabletop = { bikeRoll = 70 },
 }
@@ -1594,24 +1606,39 @@ end
 -- `toWorld` turns a bike-space point into a world one. A hand that is being
 -- posed gives up its grip RANGE: the solver would otherwise take the nearest
 -- point on the bar and ignore the pose.
-function BMX.ApplyPoseTargets(ik, W, toWorld, poses)
+function BMX.ApplyPoseTargets(ik, W, toWorld, poses, behind)
     poses = poses or BMX.RiderPoses
     -- FROM THE BARS. A row may give its points from the middle of the grips as the bike
     -- drew them (`fromBars`), in the bike's own frame and scale: legs swung over the bars
     -- go over the bars of a cruiser's swept ones and a motorbike's as well as a BMX's.
     local barsMid = ik.rHand and ik.lHand and (ik.rHand + ik.lHand) * 0.5
     local origin = toWorld(Vector(0, 0, 0))
+    local upW = toWorld(Vector(0, 0, 1)) - origin
     for name, w in pairs(W or {}) do
         local d = poses[name]
         if d and w > 0 then
+            -- SOMEONE BEHIND (`behind`: a passenger on the pegs or in the child seat, a
+            -- tandem's stoker): a row may have its own limbs for it -- a superman's legs
+            -- went straight back through whoever was there (tests/test_body_clip.lua).
+            local alt = behind and d.behind
             local function at(v)
                 if d.fromBars and barsMid then return barsMid + (toWorld(v) - origin) end
                 return toWorld(v)
             end
+            -- OVER, NOT THROUGH (`arc`, units): a limb swung from one side of the bike to
+            -- the other -- a can-can's leg over the top tube -- rises on the way, most at
+            -- the middle of the blend, instead of going straight through the frame.
+            local lift = d.arc and upW * (d.arc * 4 * w * (1 - w)) or nil
             for _, key in ipairs(POSE_LIMBS) do
-                if d[key] and ik[key] then
-                    ik[key] = ik[key] + (at(d[key]) - ik[key]) * w
+                local v = alt and alt[key] or d[key]
+                if v and ik[key] then
+                    ik[key] = ik[key] + (at(v) - ik[key]) * w
+                    if lift then ik[key] = ik[key] + lift end
                 end
+                -- ...and where the elbow or knee goes (`<limb>Pole`, a direction in the
+                -- bike's frame): an X-up's arms cross one over the other, not through it.
+                local pole = d[key .. "Pole"]
+                if pole and w > 0.3 then ik[key .. "Pole"] = (toWorld(pole) - origin):GetNormalized() end
             end
             for _, key in ipairs(POSE_HANDS) do
                 if d[key] then ik[key .. "A"], ik[key .. "B"] = nil, nil end
@@ -1621,6 +1648,13 @@ function BMX.ApplyPoseTargets(ik, W, toWorld, poses)
         end
     end
     return ik
+end
+
+-- Is anyone riding behind the rider: on the pegs, in the child seat, a tandem's stoker?
+function BMX.SomeoneBehind(bike)
+    if bike.GetPaxPegs and IsValid(bike:GetPaxPegs()) then return true end
+    if bike.GetPaxChild and IsValid(bike:GetPaxChild()) then return true end
+    return false
 end
 
 --------------------------------------------------------------------------
@@ -1671,6 +1705,7 @@ end
 
 local animated = {}     -- player -> true while we have bones moved on them
 local LIFE = { breathe = 0.8, drift = 1.6 }    -- degrees of the back's lean and twist
+local HIP_ROLL, BACK_UNROLL = 0.55, 0.4          -- of a tabletop's roll: the hips with it, the back back
 local SPRINT_RISE, SPRINT_OVER = 0.8, 0.5     -- a sprint is out of the saddle, over the cranks
 local STAND = { rise = 0, over = 0 }          -- (reused: what RiderFollowFrame is handed)
 local LAND_MIN     = 120    -- u/s downward: gentler than this is not worth a crouch
@@ -1694,7 +1729,7 @@ local function clear(ply)
     ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
     ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
     ply.bmxGripOff, ply.bmxPoseFrame, ply.bmxIKJump, ply.bmxFramePelvis = nil, nil, nil, nil
-    ply.bmxCurl, ply.bmxLook = nil, nil
+    ply.bmxCurl, ply.bmxLook, ply.bmxHipRoll = nil, nil, nil
     -- The board's crouch lowers the pelvis (cl_board.lua); put it back.
     if ply.bmxPelvis then
         manipPos(ply, ply.bmxPelvis, Vector(0, 0, 0))
@@ -1858,10 +1893,32 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     -- The chosen lean shared down the back; Spine2 keeps the rest of it, the
     -- IK's reach and the twist.
     local rest = lean - reachLean
+    -- THE HIPS GO WITH A TABLETOP. The drawn bike is laid over on its side (`bikeRoll`)
+    -- and the feet go with its pedals; with the hips square to the road the legs crossed
+    -- the frame to reach them, the shins through the top tube (tests/test_body_clip.lua).
+    -- A rider's hips roll with the bike under them and the back rolls the other way, the
+    -- shoulders nearly level. ValveBiped's pelvis has its Z forward and the spine's links
+    -- their Y (tests/lib/skeleton.lua): the roll is about those, the same way round as the
+    -- bike's own (cl_init.lua: the left side up for a positive roll).
+    local roll = math.deg((BMX.PoseDrawAngles(bike.poseW, set.poses)))
+    local unroll = 0
+    local pb = lookupBone(ply, "ValveBiped.Bip01_Pelvis")
+    if pb and math.abs(roll) > 0.1 then
+        local a = Angle(0, roll * HIP_ROLL, 0)
+        manip(ply, pb, a)
+        ply.bmxIK = ply.bmxIK or {}
+        ply.bmxIK[pb] = a
+        ply.bmxHipRoll = true
+        unroll = roll * BACK_UNROLL
+    elseif pb and ply.bmxHipRoll then
+        manip(ply, pb, Angle(0, 0, 0))
+        if ply.bmxIK then ply.bmxIK[pb] = nil end
+        ply.bmxHipRoll = nil
+    end
     for _, sh in ipairs(set.spineShare or SPINE_SHARE) do
         local b = lookupBone(ply, BONES[sh[1]])
         if b then
-            manip(ply, b, Angle(0, rest * sh[2], 0))
+            manip(ply, b, Angle(sh[1] == "spineLow" and -unroll or 0, rest * sh[2], 0))
             lean = lean - rest * sh[2]
         end
     end

@@ -914,7 +914,7 @@ function ENT:DrawDetailed(model, S)
     BMX.ApplyPoseTargets(ik, S.W, function(v)
         local p = self:LocalToWorld(v * k + S.lift0)
         return S.bodyRoll ~= 0 and rotAbout(p, S.bodyC, self:GetForward(), S.bodyRoll) or p
-    end, BMX.PoseSetFor(self).poses)
+    end, BMX.PoseSetFor(self).poses, BMX.SomeoneBehind(self))
 end
 
 --------------------------------------------------------------------------
@@ -1444,7 +1444,7 @@ function ENT:Draw()
     BMX.ApplyPoseTargets(ik, W, function(v)
         local p = self:LocalToWorld(v * k + lift0)
         return bodyRoll ~= 0 and rotAbout(p, bodyC, fwd, bodyRoll) or p
-    end, BMX.PoseSetFor(self).poses)
+    end, BMX.PoseSetFor(self).poses, BMX.SomeoneBehind(self))
 
     ----------------------------------------------------------------------
     -- Kickstand, when it is DOWN (networked: put down by a rider stopping, or

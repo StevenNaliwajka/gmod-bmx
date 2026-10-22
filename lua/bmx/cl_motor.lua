@@ -86,8 +86,25 @@ end
 --------------------------------------------------------------------------
 -- They go in the SAME table as the BMX's (every registered pose has a row there: the
 -- suite checks it), reachable only on a motorcycle because only its keys decode them.
-BMX.RiderPoses.heelclicker = { rFoot = Vector(-17, -3, 24), lFoot = Vector(-17, 3, 24), spineLean = 10 }
-BMX.RiderPoses.cliffhanger = { rFoot = Vector(12, -6, 33), lFoot = Vector(12, 6, 33), spineLean = -12 }
+-- THE HEEL CLICKER: both legs swung forward over the bars between the arms and the heels
+-- clicked in front of them, the back laid back to let them by. THE CLIFFHANGER: the legs
+-- up over the bars, out past the grips, the feet hooked over the bar's ends, and the
+-- hands let go and up (a rider on footage stands up off the bike to do it; the game's
+-- rider stays sat, so the legs go over the bars rather than the body up over them). Both
+-- from the bars (`fromBars`), so they go over a motorbike's bars and a BMX's alike. They
+-- were points behind and over the saddle and on the bar's middle, and the knees came up
+-- through the chest, the shins through the bars (6-8 units, every bike:
+-- tests/test_body_clip.lua).
+-- The knees bend DOWN under the swung legs (the heel clicker's `<foot>Pole`): a
+-- motorcyclist's knees are out to clear the side panels (BMX.PoseSets.moto.poles), and
+-- out they went round the arms; up, into the chest.
+BMX.RiderPoses.heelclicker = { fromBars = true, rFoot = Vector(12, -3.5, 14), lFoot = Vector(12, 3.5, 14),
+                               rFootPole = Vector(0.3, 0, -1), lFootPole = Vector(0.3, 0, -1),
+                               spineLean = -22 }
+BMX.RiderPoses.cliffhanger = { fromBars = true, rFoot = Vector(6, -17, 8), lFoot = Vector(6, 17, 8),
+                               rFootPole = Vector(0.2, 0, 1), lFootPole = Vector(0.2, 0, 1),
+                               rHand = Vector(-8, -14, 24), lHand = Vector(-8, 14, 24), openHands = true,
+                               spineLean = -18 }
 
 -- THE ATTACK POSITION, seated: torso forward over the tank, head up, elbows up and
 -- out, knees in against the tank, both legs alike (there are no pedals: the BMX's
@@ -118,7 +135,10 @@ if BMX.PoseSets and BMX.PoseSets.moto then
         return pose
     end
     BMX.PoseSets.moto.maxLean = MOTO.maxLean
-    BMX.PoseSets.moto.poles = { arm = Vector(-0.15, 1, 0.45), leg = Vector(1, -0.3, 0.25) }
+    -- (the knees out a little: pinched in against the tank, as they were, the thighs went
+    -- through the side panels under the seat and the shins through the frame, 3-4 units,
+    -- tests/test_body_clip.lua)
+    BMX.PoseSets.moto.poles = { arm = Vector(-0.15, 1, 0.45), leg = Vector(1, 0.35, 0.25) }
     BMX.PoseSets.moto.poses = BMX.RiderPoses
 end
 

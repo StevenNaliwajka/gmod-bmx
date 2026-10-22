@@ -40,8 +40,11 @@ BMX.Passenger = BMX.Passenger or {}
 -- Defaults, as functions of a config: where a seat is when its registration does
 -- not say. The pegs' pod sits just behind the rear axle and a little above the
 -- saddle (the rider's hips are over the saddle and the passenger's are behind and
--- higher, over the pegs); the child seat is over the rear wheel, a hand's width
--- above the rider's. `massFactor` as in the header.
+-- higher, over the pegs); the child seat is on the rack over the rear axle, a hand's
+-- width above the rider's. It was two thirds of the way back to the axle, 7 units
+-- behind a city bike's saddle, and every player model is a grown one: the passenger sat
+-- inside the rider, their knees in the rider's back and the rider's shins in theirs
+-- standing up (tests/test_body_clip.lua). `massFactor` as in the header.
 local DEFAULTS = {
     rider = function(cfg)
         return { offset = cfg.Chassis.seatOffset, angles = cfg.Chassis.seatAngles, massFactor = 0 }
@@ -53,7 +56,7 @@ local DEFAULTS = {
     end,
     child = function(cfg)
         local so = cfg.Chassis.seatOffset
-        return { offset = Vector(-cfg.Wheel.wheelbase * 0.5 * 0.8, 0, so.z + 2),
+        return { offset = Vector(-cfg.Wheel.wheelbase * 0.5 - 1.5, 0, so.z + 3),
                  angles = cfg.Chassis.seatAngles, massFactor = 0.25 }
     end,
 }

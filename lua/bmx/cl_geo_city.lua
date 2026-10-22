@@ -1022,7 +1022,7 @@ G.RegisterKind("city", function(opt, G)
     -- pan where the child sits (sh_passenger.lua's child pod)
     ------------------------------------------------------------------
     do
-        local pod = V(-wb * 0.5 * 0.8, 0, seat[3] + 2)
+        local pod = V(-wb * 0.5 - 1.5, 0, seat[3] + 3)       -- (sh_passenger.lua's child pod)
         local cs = V(pod[1] - 0.5, 0, pod[3] + 2.0)            -- where the child sits
         local Wh = M:bucket("childSeat", "white")
         local Sb = M:bucket("childSeat", "seat")

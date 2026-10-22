@@ -323,6 +323,9 @@ local TOP_LEVEL = {
     -- the platform
     id = true, family = true, wheels = true, balance = true, drive = true,
     seats = true, input = true, pose = true, tricks = true, grindPoints = true,
+    -- the rider never stands up off the saddle, whatever the stance (cl_rider.lua): a
+    -- penny-farthing's pedals are under it
+    seatedOnly = true,
     physics = true,
     -- the bikes' extras: gears (G09), a score multiplier (G09), the bar shape (G09)
     gears = true, scoreMult = true, barStyle = true,

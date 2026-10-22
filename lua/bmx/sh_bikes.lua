@@ -757,6 +757,10 @@ BMX.RegisterVehicle({
     drive   = { kind = "front-direct" },
     input   = "penny",
     pose    = "upright",
+    -- Nobody stands up on a penny-farthing: the pedals are on the hub under the saddle,
+    -- and stood up, the rider's hips went into the wheel's fork (tests/test_body_clip.lua).
+    -- The stances still fold the back (cl_rider.lua).
+    seatedOnly = true,
     tricks  = {},
     grindPoints = false,
     drawer  = "pennyfarthing",

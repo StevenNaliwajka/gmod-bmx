@@ -65,7 +65,7 @@ local RIDER = {
     -- TOWARD THE BARS, ALWAYS. A seated rider leans to the bars from the hips; 1.3.9's sat
     -- bolt upright at a standstill (the trunk 0-3 degrees on kleiner; 28 is the middle of a
     -- rider on footage, tools/rider/refpose), the arms bent up to reach down for the grips.
-    seatLean     = 12,
+    seatLean     = 16,
 }
 BMX.RiderAmplitudes = RIDER
 
@@ -1874,8 +1874,9 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
         local seat = BMX.SeatFor and BMX.SeatFor(bike:Bike(), C, "rider")
         -- Out of the saddle: the stance's, or a sprint's (a rider sprints stood up).
         local sOff = BMX.RiderPoseOffset and BMX.RiderPoseOffset(stanceName) or {}
-        local rise = set.seatedOnly and 0 or math.max(sOff.rise or 0, sprint * SPRINT_RISE)
-        local over = math.max(sOff.over or 0, sprint * SPRINT_OVER)
+        local seatedOnly = set.seatedOnly or bike:Bike().seatedOnly
+        local rise = seatedOnly and 0 or math.max(sOff.rise or 0, sprint * SPRINT_RISE)
+        local over = seatedOnly and 0 or math.max(sOff.over or 0, sprint * SPRINT_OVER)
         rise = follow(st, "rise", rise, SMOOTH.stance, dt)
         STAND.rise, STAND.over = rise, follow(st, "over", over, SMOOTH.stance, dt)
         BMX.RiderFollowFrame(ply, bike, seat and seat.offset or C.Chassis.seatOffset, useIK and STAND or nil)

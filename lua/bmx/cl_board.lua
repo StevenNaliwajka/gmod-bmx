@@ -747,7 +747,7 @@ local POP    = { drop = 6,   back = 1.0, lean = 24 }    -- the back leg straight
 local TUCK   = { drop = 17,  back = 3.5, lean = 58 }    -- the knees up under the rider
 local REACH  = { drop = 12,  back = 2.5, lean = 28 }    -- the legs down again for the ground
 local DROPIN = { drop = 13,  back = 2.5, lean = 24 }    -- off a drop, no pop: a gentle tuck
-local LAND   = { drop = 9.5, back = 2.5, lean = 26 }    -- ADDED at the hardest landing
+local LAND   = { drop = 9.5, back = 2.5, lean = 36 }    -- ADDED at the hardest landing
 local TUCK_T, REACH_T = 0.30, 0.58     -- s after the board leaves the ground (POP_T, above)
 local SETTLE_T = 0.15         -- s after touching down: the air's pose gives way to the ground's
 local PUSH_FOLD = 9           -- units further down on the standing leg as the other reaches the ground

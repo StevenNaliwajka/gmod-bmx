@@ -101,12 +101,12 @@ def ground(center, z, size=160, step=16):
             cols += [c, c]
     return np.array(tris), np.array(cols, np.uint8)
 
-def render(tris, cols, cam, at, W=480, H=400, fov=40):
+def render(tris, cols, cam, at, W=480, H=400, fov=40, light=None):
     cam, at = np.array(cam, float), np.array(at, float)
     F = at - cam; F /= np.linalg.norm(F)
     R = np.cross(F, [0, 0, 1]); R /= np.linalg.norm(R)
     U = np.cross(R, F)
-    L = np.array([0.4, -0.3, 0.85]); L /= np.linalg.norm(L)
+    L = np.array(light if light is not None else [0.4, -0.3, 0.85], float); L /= np.linalg.norm(L)
     hdr = struct.pack('<iii', W, H, len(tris)) + np.concatenate([cam, F, R, U, [fov], L]).astype('<f4').tobytes()
     rec = np.zeros(len(tris), dtype=[('v', '<f4', 9), ('c', 'u1', 4)])
     rec['v'] = tris.reshape(-1, 9); rec['c'][:, :3] = cols

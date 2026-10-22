@@ -20,3 +20,5 @@ dist/
 # The rider photo studio's build and the model it fetches (Valve's files: not ours to keep)
 tools/rider/studio/.build/
 tools/rider/studio/.model/
+# ...and the BlazePose models tools/rider/refpose/blazepose.py reads (Google's, fetched by hand)
+tools/rider/refpose/.models/

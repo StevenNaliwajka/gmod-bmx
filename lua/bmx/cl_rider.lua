@@ -1596,12 +1596,21 @@ end
 -- point on the bar and ignore the pose.
 function BMX.ApplyPoseTargets(ik, W, toWorld, poses)
     poses = poses or BMX.RiderPoses
+    -- FROM THE BARS. A row may give its points from the middle of the grips as the bike
+    -- drew them (`fromBars`), in the bike's own frame and scale: legs swung over the bars
+    -- go over the bars of a cruiser's swept ones and a motorbike's as well as a BMX's.
+    local barsMid = ik.rHand and ik.lHand and (ik.rHand + ik.lHand) * 0.5
+    local origin = toWorld(Vector(0, 0, 0))
     for name, w in pairs(W or {}) do
         local d = poses[name]
         if d and w > 0 then
+            local function at(v)
+                if d.fromBars and barsMid then return barsMid + (toWorld(v) - origin) end
+                return toWorld(v)
+            end
             for _, key in ipairs(POSE_LIMBS) do
                 if d[key] and ik[key] then
-                    ik[key] = ik[key] + (toWorld(d[key]) - ik[key]) * w
+                    ik[key] = ik[key] + (at(d[key]) - ik[key]) * w
                 end
             end
             for _, key in ipairs(POSE_HANDS) do

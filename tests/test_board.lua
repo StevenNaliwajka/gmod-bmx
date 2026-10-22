@@ -568,14 +568,14 @@ T.test("board draw: the push moves the back foot to the ground and back, driven 
     local cl = F.client(sv.world)
     local E = cl.env
     local B = E.BMX.Board
-    local bolt = E.Vector(B.Tune.footBack, 0, 4.6)
+    local bolt = E.Vector(B.Tune.footBack, 0, B.FootZ)
     local f0, p0 = B.PushFoot(-1, bolt)
     T.ok(not p0 and f0 == bolt, "not pushing: on its bolt")
     local seen = { low = false, back = false }
     for i = 0, 100 do
         local f, pushing = B.PushFoot(i / 100, bolt)
         T.ok(f.x == f.x and f.z == f.z, "a real point at " .. i)
-        if f.z < 2 then seen.low = true end
+        if f.z < B.PushGeo().ground + 0.1 then seen.low = true end
         if f.x < B.Tune.footBack - 5 then seen.back = true end
     end
     T.ok(seen.low, "the foot reaches the ground")

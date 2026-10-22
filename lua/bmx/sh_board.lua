@@ -138,10 +138,13 @@ B.Tune = {
     ----------------------------------------------------------------------
     -- The front foot stands just behind the front truck's bolts and the back foot
     -- over the back truck's (the trucks are at +-7.9 on the 16-unit wheelbase, their
-    -- bolts 1.06 either side): a shoulder-wide stance, which is what a skater rides
-    -- on. The ollie moves the back foot onto the tail from here (cl_board.lua).
-    footFront = 6.2,
-    footBack  = -7.4,
+    -- bolts 1.06 either side): a stance a little wider than the shoulders, which is
+    -- what a skater rides on -- the ankles twice the hips' width apart and more on the
+    -- footage the 1.4 rider was measured against; 1.3's 13.6 units were 1.75 of
+    -- kleiner's hips. The ollie moves the back foot onto the tail from here
+    -- (cl_board.lua).
+    footFront = 6.6,
+    footBack  = -8.2,
     seatYaw   = { regular = 180, goofy = 0 },
     seatZ     = 2.4,
 }

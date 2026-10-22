@@ -926,6 +926,12 @@ BMX.RiderPoles = { arm = ARM_POLE, leg = LEG_POLE }
 -- well above the ball of the foot), so "sole flat on the pedal" is this pitch and
 -- not level: aiming the line level, as the IK did, stood the rider on their heels.
 local FOOT_SLOPE = 25
+-- ...and standing on a deck, measured on kleiner's own shoe (studio, 2026-10-22): with
+-- the sole flat on the ground in the idle, the ankle is 4.24 over it, the ball 0.44, and
+-- the line between them falls 33.5 degrees. A deck's foot is set by its ankle
+-- (`targets.ankles`) with the sole laid flat at that.
+local STAND_SLOPE = 33.5
+BMX.RiderStandSlope = STAND_SLOPE
 -- THE ANKLE'S STROKE: a rider's heel drops over the top and front of the stroke,
 -- where they push, and the toes point down through the bottom and back, where
 -- they pull through. Degrees toe-down from a flat sole: a mean and a swing, and
@@ -1151,6 +1157,16 @@ function BMX.SolveRiderIK(ply, targets, bike)
         if T then
             local s = limb.side == 1 and "R" or "L"
             local eb = lookupBone(ply, limb.eff)
+            -- A FOOT MAY POINT ITS OWN WAY: `<foot>Yaw`, degrees to the rider's left of
+            -- the vehicle's forward (a skater's front foot turned toward the nose), and
+            -- its knee goes with it, over the toes.
+            local lfwd, lright = fwd, right
+            local yaw = limb.leg and targets[limb.target .. "Yaw"]
+            if yaw and yaw ~= 0 then
+                local a = math.rad(yaw)
+                lfwd = (fwd * math.cos(a) - right * math.sin(a)):GetNormalized()
+                lright = lfwd:Cross(up):GetNormalized()
+            end
             -- Each hand open or holding: the drawing may say so for one hand (a grab, a
             -- no-hander letting go of one side), else the whole set's way.
             local open = targets[limb.target .. "Open"]
@@ -1164,13 +1180,22 @@ function BMX.SolveRiderIK(ply, targets, bike)
             -- Where the wrist or the ankle has to go for the fist or the ball of
             -- the foot to be on T.
             local W, dir
-            if limb.leg then
+            if limb.leg and targets.ankles then
+                -- A FOOT STANDING ON A DECK (a board's, a scooter's): the target is where
+                -- the ANKLE goes, an ankle's height over the grip, and the sole is laid flat
+                -- from it by the aim below. Read as a pedal's ball of the foot, as it was
+                -- until 1.4.0, every skater's ankle stood a foot's length back from where
+                -- the board put it -- four units out past the heel edge -- and the sole
+                -- floated over the grip (kleiner on the studio's board, 2026-10-22).
+                dir = footDir(lfwd, up, (targets[limb.target:sub(1, 1) .. "Sole"] or 0) + STAND_SLOPE - FOOT_SLOPE)
+                W = T
+            elseif limb.leg then
                 local toe = lookupBone(ply, SIDE_BONES[s].toe)
                 local sole = targets[limb.target:sub(1, 1) .. "Sole"] or 0
                 local L = (eb and toe) and ballLength(ply, eb, toe) or 0
                 refresh(ply)
-                sole = sole + toesFor(ply, limb, T, fwd, up, sole, L)
-                dir = footDir(fwd, up, sole)
+                sole = sole + toesFor(ply, limb, T, lfwd, up, sole, L)
+                dir = footDir(lfwd, up, sole)
                 W = T - dir * ankleSetback(ply, limb, T, dir, L)
             else
                 -- The wrist where the fist is on T, as far as the hand is closed: a hand
@@ -1181,7 +1206,7 @@ function BMX.SolveRiderIK(ply, targets, bike)
             end
             -- Knees forward and up; elbows out, down and back (or the set's own).
             local pp = limb.leg and (poles.leg or LEG_POLE) or (poles.arm or ARM_POLE)
-            local pole = (fwd * pp.x + right * (pp.y * limb.side) + up * pp.z):GetNormalized()
+            local pole = (lfwd * pp.x + lright * (pp.y * limb.side) + up * pp.z):GetNormalized()
             solveLimb(ply, limb, W, pole)
 
             if limb.leg then
@@ -1809,7 +1834,7 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     -- The chosen lean shared down the back; Spine2 keeps the rest of it, the
     -- IK's reach and the twist.
     local rest = lean - reachLean
-    for _, sh in ipairs(SPINE_SHARE) do
+    for _, sh in ipairs(set.spineShare or SPINE_SHARE) do
         local b = lookupBone(ply, BONES[sh[1]])
         if b then
             manip(ply, b, Angle(0, rest * sh[2], 0))

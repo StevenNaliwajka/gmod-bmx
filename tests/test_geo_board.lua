@@ -515,8 +515,10 @@ T.test("scooter drawing: the model's deck, fork, bars, bell lever and two wheels
     -- mid-whip the hands stay on the bars and the feet have jumped straight up off the
     -- deck to let it pass under them (SC.RiderTargets)
     for k, v in pairs(ik0) do
-        local d = s.ent.ikTargets[k] - v
-        if k:find("Foot") then
+        local d = type(v) == "table" and v.x and s.ent.ikTargets[k] - v
+        if not d then
+            -- (a flag or a number about the targets, not a point)
+        elseif k:find("Foot") then
             T.near(d.x, 0, 1e-6, "scooter mid-whip: " .. k .. " stays over its place on the deck")
             T.near(d.y, 0, 1e-6, "scooter mid-whip: " .. k .. " not sideways")
             T.ok(d.z > 3, "scooter mid-whip: " .. k .. " jumped off the deck: " .. d.z)

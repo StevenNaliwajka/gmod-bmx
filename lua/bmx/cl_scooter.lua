@@ -155,7 +155,14 @@ end
 -- the scooter's geometry. Space: the frame's (chassis space with the static sag
 -- added, x forward, y left, z up; SC.Frame's points are in it).
 --
--- THE FEET stand on the deck with the ankle B.Ankle over its grip. The back (right)
+-- THE FEET stand on the deck with the ankle B.Ankle over its grip, the sole laid flat
+-- (`ankles`, cl_rider.lua). Until 1.4.0 the solver took these ankles for the balls of
+-- the feet: both soles floated two units over the deck, and the back heel sat over the
+-- rear wheel's fender (the targets were checked, the heel never was). A foot is 11.8
+-- long and the deck 21, so the two do not stand in a line: the front foot points up the
+-- deck with its toes short of the neck, and the back one stands behind it turned out
+-- (BACK_TOE_OUT), its heel short of the fender, its toes over the deck's right edge,
+-- as a scooter rider's does. The back (right)
 -- foot kicks: the board's push cycle (B.PushFoot), on the scooter's geometry --
 -- stepped off the deck's right edge to the ground beside the standing foot, swept
 -- back along the ground past the rear wheel, lifted and carried forward outside the
@@ -169,6 +176,10 @@ end
 -- `s`: push (phase, -1 off), whip, bar (radians), geo (SC.KickGeo). `F` is SC.Frame.
 --------------------------------------------------------------------------
 local WHIP_JUMP = 5.0           -- how high the feet jump while the deck whips round
+local FRONT_ANKLE = Vector(2.3, 1.2)     -- x, y on the deck: heel at -0.7, toes at 11.1
+local BACK_ANKLE  = Vector(-6.0, -0.6)   -- heel at -8.6 (the deck ends at -9), toes over the edge
+local BACK_TOE_OUT = 30         -- degrees the back foot turns out, to the rider's right
+SC.FrontAnkle, SC.BackAnkle, SC.BackToeOut = FRONT_ANKLE, BACK_ANKLE, BACK_TOE_OUT
 local BAR_LET_GO = 2.5          -- how far the hands come off the bar through a spin
 
 -- The ground and the deck for the kick, in the frame's space: the wheels stand on the
@@ -187,8 +198,8 @@ end
 function SC.RiderTargets(s, F)
     local A = B.Ankle or 2.8
     local footZ = T.deckTop + A
-    local frontBolt = Vector(T.footFront, 0.9, footZ)
-    local backBolt  = Vector(T.footBack, -0.9, footZ)
+    local frontBolt = Vector(FRONT_ANKLE.x, FRONT_ANKLE.y, footZ)
+    local backBolt  = Vector(BACK_ANKLE.x, BACK_ANKLE.y, footZ)
     local jump = WHIP_JUMP * min(1, abs(sin((s.whip or 0) * 0.5)) * 2.5)
     local lFoot = frontBolt + Vector(0, 0, jump)
     local rFoot, kicking = backBolt + Vector(0, 0, jump), false
@@ -471,7 +482,8 @@ BMX.DrawVehicle.scooter = function(ent, kit)
         return steer ~= 0 and rotAbout(p, headB, steerAxis, -steer) or p
     end
     local ik = {
-        lFoot = C2W(t.lFoot), rFoot = C2W(t.rFoot),
+        lFoot = C2W(t.lFoot), rFoot = C2W(t.rFoot), ankles = true,
+        rFootYaw = push >= 0 and 0 or -BACK_TOE_OUT,
         rHand = G(t.rHand), lHand = G(t.lHand),
         rHandA = G(t.rHandA), rHandB = G(t.rHandB),
         lHandA = G(t.lHandA), lHandB = G(t.lHandB),

@@ -82,11 +82,13 @@ function BMX.PassengerTargets(ply, bike, kind, rider)
 
     -- Feet.
     if kind == "child" then
-        -- Either side of the rear wheel, on the seat's footrests, a little ahead of it.
+        -- Down either side of the rear wheel, on the seat's footrests: the legs hang outside
+        -- the rack and the shell, behind the rider's pedals (a grown player model's legs
+        -- are long for a child seat; forward, the knees were in the rider's calves).
         local cs = BMX.SeatFor(bike:Bike(), C, "child")
-        local x = cs and cs.offset.x + 6 or -half + 4.5
-        t.rFoot = bike:LocalToWorld(Vector(x, -5, 4))
-        t.lFoot = bike:LocalToWorld(Vector(x,  5, 4))
+        local x = cs and cs.offset.x + 2 or -half + 1.5
+        t.rFoot = bike:LocalToWorld(Vector(x, -7, 1))
+        t.lFoot = bike:LocalToWorld(Vector(x,  7, 1))
     else
         -- On the pegs: on the rear axle, out where the peg sticks from it.
         local G = C.Grind

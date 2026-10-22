@@ -605,13 +605,17 @@ end
 -- B.Posture tucks the knees under the body by the grab's weight; this is the rest.
 local GRABS = {
     --   id           role   point on the deck: x, side (+1 = the toe edge), z
-    indy      = { hand = "back",  x =  0.0, edge =  1, z = 2.4, lean = 10, lift = 5.5 },
-    melon     = { hand = "front", x =  0.5, edge = -1, z = 2.4, lean = 6,  lift = 5.5 },
-    stalefish = { hand = "back",  x = -6.5, edge = -1, z = 2.4, lean = 12, lift = 5.0 },
-    nosegrab  = { hand = "front", x = 14.0, edge =  0, z = 2.6, lean = 14, lift = 5.5, pitch = 0.18 },
-    tailgrab  = { hand = "back",  x = -14.0, edge = 0, z = 2.6, lean = 8,  lift = 5.5, pitch = -0.18 },
-    method    = { hand = "front", x =  1.0, edge = -1, z = 3.0, lean = -8, lift = 7.0, pitch = 0.14 },
+    indy      = { hand = "back",  x =  0.0, edge =  1, z = 2.4, lean = 10, lift = 5.5, splay = { 20, -45 } },
+    melon     = { hand = "front", x =  0.5, edge = -1, z = 2.4, lean = 6,  lift = 5.5, splay = { 30, -30 } },
+    stalefish = { hand = "back",  x = -6.5, edge = -1, z = 2.4, lean = 12, lift = 5.0, splay = { 0, 20 } },
+    nosegrab  = { hand = "front", x = 14.0, edge =  0, z = 2.6, lean = 14, lift = 5.5, pitch = 0.18, splay = { -25, 0 } },
+    tailgrab  = { hand = "back",  x = -14.0, edge = 0, z = 2.6, lean = 8,  lift = 5.5, pitch = -0.18, splay = { 0, 25 } },
+    method    = { hand = "front", x =  1.0, edge = -1, z = 3.0, lean = -8, lift = 7.0, pitch = 0.14, splay = { 25, -25 } },
 }
+-- `splay`: degrees each knee turns toward the nose through the grab (the front's, the
+-- back's), to open a way for the hand -- between them to the middle of the deck, past
+-- the front one to the nose, the back one to the tail. Square, the knees were where the
+-- arm went, through the thighs (4-6 units, tests/test_body_clip.lua).
 B.GrabRows = GRABS
 
 -- The pose rows for a stance, keyed like BMX.RiderPoses (rHand / lHand targets in
@@ -1622,6 +1626,14 @@ BMX.DrawVehicle.board = function(ent, kit)
     local n = stance >= 0 and 1 or -1
     local still = 1 - (R.pushW or 0)
     local frontYaw, backYaw = n * FRONT_TOE * still, n * BACK_TOE * still
+    -- A GRAB OPENS THE KNEES for the hand (GRABS' `splay`).
+    for name, w in pairs(W or {}) do
+        local g = GRABS[name]
+        if g and g.splay and w > 0 then
+            frontYaw = frontYaw + n * g.splay[1] * w
+            backYaw = backYaw + n * g.splay[2] * w
+        end
+    end
     -- ...and the soles laid on the deck as it leans into a carve: toes down on a
     -- toe-side turn, heels down on a heel-side one (degrees toe-down).
     local sole = math.deg(ent:GetBoardLean()) * n

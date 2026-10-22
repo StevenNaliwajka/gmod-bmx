@@ -88,21 +88,22 @@ end
 -- suite checks it), reachable only on a motorcycle because only its keys decode them.
 -- THE HEEL CLICKER: both legs swung forward over the bars between the arms and the heels
 -- clicked in front of them, the back laid back to let them by. THE CLIFFHANGER: the legs
--- up over the bars, out past the grips, the feet hooked over the bar's ends, and the
--- hands let go and up (a rider on footage stands up off the bike to do it; the game's
--- rider stays sat, so the legs go over the bars rather than the body up over them). Both
+-- up over the bars between the arms, the feet apart and hooked over the bar, and the hands
+-- let go and up (a rider on footage stands up off the bike to do it; the game's rider
+-- stays sat, so the legs go over the bars rather than the body up over them; out past the
+-- grips, the thighs lay on the bar ends). Both
 -- from the bars (`fromBars`), so they go over a motorbike's bars and a BMX's alike. They
 -- were points behind and over the saddle and on the bar's middle, and the knees came up
 -- through the chest, the shins through the bars (6-8 units, every bike:
 -- tests/test_body_clip.lua).
--- The knees bend DOWN under the swung legs (the heel clicker's `<foot>Pole`): a
+-- The knees bend DOWN under the swung legs (`<foot>Pole`): a
 -- motorcyclist's knees are out to clear the side panels (BMX.PoseSets.moto.poles), and
 -- out they went round the arms; up, into the chest.
 BMX.RiderPoses.heelclicker = { fromBars = true, rFoot = Vector(12, -3.5, 14), lFoot = Vector(12, 3.5, 14),
                                rFootPole = Vector(0.3, 0, -1), lFootPole = Vector(0.3, 0, -1),
                                spineLean = -22 }
-BMX.RiderPoses.cliffhanger = { fromBars = true, rFoot = Vector(6, -17, 8), lFoot = Vector(6, 17, 8),
-                               rFootPole = Vector(0.2, 0, 1), lFootPole = Vector(0.2, 0, 1),
+BMX.RiderPoses.cliffhanger = { fromBars = true, rFoot = Vector(10, -5, 16), lFoot = Vector(10, 5, 16),
+                               rFootPole = Vector(0.3, 0, -1), lFootPole = Vector(0.3, 0, -1),
                                rHand = Vector(-8, -14, 24), lHand = Vector(-8, 14, 24), openHands = true,
                                spineLean = -18 }
 

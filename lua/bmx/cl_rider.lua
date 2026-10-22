@@ -765,6 +765,7 @@ end
 -- skeleton's own, so it is MEASURED once per model, in the vehicle's frame (a seated
 -- rider faces the way the vehicle does), as the board's crouch measures its way down.
 local FRAME_SHIFT_MAX = 12      -- units: more than this is a wheel lost, not a landing
+local FRAME_TAU = 0.05          -- s: how closely the hips follow it (below)
 local pelvisMaps = {}           -- model -> { x, y, z column Vectors } or false
 local function pelvisMap(ply, bike, pb)
     local model = ply:GetModel()
@@ -863,6 +864,21 @@ function BMX.RiderFollowFrame(ply, bike, seat, stand)
     if stand and stand.rise > 0.01 then
         local up = standShift(ply, bike, pb, stand)
         if up then shift = shift and (shift + up) or up end
+    end
+    -- THE BODY HAS WEIGHT. The drawn frame's seat steps when the wheels leave the ground
+    -- and when they come down (the suspension's reach and its sag), and a pelvis pinned to
+    -- it jumped with it, the whole body 4-5 units in a frame at a hop's pop and landing
+    -- (tools/rider/studio/motion.py). The legs and arms take it up: the hips follow on a
+    -- short spring, the hands and feet still on the bars and pedals (the IK).
+    local sm = ply.bmxFrameSm or {}
+    ply.bmxFrameSm = sm
+    local dt = FrameTime()
+    local want = shift or Vector(0, 0, 0)
+    shift = Vector(follow(sm, "x", want.x, FRAME_TAU, dt), follow(sm, "y", want.y, FRAME_TAU, dt),
+        follow(sm, "z", want.z, FRAME_TAU, dt))
+    if shift:Length() < 0.05 and want:Length() < 0.05 then
+        sm.x, sm.y, sm.z, sm.xV, sm.yV, sm.zV = 0, 0, 0, 0, 0, 0
+        shift = nil
     end
     if not shift then
         if ply.bmxFramePelvis then
@@ -968,19 +984,26 @@ end
 -- the arch: the ankle's set-back `L` is cut, down to nothing (the ankle over the
 -- pedal, as the IK always had it), until the ankle is far enough from the hip.
 local FOOT_FOLD = 135       -- degrees: the most a pedalling knee is asked to fold
+local SETBACK_TAU = 0.06    -- s: how quickly the foot slides on its pedal (followed)
 local function ankleSetback(ply, limb, T, dir, L)
     local rb, hb, eb = lookupBone(ply, limb.root), lookupBone(ply, limb.hinge), lookupBone(ply, limb.eff)
     local R, K, F = rb and bonePos(ply, rb), hb and bonePos(ply, hb), eb and bonePos(ply, eb)
     if not (R and K and F) then return L end
     local la, lb = (K - R):Length(), (F - K):Length()
     local r = math.sqrt(la * la + lb * lb - 2 * la * lb * math.cos(math.rad(180 - FOOT_FOLD)))
-    -- |T - dir * x - R| = r, the smaller root: any set-back up to it keeps the
-    -- ankle at least r from the hip.
+    -- |T - dir * x - R| = r: set-backs between the two roots bring the ankle closer than
+    -- r to the hip; any up to the smaller one, or from the larger one on, keep it at least
+    -- r away. The whole set-back when it is clear of them: past the larger root counts
+    -- (it was read as too close, and once a turn, near the top of the stroke, the ankle
+    -- jumped from the whole set-back to the smaller root and the knee 4-5 units with it:
+    -- tools/rider/studio/motion.py on a BMX's stroke).
     local V = T - R
     local b = V:Dot(dir)
     local disc = b * b - V:Dot(V) + r * r
     if disc <= 0 then return L end
-    return math.Clamp(b - math.sqrt(disc), 0, L)
+    local q = math.sqrt(disc)
+    if L >= b + q then return L end
+    return math.Clamp(b - q, 0, L)
 end
 
 -- The point a closed hand holds a bar at: the curled fingers' and the thumb's
@@ -1200,7 +1223,17 @@ function BMX.SolveRiderIK(ply, targets, bike)
                 refresh(ply)
                 sole = sole + toesFor(ply, limb, T, lfwd, up, sole, L)
                 dir = footDir(lfwd, up, sole)
-                W = T - dir * ankleSetback(ply, limb, T, dir, L)
+                -- (followed, not set: near the top of the stroke the set-back goes from the
+                -- whole ball-length to a third of it in a few degrees of crank, and at 30 fps
+                -- that was one frame -- the knee jumped 7 units, once a turn)
+                -- (quicker forward than back: forward is the leg out of fold, and late there
+                -- the knee folded down under the foot)
+                ply.bmxSetback = ply.bmxSetback or {}
+                local want = ankleSetback(ply, limb, T, dir, L)
+                local cur = ply.bmxSetback[limb.target]
+                local sb = follow(ply.bmxSetback, limb.target, want,
+                    (cur and want < cur) and SETBACK_TAU * 0.3 or SETBACK_TAU, frameDt)
+                W = T - dir * sb
             else
                 -- The wrist where the fist is on T, as far as the hand is closed: a hand
                 -- taking hold or letting go moves its wrist across with its fingers.
@@ -1729,7 +1762,7 @@ local function clear(ply)
     ply.bmxIK, ply.bmxHinge, ply.bmxSpineTwist, ply.bmxSpineLean = nil, nil, nil, nil
     ply.bmxSpineTwistShown, ply.bmxSpineLeanShown, ply.bmxReachSm = nil, nil, nil
     ply.bmxGripOff, ply.bmxPoseFrame, ply.bmxIKJump, ply.bmxFramePelvis = nil, nil, nil, nil
-    ply.bmxCurl, ply.bmxLook, ply.bmxHipRoll = nil, nil, nil
+    ply.bmxCurl, ply.bmxLook, ply.bmxHipRoll, ply.bmxSetback, ply.bmxFrameSm = nil, nil, nil, nil, nil
     -- The board's crouch lowers the pelvis (cl_board.lua); put it back.
     if ply.bmxPelvis then
         manipPos(ply, ply.bmxPelvis, Vector(0, 0, 0))

@@ -206,7 +206,7 @@ function SC.RiderTargets(s, F)
     local lFoot = frontBolt + Vector(0, 0, jump)
     local rFoot, kicking = backBolt + Vector(0, 0, jump), false
     if (s.push or -1) >= 0 and jump == 0 then
-        rFoot, kicking = B.PushFoot(s.push, backBolt, nil, s.geo)
+        rFoot, kicking = B.PushFoot(s.push, backBolt, nil, s.geo, s.strokeX, s.liftP)
     end
     local bars, w = F.bars, T.barWidth * 0.5
     -- Up and back toward the rider, off the bar, while it spins.
@@ -475,7 +475,26 @@ BMX.DrawVehicle.scooter = function(ent, kit)
     local geo = SC.KickGeo(WC.radius, half)
     R.pushBend = B.PushBend(push, geo)
     R.air = airT and B.Ease(airT / 0.15) or 0
-    local t = SC.RiderTargets({ push = push, whip = whipAng, bar = barAng, steer = steer, geo = geo }, F)
+    -- PLANTED, as the board's push is (cl_board.lua): the kicking foot stays where it went
+    -- down while the scooter runs on, and leaves the ground when the leg is out behind.
+    local pa, pb = B.PushMarks(geo)
+    local strokeX
+    if push >= pa then
+        local f0 = ent:GetForward()
+        if push < pb and not R.liftP then
+            R.plantAt = R.plantAt or (ent:GetPos() + f0 * geo.plantX)
+            local x = (R.plantAt - ent:GetPos()):Dot(f0)
+            if x <= geo.backX then R.liftP = push end
+            strokeX = math.Clamp(x, geo.backX, geo.plantX)
+            R.strokeEnd = strokeX
+        else
+            strokeX = R.strokeEnd
+        end
+    else
+        R.plantAt, R.strokeEnd, R.liftP = nil, nil, nil
+    end
+    local t = SC.RiderTargets({ push = push, whip = whipAng, bar = barAng, steer = steer, geo = geo,
+                                strokeX = strokeX, liftP = R.liftP }, F)
     local function C2W(v) return ent:LocalToWorld(v + lift0) end
     -- The grips are turned with the bars about the steer axis (the model turns its
     -- front by -steer about it, SC.ModelMaps), and leaned over with a tabletop.

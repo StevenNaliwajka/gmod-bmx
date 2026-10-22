@@ -135,6 +135,15 @@ local function lerp(a, b, t) return a + (b - a) * t end
 local function lerpV(a, b, t) return a + (b - a) * t end
 B.Ease = ease
 
+-- 0 -> 1 by `a` seconds, held to `b`, back to 0 by `c`
+local function window(t, a, b, c)
+    if t <= 0 or t >= c then return 0 end
+    if t < a then return ease(t / a) end
+    if t < b then return 1 end
+    return 1 - ease((t - b) / (c - b))
+end
+B.Window = window
+
 -- How far the deck's top stands over its flat middle at a distance x along it: flat
 -- out to the kicks, then the bend, then the straight kick (cl_geo_board.lua's deck
 -- line, 20 and 21 degrees). So a foot on the tail stands on the tail, not in it.
@@ -172,7 +181,9 @@ end
 -- interval). Without it, the board's, for a rider facing its right. Returns the
 -- ankle's point and whether the foot is off its bolt.
 --------------------------------------------------------------------------
-local PUSH_STEP, PUSH_HOME = 0.10, 0.84
+-- The step off takes an eighth of a second (0.22 of a 0.6 s kick): at 0.10 the foot left
+-- the deck in two frames, twelve units a frame at 30 (tools/rider/studio/motion.py).
+local PUSH_STEP, PUSH_HOME = 0.22, 0.84
 local PUSH_LIFT = 3.0          -- how far over the deck the foot is carried back in
 
 function B.PushGeo(T0, faceY)
@@ -193,12 +204,21 @@ function B.PushMarks(g)
     return PUSH_STEP, stroke, PUSH_HOME
 end
 
-function B.PushFoot(p, bolt, T0, g)
+-- PLANTED. `strokeX`, when the drawing knows it, is where along the board the foot that
+-- went down is now: a foot on the ground stays where it was put while the board runs on
+-- from it, so it goes back along the board at the board's speed, not at the phase's
+-- (which slid it 17-31 units over the ground at a cruise). The way home starts from
+-- wherever the stroke ended (`strokeX` through the rest of the cycle). At speed the
+-- board runs out the leg's reach before the phase's stroke is over; the foot leaves the
+-- ground then (`liftP`, the phase it reached the back at), as a skater's does, rather
+-- than being dragged along behind the tail.
+function B.PushFoot(p, bolt, T0, g, strokeX, liftP)
     if not p or p < 0 or p >= 1 then return bolt, false end
     g = g or B.PushGeo(T0)
     local a, b, c = B.PushMarks(g)
+    if liftP and liftP > a and liftP < b then b = liftP end
     local plant = Vector(g.plantX, g.side, g.ground)
-    local back  = Vector(g.backX, g.side, g.ground)
+    local back  = Vector(strokeX and p >= b and strokeX or g.backX, g.side, g.ground)
     if p < a then
         -- Out first, then down: y gets most of the way before z starts to fall, and z
         -- arcs up over the deck's edge on the way.
@@ -210,6 +230,7 @@ function B.PushFoot(p, bolt, T0, g)
     elseif p < b then
         -- Flat on the ground. The sweep starts slow (the foot bites) and speeds up
         -- as the leg straightens behind.
+        if strokeX then return Vector(math.Clamp(strokeX, g.backX, g.plantX), g.side, g.ground), true end
         local t = (p - a) / (b - a)
         return Vector(lerp(plant.x, back.x, t * t * (2 - t) * 0.35 + ease(t) * 0.65), g.side, g.ground), true
     elseif p < c then
@@ -331,6 +352,28 @@ end
 -- Returns front, back (board space, the ankle), and whether the back foot is pushing.
 --------------------------------------------------------------------------
 local OLLIE_SLIDE, OLLIE_LEVEL = 0.16, 0.36       -- s after the pop: the slide, then level
+-- ...and the body's spring off the tail (B.Posture, B.RiderHands): a tenth of a second and
+-- more; at 0.06 the body sprang ten units a frame at 30 (tools/rider/studio/motion.py).
+local POP_T = 0.12
+local OLLIE_DRAG = 5.5        -- units the dragging foot comes up off the grip as it goes
+local OLLIE_TAIL = 5.0        -- ...and the popping foot after it, bringing the tail up
+-- How far each foot is off the deck `t` s after an ollie's pop: the dragging foot, then
+-- the popping one (B.RiderFeet).
+function B.OllieLift(t)
+    return OLLIE_DRAG * window(t - 0.04, 0.08, 0.16, 0.28), OLLIE_TAIL * window(t - 0.14, 0.08, 0.14, 0.24)
+end
+
+-- THE TAIL SNAPS. On footage the pop stands the deck 20-30 degrees nose up for an
+-- instant before the front foot levels it; the chassis's own nose kick (sv_board.lua,
+-- popNoseKick against the level hold) is about 10. The drawing tilts the deck the rest,
+-- about the back truck (it is lifted as it turns, so the tail stays where it struck),
+-- and the feet go with it: the back leg straight off the tail, the front knee folding
+-- as the nose comes up to it. Radians nose up (down for a nollie) and the lift.
+local TILT_MAX, TILT_PIVOT = 0.34, 12.5
+function B.OllieTilt(airT, nollie)
+    local a = TILT_MAX * window(airT or 0, 0.05, 0.08, 0.28)
+    return nollie and -a or a, TILT_PIVOT * math.sin(a)
+end
 
 function B.RiderFeet(s)
     local stance = s.stance or 1
@@ -364,6 +407,12 @@ function B.RiderFeet(s)
             popFoot = slide(setPop, homePop, u)
             slideFoot = slide(onDeck(sg * NOSE_X, yIn), homeSlide, u)
         end
+        -- THE LEGS SEE-SAW. On footage the front knee folds to 110-120 degrees as the foot
+        -- drags up the grip while the back leg is straight off the tail; then the back knee
+        -- folds as far, bringing the tail up, while the front leg reaches down to level the
+        -- nose; then both come down soft for the landing. They do not move together.
+        local up, tail = B.OllieLift(t)
+        slideFoot, popFoot = slideFoot + Vector(0, 0, up), popFoot + Vector(0, 0, tail)
     elseif crouch > 0 and not s.airT then
         local u = ease(crouch * 1.6)
         popFoot, slideFoot = slide(homePop, setPop, u), slide(homeSlide, setSlide, u)
@@ -399,7 +448,7 @@ function B.RiderFeet(s)
     local w = s.pushW or ((s.push or -1) >= 0 and 1 or 0)
     if w > 0 then front = Vector(front.x, lerp(front.y, 0, w), front.z) end
     if (s.push or -1) >= 0 and not s.airT then
-        back, pushing = B.PushFoot(s.push, back, T, B.PushGeo(T, faceY))
+        back, pushing = B.PushFoot(s.push, back, T, B.PushGeo(T, faceY), s.strokeX, s.liftP)
     end
     return front, back, pushing
 end
@@ -441,14 +490,6 @@ end
 B.ArmHang = ARM_HANG
 local TAU = math.pi * 2
 
--- 0 -> 1 by `a` seconds, held to `b`, back to 0 by `c`
-local function window(t, a, b, c)
-    if t <= 0 or t >= c then return 0 end
-    if t < a then return ease(t / a) end
-    if t < b then return 1 end
-    return 1 - ease((t - b) / (c - b))
-end
-B.Window = window
 
 function B.RiderHands(s)
     local stance = s.stance or 1
@@ -458,17 +499,20 @@ function B.RiderHands(s)
     local lead  = hang(3.5, n * 8.5)
     local trail = hang(1.5, -n * 7)
 
-    -- The crouch: the hands come forward and down over the knees, a little wider.
+    -- The crouch: the hands come forward and down over the knees, a little wider (and
+    -- through a pop's first instant, from there: the crouch's networked value is gone the
+    -- frame the board leaves the ground, and the hands jumped 19 units in a frame).
     local c = math.Clamp(s.crouch or 0, 0, 1)
+    if s.airT and s.ollie then c = math.max(c, 1 - ease(s.airT / POP_T)) end
     if c > 0 then
         lead, trail = lerpV(lead, hang(10, n * 8, 20.5), c), lerpV(trail, hang(8, -n * 7.5, 20.5), c)
     end
 
     -- In the air: out for balance. Off a pop they are THROWN up and out first, with the
     -- legs' spring, and settle to out-and-down as the knees come up.
-    if s.airT then
-        local out = ease(s.airT / 0.15)
-        local up = s.ollie and window(s.airT, 0.06, 0.16, 0.45) or 0
+    local out = s.airW or (s.airT and ease(s.airT / 0.15) or 0)
+    if out > 0 then
+        local up = (s.airT and s.ollie) and window(s.airT, 0.08, 0.2, 0.5) or 0
         lead  = lerpV(lead,  lerpV(Vector(4, n * 15.5, -15.5), Vector(6, n * 17.5, -11.5), up), out)
         trail = lerpV(trail, lerpV(Vector(1, -n * 15.5, -15.5), Vector(2, -n * 18, -12), up), out)
     end
@@ -479,11 +523,13 @@ function B.RiderHands(s)
         lead, trail = lerpV(lead, Vector(6, n * 13, -16), l * 0.8), lerpV(trail, Vector(2, -n * 13, -16), l * 0.8)
     end
 
-    -- On a manual or a grind: out, elbows bent, see-sawing against the meter.
-    if s.balance then
-        local m = math.Clamp(s.balance, -1, 1)
-        lead = Vector(3, n * 15, -15 + 5.5 * m)
-        trail = Vector(1, -n * 14.5, -15 - 5.5 * m)
+    -- On a manual or a grind: out, elbows bent, see-sawing against the meter -- eased in
+    -- and out (`balW`): it was a step of 15 units the frame a manual began and ended.
+    local bw = s.balW or (s.balance and 1 or 0)
+    if bw > 0 then
+        local m = math.Clamp(s.balance or 0, -1, 1)
+        lead = lerpV(lead, Vector(3, n * 15, -15 + 5.5 * m), bw)
+        trail = lerpV(trail, Vector(1, -n * 14.5, -15 - 5.5 * m), bw)
     end
 
     -- The push: the body has turned up the board and the arms swing by it, against the
@@ -497,17 +543,25 @@ function B.RiderHands(s)
         lead, trail = lerpV(lead, hang(6 - 11 * sw, n * 6), w), lerpV(trail, hang(-5 + 12 * sw, -n * 7), w)
     end
 
-    -- NEVER STILL: a slow drift, each hand on its own (the same clock as the weight's
-    -- drift, B.Posture), and the lag behind the body as the board speeds up, slows
-    -- and turns (B.ArmSway): two hands frozen at fixed points read as a mannequin.
-    local t, seed = s.t or 0, s.seed or 0
-    local quiet = 1 - math.max(c, s.balance and 1 or 0) * 0.6
-    lead = lead + Vector(0.7 * math.sin(t * TAU * 0.19 + seed), 0.5 * math.sin(t * TAU * 0.13 + seed * 2.1),
-        0.6 * math.sin(t * TAU * 0.23 + seed * 0.7)) * quiet
-    trail = trail + Vector(0.6 * math.sin(t * TAU * 0.17 + seed * 1.3), 0.5 * math.sin(t * TAU * 0.11 + seed * 0.4),
-        0.6 * math.sin(t * TAU * 0.21 + seed * 2.6)) * quiet
+    -- NEVER STILL: a slow drift, each hand on its own (B.HandDrift), unless the caller
+    -- adds it after its own smoothing (`noDrift`), and the lag behind the body as the
+    -- board speeds up, slows and turns (B.ArmSway): two hands frozen at fixed points
+    -- read as a mannequin.
+    if not s.noDrift then
+        local dl, dtr = B.HandDrift(s.t, s.seed, c, s.balance)
+        lead, trail = lead + dl, trail + dtr
+    end
     if s.sway then lead, trail = lead + s.sway, trail + s.sway end
     return lead, trail
+end
+
+function B.HandDrift(t, seed, crouch, balance)
+    t, seed = t or 0, seed or 0
+    local quiet = 1 - math.max(crouch or 0, balance and 1 or 0) * 0.6
+    return Vector(0.7 * math.sin(t * TAU * 0.19 + seed), 0.5 * math.sin(t * TAU * 0.13 + seed * 2.1),
+            0.6 * math.sin(t * TAU * 0.23 + seed * 0.7)) * quiet,
+        Vector(0.6 * math.sin(t * TAU * 0.17 + seed * 1.3), 0.5 * math.sin(t * TAU * 0.11 + seed * 0.4),
+            0.6 * math.sin(t * TAU * 0.21 + seed * 2.6)) * quiet
 end
 
 --------------------------------------------------------------------------
@@ -670,7 +724,8 @@ B.LowerPelvis = lowerPelvis
 --   crouch    0..1, the ollie's preload (SPACE held)
 --   land      0..1, a landing's absorb (cl_rider.lua's bmxLand)
 --   speed     u/s
---   airT      seconds since the board left the ground (nil on it); ollie: off a pop
+--   airT      seconds since the board left the ground (nil on it); ollie: off a pop;
+--             sinceLand, seconds since it came down, and landFrom, the air's pose then
 --   pushW     0..1 how far round for a push; pushBend 0..1 (B.PushBend)
 --   carve     degrees the deck leans toward the rider's toes (negative: the heels)
 --   manual    "manual" / "nose" / nil; balance the meter, -1..1, on a manual or a grind
@@ -678,26 +733,32 @@ B.LowerPelvis = lowerPelvis
 --   t, seed   seconds (any clock) and a number per rider: the breathing and the drift;
 --             tFine, the clock for the road's grain at speed (else t)
 --
--- THE DRIFT TICKS AT TEN A SECOND (B.DriftClock). The rider's IK re-poses the skeleton
+-- THE DRIFT TICKS AT FIVE A SECOND (B.DriftClock). The rider's IK re-poses the skeleton
 -- only when something on it moved (cl_rider.lua), so a rider standing still is nearly
 -- free; a body that breathes every frame is never still, and an idle skater cost what
 -- a riding one does (8.6 SetupBones a frame, not 2: tests/test_perf_client.lua). At
--- these sizes a tenth of a second's step is under a seventh of a degree of the back and
--- a twentieth of a unit of the hips: nobody sees the steps, and the pose is solved ten
+-- these sizes a fifth of a second's step is a quarter of a degree of the back and a
+-- tenth of a unit of the hips: nobody sees the steps, and the pose is solved five
 -- times a second instead of every frame.
 --------------------------------------------------------------------------
 local RIDE   = { drop = 10,  back = 3.0, lean = 24 }    -- rolling along on soft knees
-local CROUCH = { drop = 21,  back = 6.5, lean = 56 }    -- an ollie's preload, all the way down
-local POP    = { drop = 3.5, back = 1.0, lean = 18 }    -- the legs straight off the tail
-local TUCK   = { drop = 20,  back = 3.5, lean = 42 }    -- the knees up under the rider
+local CROUCH = { drop = 21,  back = 6.5, lean = 62 }    -- an ollie's preload, all the way down
+local POP    = { drop = 6,   back = 1.0, lean = 24 }    -- the back leg straight off the tail
+local TUCK   = { drop = 17,  back = 3.5, lean = 58 }    -- the knees up under the rider
 local REACH  = { drop = 12,  back = 2.5, lean = 28 }    -- the legs down again for the ground
 local DROPIN = { drop = 13,  back = 2.5, lean = 24 }    -- off a drop, no pop: a gentle tuck
-local LAND   = { drop = 9.5, back = 2.5, lean = 20 }    -- ADDED at the hardest landing
-local POP_T, TUCK_T, REACH_T = 0.06, 0.26, 0.55         -- s after the board leaves the ground
+local LAND   = { drop = 9.5, back = 2.5, lean = 26 }    -- ADDED at the hardest landing
+local TUCK_T, REACH_T = 0.30, 0.58     -- s after the board leaves the ground (POP_T, above)
+local SETTLE_T = 0.15         -- s after touching down: the air's pose gives way to the ground's
 local PUSH_FOLD = 9           -- units further down on the standing leg as the other reaches the ground
 local CROUCH_DEPTH = CROUCH.drop
 B.CrouchDepth, B.RideBend = CROUCH_DEPTH, RIDE.drop
 B.PostureKeys = { RIDE = RIDE, CROUCH = CROUCH, POP = POP, TUCK = TUCK, REACH = REACH, LAND = LAND }
+
+function B.CrouchShown(c)
+    c = math.Clamp(c or 0, 0, 1)
+    return 1 - (1 - c) ^ 2.5
+end
 
 local function mix(a, b, u)
     return { drop = lerp(a.drop, b.drop, u), back = lerp(a.back, b.back, u), lean = lerp(a.lean, b.lean, u) }
@@ -706,7 +767,9 @@ end
 function B.Posture(s)
     local speedK = math.Clamp((s.speed or 0) / 300, 0, 1)
     local ride = { drop = RIDE.drop + speedK * 1.5, back = RIDE.back, lean = RIDE.lean + speedK * 4 }
-    local c = math.Clamp(s.crouch or 0, 0, 1)
+    -- (the networked crouch is how long SPACE has been held, which sets the pop's height;
+    -- a skater is most of the way down for any ollie, so the body gets there first)
+    local c = B.CrouchShown(s.crouch)
     local P = mix(ride, CROUCH, c)
     local look = 10 * c
 
@@ -724,6 +787,12 @@ function B.Posture(s)
             P = mix(P, DROPIN, ease(t / 0.25))
             look = 8
         end
+    end
+
+    -- Just down: from the air's reach to the ground's pose, not in a frame (a soft landing
+    -- has no absorb to hide the step).
+    if not t and s.sinceLand and s.sinceLand < SETTLE_T and s.landFrom then
+        P = mix(s.landFrom, P, ease(s.sinceLand / SETTLE_T))
     end
 
     -- THE LANDING folds the knees and the back, by how hard it was, and comes up again.
@@ -762,23 +831,33 @@ function B.Posture(s)
     -- A MANUAL: the weight over the wheels that are down, the back a little more upright;
     -- the meter sways it fore and aft (a manual) or across, over the heels and the toes
     -- (a grind).
+    -- (`manualW`, how far into it: eased by the drawing, or the weight stepped 4 units)
+    local mw = s.manualW or 1
     if s.manual == "manual" or s.manual == "nose" then
-        along = along + (s.manual == "nose" and 4 or -4)
-        P.drop, P.lean = P.drop + 1, P.lean - 4
-        if s.balance then along = along + 1.2 * math.Clamp(s.balance, -1, 1) end
+        along = along + (s.manual == "nose" and 4 or -4) * mw
+        P.drop, P.lean = P.drop + 1 * mw, P.lean - 4 * mw
+        if s.balance then along = along + 1.2 * math.Clamp(s.balance, -1, 1) * mw end
     elseif s.balance then
-        P.back = P.back + 1.5 * math.Clamp(s.balance, -1, 1)
+        P.back = P.back + 1.5 * math.Clamp(s.balance, -1, 1) * mw
     end
 
-    -- NEVER STILL. Breathing in the back; the weight drifting a little from foot to foot
-    -- and the shoulders with it; at speed the road's grain in the knees.
-    local tt, seed = s.t or 0, s.seed or 0
+    P.along, P.twist, P.look, P.speedK = along, 0, look, speedK
+    if not s.noLife then B.PostureLife(P, s) end
+    P.drop = math.Clamp(P.drop, 0, CROUCH_DEPTH + 3)
+    return P
+end
+
+-- NEVER STILL. Breathing in the back; the weight drifting a little from foot to foot
+-- and the shoulders with it; at speed the road's grain in the knees. Added to a posture
+-- AFTER any smoothing of it (SET.rider): smoothed, the drift's five-a-second steps became
+-- a change every frame, and a skater standing still was re-posed every frame for it.
+function B.PostureLife(P, s)
+    local tt, seed, speedK = s.t or 0, s.seed or 0, P.speedK or 0
     local drift = 0.6 * sin(tt * TAU * 0.13 + seed * 1.7) + 0.4 * sin(tt * TAU * 0.31 + seed * 0.6)
     P.lean = P.lean + 0.8 * sin(tt * TAU * 0.27 + seed)
-    along = along + 0.7 * drift
+    P.along = P.along + 0.7 * drift
     P.drop = P.drop + speedK * 0.3 * sin((s.tFine or tt) * TAU * 2.3 + seed)
-    P.drop = math.Clamp(P.drop, 0, CROUCH_DEPTH + 3)
-    P.along, P.twist, P.look = along, 2 * drift, look
+    P.twist = (P.twist or 0) + 2 * drift
     return P
 end
 
@@ -912,16 +991,30 @@ function B.TurnPelvis(ply, deg)
 end
 
 local PUSH_TURN = 70            -- degrees the hips come round up the board for a push
+local POSTURE_KEYS, POSTURE_TAU = { "drop", "back", "along", "lean" }, 0.05
+
+-- st[key] following `target` on a critically damped spring (cl_rider.lua's), SETTLED
+-- exactly onto it once within a hair: a value that only creeps toward its target moves
+-- the skeleton every frame, and a rider standing still would be re-posed for nothing.
+function B.Smooth(st, key, target, tau, dt)
+    local x = st[key]
+    if x == nil or not dt or dt <= 0 then st[key], st[key .. "V"] = target, 0 return target end
+    local v
+    x, v = BMX.RiderDamp(x, st[key .. "V"] or 0, target, tau, dt)
+    if math.abs(x - target) < 0.005 and math.abs(v) < 0.05 then x, v = target, 0 end
+    st[key], st[key .. "V"] = x, v
+    return x
+end
 local OPEN_SHOULDERS = 12       -- degrees the chest turns toward the nose
 
 -- B.Posture's inputs for a board as it is now: what the server networks (the crouch,
 -- the lean, the flags), what the drawing worked out this frame (bike.bmxRide: the
 -- push's weight, when it left the ground and whether off a pop) and what the rider
 -- hook did (bmxLand, a landing's absorb; poseW, a grab's weight).
-local DRIFT_HZ = 10
+local DRIFT_HZ = 5
 function B.DriftClock(t) return math.floor(t * DRIFT_HZ) / DRIFT_HZ end
 
-local function postureOf(bike, R, speed)
+local function postureOf(bike, R, speed, noLife)
     local grab = 0
     for _, w in pairs(bike.poseW or {}) do grab = grab + w end
     local stance = R.stance or 1
@@ -929,13 +1022,15 @@ local function postureOf(bike, R, speed)
     return B.Posture({
         crouch = bike.GetCrouch and bike:GetCrouch() or 0,
         land = bike.bmxLand or 0, speed = speed,
-        airT = R.airT, ollie = R.ollie,
+        airT = R.airT, ollie = R.ollie, sinceLand = R.sinceLand, landFrom = R.landFrom,
         pushW = R.pushW, pushBend = R.pushBend,
         -- The deck's top leans toward -Y for a positive lean, which is the toe side for
         -- a rider facing -Y (regular).
         carve = (stance >= 0 and 1 or -1) * math.deg(lean),
-        manual = R.manual, balance = R.balance, grab = grab,
+        manual = R.manual or R.lastManual, balance = R.balance or R.lastBalance, manualW = R.balW,
+        grab = grab,
         t = B.DriftClock(CurTime()), tFine = CurTime(), seed = (bike.EntIndex and bike:EntIndex() or 0) * 1.37,
+        noLife = noLife,
     })
 end
 B.PostureOf = postureOf
@@ -950,7 +1045,17 @@ SET.rider = function(s)
     local stance = R.stance or 1
     local faceSign = stance >= 0 and 1 or -1
     local w = R.pushW or 0
-    local P = bike and postureOf(bike, R, s.speed) or B.Posture({ speed = s.speed })
+    local P = bike and postureOf(bike, R, s.speed, true) or B.Posture({ speed = s.speed })
+    -- FOLLOWED, NOT SET: B.Posture's phases are keyframes eased one to the next, and
+    -- where one phase gives way to the next (the crouch to the pop, the pop to the
+    -- tuck) the body stopped and started in a frame -- 6 to 10 units of jolt at 30 fps
+    -- (tools/rider/studio/motion.py). A short spring takes the corners off.
+    if bike then
+        R.postureSm = R.postureSm or {}
+        local dt = FrameTime()
+        for _, k in ipairs(POSTURE_KEYS) do P[k] = B.Smooth(R.postureSm, k, P[k], POSTURE_TAU, dt) end
+        B.PostureLife(P, { t = B.DriftClock(CurTime()), tFine = CurTime(), seed = bike:EntIndex() * 1.37 })
+    end
     R.posture = P
     if ply and bike then
         B.PlacePelvis(ply, bike, stance, P.back, faceSign * P.along, P.drop)
@@ -1283,6 +1388,12 @@ BMX.DrawVehicle.board = function(ent, kit)
         local row = rows[name]
         if row then lift = lift + row.boardLift * w; liftPitch = liftPitch + row.boardPitch * w end
     end
+    -- The ollie's snap of the tail (B.OllieTilt), on top of what the chassis does.
+    local R0 = ent.bmxRide
+    if R0 and R0.airAt and R0.ollie then
+        local tilt, tiltLift = B.OllieTilt(CurTime() - R0.airAt, B.HasFlag(flags, "nollie"))
+        liftPitch, lift = liftPitch + tilt, lift + tiltLift
+    end
 
     local g = physenv.GetGravity():Length()
     local sag = math.Clamp(C.Chassis.mass * g / 4 / WC.spring, 0, WC.restLength)
@@ -1388,6 +1499,12 @@ BMX.DrawVehicle.board = function(ent, kit)
     local grounded = ent:GetGrounded()
     if ent:GetCrouch() > 0.05 then R.crouchAt = now end
     if grounded then
+        -- down: the pose it had in the air, to come out of it from (B.Posture's settle)
+        if R.airAt then
+            local P = R.posture
+            R.landedAt = now
+            R.landFrom = P and { drop = P.drop, back = P.back, lean = P.lean } or nil
+        end
         R.airAt = nil
     elseif not R.airAt then
         R.airAt = now
@@ -1400,13 +1517,40 @@ BMX.DrawVehicle.board = function(ent, kit)
     -- a run of kicks is one turned-up stance, not a twist and back every kick.
     local wantW = pushing and 1 or 0
     R.pushW = R.pushW or 0
-    R.pushW = R.pushW + math.Clamp(wantW - R.pushW, -4 * dt, 10 * dt)
+    R.pushW = R.pushW + math.Clamp(wantW - R.pushW, -3 * dt, 5 * dt)
     R.stance = stance
     R.airT = airT
     R.air = airT and ease(airT / 0.15) or 0
     R.pushBend = pushing and B.PushBend(push) or 0
     R.balance = B.HasFlag(flags, "meter") and ent:GetMeter() or nil
     R.manual = B.HasFlag(flags, "manual") and "manual" or (B.HasFlag(flags, "nose") and "nose" or nil)
+    -- The arms' weights, eased: out for the air (in quickly, down over a quarter of a
+    -- second after the landing), and out for a manual or a grind's balance.
+    R.airW = (R.airW or 0) + math.Clamp((airT and ease(airT / 0.12) or 0) - (R.airW or 0), -4 * dt, 14 * dt)
+    R.balW = (R.balW or 0) + math.Clamp((R.balance and 1 or 0) - (R.balW or 0), -4 * dt, 4 * dt)
+    if R.balance then R.lastBalance = R.balance end
+    if R.manual then R.lastManual = R.manual elseif R.balance then R.lastManual = nil end
+    R.sinceLand = R.landedAt and (now - R.landedAt) or nil
+
+    -- PLANTED: the pushing foot's place on the ground, kept from where it went down
+    -- while the board runs on from it (B.PushFoot's strokeX).
+    local pushGeo = B.PushGeo(T, stance >= 0 and -1 or 1)
+    local pa, pb = B.PushMarks(pushGeo)
+    local strokeX
+    if pushing and push >= pa then
+        local f0 = ent:GetForward()
+        if push < pb and not R.liftP then
+            R.plantAt = R.plantAt or (ent:GetPos() + f0 * pushGeo.plantX)
+            local x = (R.plantAt - ent:GetPos()):Dot(f0)
+            if x <= pushGeo.backX then R.liftP = push end       -- the leg is out: up it comes
+            strokeX = math.Clamp(x, pushGeo.backX, pushGeo.plantX)
+            R.strokeEnd = strokeX
+        else
+            strokeX = R.strokeEnd
+        end
+    else
+        R.plantAt, R.strokeEnd, R.liftP = nil, nil, nil
+    end
     R.flip = B.TrackFlip(R.flip or {}, df.roll, df.yaw, df.pitch)
     R.flip.roll, R.flip.yaw, R.flip.pitch = df.roll, df.yaw, df.pitch
 
@@ -1416,6 +1560,7 @@ BMX.DrawVehicle.board = function(ent, kit)
         nollie = B.HasFlag(flags, "nollie"),
         manual = R.manual,
         flip = R.flip,
+        strokeX = strokeX, liftP = R.liftP,
     })
     -- On the deck the feet lean with it; a foot out on the ground for a push is on the
     -- level ground instead, blending over as it steps off the deck's edge.
@@ -1444,10 +1589,19 @@ BMX.DrawVehicle.board = function(ent, kit)
 
     local land = ent.bmxLand or 0
     local lead, trail = B.RiderHands({
-        stance = stance, pushW = R.pushW, push = push, crouch = ent:GetCrouch(), land = land,
-        airT = airT, ollie = R.ollie, balance = R.balance,
-        sway = sway, t = B.DriftClock(now), seed = ent:EntIndex() * 1.37,
+        stance = stance, pushW = R.pushW, push = push, crouch = B.CrouchShown(ent:GetCrouch()), land = land,
+        airT = airT, ollie = R.ollie, airW = R.airW,
+        balance = R.balance or R.lastBalance, balW = R.balW,
+        noDrift = true,
     })
+    -- ...followed, as the body is (B.Smooth): each phase's arms are a keyframe.
+    R.handSm = R.handSm or {}
+    lead = Vector(B.Smooth(R.handSm, "lx", lead.x, 0.05, dt), B.Smooth(R.handSm, "ly", lead.y, 0.05, dt),
+        B.Smooth(R.handSm, "lz", lead.z, 0.05, dt))
+    trail = Vector(B.Smooth(R.handSm, "tx", trail.x, 0.05, dt), B.Smooth(R.handSm, "ty", trail.y, 0.05, dt),
+        B.Smooth(R.handSm, "tz", trail.z, 0.05, dt))
+    local dl, dtr = B.HandDrift(B.DriftClock(now), ent:EntIndex() * 1.37, B.CrouchShown(ent:GetCrouch()), R.balance)
+    lead, trail = lead + dl + sway, trail + dtr + sway
     -- The lead hand is on the nose's side: the left for a left-foot-forward stance.
     local lRel, rRel = stance >= 0 and lead or trail, stance >= 0 and trail or lead
     -- Arms out for balance are OPEN hands, and the torso does not reach for them (without

@@ -1820,11 +1820,11 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
     local lean = setLean + poseLean
     local twist = pose.spine.r + poseTwist
     -- NEVER STILL: every rider breathes, and their weight drifts a little side to side,
-    -- on a clock that ticks ten times a second (cl_board.lua's B.DriftClock: the IK
+    -- on a clock that ticks five times a second (cl_board.lua's B.DriftClock: the IK
     -- re-poses only when something moved, so a rider sat still is still nearly free). A
     -- pose set that does its own (the board's B.Posture) says so.
     if not set.ownLife then
-        local t, seed = math.floor(CurTime() * 10) / 10, ply:EntIndex() * 1.37
+        local t, seed = math.floor(CurTime() * 5) / 5, ply:EntIndex() * 1.37
         lean = lean + LIFE.breathe * math.sin(t * math.pi * 2 * 0.25 + seed)
         twist = twist + LIFE.drift * (0.6 * math.sin(t * math.pi * 2 * 0.11 + seed * 1.7)
             + 0.4 * math.sin(t * math.pi * 2 * 0.29 + seed * 0.6))

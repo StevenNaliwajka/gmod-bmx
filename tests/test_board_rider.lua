@@ -162,8 +162,15 @@ T.test("board ollie: the crouch puts the back foot on the tail, the pop drags th
     T.ok(set[1].x < rest[1].x, "and the front foot has come back off the bolts")
     local pop = { B.RiderFeet({ stance = 1, airT = 0.1, ollie = true }) }
     T.ok(pop[1].x > rest[1].x + 1.5, "popped: the front foot drags up toward the nose: " .. pop[1].x)
-    T.near(pop[1].z, B.FootZ + B.DeckRise(pop[1].x), 1e-9, "along the deck's top")
+    local drag, tail = B.OllieLift(0.1)
+    T.near(pop[1].z, B.FootZ + B.DeckRise(pop[1].x) + drag, 1e-9, "along the deck's top, lifting off it as it drags")
+    T.ok(drag > 1 and tail == 0, "the front foot comes up first, the back one not yet")
     T.ok(pop[2].x < -10.5, "while the back foot is still on the tail")
+    local seesaw = B.OllieLift(0.3)
+    local _, tail2 = B.OllieLift(0.3)
+    T.ok(tail2 > seesaw, "then the back foot comes up as the front one goes down to level the nose")
+    T.eq(select(2, B.OllieLift(0.4)), 0, "and both are down on the deck for the catch")
+    T.eq((B.OllieLift(0.4)), 0, "...the front one too")
     local high = { B.RiderFeet({ stance = 1, airT = 0.6, ollie = true }) }
     T.near((high[1] - rest[1]):Length(), 0, 1e-9, "levelled: the front foot back over its bolts")
     T.near((high[2] - rest[2]):Length(), 0, 1e-9, "and the back foot over its")

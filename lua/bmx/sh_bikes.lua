@@ -771,7 +771,9 @@ BMX.RegisterVehicle({
         Wheel   = { radius = 26, rearRadius = 6, wheelbase = 44, restLength = 8, spring = 16000, damper = 800,
                     loadShare = 0.75, inertia = 600, grip = 1.3, rollingResistance = 0.010 },
         Drive   = { gearRatio = 1, maxCadence = 11, crankTorque = 340000, frontBrake = 700000, dragArea = 0.0065 },
-        Balance = { maxLean = math.rad(28), maxSteer = math.rad(30) },
+        -- (drawn turned no further than 20 degrees: the pedals on the hub swing round with
+        -- the wheel and a rider's legs are in the way past that, the thighs on the fork)
+        Balance = { maxLean = math.rad(28), maxSteer = math.rad(30), visualSteerMax = math.rad(20) },
         Hop     = { popSpeed = 70 },
     },
 })

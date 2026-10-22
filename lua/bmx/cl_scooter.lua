@@ -188,7 +188,9 @@ function SC.KickGeo(radius, half)
     local A = B.Ankle or 2.8
     return {
         stand = T.deckTop + A, ground = -radius + A,
-        side = -(T.deckWidth * 0.5 + 3.0),
+        -- (out past the deck's edge by more than the shin is thick: at 3 the kicking shin came
+        -- down through the deck's edge to the ground, tests/test_body_clip.lua)
+        side = -(T.deckWidth * 0.5 + 4.5),
         plantX = T.footBack + 3.0, backX = -(half + 2.0),
         deckHalf = T.deckWidth * 0.5,
         share = B.Tune.kickTime / T.kickInterval,
@@ -481,8 +483,14 @@ BMX.DrawVehicle.scooter = function(ent, kit)
         local p = P(v)
         return steer ~= 0 and rotAbout(p, headB, steerAxis, -steer) or p
     end
+    -- THE KNEES OUT EITHER SIDE OF THE STEM. The standing knee folds as the other foot
+    -- reaches the ground, and straight ahead it went into the stem and the bars (1.4-1.7
+    -- units, tests/test_body_clip.lua): a rider's goes out past it.
+    local fwdW, leftW, upW2 = ent:GetForward(), -ent:GetRight(), ent:GetUp()
     local ik = {
         lFoot = C2W(t.lFoot), rFoot = C2W(t.rFoot), ankles = true,
+        lFootPole = (fwdW + leftW * 0.6 + upW2 * 0.15):GetNormalized(),
+        rFootPole = (fwdW - leftW * 0.4 + upW2 * 0.15):GetNormalized(),
         rFootYaw = push >= 0 and 0 or -BACK_TOE_OUT,
         rHand = G(t.rHand), lHand = G(t.lHand),
         rHandA = G(t.rHandA), rHandB = G(t.rHandB),

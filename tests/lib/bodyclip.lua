@@ -525,12 +525,19 @@ M.ALLOW = {
     { part = "_foot$", group = "^pedal$", why = "the foot round its pedal" },
     -- A foot on what it stands on -- a peg, a footpeg, the deck -- presses into it no
     -- further than the sole's own give: deeper, it has sunk in.
-    { part = "_foot$", near = "Foot", within = 4.5, depth = 1.5, why = "the foot on what it stands on" },
+    -- (within a foot's length of its target: a deck's foot target is the ANKLE, cl_rider.lua's
+    -- `targets.ankles`, and the sole runs 3 behind it to 9 ahead)
+    { part = "_foot$", near = "Foot", within = 9, depth = 1.5, why = "the foot on what it stands on" },
     -- Sat on a saddle, the hips sink into it a little (the seat is where the game's pod
     -- puts the body, and a saddle is drawn as a hard shell): near the person's own seat
     -- (`targets[who].seat`), as far as that. Not a saddle anywhere else: a passenger's
     -- thighs in the rider's saddle are a clip.
-    { part = { "^pelvis$", "_thigh$" }, near = "seat", within = 8, depth = 2.5, why = "sat on the saddle" },
+    -- A saddle runs 5 or 6 units either side of where the pod is, and a rider sits on its
+    -- nose as much as its middle; sat on, the flesh under the capsule gives a couple of
+    -- units more than the capsule's own half unit inside the skin.
+    { part = { "^pelvis$", "_thigh$" }, near = "seat", within = 8, depth = 3.0, why = "sat on the saddle" },
+    { part = { "^pelvis$", "_thigh$" }, mat = { "^seat$", "^leather$" }, near = "seat", within = 13, depth = 3.0,
+      why = "sat on the saddle's nose" },
     -- A skate's boot is on its own foot, its cuff round the ankle (rec.tag: the side of
     -- the boot drawn).
     { part = { "_foot$", "_shin$" }, sameSide = true, why = "the skate's boot on its own foot" },

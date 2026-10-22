@@ -281,6 +281,11 @@ local function pennyModel(ent, model, S, ik)
     BM.EndLighting()
     ik.rFoot = forkMap(tip(1)) + upF * 0.9
     ik.lFoot = forkMap(tip(-1)) + upF * 0.9
+    -- THE KNEES OUT past the fork blades: they come down over them to the pedals on the hub,
+    -- and square ahead, as a bike's, the thighs lay on the blades (tests/test_body_clip.lua).
+    local fwd = (Pf(Vector(1, 0, 0)) - Pf(Vector(0, 0, 0))):GetNormalized()
+    ik.rFootPole = (fwd + right * 0.45 + upF * 0.2):GetNormalized()
+    ik.lFootPole = (fwd - right * 0.45 + upF * 0.2):GetNormalized()
     if BMX.PedalSole then ik.rSole, ik.lSole = BMX.PedalSole(S.fSpin), BMX.PedalSole(S.fSpin + math.pi) end
     ik.rHand, ik.rHandA, ik.rHandB = gripOf(forkMap, L.gripR)
     ik.lHand, ik.lHandA, ik.lHandB = gripOf(forkMap, L.gripL)

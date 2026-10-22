@@ -686,7 +686,7 @@ B.LowerPelvis = lowerPelvis
 -- a twentieth of a unit of the hips: nobody sees the steps, and the pose is solved ten
 -- times a second instead of every frame.
 --------------------------------------------------------------------------
-local RIDE   = { drop = 8.5, back = 2.0, lean = 20 }    -- rolling along on soft knees
+local RIDE   = { drop = 10,  back = 3.0, lean = 24 }    -- rolling along on soft knees
 local CROUCH = { drop = 21,  back = 6.5, lean = 56 }    -- an ollie's preload, all the way down
 local POP    = { drop = 3.5, back = 1.0, lean = 18 }    -- the legs straight off the tail
 local TUCK   = { drop = 20,  back = 3.5, lean = 42 }    -- the knees up under the rider

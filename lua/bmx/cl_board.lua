@@ -118,7 +118,8 @@ end
 --------------------------------------------------------------------------
 local DECK_TOP  = 1.8                       -- the grip's top over the axle line (cl_geo_board.lua)
 local ANKLE     = 4.2                       -- the ankle bone over the sole (kleiner's 4.24, measured
-                                            -- on the mesh; 1.3.9's 2.8 sank every sole into the grip)
+                                            -- on the mesh; at 1.3.9's 2.8 a sole laid flat from
+                                            -- the ankle would sit in the grip)
 local FOOT_Z    = DECK_TOP + ANKLE          -- an ankle standing on the deck
 local GROUND_Z  = -1.3                      -- the ground, under the axle line
 local DECK_HALF = 4.0                       -- half the deck's width

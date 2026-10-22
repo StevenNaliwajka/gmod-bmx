@@ -5,6 +5,77 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.4.0 -- not on the Workshop yet
+
+The animation update. Riders now move the way real riders do. Their joint angles
+were measured from footage of real skaters, BMX riders and scooter riders, and
+every vehicle's rider was filmed and compared side by side. Every part of the body
+is checked against the bike and against the rest of the body, so arms and legs no
+longer pass through things.
+
+**Skateboard**
+
+- **You ride it like a skater.** Before, you stood upright on the board with soft
+  knees. Now your hips sit back over your heels, your knees are bent and your chest
+  leans over your toes. You crouch deep before an ollie and lean into carves.
+- **Your feet stand on the deck.** Before, they hung off the heel edge and floated
+  above the grip tape. Now they stand on it, the front foot angled toward the nose,
+  your knees over your toes, and a slightly wider stance.
+- **Pushing:** your foot plants on the ground and stays there while the board rolls
+  on, then lifts when your leg is stretched out behind. Before, it slid along the
+  ground. Your hips turn forward for the push, and the step off the board is no
+  longer a snap.
+- **Ollies:** the tail snaps and the nose comes up. Your front knee drags up as the
+  back leg straightens, then the back knee comes up as the front foot levels the
+  board. Your arms go up with the pop and your knees come up in the air. You land
+  soft and stand back up.
+- **Grabs** bring the board up to your hand, knees tucked to your chest, instead of
+  you bending down to it. Your knees open to let your hand through.
+- **Manuals:** your weight shifts over the back wheels, and your arms balance out
+  wide without going into a T. You ease into and out of it.
+- **Never still:** you breathe, your weight shifts from foot to foot, and your arms
+  swing when you speed up, slow down or turn.
+
+**Bikes**
+
+- Seated riders lean toward the bars instead of sitting bolt upright. Standing and
+  attack fold further over the bars, as riders on footage do.
+- **Every rider breathes** and shifts their weight a little.
+- **Smoother:** your knee no longer jumps once per pedal turn at the top of the
+  stroke, and your body absorbs a bunny hop and its landing instead of jerking
+  with the bike.
+- **Tricks no longer go through the bike or yourself:**
+  - **Heel clicker:** your legs swing forward over the bars and click in front.
+  - **Cliffhanger:** your legs go up over the bars and your hands go up.
+  - **X-up:** the bars turn 140 degrees and your arms cross without passing
+    through each other.
+  - **Can-can:** your leg arcs over the top tube instead of through it.
+  - **Tabletop:** your hips roll over with the bike.
+  - **Superman with a passenger:** your legs spread past them instead of going
+    through them.
+- Motorbike riders' knees sit outside the side panels instead of inside them.
+- **Penny-farthing:** you stay seated, since the pedals are on the hub. Your knees
+  splay past the fork, and the big wheel turns no further than your legs allow.
+
+**Scooter and passengers**
+
+- **Scooter:** your feet stand on the deck (they floated above it). The back foot
+  is turned out behind the front one, your knees go either side of the stem, and
+  your kicking foot plants on the ground and goes out past the deck's edge.
+- **The child seat** is now on the rack over the rear axle. Before, it sat so close
+  that the passenger sat inside the rider.
+
+For modders and testers:
+
+- `tests/test_body_clip.lua` checks every part of every rider's body against every
+  vehicle and against the rest of the body, through each move and trick. 1.3.9 had
+  637 places where a body part went through something; 1.4.0 has about 240, nearly
+  all in style tricks. They are listed and cannot get worse.
+- `tests/test_lifelike.lua` holds the rider's joint angles to what real riders do.
+- `tools/rider/studio/video.sh` films any rider offline, `motion.py` finds jerks
+  and sliding feet, and `tools/rider/compare.py` puts a film next to real footage
+  with both riders' joint angles plotted.
+
 ## 1.3.9 -- on the Workshop 2026-10-20
 
 Riders that look like riders. Every vehicle's rider was looked at on the real

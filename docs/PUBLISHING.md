@@ -141,6 +141,7 @@ it once the upload is done):
 | 1.2.0 | 2026-10-08 | a5e785b (tools/workshop_sync.py, from Linux; with BMX (Mode) 51d9a47 and Petopia BMX Fall 40ef174) | 2026-10-08, page text and gallery unchanged |
 | 1.1.1 | 2026-10-07 | 932dc8c (tools/workshop_sync.py, from Linux) | 2026-10-07, with the gallery |
 | 1.1.0 | 2026-10-07 | 817644e (tools/workshop_sync.py, from Linux) | 2026-10-07 16:25, with the gallery; icon now workshop/icon.gif |
+| 1.4.0 | 2026-10-22 | 90bad40, the animation update (MGMT elevated call workshop-publish items=bmx, E-531d90ac, auto-approved; workshop-check E-22f85e02 first; branch pipeline 1449 green on 90bad40, validate + 199/199 headless; looked at on a real client on test-gmod first, and filmed beside real riders; live on Petopia from 21:41 UTC) | 2026-10-22 21:42 UTC; page text: the "New in 1.4" line; the 20 gallery pictures re-sent ("replaced 20 old"); the item downloaded anonymously is the commit, file for file (243 files) |
 
 The same number lives in `workshop/workshop-id.txt`, which the kit ships and
 both `update.bat` and `publish.sh update` read, so an update needs nothing

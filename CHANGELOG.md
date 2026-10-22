@@ -5,7 +5,7 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
-## 1.4.0 -- not on the Workshop yet
+## 1.4.0 -- on the Workshop 2026-10-22
 
 The animation update. Riders now move the way real riders do. Their joint angles
 were measured from footage of real skaters, BMX riders and scooter riders, and

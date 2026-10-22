@@ -18,12 +18,25 @@
     crouch, an ollie, a grab, a manual), `flips` (a kickflip and a shove-it),
     `scooter` (kicks, steer, a hop) and, for worn vehicles, the skates' strides;
     `rest` is the capture with nothing moved. The default is the vehicle's own.
+    `skate_session`, `bike_session` and `scooter_session` are rides for VIDEO (below).
     STUDIO_PAX=1 puts a passenger on the pegs (or a tandem's stoker).
 
     It is the same offline client the suite runs (tests/lib/gmod.lua), so the
     engine's own animation is not here: the base sequence is the capture's frame,
     with the head where the capture's bot was looking. tools/ride/shoot.sh is the
     real client's photograph.
+
+    VIDEO (STUDIO_VIDEO=1, which tools/rider/studio/video.sh sets): a shot is
+    written for EVERY simulated frame of the scenario instead of at its labels,
+    each with its time and the phase it is in, so the frames can be played as a
+    film. A still is enough to see a cocked wrist; it takes motion to see a foot
+    sliding on the deck, a knee that pops between two frames or a crouch that
+    comes too late for the pop. The `*_session` scenarios are written for it: the
+    vehicle really travels (its position advances every frame at its speed and
+    the rider's seat goes with it), an air is a parabola under the world's
+    gravity, and every phase is timed in seconds, so they run at any frame rate
+    (STUDIO_FPS, default 30). The other scenarios still work in video mode but
+    teleport, as they were written to for stills.
 ----------------------------------------------------------------------------]]
 local here = (arg and arg[0] or "tools/rider/studio/studio.lua"):match("^(.*)/[^/]*$") or "."
 local root = here .. "/../../.."
@@ -37,6 +50,9 @@ local MF = require("lib.meshfake")
 local SR = require("lib.skeleton_real")
 
 local ID, SCEN = arg[1] or "skateboard", (arg[2] ~= "" and arg[2]) or "default"
+-- VIDEO MODE (see the header): every frame recorded, at STUDIO_FPS frames a second.
+local VIDEO = os.getenv("STUDIO_VIDEO") == "1"
+local FPS = tonumber(os.getenv("STUDIO_FPS") or "") or 30
 local sv, world = F.server()
 local cl = F.client(world)
 local E, B = cl.env, cl.env.BMX
@@ -143,13 +159,21 @@ if def.worn then
     ply:SetNWString("BMXWorn", ID)
     cl.localPlayer = sv:player("Looker")
     cl.eyePos = E.Vector(100, 100, 50)
-    world.dt = 1 / 30
+    world.dt = VIDEO and 1 / FPS or 1 / 30
     local shots = {}
+    local recording, phaseLabel = false, ""
+    local record
     local function frame()
         world.time = world.time + world.dt
+        -- (video: the skater travels at their speed, and the view stays with them)
+        if recording then
+            ply:SetPos(ply:GetPos() + ply._vel * world.dt)
+            cl.eyePos = ply:GetPos() + E.Vector(100, 100, 50)
+        end
         drawn, tubes = {}, {}
         E.hook.Run("PrePlayerDraw", ply)
         E.hook.Run("PostPlayerDraw", ply)
+        if recording then record() end
     end
     local function bones(p)
         p:InvalidateBoneCache(); p:SetupBones()
@@ -162,11 +186,21 @@ if def.worn then
         return out
     end
     local function shot(label)
+        if VIDEO then phaseLabel = label return end
         shots[#shots + 1] = { label = label, bones = bones(ply), drawn = drawn, tubes = tubes, targets = {},
             ent = { 0, 0, 0, 0, 0, 0 }, fwd = { 1, 0, 0 } }
     end
+    local t0 = 0
+    record = function()
+        local p = ply:GetPos()
+        shots[#shots + 1] = { label = phaseLabel, phase = phaseLabel, t = world.time - t0, bones = bones(ply),
+            drawn = drawn, tubes = tubes, targets = {}, ent = { p.x, p.y, p.z, 0, 0, 0 }, fwd = { 1, 0, 0 },
+            st = { v = ply._vel:Length(), z = 0, grounded = true } }
+    end
     ply._vel = E.Vector(0, 0, 0)
     for _ = 1, 8000 do frame() if #drawn > 0 then break end end      -- (the boots' model builds)
+    -- (t0 one frame on: the clock moves before a frame is drawn, and the first is t = 0)
+    if VIDEO then recording, t0, phaseLabel = true, world.time + world.dt, "standing still" end
     for _ = 1, 20 do frame() end
     shot("standing still")
     ply._vel = E.Vector(250, 0, 0)
@@ -187,7 +221,8 @@ if def.worn then
     ply:SetNWFloat("BMXSkatePhase", -1)
     for _ = 1, 20 do frame() end
     shot("rolling again")
-    io.write(J.encode({ id = ID, pose = "skates", model = true, meshes = meshes, shots = shots, errors = cl.errors }), "\n")
+    io.write(J.encode({ id = ID, pose = "skates", model = true, meshes = meshes, shots = shots, errors = cl.errors,
+        video = VIDEO and { fps = FPS, ground = world.groundZ or 0 } or nil }), "\n")
     os.exit(0)
 end
 local standing = def.pose == "board" or def.pose == "scooter" or def.pose == "skates"
@@ -211,18 +246,21 @@ if os.getenv("STUDIO_PAX") == "1" and B.HasSeat(ent:Bike(), "pegs") then
 end
 cl.localPlayer = sv:player("Looker")
 cl.eyePos = ent:GetPos() + E.Vector(0, 150, 50)
-world.dt = 1 / 30
+world.dt = VIDEO and 1 / FPS or 1 / 30
 
 local crank = 0
 local useCrank = false
 ent.CrankAngle = function() return crank end
 
+-- (video: `record` writes the frame just drawn, once the scenario has begun)
+local recording, phaseLabel, record = false, "", nil
 local function frame()
     world.time = world.time + world.dt
     drawn, tubes = {}, {}
     MF.draw(cl, ent)
     E.hook.Run("PrePlayerDraw", ply)
     if pax then E.hook.Run("PrePlayerDraw", pax) end
+    if recording then record() end
 end
 
 local function bones(p)
@@ -239,6 +277,8 @@ end
 local shots = {}
 local okRun, err = true, nil
 local function shot(label)
+    -- In video mode every frame is a shot already; a label names what follows.
+    if VIDEO then phaseLabel = label return end
     local tg = {}
     for k, v in pairs(ent.ikTargets or {}) do
         if type(v) == "table" and v.x then tg[k] = { v.x, v.y, v.z } end
@@ -249,6 +289,25 @@ local function shot(label)
         paxBones = pax and bones(pax) or nil,
         ent = { pos.x, pos.y, pos.z, ang.p, ang.y, ang.r },
         fwd = { ent:GetForward().x, ent:GetForward().y, ent:GetForward().z } }
+end
+
+-- ONE VIDEO FRAME: the shot above, with when it is in the scenario, the phase it is
+-- in, and what the label strip prints (speed along the ground, the vehicle's height
+-- over where it stood at the start, whether it is down). The IK's targets go too, so
+-- a foot that drifts off its bolt can be measured frame by frame.
+local t0, restZ = 0, ent:GetPos().z
+record = function()
+    local tg = {}
+    for k, v in pairs(ent.ikTargets or {}) do
+        if type(v) == "table" and v.x then tg[k] = { v.x, v.y, v.z } end
+    end
+    local pos, ang, vel = ent:GetPos(), ent:GetAngles(), ent:GetVelocity()
+    local f = ent:GetForward()
+    shots[#shots + 1] = { label = phaseLabel, phase = phaseLabel, t = world.time - t0,
+        bones = bones(ply), drawn = drawn, tubes = tubes, targets = tg,
+        paxBones = pax and bones(pax) or nil,
+        ent = { pos.x, pos.y, pos.z, ang.p, ang.y, ang.r }, fwd = { f.x, f.y, f.z },
+        st = { v = math.sqrt(vel.x * vel.x + vel.y * vel.y), z = pos.z - restZ, grounded = ent:GetGrounded() } }
 end
 
 -- SCENARIOS --------------------------------------------------------------
@@ -448,6 +507,414 @@ S.bike = function()
     end
 end
 
+--------------------------------------------------------------------------
+-- THE VIDEO SCENARIOS (`*_session`): a ride, not a set of poses.
+--
+-- The scenarios above were written for stills: a board that "ollies" is lifted 18
+-- units in one frame and put down again, nothing travels, and a phase lasts as
+-- many frames as made a good picture. On film every one of those is a pop. These
+-- drive the vehicle the way the server would, from the server's own numbers:
+--
+--   * it TRAVELS: its position advances every frame at its speed along its
+--     heading, and the seat goes with it (the shim does not carry a child with its
+--     parent, so `place` moves the pod, as `lift` does), so the ground passes
+--     under the wheels and a camera can follow;
+--   * a push is the server's (Board.PushStep / PushPhaseOf: a kick every
+--     kickInterval, its speed added over kickTime, less of it the faster it goes),
+--     so the push phase on the wire and the speed it gives agree;
+--   * a board's carve is the deck's lean spring (LeanStep) and the trucks' steer
+--     (TruckSteer), and it turns by what the trucks steer; a scooter leans and
+--     turns as a single-track vehicle does (tan(roll) = v^2 / (g R)), with the
+--     bars at the balance's derived steer;
+--   * an air is a parabola under the world's gravity, from the speed the server's
+--     pop gives (PopHeight / PopSpeed from how long the crouch was held, or
+--     Hop.popSpeed times the charge), with the nose-up kick the server adds and
+--     the attitude hold bringing it level, the nose turning about the back axle;
+--     the vehicle's velocity is set, so the knee-soak on landing (cl_rider.lua,
+--     bmxLandHit) sees how hard it came down;
+--   * every phase is in SECONDS (`R.hold`), so the timing reads as a rider's and
+--     does not change with the frame rate.
+--
+-- What it is not is the physics: no suspension, no tyre slip, no bumps. The
+-- vehicle goes where the script says, and what is judged is the rider on it.
+-- `still` marks the moments a contact sheet of the session shows (studio.sh with
+-- a session, no video); `phase` names what the label strip prints.
+--------------------------------------------------------------------------
+local function phase(s) phaseLabel = s end
+local function still(s) if not VIDEO then shot(s) end end
+
+local function rig(o)
+    o = o or {}
+    local seat = B.SeatFor(ent:Bike(), ent:Cfg(), "rider")
+    local seatAng = o.seatAngles or seat.angles or E.Angle(0, 0, 0)
+    local paxSeat = pax and B.SeatFor(ent:Bike(), ent:Cfg(), "pegs")
+    local start = ent:GetPos()
+    local gz = world.groundZ or 0
+    local h = start.z - gz                  -- the origin over the ground: the axle line
+    local half = ent:Cfg().Wheel.wheelbase * 0.5
+    local R = {
+        x = start.x, y = start.y, z = 0, vz = 0, air = false,     -- z: off the ground
+        v = o.speed or 0, yaw = 0, yawRate = 0,                   -- u/s; degrees, a second
+        pitch = 0, pitchRate = 0, pitchTarget = 0, roll = 0,      -- degrees nose up (rad/s); right
+        t = 0, g = world.gravity or 600, half = half,
+    }
+    -- Where the vehicle and its seats are. A roll turns it about the line its tyres
+    -- touch the ground on and a pitch about the axle that stays down (the back one
+    -- nose up, the front one nose down), as a wheelie or an ollie's pop does, so
+    -- neither sinks a wheel into the ground nor lifts it.
+    function R.place()
+        ent:SetAngles(E.Angle(-R.pitch, R.yaw, R.roll))
+        local yr, rr = math.rad(R.yaw), math.rad(R.roll)
+        local f0 = E.Vector(math.cos(yr), math.sin(yr), 0)
+        local up = E.Vector(math.sin(yr) * math.sin(rr), -math.cos(yr) * math.sin(rr), math.cos(rr))
+        local a = (R.pitch > 0 and -half) or (R.pitch < 0 and half) or 0
+        local pos = E.Vector(R.x, R.y, gz + R.z) + f0 * a - ent:GetForward() * a + up * h
+        ent:SetPos(pos)
+        ply._vehicle:SetPos(ent:LocalToWorld(seat.offset))
+        ply._vehicle:SetAngles(ent:LocalToWorldAngles(seatAng))
+        if pax then
+            pax._vehicle:SetPos(ent:LocalToWorld(paxSeat.offset))
+            pax._vehicle:SetAngles(ent:LocalToWorldAngles(paxSeat.angles or E.Angle(0, 0, 0)))
+        end
+        -- (the view goes along: the model's LOD and the rider's IK are measured from it)
+        cl.eyePos = pos + E.Vector(0, 150, 50)
+    end
+    -- One frame: travel, fall, turn the nose (the attitude hold's PD, o.pitchHold
+    -- giving its gains), then draw.
+    function R.step()
+        local dt = world.dt
+        R.yaw = R.yaw + R.yawRate * dt
+        local yr = math.rad(R.yaw)
+        R.x, R.y = R.x + math.cos(yr) * R.v * dt, R.y + math.sin(yr) * R.v * dt
+        R.landed = false
+        if R.air then
+            R.vz = R.vz - R.g * dt
+            R.z = R.z + R.vz * dt
+            if R.z <= 0 then
+                R.z, R.air, R.landed, R.landVz = 0, false, true, R.vz
+                ent:SetGrounded(true)
+            end
+        end
+        if o.pitchHold then
+            local kp, kd = o.pitchHold(R)
+            local th = math.rad(R.pitch)
+            R.pitchRate = R.pitchRate + (kp * (math.rad(R.pitchTarget) - th) - kd * R.pitchRate) * dt
+            th = th + R.pitchRate * dt
+            -- (down, a nose coming level stops on its wheels rather than going through)
+            if not R.air and th < 0 and R.pitchTarget >= 0 then th, R.pitchRate = 0, 0 end
+            R.pitch = math.deg(th)
+        end
+        ent._vel = E.Vector(math.cos(yr) * R.v, math.sin(yr) * R.v, R.air and R.vz or 0)
+        if ent.SetSpeedUPS then ent:SetSpeedUPS(math.abs(R.v)) end
+        R.place()
+        R.t = R.t + dt
+        frame()
+    end
+    -- `sec` seconds of frames, `fn(t, k)` (seconds and fraction into it) before each.
+    function R.hold(sec, fn)
+        local n = math.max(1, math.floor(sec / world.dt + 0.5))
+        for i = 1, n do
+            if fn then fn((i - 1) * world.dt, (i - 1) / n) end
+            R.step()
+        end
+    end
+    -- Frames until it is down again, `fn(t)` (seconds since the pop) before each; the
+    -- frame it touches down on is already `landPhase`.
+    function R.untilLanded(fn, landPhase)
+        local t = 0
+        while R.air do
+            if fn then fn(t) end
+            local dt = world.dt
+            if landPhase and R.z + (R.vz - R.g * dt) * dt <= 0 then phase(landPhase) end
+            R.step()
+            t = t + dt
+        end
+    end
+    -- Off the ground: `vz` up and `fwd` more along it (a pop leans a little forward).
+    function R.pop(vz, fwd)
+        R.air, R.vz, R.v = true, vz, R.v + (fwd or 0)
+        ent:SetGrounded(false)
+    end
+    R.place()
+    return R
+end
+
+-- THE SKATEBOARD: about 14 s. Rolled in at a jog's pace, three pushes, a carve each
+-- way, an ollie from a 0.3 s crouch, a kickflip from a 0.35 s one, a manual.
+S.skate_session = function()
+    local Bd = B.Board
+    local T = Bd.Tune
+    local goofy = os.getenv("STUDIO_GOOFY") == "1" or nil
+    local function flags(t)
+        local u = { goofy = goofy }
+        for k, v in pairs(t) do u[k] = v end
+        ent:SetBoardFlags(Bd.PackFlags(u))
+    end
+    flags({})
+    local drive = ent:Bike().drive or {}
+    local interval = drive.kickInterval or T.kickInterval
+    local wb = ent:Cfg().Wheel.wheelbase
+    local manual = false
+    local R = rig({
+        speed = 110,
+        seatAngles = goofy and E.Angle(0, T.seatYaw.goofy, 0) or nil,
+        -- the server's pitch hold: hard for a manual (and on the wheels), soft in the air
+        pitchHold = function(R)
+            if R.air and not manual then return T.levelKp, T.levelKd end
+            return T.pitchKp, T.pitchKd
+        end,
+    })
+    local ps, kicks = {}, 0
+    local lean, leanRate, leanTarget = 0, 0, 0
+    local DRAG = 3                          -- u/s^2: a board on smooth concrete barely slows
+    -- What runs every frame whatever the phase: the deck's lean and the turn it
+    -- makes, the push cycle, and `fn` for the phase's own.
+    local function ride(fn)
+        return function(t, k)
+            if fn then fn(t, k) end
+            for _ = 1, 4 do lean, leanRate = Bd.LeanStep(lean, leanRate, leanTarget, world.dt / 4) end
+            ent:SetBoardLean(lean)
+            -- both trucks steer, the back one the other way: it turns about the middle
+            local steer = Bd.TruckSteer(lean, R.v, wb)
+            R.yawRate = -math.deg(2 * R.v * math.tan(steer) / wb)   -- (a lean to the right turns right)
+            if R.air then
+                ps.phase = interval                                  -- (as the server: no push in the air)
+                ent:SetPushPhase(-1)
+            else
+                local add, began = Bd.PushStep(ps, world.dt, kicks > 0, R.v, drive)
+                if began then kicks = kicks - 1 end
+                R.v = R.v + add - DRAG * world.dt
+                ent:SetPushPhase(Bd.PushPhaseOf(ps, interval))
+            end
+        end
+    end
+    -- An ollie (or a flip): the crouch held `held` seconds, the pop the server gives
+    -- for it, the flip begun as a player's key would (flipSettle after the pop).
+    local function ollie(name, held, flip)
+        phase(name .. ": crouch")
+        R.hold(held, ride(function(t) ent:SetCrouch(math.min(1, (t + world.dt) / T.crouchMax)) end))
+        still(name .. " crouch")
+        local v = Bd.PopSpeed(Bd.PopHeight(held), R.g)
+        local n = math.sqrt(1 + T.popForward * T.popForward)
+        ent:SetCrouch(0)
+        R.pop(v / n, v * T.popForward / n)
+        R.pitchRate = T.popNoseKick
+        phase(name .. ": air")
+        local airT = 2 * v / n / R.g
+        local mid = false
+        R.untilLanded(ride(function(t)
+            if flip then
+                ent:SetBoardBits(Bd.PackBits(Bd.FlipAngles(Bd.Flips[flip], t - T.flipSettle)))
+            end
+            if not mid and t >= airT / 2 then mid = true still(name .. " top") end
+        end), name .. ": land")
+        ent:SetBoardBits(0)
+    end
+
+    phase("roll in")
+    R.hold(1.0, ride())
+    still("roll in")
+    phase("push x3")
+    kicks = 3
+    R.hold(0.25, ride())
+    still("push (in the stroke)")
+    R.hold(3 * interval - 0.25, ride())
+    phase("cruise")
+    R.hold(1.0, ride())
+    still("cruise")
+    phase("carve left")
+    leanTarget = -0.25
+    R.hold(1.2, ride())
+    still("carve left")
+    phase("carve right")
+    leanTarget = 0.25
+    R.hold(1.2, ride())
+    still("carve right")
+    phase("straighten")
+    leanTarget = 0
+    R.hold(0.6, ride())
+    ollie("ollie", 0.3)
+    R.hold(0.6, ride())
+    phase("roll")
+    R.hold(0.9, ride())
+    ollie("kickflip", 0.35, "kickflip")
+    R.hold(0.6, ride())
+    phase("manual")
+    flags({ meter = true, manual = true })
+    manual = true
+    R.hold(1.6, ride(function(t)
+        local m = 0.35 * math.sin(2 * PI * t / 1.3)
+        ent:SetMeter(m)
+        R.pitchTarget = math.deg(T.manualPitch * (1 + 0.3 * m))
+    end))
+    still("manual")
+    flags({})
+    manual = false
+    R.pitchTarget = 0
+    ent:SetMeter(0)
+    phase("roll out")
+    R.hold(1.5, ride())
+    still("roll out")
+end
+
+-- A BMX (or any bike): about 12 s. Pedalled seated, stood up for a sprint, coasted
+-- with the cranks level, a full-charge bunny hop, a few strokes, a hop with a style
+-- pose. The cranks are the bike's own (ENT:CrankAngle: the rear wheel's turn through
+-- the gear, eased level when it coasts), not the studio's stand-in, so the cadence
+-- is the one the speed gives.
+S.bike_session = function()
+    ent.CrankAngle = nil
+    local C = ent:Cfg()
+    local H = C.Hop
+    local ids = B.RiderStanceId or {}
+    local function stance(n) ply:SetNWInt("BMXStance", ids[n] or 1) end
+    local R = rig({
+        speed = 140,
+        pitchHold = function(R) if R.air then return 25, 8 end return 60, 13 end,
+    })
+    -- `acc` is what the legs give; rolling and the air take some back, more the faster
+    -- it goes (about 0.3 m/s^2 at 25 km/h), so a coast slows and a sprint levels off.
+    local acc = 0
+    local function ride(fn)
+        return function(t, k)
+            if fn then fn(t, k) end
+            R.v = math.max(0, R.v + (acc - 4 - R.v * R.v / 9000) * world.dt)
+        end
+    end
+    local function hop(name, pose)
+        phase(name .. ": preload")
+        R.hold(H.chargeTime, ride(function(t) ent:SetHopCharge(math.min(1, (t + world.dt) / H.chargeTime)) end))
+        still(name .. " preload")
+        local dv = H.popSpeed * math.max(H.minCharge, 1)
+        local n = math.sqrt(1 + H.forwardBias * H.forwardBias)
+        ent:SetHopCharge(0)
+        R.pop(dv / n, dv * H.forwardBias / n)
+        R.pitchRate = H.pitchImpulse
+        phase(name .. ": air")
+        local airT = 2 * dv / n / R.g
+        local mid = false
+        R.untilLanded(ride(function(t)
+            -- a style pose: in just after the pop, out in time to land on the pedals
+            if pose and B.PoseIDs[pose] then
+                ent:SetTrickBits((t > 0.08 and t < airT - 0.3) and B.PoseIDs[pose] * 65536 or 0)
+            end
+            if not mid and t >= airT / 2 then mid = true still(name .. " top") end
+        end), name .. ": land")
+        ent:SetTrickBits(0)
+    end
+
+    ent:SetPedalling(true)
+    stance("seated")
+    phase("pedal seated")
+    acc = 10
+    R.hold(3.0, ride())
+    still("pedal seated")
+    phase("stand + sprint")
+    stance("standing")
+    ent:SetSprinting(true)
+    acc = 35
+    R.hold(2.5, ride())
+    still("sprint")
+    phase("coast")
+    ent:SetSprinting(false)
+    ent:SetPedalling(false)
+    acc = 0
+    R.hold(1.5, ride())
+    still("coast")
+    hop("hop")
+    R.hold(0.6, ride())
+    phase("pedal")
+    stance("seated")
+    ent:SetPedalling(true)
+    acc = 10
+    R.hold(1.0, ride())
+    acc = 0
+    ent:SetPedalling(false)
+    hop("hop + tabletop", "tabletop")
+    R.hold(0.6, ride())
+    phase("roll out")
+    R.hold(1.2, ride())
+    still("roll out")
+end
+
+-- THE KICK SCOOTER: about 12 s. Rolled in, four kicks, a lean into a turn each way
+-- (the bars at the balance's derived steer), a full-charge hop, two kicks, rolled out.
+S.scooter_session = function()
+    local Bd, SC = B.Board, B.Scooter
+    local C = ent:Cfg()
+    local H = C.Hop
+    local drive = ent:Bike().drive or {}
+    local interval = drive.kickInterval or (SC.Tune and SC.Tune.kickInterval) or 0.55
+    local wb = C.Wheel.wheelbase
+    local R = rig({
+        speed = 120,
+        pitchHold = function(R) if R.air then return 25, 8 end return 60, 13 end,
+    })
+    local ps, kicks = {}, 0
+    local roll, rollTarget = 0, 0
+    local LEAN_RATE = 40                    -- degrees a second into and out of a lean
+    local function ride(fn)
+        return function(t, k)
+            if fn then fn(t, k) end
+            roll = roll + math.max(-LEAN_RATE * world.dt, math.min(LEAN_RATE * world.dt, rollTarget - roll))
+            R.roll = roll
+            local r = math.rad(roll)
+            R.yawRate = -math.deg(R.g * math.tan(r) / math.max(R.v, 1))  -- (leant right, it turns right)
+            if ent.SetSteer then ent:SetSteer(B.Lean.DerivedSteer(wb, R.g, r, math.max(R.v, 1))) end
+            if R.air then
+                ps.phase = interval
+                ent:SetPushPhase(-1)
+            else
+                local add, began = Bd.PushStep(ps, world.dt, kicks > 0, R.v, drive)
+                if began then kicks = kicks - 1 end
+                R.v = R.v + add - 4 * world.dt
+                ent:SetPushPhase(Bd.PushPhaseOf(ps, interval))
+            end
+        end
+    end
+
+    phase("roll in")
+    R.hold(0.8, ride())
+    phase("kick x4")
+    kicks = 4
+    R.hold(0.25, ride())
+    still("kick (in the stroke)")
+    R.hold(4 * interval - 0.25, ride())
+    phase("cruise")
+    R.hold(1.0, ride())
+    still("cruise")
+    phase("lean left")
+    rollTarget = -14
+    R.hold(1.4, ride())
+    still("lean left")
+    phase("lean right")
+    rollTarget = 14
+    R.hold(1.4, ride())
+    still("lean right")
+    phase("straighten")
+    rollTarget = 0
+    R.hold(0.6, ride())
+    phase("hop: preload")
+    R.hold(H.chargeTime, ride(function(t) ent:SetHopCharge(math.min(1, (t + world.dt) / H.chargeTime)) end))
+    still("hop preload")
+    local dv = H.popSpeed
+    local n = math.sqrt(1 + (H.forwardBias or 0) ^ 2)
+    ent:SetHopCharge(0)
+    R.pop(dv / n, dv * (H.forwardBias or 0) / n)
+    R.pitchRate = H.pitchImpulse or 0
+    phase("hop: air")
+    local mid = false
+    R.untilLanded(ride(function(t) if not mid and t >= dv / n / R.g then mid = true still("hop top") end end),
+        "hop: land")
+    R.hold(0.6, ride())
+    phase("kick x2")
+    kicks = 2
+    R.hold(2 * interval, ride())
+    phase("roll out")
+    R.hold(1.2, ride())
+    still("roll out")
+end
+
 S.rest = function()
     -- the capture as the client drew it: nothing manipulated
     shots[#shots + 1] = { label = "rest (no rider code)", bones = bones(ply), drawn = drawn, tubes = tubes, targets = {},
@@ -459,8 +926,14 @@ if SCEN == "rest" then drawn, tubes = {}, {} MF.draw(cl, ent) S.rest() else
 run(20)
 do
     local fn = S[SCEN] or S[fam]
+    -- (video: from the scenario's first frame; the model's build and the settling are not filmed)
+    -- (t0 one frame on: the clock moves before a frame is drawn, and the first is t = 0,
+    -- so a time in the film is the same time in the scenario)
+    if VIDEO then recording, t0, restZ = true, world.time + world.dt, ent:GetPos().z end
     okRun, err = pcall(fn)
+    recording = false
 end
 end
 io.write(J.encode({ id = ID, pose = def.pose, model = ok, meshes = meshes, shots = shots,
-    errors = cl.errors, err = not okRun and tostring(err) or nil }), "\n")
+    errors = cl.errors, err = not okRun and tostring(err) or nil,
+    video = VIDEO and { fps = FPS, ground = world.groundZ or 0, scenario = SCEN } or nil }), "\n")

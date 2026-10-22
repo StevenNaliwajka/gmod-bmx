@@ -545,14 +545,18 @@ end
 -- body and the deck do: spineLean (degrees), boardLift (units the deck is pulled
 -- up to the rider), boardPitch (radians of nose up).
 --------------------------------------------------------------------------
+-- THE BOARD COMES UP TO THE HAND. A grab on footage is the knees pulled up to the chest
+-- with the board on the feet, not the rider bending down to it: the deck rises most of
+-- a shin (1.3.9 lifted it 2 units, and the rider folded over straight legs to reach).
+-- B.Posture tucks the knees under the body by the grab's weight; this is the rest.
 local GRABS = {
     --   id           role   point on the deck: x, side (+1 = the toe edge), z
-    indy      = { hand = "back",  x =  0.0, edge =  1, z = 2.4, lean = 10, lift = 2.0 },
-    melon     = { hand = "front", x =  0.5, edge = -1, z = 2.4, lean = 6,  lift = 2.0 },
-    stalefish = { hand = "back",  x = -6.5, edge = -1, z = 2.4, lean = 12, lift = 2.0 },
-    nosegrab  = { hand = "front", x = 14.0, edge =  0, z = 2.6, lean = 14, lift = 2.5, pitch = 0.18 },
-    tailgrab  = { hand = "back",  x = -14.0, edge = 0, z = 2.6, lean = 8,  lift = 2.5, pitch = -0.18 },
-    method    = { hand = "front", x =  1.0, edge = -1, z = 3.0, lean = -8, lift = 4.0, pitch = 0.14 },
+    indy      = { hand = "back",  x =  0.0, edge =  1, z = 2.4, lean = 10, lift = 5.5 },
+    melon     = { hand = "front", x =  0.5, edge = -1, z = 2.4, lean = 6,  lift = 5.5 },
+    stalefish = { hand = "back",  x = -6.5, edge = -1, z = 2.4, lean = 12, lift = 5.0 },
+    nosegrab  = { hand = "front", x = 14.0, edge =  0, z = 2.6, lean = 14, lift = 5.5, pitch = 0.18 },
+    tailgrab  = { hand = "back",  x = -14.0, edge = 0, z = 2.6, lean = 8,  lift = 5.5, pitch = -0.18 },
+    method    = { hand = "front", x =  1.0, edge = -1, z = 3.0, lean = -8, lift = 7.0, pitch = 0.14 },
 }
 B.GrabRows = GRABS
 

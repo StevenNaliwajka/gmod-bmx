@@ -59,7 +59,11 @@ Nav.Config = {
     maxSlope  = 50,     -- deg; a quarter pipe's top is not somewhere to ride TO
     clear     = 56,     -- u of room above the surface for a rider
     maxMerge  = 12,     -- cells a side of one area
-    budget    = 0.004,  -- s of traces per tick while building
+    budget    = 0.004,  -- s of traces per tick while building, on a dedicated server
+    -- ...and where the server is the player's own game (singleplayer, a listen server's
+    -- host): every ms of it is one off their frame. At 4 ms the map's first catalogue
+    -- took ~30% of a core for ~45 s (a real game, 2026-11-08).
+    budgetHost = 0.001,
     flatSlope = 4,      -- deg still counted flat for a runway
     runStep   = 32,     -- u between runway samples
     runMin    = 500,    -- u: shorter than this is not a runway
@@ -302,8 +306,12 @@ function Nav.WorldBox()
     return Vector(lo.x + 1, lo.y + 1, lo.z), Vector(hi.x - 1, hi.y - 1, hi.z - 1)
 end
 
+function Nav.Budget(C)
+    C = C or Nav.Config
+    return (game.IsDedicated and game.IsDedicated()) and C.budget or (C.budgetHost or C.budget)
+end
 local function tickBudget(t0, C)
-    if coroutine.running() and SysTime() - t0 > C.budget then
+    if coroutine.running() and SysTime() - t0 > Nav.Budget(C) then
         coroutine.yield()
         return SysTime()
     end
@@ -816,8 +824,32 @@ function Nav.Catalog(done)
     end)
 end
 
+-- WHO NEEDS THE TRICK SPOTS. Only the trick bot (the BMX (Mode) gamemode) and auto-ride
+-- read them, but every server searched the map for them as it loaded, and remeshed and
+-- searched again whenever park pieces came or went: ~45 s of 4 ms ticks each time, paid
+-- in a sandbox game nobody ever started the bot in (2026-11-08). Under the BMX gamemode
+-- that is still done up front (its bot is about to ask); everywhere else it waits for the
+-- first ask (Nav.Spots), and a park's changes are remembered until then.
+function Nav.Eager()
+    return (engine.ActiveGamemode and engine.ActiveGamemode() == "bmx") or GetConVar("bmx_nav_eager"):GetBool()
+end
+CreateConVar("bmx_nav_eager", "0", bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED),
+    "BMX: search the map for the trick bot's spots as soon as it loads (always so under the BMX gamemode).")
+
+local pending
+local function flushPending()
+    local p = pending
+    pending = nil
+    if not p then return false end
+    Nav.Run("remesh", function() return Nav.Remesh(p.lo, p.hi) end, function(r)
+        if r then Nav.Catalog() end
+    end)
+    return true
+end
+
 -- The catalog for this mesh, starting the search when it is stale.
 function Nav.Spots()
+    if pending and not Nav.Eager() then flushPending() end
     local c = Nav.catalog
     if meshed() and (c.version ~= Nav.version) and not Nav.cataloguing then
         Nav.Catalog()
@@ -829,7 +861,6 @@ end
 -- Park pieces: their ground is remeshed when they come and go (debounced:
 -- a preset places a dozen at once).
 --------------------------------------------------------------------------
-local pending
 function Nav.Touch(lo, hi)
     if not meshed() then return end
     if pending then
@@ -838,15 +869,10 @@ function Nav.Touch(lo, hi)
     else
         pending = { lo = lo, hi = hi }
     end
-    timer.Create("BMX.Nav.Remesh", 0.5, 1, function()
-        local p = pending
-        pending = nil
-        if not p then return end
-        Nav.Run("remesh", function() return Nav.Remesh(p.lo, p.hi) end, function(r)
-            if r then Nav.Catalog() end
-        end)
-    end)
+    if not Nav.Eager() then return end           -- remeshed when the spots are next asked for
+    timer.Create("BMX.Nav.Remesh", 0.5, 1, flushPending)
 end
+function Nav.Pending() return pending ~= nil end
 
 --------------------------------------------------------------------------
 -- Commands
@@ -897,5 +923,5 @@ end, nil, "BMX: the navmesh and the trick spots found on it")
 
 -- A mesh loaded with the map: find its spots once something is running.
 hook.Add("InitPostEntity", "BMX.Nav.Catalog", function()
-    timer.Simple(2, function() Nav.Spots() end)
+    timer.Simple(2, function() if Nav.Eager() then Nav.Spots() end end)
 end)

@@ -5,6 +5,32 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.4.2 -- not on the Workshop yet
+
+More speed, measured feature by feature in a real game before and after
+(docs/PERFORMANCE.md has every number).
+
+**Faster**
+
+- **The server stopped searching the map for nobody.** As every map loaded, and again
+  whenever park pieces changed, the addon searched it for the trick bot's ramps and rails:
+  for about 45 seconds it took a third of a CPU core, in singleplayer straight out of your
+  frame rate. Now that happens only in the BMX gamemode, or the first time the bot or
+  auto-ride needs it. With nothing spawned the server side went from 311 ms of every
+  second to under 1 ms; riding a BMX after joining went from 193 to 280 fps, a skate park
+  from 190 to 278 fps, 16 parked bikes from 25 to 105 fps.
+- **Spawning a new kind of bike barely hitches.** Its model is built in smaller pieces (no
+  piece takes longer than a frame can spare), it is shown to the graphics card a piece at
+  a time before it appears, and the materials it needs are made while you join. Frames
+  over 16.7 ms after a first spawn: 2-3 before, none now, except one on the very first
+  spawn of a session.
+- **Point at a bike in the menu and it is ready when you click.** Hovering a bike in the
+  Q menu or the /bike menu builds its model in the background, so the spawn has nothing
+  left to do.
+- **Less memory.** A bike model nobody has used for 5 minutes is let go (the 4 most
+  recent are kept, setting "Vehicle models kept in memory"). Every model used to stay for
+  the whole game: up to about 200 MB once you had spawned every kind.
+
 ## 1.4.1 -- not on the Workshop yet
 
 The performance update, from the bug reports: "the mod causing the most lag", "frames go

@@ -287,6 +287,196 @@ T.test("client perf: a parked bike's cable and stand are built once they hold st
     T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
 end)
 
+-- THE ENGINE TAKES A MESH IN ONE CALL, so a mesh is no bigger than a slice can afford:
+-- BuildFromTriangles measured 0.73 us a vertex on a real client (2026-11-08), and a
+-- 4096-triangle mesh was a 9 ms frame -- every build's worst.
+T.test("client perf: no mesh handed to the engine is more than a build slice can take", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    MF.enable(cl)
+    local BM = cl.env.BMX.BikeMesh
+    local budgetMs = 4
+    T.between(BM.MAX_TRIS * 3 * 0.73e-3, 0, budgetMs, "the biggest mesh's handover at the measured rate, ms")
+end)
+
+-- A FINISHED MODEL IS WARMED BEFORE IT IS SHOWN: the first frame that drew one handed
+-- every mesh to the GPU at once (a 30 ms frame on a real client). Each mesh is drawn once
+-- with colour and depth writes off, a slice a frame, from a drawn vehicle only (the
+-- prebuild's Think has no 3D draw), and the model is ready after the last.
+T.test("client perf: a built model is warmed a slice a frame before it is drawn, never from the prebuild", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    MF.enable(cl)
+    local E, B = cl.env, cl.env.BMX
+    local BM = B.BikeMesh
+    BM.Clear()
+    local writesOff, warmDraws, visibleDraws = false, 0, 0
+    E.render.OverrideColorWriteEnable = function(on, write) writesOff = on and not write end
+    E.render.OverrideDepthEnable = function() end
+    E.Mesh = function()
+        local m = { valid = true }
+        function m:BuildFromTriangles() end
+        function m:Draw() if writesOff then warmDraws = warmDraws + 1 else visibleDraws = visibleDraws + 1 end end
+        function m:Destroy() self.valid = false end
+        function m:IsValid() return self.valid end
+        return m
+    end
+    local clock = 0
+    E.SysTime = function() clock = clock + 0.0001 return clock end
+    -- build it to the end, asked by a drawn vehicle each frame
+    local m
+    for _ = 1, 20000 do
+        m = BM.Get(1, 10)
+        if m or BM.Status()["1.000/10.000"] == "warming" then break end
+    end
+    T.eq(m, nil, "not ready the moment the build ends")
+    T.eq(BM.Status()["1.000/10.000"], "warming", "warming")
+    -- the prebuild's asks do not warm it
+    local before = warmDraws
+    BM.Background(true)
+    for _ = 1, 5 do BM.Get(1, 10) end
+    BM.Background(false)
+    T.eq(warmDraws, before, "no warming from the prebuild")
+    -- drawn asks do, a slice a frame, until it is ready
+    local frames = 0
+    while not m and frames < 1000 do m = BM.Get(1, 10) frames = frames + 1 end
+    T.ok(m ~= nil and m.ready, "ready once warmed")
+    T.ok(frames > 1, "spread over frames (" .. frames .. ")")
+    local meshes = 0
+    for _, list in pairs(m.groups) do for _, e in ipairs(list) do meshes = meshes + #e.meshes end end
+    T.eq(warmDraws, meshes, "every mesh drawn once with nothing written")
+    T.eq(visibleDraws, 0, "and none drawn visibly before it is ready")
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
+-- BUILT WHILE YOU CHOOSE: pointing at a vehicle in the /bike menu (or the Q menu's icon)
+-- builds that kind's model before the click, so the spawn has nothing left to build.
+-- Only that kind (all of them would be ~200 MB of a 32-bit game), and nothing drawn from
+-- outside a 3D draw: the spawned vehicle's own Draw warms it.
+T.test("client perf: pointing at a vehicle in the menu builds its model before the click, that one only", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    MF.enable(cl)
+    local E, B = cl.env, cl.env.BMX
+    local BM = B.BikeMesh
+    BM.Clear()
+    local drawn = 0
+    E.render.OverrideColorWriteEnable = function() end
+    E.render.OverrideDepthEnable = function() end
+    E.Mesh = function()
+        local m = { valid = true }
+        function m:BuildFromTriangles() end
+        function m:Draw() drawn = drawn + 1 end
+        function m:Destroy() self.valid = false end
+        function m:IsValid() return self.valid end
+        return m
+    end
+    local clock = 0
+    E.SysTime = function() clock = clock + 0.0001 return clock end
+    local button = { BMXVehicleId = "road" }
+    function button:IsValid() return true end
+    function button:GetParent() return nil end
+    local hovered = button
+    E.vgui = E.vgui or {}
+    E.vgui.GetHoveredPanel = function() return hovered end
+    local think = E.hook.GetTable().Think["BMX.ModelIntent"]
+    T.ok(think ~= nil, "the menu-intent hook is there")
+    local function status()
+        local n, st = 0, nil
+        for k, v in pairs(BM.Status()) do n = n + 1 st = v end
+        return n, st
+    end
+    for _ = 1, 20000 do
+        think()
+        local n, st = status()
+        if st == "warming" or st == "ready" then break end
+    end
+    local n, st = status()
+    T.eq(n, 1, "one model asked for: the one pointed at")
+    T.ok(st == "warming", "built, left to warm in a 3D draw (" .. tostring(st) .. ")")
+    T.eq(drawn, 0, "nothing drawn from the menu's Think")
+    -- the world's 3D pass under the open menu warms it: ready before any click
+    local warm = E.hook.GetTable().PostDrawOpaqueRenderables["BMX.ModelIntentWarm"]
+    T.ok(warm ~= nil, "the menu-intent warming hook is there")
+    warm(true, false)
+    T.eq(drawn, 0, "not in the depth pass")
+    for _ = 1, 2000 do
+        warm(false, false)
+        local _, st2 = status()
+        if st2 == "ready" then break end
+    end
+    local _, st3 = status()
+    T.eq(st3, "ready", "ready before the click")
+    T.ok(drawn > 0, "warmed in the 3D pass")
+    -- pointing away: it keeps going a few seconds, then nothing more is asked
+    hovered = nil
+    E.RealTime = function() return 1e6 end
+    think()
+    T.eq((status()), 1, "no other model started")
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
+-- MODELS NOBODY USES ARE LET GO: every model built stayed for the session, ~200 MB of a
+-- 32-bit game's memory once every kind had been seen. Idle 5 minutes, a model is freed,
+-- but the bmx_model_keep most recent are kept to 15; one a vehicle asks for, never.
+T.test("client perf: a model nothing uses is freed after a while, a few kept, one in use never", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    MF.enable(cl)
+    local E, B = cl.env, cl.env.BMX
+    local BM = B.BikeMesh
+    BM.Clear()
+    local destroyed = 0
+    E.Mesh = function()
+        local m = { valid = true }
+        function m:BuildFromTriangles() end
+        function m:Draw() end
+        function m:Destroy() self.valid = false destroyed = destroyed + 1 end
+        function m:IsValid() return self.valid end
+        return m
+    end
+    local clock, now = 0, 0
+    E.SysTime = function() clock = clock + 0.0001 return clock end
+    E.RealTime = function() return now end
+    local function build(k, r) local m for _ = 1, 20000 do m = BM.Get(k, r) if m then return m end end end
+    local a, b = build(1, 10), build(1.1, 12)
+    T.ok(a and b, "two models built")
+    local function count() local n = 0 for _ in pairs(BM.Status()) do n = n + 1 end return n end
+    -- keep 0: both idle past 5 minutes are freed; while one is still asked for it stays
+    E.GetConVar("bmx_model_keep"):SetInt(0)
+    for t = 10, 400, 10 do now = t BM.Get(1, 10) BM.Sweep() end
+    T.eq(count(), 1, "the idle one freed, the one still asked for kept")
+    T.ok(b.cleared and destroyed > 0, "its meshes destroyed")
+    T.ok(not a.cleared, "the one in use untouched")
+    -- keep 4: idle, it stays until fifteen minutes
+    E.GetConVar("bmx_model_keep"):SetInt(4)
+    for t = 410, 1250, 10 do now = t BM.Sweep() end
+    T.eq(count(), 1, "kept while idle under fifteen minutes")
+    for t = 1260, 1400, 10 do now = t BM.Sweep() end
+    T.eq(count(), 0, "freed after fifteen minutes idle")
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
+-- THE MATERIALS ARE MADE WHILE THE GAME LOADS, one a tick after joining, not all in the
+-- frame of the session's first spawn (26 ms of it on a real client).
+T.test("client perf: after joining, every vehicle material is made one a tick, before any spawn", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    MF.enable(cl)
+    local E, BM = cl.env, cl.env.BMX.BikeMesh
+    local made = {}
+    local real = BM.Material
+    BM.Material = function(role, ...) made[role] = true return real(role, ...) end
+    T.ok(E.hook.GetTable().InitPostEntity["BMX.WarmMaterials"] ~= nil, "it starts after joining")
+    BM.WarmMaterials()
+    for _ = 1, 400 do world.time = world.time + 0.05 cl:runTimers() end
+    for _, role in ipairs({ "decal", "tyretext", "paint", "black", "chrome", "rubber", "lens" }) do
+        T.ok(made[role], role .. " made")
+    end
+    BM.Material = real
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
 local function buildStretches(id)
     local _, world = F.server()
     local cl = F.client(world)

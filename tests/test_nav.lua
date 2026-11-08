@@ -252,3 +252,51 @@ T.test("nav: a remesh round a piece leaves no ground covered twice, and the new 
     T.eq(unlinked, 0, "every neighbour linked both ways")
     T.eq(#sv.errors, 0, "no errors: " .. table.concat(sv.errors, " | "))
 end)
+
+-- THE TRICK SPOTS ARE FOUND WHEN SOMETHING ASKS. Every server searched the map for the
+-- bot's spots as it loaded, and remeshed and searched again whenever park pieces came or
+-- went: ~45 s of 4 ms ticks each time, ~30% of a core in a sandbox game nobody started
+-- the bot in (a real game, 2026-11-08). Now only the BMX gamemode does that up front;
+-- elsewhere a park's changes wait for the first ask, and a host's ticks get 1 ms.
+T.test("nav: outside the BMX gamemode the spots are searched for only when asked, at a host's gentler pace", function()
+    local E, sv = env()
+    local N = E.BMX.Nav
+    E.navmesh = E.navmesh or {}
+    E.navmesh.GetNavAreaCount = function() return 10 end
+    E.navmesh.FindInBox = function() return {} end
+    local gamemode = "sandbox"
+    E.engine.ActiveGamemode = function() return gamemode end
+    local dedicated = false
+    E.game.IsDedicated = function() return dedicated end
+    N.jobs = {}
+    local ran = {}
+    local run0 = N.Run
+    N.Run = function(name, ...) ran[#ran + 1] = name return run0(name, ...) end
+    -- joining: nothing searched
+    E.hook.Run("InitPostEntity")
+    sv:run(3)
+    T.eq(#ran, 0, "no search when the map loads")
+    -- a park piece placed: remembered, not remeshed
+    N.Touch(E.Vector(0, 0, 0), E.Vector(100, 100, 50))
+    sv:run(1)
+    T.eq(#ran, 0, "no remesh for a park piece")
+    N.Run = run0
+    T.ok(N.Pending(), "the change is remembered")
+    -- the bot (or auto-ride) asks: the remesh runs then, and the search after it
+    N.Spots()
+    T.ok(#N.jobs >= 1 and N.jobs[1].name == "remesh", "asked for: the remesh starts")
+    T.ok(not N.Pending(), "and is no longer waiting")
+    T.near(N.Budget(), 0.001, 1e-9, "a host's tick budget")
+    dedicated = true
+    T.near(N.Budget(), 0.004, 1e-9, "a dedicated server's")
+    -- under the BMX gamemode: up front, as before
+    N.jobs = {}
+    local started = {}
+    local run = N.Run
+    N.Run = function(name, ...) started[#started + 1] = name return run(name, ...) end
+    gamemode = "bmx"
+    N.Touch(E.Vector(0, 0, 0), E.Vector(100, 100, 50))
+    sv:run(1)
+    N.Run = run
+    T.eq(started[1], "remesh", "the BMX gamemode remeshes a park change straight away")
+end)

@@ -234,6 +234,10 @@ client{ name = "bmx_cam_skates", kind = "bool", default = true, category = "came
     label = "Chase camera on skates",
     help = "On inline skates, the same chase camera as on a bike: you see your skater, and the mouse turns them. Off: first person." }
 
+client{ name = "bmx_model_keep", kind = "int", default = 4, min = 0, max = 20, category = "advanced",
+    label = "Vehicle models kept in memory",
+    help = "How many built vehicle models stay in memory when none of that kind is about (about 12 MB each). Fewer saves memory; a kind let go is built again the next time it is spawned." }
+
 client{ name = "bmx_replay_buffer", kind = "bool", default = true, category = "camera",
     label = "Record the replay buffer",
     help = "Keep the last 30 seconds of you and nearby riders so you can watch them back (bmx_replay). Turn it off to save a little memory." }
@@ -320,6 +324,9 @@ client{ name = "bmx_vol_bell", kind = "float", default = 1, min = 0, max = 1, de
     help = "How loud bike bells are for you, yours and everyone else's. 0 mutes them." }
 
 -- ---- Server (admin) ------------------------------------------------------
+server{ name = "bmx_nav_eager", kind = "bool", default = false, category = "world",
+    label = "Find trick spots on load",
+    help = "Search the map for the trick bot's ramps and rails as soon as it loads, and again whenever park pieces change. Off, it is done the first time the bot or auto-ride asks, so nobody pays for it otherwise. Always on under the BMX gamemode." }
 server{ name = "bmx_scoring", kind = "bool", default = true, category = "rules",
     label = "Score tricks",
     help = "Tricks earn points and callouts. Off turns scoring and combos off completely." }

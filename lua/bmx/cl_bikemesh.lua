@@ -277,7 +277,11 @@ local models = {}                     -- key -> { ready, groups, layout } or a b
 -- the same material under the same matrix: the same triangles reach the screen in
 -- the same order, so the same pixels. Each one is a draw call: 4096 adds a few to a
 -- vehicle (the BMX 48 -> 54) and keeps each call to 12,288 vertices.
-local MAX_TRIS = 4096
+-- 1536 since 1.4.2: BuildFromTriangles was measured on a real client (an RTX 2070 box,
+-- bmx_bike_build_report) at 0.73 us a vertex, so a 4096-triangle mesh (12,288 vertices)
+-- was ~9 ms in ONE call, twice the slice: every build's worst frame. 1536 triangles is
+-- ~3.4 ms, inside the 4 ms slice; a big bucket is a few more draw calls.
+local MAX_TRIS = 1536
 BM.MAX_TRIS = MAX_TRIS
 local CHECK_VERTS = 48                -- the clock looked at every this many vertices
 
@@ -501,6 +505,10 @@ local seq = 0
 
 -- The prebuild marks its asks as the low-rate kind (BM.Background(true) ... (false)).
 function BM.Background(on) background = on and true or false end
+-- Asks from outside a 3D draw at the full rate (the menu's, cl_init.lua BMX.ModelIntent):
+-- they build, but leave the warming (a draw) to the vehicle's own Draw.
+local norender = false
+function BM.NoRender(on) norender = on and true or false end
 
 local function pick(frame)
     local best, bestScore
@@ -536,13 +544,61 @@ local function runSlice(key, m, ms)
         return nil
     end
     if coroutine.status(job.co) == "dead" then
-        res.ready = true
         res.buildStats = st
         models[key] = res
         BM.LastBuilds[#BM.LastBuilds + 1] = st
         if #BM.LastBuilds > 32 then table.remove(BM.LastBuilds, 1) end
+        -- WARMED BEFORE IT IS SHOWN (BM.Warm): the first frame that drew a finished model
+        -- handed all its meshes to the GPU at once, ~17 MB for a BMX, a 30 ms frame on a
+        -- real client (2026-11-08). They are drawn once each, invisibly, a slice a frame,
+        -- and the model is ready when the last one is.
+        if render.OverrideColorWriteEnable and render.OverrideDepthEnable then
+            local q = {}
+            for _, list in pairs(res.groups) do
+                for _, e in ipairs(list) do
+                    for _, mesh in ipairs(e.meshes) do q[#q + 1] = { mesh, e.mat } end
+                end
+            end
+            res.warmQ, res.warmed = q, 0
+            st.warmMeshes = #q
+            return nil
+        end
+        res.ready = true
         return res
     end
+end
+
+-- Draw the next of a finished model's meshes once each with nothing written (no colour,
+-- no depth), until `ms` is spent: the engine uploads and readies each then, a few a frame,
+-- not all on the first frame it is seen. Needs a 3D draw (a vehicle's Draw is one).
+function BM.Warm(m, ms)
+    local q = m.warmQ
+    if not q then return true end
+    local t0 = SysTime()
+    local stop = t0 + ms / 1000
+    render.OverrideColorWriteEnable(true, false)
+    render.OverrideDepthEnable(true, false)
+    while m.warmed < #q do
+        m.warmed = m.warmed + 1
+        local it = q[m.warmed]
+        render.SetMaterial(BM.Material(it[2]))
+        it[1]:Draw()
+        if SysTime() >= stop then break end
+    end
+    render.OverrideDepthEnable(false, false)
+    render.OverrideColorWriteEnable(false, false)
+    local st = m.buildStats
+    if st then
+        local dt = (SysTime() - t0) * 1000
+        st.warmMs = (st.warmMs or 0) + dt
+        st.worst = math.max(st.worst, dt)
+        st.slices = st.slices + 1
+    end
+    if m.warmed >= #q then
+        m.warmQ, m.ready = nil, true
+        return true
+    end
+    return false
 end
 BM.LastBuilds = {}
 
@@ -561,8 +617,17 @@ function BM.Get(k, radius, kind, opt)
             opt and opt.rearRadius or 0, seat and string.format("%.2f,%.2f,%.2f", seat[1], seat[2], seat[3]) or "")
     end
     local m = models[key]
-    if m and m.ready then return m end
+    if m and m.ready then m.usedAt = RealTime() BM.Sweep() return m end
     if m and m.failed then return nil end
+    if m and m.warmQ then
+        -- built, being warmed: only from a drawn vehicle's Draw (a 3D draw), a slice a frame
+        local frame = FrameNumber()
+        if not background and not norender and frameRan ~= frame then
+            frameRan = frame
+            if BM.Warm(m, math.max(cvBudget:GetFloat(), 0.5)) then return m end
+        end
+        return nil
+    end
     if not m then
         local build = { k = k, radius = radius }
         if kind and kind ~= "bmx" then
@@ -597,6 +662,7 @@ function BM.Remembered(owner, bike, C, get, ...)
     if not BM.Enabled() then return nil end
     local r = owner.bmxModelMemo
     if r and r.bike == bike and r.cfg == C and r.rev == BMX.ConfigRevision and not r.model.cleared then
+        r.model.usedAt = RealTime()
         return r.model
     end
     local m = get(...)
@@ -609,7 +675,7 @@ end
 function BM.Status()
     local out = {}
     for key, m in pairs(models) do
-        out[key] = m.ready and "ready" or m.failed and ("failed: " .. tostring(m.err)) or "building"
+        out[key] = m.ready and "ready" or m.failed and ("failed: " .. tostring(m.err)) or m.warmQ and "warming" or "building"
     end
     return out
 end
@@ -621,6 +687,60 @@ local function destroyGroups(groups)
         end
     end
 end
+
+-- MATERIALS MADE WHILE THE GAME LOADS. Each was made the first time a vehicle drew with
+-- it -- its textures, the decal and tyre lettering drawn into render targets -- all in
+-- the frame of the session's first spawn (26 ms of materials in that spawn's first
+-- seconds on a real client, 2026-11-08). Made after joining now, one a tick, while
+-- nothing is waiting on them.
+function BM.WarmMaterials()
+    local roles = { "decal", "tyretext", "paint" }
+    for name in pairs(ROLE) do roles[#roles + 1] = name end
+    table.sort(roles)
+    local i = 0
+    timer.Create("BMX.WarmMaterials", 0.1, #roles, function()
+        i = i + 1
+        if roles[i] and BM.Enabled() then pcall(BM.Material, roles[i]) end
+    end)
+end
+hook.Add("InitPostEntity", "BMX.WarmMaterials", function() timer.Simple(3, BM.WarmMaterials) end)
+
+-- MODELS NOBODY USES ARE LET GO. Every model built stayed for the whole session: a
+-- sandbox game that had seen every kind held ~200 MB more of a 32-bit game's memory
+-- (measured 2026-11-08), the memory hundreds of other addons share. A model is in use
+-- while anything asks for it (every vehicle in the world does, every frame: the
+-- prebuild); one idle IDLE_FREE seconds is freed, except the bmx_model_keep most
+-- recently used, which are kept until IDLE_KEEP. Spawned again, it is built again (and
+-- pointing at it in a menu starts that: cl_init.lua BMX.ModelIntent).
+local cvKeep = CreateClientConVar("bmx_model_keep", "4", true, false,
+    "BMX: built vehicle models kept when no vehicle of that kind is about (each is ~12 MB).")
+local IDLE_FREE, IDLE_KEEP, SWEEP_EVERY = 300, 900, 5
+local nextSweep = 0
+function BM.Sweep(now)
+    now = now or RealTime()
+    if now < nextSweep then return end
+    nextSweep = now + SWEEP_EVERY
+    local idle = {}
+    for key, m in pairs(models) do
+        if m.ready and m.groups then
+            m.usedAt = m.usedAt or now          -- (ready since the last sweep: counted from now)
+            local age = now - m.usedAt
+            if age > IDLE_FREE then idle[#idle + 1] = { key = key, m = m, age = age } end
+        end
+    end
+    table.sort(idle, function(a, b) return a.age < b.age end)
+    local keep = math.max(0, math.floor(cvKeep:GetFloat()))
+    for i, it in ipairs(idle) do
+        if i > keep or it.age > IDLE_KEEP then
+            it.m.cleared = true
+            destroyGroups(it.m.groups)
+            it.m.groups = nil
+            models[it.key] = nil
+            BM.Freed = (BM.Freed or 0) + 1
+        end
+    end
+end
+hook.Add("Think", "BMX.ModelSweep", function() BM.Sweep() end)
 
 -- Throw every built model away (bmx_bike_model_rebuild, or a hot reload), and the
 -- meshes of any build half done.
@@ -644,7 +764,8 @@ concommand.Add("bmx_bike_build_report", function()
         MsgN(string.format("  %s: %d frames, %.0f ms, worst frame %.2f ms | %d meshes, %d vertices, " ..
             "BuildFromTriangles %.1f ms in all, worst %.2f ms (%d vertices), %.2f us a vertex",
             st.key, st.slices, st.ms, st.worst, st.commits, st.verts, st.commitMs, st.commitWorst,
-            st.commitWorstVerts, st.verts > 0 and st.commitMs * 1000 / st.verts or 0))
+            st.commitWorstVerts, st.verts > 0 and st.commitMs * 1000 / st.verts or 0)
+            .. (st.warmMeshes and string.format(" | warmed %d meshes in %.1f ms", st.warmMeshes, st.warmMs or 0) or ""))
     end
     for key, s in pairs(BM.Status()) do
         if s ~= "ready" then MsgN("  " .. key .. ": " .. s) end

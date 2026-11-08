@@ -1,0 +1,94 @@
+SPAWNPROBECL = SPAWNPROBECL or {}
+local C = SPAWNPROBECL
+local BM = BMX.BikeMesh
+C.origGet = C.origGet or BM.Get
+local buildAcc = 0
+local resumes, longest = 0, 0
+C.origResume = C.origResume or coroutine.resume
+coroutine.resume = function(co, ...)
+    local s = SysTime()
+    local a, b, c, d = C.origResume(co, ...)
+    resumes = resumes + 1
+    longest = math.max(longest, SysTime() - s)
+    return a, b, c, d
+end
+BM.Get = function(...)
+    local s = SysTime()
+    local a, b, c = C.origGet(...)
+    buildAcc = buildAcc + (SysTime() - s)
+    return a, b, c
+end
+-- Every BMX hook and each vehicle's Draw timed per frame, for the worst frames' breakdown.
+local parts = {}
+local function timed(name, fn)
+    return function(...)
+        local s = SysTime()
+        local a, b, c, d, e = fn(...)
+        parts[name] = (parts[name] or 0) + (SysTime() - s)
+        return a, b, c, d, e
+    end
+end
+if not C.hooksWrapped then
+    C.hooksWrapped = true
+    for ev, list in pairs(hook.GetTable()) do
+        for id, fn in pairs(list) do
+            if isstring(id) and id:sub(1, 3) == "BMX" and id ~= "BMX.BikeModelPrebuild" then hook.Add(ev, id, timed(ev .. ":" .. id, fn)) end
+        end
+    end
+end
+hook.Add("OnEntityCreated", "spawnprobe", function(e)
+    timer.Simple(0, function()
+        if IsValid(e) and e.IsBMX and not e.__sp then
+            e.__sp = true
+            local d = e.Draw
+            e.Draw = timed("vehicle Draw", d)
+            if e.Think then e.Think = timed("vehicle Think", e.Think) end
+        end
+    end)
+end)
+local cur
+hook.Add("PostRender", "spawnprobe", function()
+    local now = SysTime()
+    if not cur then C.last = now buildAcc = 0 return end
+    local dt = now - (C.last or now)
+    C.last = now
+    local heap = collectgarbage("count")
+    local top = {}
+    for k, v in pairs(parts) do top[#top + 1] = { k, v * 1000 } end
+    table.sort(top, function(a, b) return a[2] > b[2] end)
+    local tops = {}
+    for i = 1, math.min(3, #top) do tops[i] = string.format("%s %.1f", top[i][1], top[i][2]) end
+    parts = {}
+    cur.rows[#cur.rows + 1] = { dt * 1000, buildAcc * 1000, heap - (cur.lastHeap or heap), resumes, longest * 1000, table.concat(tops, ", ") }
+    cur.lastHeap = heap
+    buildAcc, resumes, longest = 0, 0, 0
+    if now > cur.till then
+        local r = cur
+        cur = nil
+        local ft = {}
+        for i, x in ipairs(r.rows) do ft[i] = x[1] end
+        table.sort(ft)
+        local function q(p) return ft[math.max(1, math.ceil(p * #ft))] or 0 end
+        local over16, over33, buildTot, gcs, two = 0, 0, 0, 0, 0
+        for _, x in ipairs(r.rows) do
+            if x[1] > 16.7 then over16 = over16 + 1 end
+            if x[1] > 33.3 then over33 = over33 + 1 end
+            buildTot = buildTot + x[2]
+            if x[3] < -1024 then gcs = gcs + 1 end
+            if x[4] > 1 then two = two + 1 end
+        end
+        local worst = {}
+        for _, x in ipairs(r.rows) do worst[#worst + 1] = x end
+        table.sort(worst, function(a, b) return a[1] > b[1] end)
+        local w = {}
+        for i = 1, math.min(4, #worst) do
+            w[i] = string.format("\n      %.1f ms: build %.1f (longest slice %.1f), heap %+.0f KB | %s", worst[i][1], worst[i][2], worst[i][5], worst[i][3], worst[i][6])
+        end
+        file.Append("probe/spawns.txt", string.format("%-10s %4d frames | median %.2f p95 %.2f max %.1f ms | >16.7ms %d >33ms %d | build %.0f ms in all | collections %d | frames with 2+ slices %d | worst: %s\n",
+            r.id, #r.rows, q(0.5), q(0.95), q(1), over16, over33, buildTot, gcs, two, table.concat(w, "; ")))
+    end
+end)
+net.Receive("spawnprobe", function()
+    local id, secs = net.ReadString(), net.ReadFloat()
+    cur = { id = id, till = SysTime() + secs, rows = {} }
+end)

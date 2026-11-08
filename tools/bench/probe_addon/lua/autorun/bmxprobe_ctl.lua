@@ -30,3 +30,8 @@ timer.Create("bmxprobe_ctl", 0.5, 0, function()
     end
 end)
 file.Append("probe/log.txt", "ctl ready " .. os.date() .. "\n")
+-- The player in the game (not only the server up): what the scripts wait for before
+-- sending anything that needs a client.
+hook.Add("PlayerInitialSpawn", "bmxprobe_ready", function()
+    timer.Simple(5, function() file.Append("probe/log.txt", "player ready " .. os.date() .. "\n") end)
+end)

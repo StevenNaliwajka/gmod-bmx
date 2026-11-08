@@ -32,6 +32,11 @@ BMX.Bikes    = BMX.Vehicles
 -- model the server never used is what left riders looking at the fallback.
 BMX.TyreModel = "models/props_phx/wheels/moped_tire.mdl"
 if util.PrecacheModel then util.PrecacheModel(BMX.TyreModel) end
+-- THE SEAT every vehicle's rider sits in (sh_passenger.lua), loaded while the game loads
+-- rather than by the first spawn: 3.9 ms of that spawn's frame on a real server, and in
+-- singleplayer the player's own frame (2026-11-08).
+BMX.SeatModel = "models/nova/airboat_seat.mdl"
+if util.PrecacheModel then util.PrecacheModel(BMX.SeatModel) end
 
 local pending = {}
 local derived = false

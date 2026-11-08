@@ -85,6 +85,7 @@ local function vehicleTab(sheet, sec, frame, pick)
             img:SetMouseInputEnabled(false)
         end
         b:SetTooltip(it.info)
+        b.BMXVehicleId = it.id          -- pointed at: its model is built (BMX.ModelIntent)
         b.DoClick = function()
             if pick then pick(it.id) else RunConsoleCommand("bmx_spawn", it.id) end
             surface.PlaySound("ui/buttonclick.wav")

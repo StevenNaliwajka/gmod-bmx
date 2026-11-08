@@ -650,6 +650,83 @@ function BMX.BikeModelFor(ent)
     return BMX.BikeMesh.Remembered(ent, bike, C, bikeModel, bike, C)
 end
 
+-- BUILT WHILE YOU CHOOSE. A vehicle's model was only started when the vehicle was
+-- spawned, and its half-second of building (and the first draw of its meshes) was the
+-- hitch players felt at every first spawn of a kind ("frames go down the drain whenever
+-- I spawn something", 2026-10-08). Building every kind up front costs ~12 MB each of a
+-- 32-bit game's memory (~200 MB for all, measured 2026-11-08), so a kind is built when
+-- the player POINTS at it: the Q menu's spawn icons (their GetSpawnName) and the /bike
+-- and rental menus' buttons (BMXVehicleId) start it the moment the pointer is on them,
+-- and keep it going for a few seconds after, so the click finds it built or nearly.
+local proxies = {}
+local function proxyFor(id)
+    local p = proxies[id]
+    if p ~= nil then return p or nil end
+    local def = BMX.Vehicles and BMX.Vehicles[id]
+    -- the skates are worn, not spawned: their model is their own ask (cl_skates.lua)
+    if def and def.worn and BMX.Skates and BMX.Skates.Model and id == BMX.Skates.ID then
+        p = { worn = true }
+        proxies[id] = p
+        return p
+    end
+    if not def or def.worn or not BMX.ConfigFor then proxies[id] = false return nil end
+    local C = BMX.ConfigFor(def)
+    p = { Bike = function() return def end, Cfg = function() return C end }
+    proxies[id] = p
+    return p
+end
+local classToId
+function BMX.VehicleIdOfClass(cls)
+    if not classToId then
+        classToId = {}
+        for id in pairs(BMX.Vehicles or {}) do
+            local c = BMX.ClassFor(id)
+            if c then classToId[c] = id end
+        end
+    end
+    return classToId[cls]
+end
+local intentId, intentUntil = nil, 0
+function BMX.ModelIntent(id)
+    intentId, intentUntil = id, RealTime() + 4
+end
+local function hoveredVehicle()
+    local p = vgui and vgui.GetHoveredPanel and vgui.GetHoveredPanel()
+    for _ = 1, 4 do
+        if not IsValid(p) then return nil end
+        if p.BMXVehicleId then return p.BMXVehicleId end
+        if p.GetSpawnName then
+            local ok, name = pcall(p.GetSpawnName, p)
+            local id = ok and isstring(name) and BMX.VehicleIdOfClass(name)
+            if id then return id end
+        end
+        p = p:GetParent()
+    end
+end
+-- ...and warmed (its first draws, nothing written: BikeMesh.Warm) in the world's own 3D
+-- pass, which goes on under an open menu: the click finds it ready, not just built.
+hook.Add("PostDrawOpaqueRenderables", "BMX.ModelIntentWarm", function(depth, sky)
+    if depth or sky or not intentId or RealTime() >= intentUntil then return end
+    local BM = BMX.BikeMesh
+    if not (BM and BM.Enabled()) then return end
+    local px = proxyFor(intentId)
+    if px then if px.worn then BMX.Skates.Model() else BMX.BikeModelFor(px) end end
+end)
+hook.Add("Think", "BMX.ModelIntent", function()
+    local BM = BMX.BikeMesh
+    if not (BM and BM.Enabled()) then return end
+    local id = hoveredVehicle()
+    if id then BMX.ModelIntent(id) end
+    if intentId and RealTime() < intentUntil then
+        local px = proxyFor(intentId)
+        if px then
+            BM.NoRender(true)
+            if px.worn then BMX.Skates.Model() else BMX.BikeModelFor(px) end
+            BM.NoRender(false)
+        end
+    end
+end)
+
 -- BUILT BEFORE IT IS SEEN. A model's build only advanced while a bike asking
 -- for it was being drawn, so a bike that rode into view -- a rental, the trick
 -- bot, a kind nobody had ridden yet -- showed the old simple bike for seconds

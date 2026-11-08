@@ -128,10 +128,109 @@ frame, not a pose that stays wrong. The first-spawn hitch (one frame up to ~40 m
 a new kind of vehicle is built) is unchanged; what players felt afterwards, the frame
 rate staying down while the vehicles stood about, is what 1.4.1 fixes.
 
+## Round 2 (1.4.2): the first-spawn hitch, the trick-spot search, every feature measured
+
+`tools/bench/sp.sh spawns` logs every frame for 5 s after each kind's first spawn: frame
+time, the Lua heap (a drop is a collection), the build's time in that frame and its
+longest slice. `tools/bench/sp.sh features` measures every feature in its own scene,
+client and server. What they found, and what changed:
+
+### 6. One mesh was a 9 ms call
+`BuildFromTriangles` runs at 0.73 us a vertex (bmx_bike_build_report, real client), and a
+mesh was up to 4096 triangles: ~9 ms in one call, every build's worst frame. Meshes are
+at most 1536 triangles now (~3.4 ms), inside the 4 ms slice. `tests/test_perf_client.lua`:
+"no mesh handed to the engine is more than a build slice can take".
+
+### 7. A finished model's first frame
+The frame a built model was first drawn handed all its meshes to the GPU (a 31 ms frame).
+Each mesh is now drawn once, invisibly (no colour, no depth written), a slice a frame,
+before the model counts as ready. Test: "a built model is warmed a slice a frame".
+
+### 8. Built while you choose
+Pointing at a vehicle in the Q menu or the /bike (or rental) menu builds and warms its
+model then, in the background, so the click finds it ready. Only that kind: building all
+of them up front measured ~200 MB of a 32-bit game. Test: "pointing at a vehicle in the
+menu builds its model before the click".
+
+### 9. Unused models are let go
+Every model built stayed for the session (up to ~200 MB). A model nothing has asked for in
+5 minutes is freed, except the `bmx_model_keep` (4) most recent, kept to 15. Test: "a model
+nothing uses is freed after a while".
+
+### 10. Materials and the seat model loaded while joining
+The vehicle materials (and the decal and tyre-lettering textures) are made one a tick after
+joining, and the seat model is precached at load, instead of in the first spawn's frame.
+
+### 11. The trick-spot search ran for everyone
+The navigation search for the trick bot's ramps and rails ran on every server as the map
+loaded, and again whenever park pieces changed: ~45 s at 4 ms a tick, **311 ms of every
+second** with nothing spawned (in singleplayer, the player's own frame). It is only done up
+front under the BMX gamemode now (or `bmx_nav_eager 1`); elsewhere when the bot or
+auto-ride first asks, at 1 ms a tick where the server is the player's game.
+`tests/test_nav.lua`: "outside the BMX gamemode the spots are searched for only when asked".
+
+### Every feature, 1.4.0 against 1.4.2 (`sp.sh features`, singleplayer gm_flatgrass, RTX 2070)
+
+| Scene | fps 1.4.0 | fps 1.4.2 | p99 ms 1.4.0 | p99 ms 1.4.2 | addon Lua ms/frame 1.4.0 | 1.4.2 | server ms/s 1.4.0 | 1.4.2 |
+|---|---|---|---|---|---|---|---|---|
+| nothing spawned | 238.0 | 290.3 | 10.67 | 3.95 | 0.04 | 0.04 | 311.2 | 0.9 |
+| riding stock BMX | 193.2 | 280.2 | 12.59 | 6.57 | 3.24 | 3.13 | 324.0 | 11.9 |
+| riding cruiser | 224.2 | 279.8 | 14.35 | 5.80 | 3.26 | 3.23 | 216.4 | 13.3 |
+| riding mini | 228.8 | 283.3 | 14.29 | 5.55 | 3.19 | 3.10 | 211.3 | 11.3 |
+| riding road | 286.2 | 286.0 | 4.66 | 4.61 | 2.44 | 2.56 | 10.5 | 12.3 |
+| riding fixie | 286.3 | 286.2 | 4.71 | 4.74 | 2.33 | 2.45 | 13.7 | 12.0 |
+| riding city | 286.2 | 286.0 | 4.51 | 4.63 | 2.41 | 2.54 | 12.4 | 13.7 |
+| riding unicycle | 288.7 | 289.0 | 4.32 | 4.23 | 1.21 | 1.23 | 10.0 | 8.7 |
+| riding penny | 287.7 | 286.7 | 4.70 | 4.46 | 1.64 | 1.71 | 12.7 | 12.3 |
+| riding tandem | 285.7 | 284.0 | 4.69 | 4.88 | 2.61 | 2.82 | 11.2 | 12.8 |
+| riding downhill | 249.8 | 286.7 | 10.08 | 4.62 | 6.83 | 2.41 | 14.2 | 10.8 |
+| riding scooter | 280.3 | 280.3 | 5.22 | 5.22 | 2.49 | 2.54 | 11.7 | 12.0 |
+| riding e-bike | 285.3 | 285.3 | 4.64 | 4.54 | 2.46 | 2.63 | 11.9 | 12.1 |
+| riding e-moto | 260.5 | 289.3 | 9.47 | 4.48 | 6.31 | 1.97 | 14.4 | 12.5 |
+| riding dirt bike | 256.5 | 288.8 | 9.80 | 4.58 | 6.45 | 2.06 | 14.0 | 12.4 |
+| riding moped | 286.8 | 287.8 | 4.90 | 4.58 | 2.19 | 2.26 | 13.7 | 12.2 |
+| riding skateboard | 282.2 | 283.2 | 5.28 | 5.02 | 2.37 | 2.37 | 16.7 | 16.4 |
+| riding skates | 290.3 | 289.0 | 4.04 | 4.20 | 0.07 | 1.23* | 8.4 | 8.6 |
+| riding, replay buffer off | 279.8 | 282.2 | 5.78 | 5.55 | 3.31 | 3.11 | 13.6 | 12.4 |
+| replay playback | 282.0 | 281.0 | 5.60 | 5.90 | 1.83 | 1.83 | 12.6 | 11.7 |
+| cinematic camera | 282.7 | 282.0 | 5.61 | 5.36 | 3.11 | 3.04 | 12.2 | 11.4 |
+| first-person camera | 290.2 | 287.0 | 4.23 | 4.94 | 2.51 | 2.53 | 9.8 | 12.6 |
+| filmer camera watching | 283.0 | 283.2 | 5.15 | 5.48 | 3.20 | 3.18 | 12.8 | 12.6 |
+| skate park preset ridden through | 189.7 | 277.5 | 13.79 | 5.99 | 3.48 | 3.52 | 332.4 | 13.8 |
+| bike rack, 4 bikes, rental machine | 118.3 | 245.8 | 18.60 | 10.69 | 11.47 | 8.20 | 368.1 | 14.4 |
+| 16 parked vehicles in view | 25.3 | 104.8 | 64.25 | 22.29 | 51.66 | 21.08 | 473.3 | 40.9 |
+| the BMX menu open | 224.8 | 290.5 | 14.96 | 3.77 | 0.04 | 0.05 | 300.1 | 0.7 |
+
+\* the skater is drawn now (1.4.1's chase camera on skates); before, they were never seen.
+Each scene runs 6 s after 3-5 s to settle; the probe's own timing adds a little to "addon
+Lua" in both columns. Several scenes of 1.4.0 ran during the trick-spot search (row 1's
+311 ms/s), which is what most of their difference is.
+
+### The first spawn of each kind (`sp.sh spawns`, a fresh session, each alone)
+
+Worst frame in the 5 s after the spawn (frames over 16.7 ms):
+
+| kind | 1.4.0 | 1.4.1 | 1.4.2 | 1.4.2, pointed at in the menu for 1.5 s first |
+|---|---|---|---|---|
+| stock BMX (the session's first spawn) | 35.2 (3) | 35.5 (4) | 27.3 (1) | 22.3 (1) |
+| road | 16.9 (2) | 17.8 (2) | 15.0 (0) | 12.6 (0) |
+| tandem | 19.2 (2) | 17.3 (2) | 15.5 (0) | 10.5 (0) |
+| dirt bike | 18.0 (3) | 18.2 (2) | 13.1 (0) | 11.2 (0) |
+| penny | 15.5 (0) | 16.8 (1) | 13.8 (0) | 11.2 (0) |
+| scooter | 23.5 (3) | 29.6 (1) | 12.8 (0) | 8.1 (0) |
+
+p95 frame in those 5 s: ~11.4 ms (1.4.0, 1.4.1) -> ~6 ms (1.4.2) -> ~5 ms when pointed at
+first. Left: the session's very first spawn still has one ~22-27 ms frame (the engine
+creating the first vehicle and its seat; 6 ms of it is the server's first spawn in
+singleplayer).
+
 ## Next round
 
 Run the loop again when: a vehicle gets a new moving part (anything drawn per frame
 belongs in a mesh), a new hook goes on a player draw (it can be skipped: give it a
-fallback as BMX.PoseRidersOf does), or a player reports lag. Candidates measured but
-not yet worth the change: the per-part matrix maths in `ENT:DrawDetailed` (~10% of
-what is left), and the first-spawn build spike.
+fallback as BMX.PoseRidersOf does), a background job is added (who needs it, and does it
+run for everyone?), or a player reports lag. Run `sp.sh features` before a release and
+compare with the table above. Candidates measured but not yet worth the change: the
+per-part matrix maths in `ENT:DrawDetailed` (~10% of what is left), the stand-in drawn
+while a model builds (a client-side prop per tube: dearer than the model it stands in
+for, but shown for well under a second now), and the session's first-spawn frame.

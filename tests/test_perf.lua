@@ -146,3 +146,45 @@ T.test("perf: bmx_lod_scale 0 is full detail at any distance", function()
     local farFull = drawAt(4000, 0)
     T.eq(farFull, near, "4000 units away with LOD off draws what near does")
 end)
+
+-- A VEHICLE AT REST SLEEPS. Every vehicle was woken 20 times a second for good, so a parked
+-- one nobody was near ran the whole physics step every tick: eight cost 78 ms of a
+-- server's second in a real game (2026-11-08). Now one with nobody aboard, on the ground
+-- and still for a second is left asleep, and its step stops; a rider or a knock wakes it.
+T.test("perf: a parked vehicle with nobody on it falls asleep and costs nothing, and wakes for a rider or a knock", function()
+    local sv = F.server()
+    local bike = F.bike(sv)
+    local steps = 0
+    local step = bike.PhysicsSimulate
+    bike.PhysicsSimulate = function(self, ...) steps = steps + 1 return step(self, ...) end
+    sv:run(2.5)
+    local phys = bike:GetPhysicsObject()
+    T.ok(phys:IsAsleep(), "asleep after standing still for a while")
+    steps = 0
+    sv:run(1)
+    T.eq(steps, 0, "physics steps in a second asleep")
+    local z = bike:GetPos().z
+    T.near(bike:GetPos().z, z, 1e-6, "it stays where it was")
+    -- a rider gets on: awake within a Think, and riding
+    sv:run(0.3)        -- (well into its slower, asleep Think)
+    local ply = F.scripted(sv, bike)
+    sv:run(1 / 66)
+    T.ok(not phys:IsAsleep(), "awake the tick a rider gets on")
+    steps = 0
+    F.input(bike, { throttle = 1 })
+    sv:run(1)
+    T.ok(steps > 50, "the step runs every tick for a rider (" .. steps .. ")")
+    T.ok(bike:GetVelocity():Length() > 20, "and the bike rides off")
+    -- parked again (braked to a stop, then off: the stand goes down), asleep again;
+    -- then a knock wakes it
+    F.input(bike, { brakeRear = 1, brakeFront = 1 })
+    sv:run(4)
+    ply:ExitVehicle()
+    F.input(bike, {})
+    sv:run(3)
+    T.ok(bike.st.onStand, "parked on its stand")
+    T.ok(phys:IsAsleep(), "asleep again once parked and still")
+    phys:ApplyForceCenter(sv.env.Vector(0, 2000, 0))
+    T.ok(not phys:IsAsleep(), "a knock wakes it")
+    T.eq(#sv.errors, 0, "no errors")
+end)

@@ -65,3 +65,23 @@ slab's 512-unit drop. A hand's miss is measured from the fist's centre, so OPEN 
 miss. First used 2026-10-11 on the marionette client: it found the tandem's and the
 penny-farthing's riders short of their bars and pedals, the skater hunched over, and
 the hands and feet jumping when a model finished building (1.3.2).
+
+## The camera sweep
+
+The animation sweep follows a BOT from a fixed camera. A player sees their OWN rider,
+through the chase camera, from wherever they turned the mouse; `camsweep_*.lua` checks
+exactly that. The player rides each vehicle themselves (the server drives the bike)
+through parked, pedal, sprint, standing, attack, hop, air with a style pose, landing and
+a braking turn, four times: the chase camera at 12, 40 and -12 degrees and first person,
+the view turned 300 degrees a second the way a mouse turns it. Every frame: where the
+camera is round the vehicle, whether the rider was drawn and posed, how far each fist and
+foot is from what the vehicle drew; bad frames are photographed with the frame itself
+(`render.Capture` of what the player saw), and one picture is kept per stage and 45
+degrees of camera.
+
+    tools/bench/sp.sh camsweep [passes] [ids]       # on the GPU test client, singleplayer
+    BMX_RCON_PASSWORD=... BMX_STUDIO_OWNER=<you> tools/ride/camsweep.sh [passes] [ids]   # on a server
+
+`tools/bench/sp.sh blocker on` first adds another addon's `PrePlayerDraw` that returns
+false ahead of ours: on 1.4.0 that rider was posed on 0 frames in 4,866 (the "jeep/airboat"
+sit of the bug report); since 1.4.1 on every one. See docs/PERFORMANCE.md.

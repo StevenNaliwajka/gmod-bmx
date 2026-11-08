@@ -510,6 +510,38 @@ end
 --------------------------------------------------------------------------
 local LOD_MID, LOD_FAR = 900, 2500
 local SPRING_NEAR = 350     -- a shock's coil in full detail this near (DrawDetailed)
+
+-- A shock's body, shaft and coil as meshes, in the shock's own frame (x along it from
+-- the frame end, y and z across: dir, e1, e2 in DrawDetailed), built at the first length
+-- it is seen at and kept for the layout (weak: a rebuilt model's old layout lets them go).
+-- `far` is the coil's lighter build.
+local shockCache = setmetatable({}, { __mode = "k" })
+local function shockMeshes(shock, r, L, far)
+    local c = shockCache[shock]
+    if not c then c = { L = L } shockCache[shock] = c end
+    local key = far and "far" or "near"
+    local sm = c[key]
+    if sm then return sm end
+    local L0 = c.L
+    local function P(x, y, z) return Vector(x, y, z) end
+    local turns, n, sides = 7, 70, 5
+    if far then n, sides = 42, 4 end
+    local pts = {}
+    for i = 0, n do
+        local t = i / n
+        local an = t * turns * math.pi * 2
+        pts[#pts + 1] = P(L0 * (0.12 + 0.8 * t), math.cos(an) * r * 1.45, math.sin(an) * r * 1.45)
+    end
+    sm = {
+        L = L0,
+        body = c.body or BMX.BikeMesh.TubeMesh({ P(0, 0, 0), P(L0 * 0.55, 0, 0) }, r, 12),
+        shaft = c.shaft or BMX.BikeMesh.TubeMesh({ P(L0 * 0.5, 0, 0), P(L0, 0, 0) }, r * 0.45, 10),
+        spring = BMX.BikeMesh.TubeMesh(pts, r * 0.22, sides),
+    }
+    c.body, c.shaft = sm.body, sm.shaft
+    c[key] = sm
+    return sm
+end
 local lodScale = CreateClientConVar("bmx_lod_scale", "1", true, false,
     "BMX bike detail by distance: 1 normal, 2 = full detail twice as far, 0 = always full.")
 
@@ -825,27 +857,39 @@ function ENT:DrawDetailed(model, S)
             if L > 1 then
                 local dir = d / L
                 local r = (lay.shock.r or 1) * 1
-                BM.DrawTube({ a, a + dir * (L * 0.55) }, r, "black", 12)
-                BM.DrawTube({ a + dir * (L * 0.5), b }, r * 0.45, "chrome", 10)
-                -- the spring, a coil round the body and the shaft
+                local e1 = dir:Cross(up):GetNormalized()
+                local e2 = dir:Cross(e1)
+                -- Past SPRING_NEAR the coil is a few pixels across and its wire under one:
+                -- six rings a turn and four sides draw the same pixels (bmx_lod_scale applies).
+                local ks = lodScale:GetFloat()
+                local far = ks > 0 and EyePos():DistToSqr(a) > (SPRING_NEAR * ks) ^ 2
+                local sm = shockMeshes(lay.shock, r, L, far)
+                -- BUILT ONCE, DRAWN UNDER A MATRIX. The body, the shaft and the coil were
+                -- worked out in Lua and handed to the engine vertex by vertex every frame:
+                -- 70 rings of 5 sides is 1,400 vertices and about ten thousand calls into
+                -- the engine for the coil alone, more than the rest of a motorbike and its
+                -- rider together (tools/bench --sites, 2026-11-08). Every part of a shock
+                -- is laid along its axis in proportion to its length (the body 0.55 of it,
+                -- the shaft from 0.5, the coil from 0.12 to 0.92), so the same shapes at
+                -- the length they were built at, stretched along the axis to this frame's,
+                -- are the same shapes; only the coil's wire is drawn a little flatter or
+                -- rounder along the axis, by the few percent the suspension moves.
+                local s = L / sm.L
+                local m = Matrix({
+                    { dir.x * s, e1.x, e2.x, a.x },
+                    { dir.y * s, e1.y, e2.y, a.y },
+                    { dir.z * s, e1.z, e2.z, a.z },
+                    { 0, 0, 0, 1 } })
+                cam.PushModelMatrix(m)
+                render.SetMaterial(BM.Material("black"))
+                sm.body:Draw()
+                render.SetMaterial(BM.Material("chrome"))
+                sm.shaft:Draw()
                 if lod == 0 then
-                    local e1 = dir:Cross(up):GetNormalized()
-                    local e2 = dir:Cross(e1)
-                    local pts = {}
-                    -- Built in Lua every frame: 70 rings of 5 sides is 1,400 vertices, the
-                    -- dearest thing a motorbike draws. Past SPRING_NEAR the coil is a few
-                    -- pixels across and its wire under one: six rings a turn and four sides
-                    -- draw the same few pixels for half the vertices (bmx_lod_scale applies).
-                    local turns, n, sides = 7, 70, 5
-                    local ks = lodScale:GetFloat()
-                    if ks > 0 and EyePos():DistToSqr(a) > (SPRING_NEAR * ks) ^ 2 then n, sides = 42, 4 end
-                    for i = 0, n do
-                        local t = i / n
-                        local an = t * turns * math.pi * 2
-                        pts[#pts + 1] = a + dir * (L * (0.12 + 0.8 * t)) + (e1 * math.cos(an) + e2 * math.sin(an)) * (r * 1.45)
-                    end
-                    BM.DrawTube(pts, r * 0.22, "paint", sides, lay.shock.springPaint and paint or COL_SPRING)
+                    render.SetMaterial(BM.Material("paint", lay.shock.springPaint and paint or COL_SPRING))
+                    sm.spring:Draw()
                 end
+                cam.PopModelMatrix()
             end
         end
 
@@ -855,7 +899,7 @@ function ENT:DrawDetailed(model, S)
             local gyro = frameMap(lay.gyro + Vector(-0.9, 0, -0.25) * k)
             local sag = 0.3 * lever:Distance(gyro)
             local c1 = (lever + gyro) * 0.5 - upF * sag + fwd * (0.4 * sag)
-            BM.DrawTube(bezier(lever, c1, gyro, lod == 0 and 10 or 4), 0.1 * k, "plastic", 6)
+            BM.DrawTubeOn(self, "cable", bezier(lever, c1, gyro, lod == 0 and 10 or 4), 0.1 * k, "plastic", 6)
         end
 
         -- Kickstand, when it is down: to the ground on the left.
@@ -871,8 +915,8 @@ function ENT:DrawDetailed(model, S)
                     filter = { self, self:GetPod() }, mask = MASK_SOLID })
                 if tr.Hit then to = tr.HitPos end
             end
-            BM.DrawTube({ from, to }, 0.33 * k, "black", 8)
-            BM.DrawTube({ to + (to - from):GetNormalized() * (-0.6 * k), to + leftW * (0.9 * k) }, 0.3 * k, "black", 8)
+            BM.DrawTubeOn(self, "stand", { from, to }, 0.33 * k, "black", 8)
+            BM.DrawTubeOn(self, "foot", { to + (to - from):GetNormalized() * (-0.6 * k), to + leftW * (0.9 * k) }, 0.3 * k, "black", 8)
         end
     BM.EndLighting()
 
@@ -1553,3 +1597,11 @@ BMX.DrawKit = {
     begin = function(ent) drawing = ent end,
     lod = function(ent, debug) return debug and 0 or BMX.BikeLOD(ent) end,
 }
+
+-- Its riders posed from here as well as from their own PrePlayerDraw (BMX.PoseRidersOf,
+-- cl_rider.lua): another addon's hook cannot stand in front of an entity's own Draw.
+local drawVehicle = ENT.Draw
+function ENT:Draw(...)
+    drawVehicle(self, ...)
+    if BMX.PoseRidersOf then BMX.PoseRidersOf(self) end
+end

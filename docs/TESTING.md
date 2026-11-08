@@ -203,6 +203,19 @@ versus the cadence ceiling), and a minute of random riding checking for NaNs.
 Every bug fixed alongside it was mutation-checked: revert the fix and a test
 fails.
 
+### In a real game, on a GPU
+
+The shim counts; it cannot time the engine. `tools/bench/sp.sh` drives a real Garry's
+Mod client in singleplayer (the GPU test client, gmod-marionette): `probe` times every
+BMX hook and each vehicle's Draw in staged scenes, `parked TAG` adds a line profile of
+the addon's Lua, `probe_addon/lua/svprobe.lua` times the server half (the same process
+in singleplayer), and `camsweep` checks the rider and the camera for every vehicle from
+every side. The loop these serve, and the numbers, are in docs/PERFORMANCE.md. Two traps:
+an unfocused game window is held to 20 fps (the script focuses it), and the 32-bit
+client runs out of memory in singleplayer with a few hundred Workshop addons mounted
+(the script moves them aside while it runs; `sp.sh restore` puts them back).
+`client_frame.lua --sites` lists which line of the addon makes each Vector a frame.
+
 ### What a client frame costs
 
 Players feel the client's frame rate, and nothing on a dedicated server runs the

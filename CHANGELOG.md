@@ -5,6 +5,35 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.4.1 -- not on the Workshop yet
+
+The performance update, from the bug reports: "the mod causing the most lag", "frames go
+down the drain whenever I spawn something", and "the riding pose only shows up in certain
+camera positions". Everything below was measured in a real game on a GPU before and after
+(docs/PERFORMANCE.md has the method and every number).
+
+**Faster**
+
+- **Parked bikes cost far less to draw.** The dirt bike's, e-moto's and downhill bike's
+  shock springs were rebuilt from scratch every frame, and so were the BMX's brake cable
+  and kickstand. They are built once now. With 8 mixed vehicles parked in view the game
+  ran at 93 fps; now 220 fps.
+- **Parked bikes go to sleep.** A bike nobody was on still ran its whole physics, 66 times
+  a second, forever. Now one standing on its stand (or lying on its side) with nobody near
+  it sleeps until something touches it or someone gets on. 8 parked bikes took 78 ms of
+  every second of the server (and in singleplayer, of your game); now 19 ms.
+- Riding alone and an empty map cost the same as before; the addon idle is 0.04 ms a frame.
+
+**Fixed**
+
+- **The rider no longer falls back to the jeep/airboat seat.** If another addon's draw
+  hook answered first, the riding pose was skipped and your rider sat in the plain
+  vehicle seat, from some camera angles and not others. The bike now notices and poses its
+  own riders. Checked on every vehicle from every side, through every stage of a ride.
+- **Skates get the chase camera.** They were the only ride stuck in first person; now
+  you see your skater like every other ride (Options: "Chase camera on skates"; first
+  person is still the "first person" camera setting). No crosshair on your back.
+
 ## 1.4.0 -- on the Workshop 2026-10-22
 
 The animation update. Riders now move the way real riders do. Their joint angles

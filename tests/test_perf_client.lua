@@ -173,6 +173,120 @@ end)
 -- counted, and its frames 20-90 ms. Now 22,000-55,000 for every kind. And no mesh is
 -- handed to the engine in one call over 12,288 vertices (it was up to 58,000).
 local MAX_MESH_VERTS = 12288      -- 4096 triangles (cl_bikemesh.lua MAX_TRIS)
+-- A MOTORBIKE'S SHOCK IS BUILT ONCE. Its body, shaft and coil were streamed to the engine
+-- vertex by vertex every frame (the coil alone 1,400 vertices, ~10,000 engine calls, the
+-- dearest thing a motorbike drew: tools/bench --sites, 2026-11-08). Now they are meshes
+-- built the first frame and drawn under a matrix from the frame's mount to the swingarm's.
+T.test("client perf: a motorbike's shock is built once and drawn under a matrix, its ends on their mounts", function()
+    for _, id in ipairs({ "dirtbike", "dh" }) do
+        local _, world = F.server()
+        local cl = F.client(world)
+        MF.enable(cl)
+        local E, B = cl.env, cl.env.BMX
+        B.BikeMesh.Clear()
+        local streamed, built, pushed, drawnUnder = 0, 0, {}, {}
+        local into
+        E.mesh.Begin = function(a) into = type(a) == "table" end
+        E.mesh.AdvanceVertex = function() if not into then streamed = streamed + 1 end end
+        local tubes = {}
+        local realTube = B.BikeMesh.TubeMesh
+        B.BikeMesh.TubeMesh = function(pts, ...)
+            built = built + 1
+            local m = realTube(pts, ...)
+            local mine = { pts = pts }
+            function mine:Draw() drawnUnder[#drawnUnder + 1] = { mesh = self, m = pushed[#pushed] } end
+            tubes[#tubes + 1] = mine
+            return mine
+        end
+        E.cam.PushModelMatrix = function(m) pushed[#pushed + 1] = m end
+        E.cam.PopModelMatrix = function() pushed[#pushed] = nil end
+        local ent = cl:clientEntity(B.ClassFor(id))
+        ent:SetPos(E.Vector(0, 0, ent:Cfg().Wheel.radius))
+        cl.eyePos = E.Vector(-80, 0, 40)
+        local shock
+        local dd = ent.DrawDetailed
+        ent.DrawDetailed = function(self, model, S) shock = model.layout and model.layout.shock return dd(self, model, S) end
+        T.ok(MF.ready(cl, ent), id .. ": the model is built")
+        local before = built
+        for _ = 1, 3 do
+            streamed, drawnUnder = 0, {}
+            MF.draw(cl, ent)
+        end
+        T.eq(built, before, id .. ": no shock part is rebuilt after its first frame")
+        T.ok(before >= 3, id .. ": the shock's body, shaft and coil are meshes (" .. before .. ")")
+        -- What is still streamed is what really bends (a cable, a stand), far less than a coil.
+        T.between(streamed, 0, 400, id .. ": vertices streamed a frame")
+        -- The shaft (the second tube built) ends on the swingarm's mount, the body starts on the frame's.
+        local frameM, swingM = MF.group(cl, "frame"), MF.group(cl, "swingarm")
+        local L = nil
+        for _, d in ipairs(drawnUnder) do
+            if d.mesh == tubes[2] and d.m then
+                local shaftEnd = d.mesh.pts[#d.mesh.pts]
+                L = { a = d.m:Apply(E.Vector(0, 0, 0)), b = d.m:Apply(shaftEnd) }
+            end
+        end
+        T.ok(L ~= nil, id .. ": the shaft is drawn under a matrix")
+        if L and frameM and swingM and shock then
+            T.between((L.a - frameM:Apply(shock.frame)):Length(), 0, 0.05, id .. ": the shock's top on the frame's mount")
+            T.between((L.b - swingM:Apply(shock.swing)):Length(), 0, 0.05, id .. ": the shaft's end on the swingarm's mount")
+        else
+            T.ok(shock ~= nil, id .. ": the layout's shock is known to the test")
+        end
+        T.eq(#cl.errors, 0, id .. ": no errors: " .. table.concat(cl.errors, " | "))
+    end
+end)
+
+-- A PARKED BMX'S CABLE AND STAND HOLD STILL, so after a frame they are a mesh drawn under the
+-- bike's matrix, not ~1,500 engine calls a frame (2026-11-08, the real-client profile);
+-- drawn either way, the cable's points are the same places in the world.
+T.test("client perf: a parked bike's cable and stand are built once they hold still, in the same place", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    MF.enable(cl)
+    local E, B = cl.env, cl.env.BMX
+    B.BikeMesh.Clear()
+    local streamed, into = 0, false
+    E.mesh.Begin = function(a) into = type(a) == "table" end
+    E.mesh.AdvanceVertex = function() if not into then streamed = streamed + 1 end end
+    local pushed, cableDraw = {}, nil
+    E.cam.PushModelMatrix = function(m) pushed[#pushed + 1] = m end
+    E.cam.PopModelMatrix = function() pushed[#pushed] = nil end
+    local realTube = B.BikeMesh.TubeMesh
+    local streamedPts
+    local realDraw = B.BikeMesh.DrawTube
+    B.BikeMesh.DrawTube = function(pts, r, role, ...)
+        if role == "plastic" then streamedPts = pts end
+        return realDraw(pts, r, role, ...)
+    end
+    B.BikeMesh.TubeMesh = function(pts, r, sides)
+        local m = realTube(pts, r, sides)
+        local mine = { pts = pts, r = r }
+        function mine:Draw() if r < 0.2 then cableDraw = { pts = self.pts, m = pushed[#pushed] } end end
+        function mine:Destroy() end
+        return mine
+    end
+    local ent = cl:clientEntity(B.ClassFor("stock"))
+    ent:SetPos(E.Vector(10, 20, ent:Cfg().Wheel.radius))
+    ent:SetAngles(E.Angle(0, 37, 0))
+    if ent.SetStandDown then ent:SetStandDown(true) end
+    cl.eyePos = E.Vector(-80, 0, 40)
+    T.ok(MF.ready(cl, ent), "the model is built")
+    MF.draw(cl, ent)
+    local firstPts = streamedPts
+    for _ = 1, 3 do streamed = 0 MF.draw(cl, ent) end
+    T.eq(streamed, 0, "no vertices streamed a frame once the bike holds still")
+    T.ok(cableDraw ~= nil and cableDraw.m ~= nil, "the cable is drawn as a mesh under a matrix")
+    if cableDraw and cableDraw.m and firstPts then
+        local worst = 0
+        for i, p in ipairs(cableDraw.pts) do
+            local w = cableDraw.m:GetTranslation() + cableDraw.m:Dir(p)
+            worst = math.max(worst, (w - firstPts[i]):Length())
+        end
+        T.between(worst, 0, 0.06, "the cable's points where the streamed cable had them (u)")
+    end
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
 local function buildStretches(id)
     local _, world = F.server()
     local cl = F.client(world)

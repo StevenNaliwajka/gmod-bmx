@@ -745,14 +745,72 @@ function BM.DrawGroup(model, name, mtx, paint, lod)
     cam.PopModelMatrix()
 end
 
--- A tube through `pts` (world space), drawn immediately: the parts that bend
--- every frame (the brake cable's loop, the kickstand).
+-- A tube through `pts`: drawn immediately (BM.DrawTube, the parts that bend every
+-- frame: the brake cable's loop, the kickstand) or built once into a mesh
+-- (BM.TubeMesh, for a part that only moves and stretches: a shock, drawn under a matrix).
 local RING_COS, RING_SIN = {}, {}     -- sides -> cos, sin of j / sides of a turn, j = 0..sides
+local emitTube
 function BM.DrawTube(pts, radius, role, sides, paint)
     sides = sides or 6
-    local n = #pts
-    if n < 2 then return end
+    if #pts < 2 then return end
     render.SetMaterial(BM.Material(role, paint))
+    emitTube(nil, pts, radius, sides)
+end
+-- A TUBE THAT USUALLY HOLDS STILL on its vehicle (the brake cable's loop moves only with
+-- the bars, the kickstand only as it swings): streamed vertex by vertex every frame it
+-- cost a parked BMX ~1,500 calls into the engine a frame for the same shape (2026-11-08,
+-- the real-client profile). Its points are taken into the vehicle's own frame; the same
+-- points as last frame (to 0.05 u) draw a mesh built from them under the vehicle's
+-- matrix, and points that keep changing (the bars being turned) are streamed as before,
+-- with no mesh built until they settle for a frame.
+local QUANT = 20                       -- 1/0.05 u
+function BM.DrawTubeOn(ent, slot, pts, radius, role, sides, paint)
+    if #pts < 2 then return end
+    local c = ent.bmxTubes
+    if not c then c = {} ent.bmxTubes = c end
+    local loc, key = {}, {}
+    for i, p in ipairs(pts) do
+        local l = ent:WorldToLocal(p)
+        loc[i] = l
+        key[#key + 1] = math.floor(l.x * QUANT + 0.5)
+        key[#key + 1] = math.floor(l.y * QUANT + 0.5)
+        key[#key + 1] = math.floor(l.z * QUANT + 0.5)
+    end
+    key = table.concat(key, ",") .. "|" .. radius .. "|" .. (sides or 6)
+    local e = c[slot]
+    if not e then e = {} c[slot] = e end
+    if e.key == key and e.mesh then
+        local m = Matrix()
+        m:SetTranslation(ent:GetPos())
+        m:SetAngles(ent:GetAngles())
+        render.SetMaterial(BM.Material(role, paint))
+        cam.PushModelMatrix(m)
+        e.mesh:Draw()
+        cam.PopModelMatrix()
+        return
+    end
+    if e.lastKey == key then
+        -- held for a frame: build it once
+        if e.mesh and e.mesh.Destroy then e.mesh:Destroy() end
+        e.mesh, e.key = BM.TubeMesh(loc, radius, sides), key
+        BM.DrawTube(pts, radius, role, sides, paint)
+    else
+        BM.DrawTube(pts, radius, role, sides, paint)
+    end
+    e.lastKey = key
+end
+
+-- The same tube's vertices, once, into a mesh of its own (drawn with :Draw() under a
+-- model matrix and a material the caller sets).
+function BM.TubeMesh(pts, radius, sides)
+    sides = sides or 6
+    if #pts < 2 then return nil end
+    local m = Mesh()
+    emitTube(m, pts, radius, sides)
+    return m
+end
+emitTube = function(into, pts, radius, sides)
+    local n = #pts
     -- frames by parallel transport
     local T, N = {}, {}
     for i = 1, n do
@@ -800,7 +858,8 @@ function BM.DrawTube(pts, radius, role, sides, paint)
     end
     local Position, Normal, TangentS, TangentT = mesh.Position, mesh.Normal, mesh.TangentS, mesh.TangentT
     local UserData, TexCoord, AdvanceVertex = mesh.UserData, mesh.TexCoord, mesh.AdvanceVertex
-    mesh.Begin(MATERIAL_QUADS, (n - 1) * sides)
+    if into then mesh.Begin(into, MATERIAL_QUADS, (n - 1) * sides)
+    else mesh.Begin(MATERIAL_QUADS, (n - 1) * sides) end
     for i = 1, n - 1 do
         local r1, r2 = (i - 1) * (sides + 1), i * (sides + 1)
         for j = 0, sides - 1 do

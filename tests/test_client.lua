@@ -1176,3 +1176,35 @@ T.test("singleplayer: L reaches the client through the server, once", function()
     s.sv.env.hook.Run("PlayerButtonDown", ply, E.KEY_L)
     T.eq(#s.world.wire, n, "in multiplayer the server sends nothing")
 end)
+
+-- ON SKATES, THE CHASE CAMERA TOO. The skates were the only ride with no chase camera:
+-- the skater rode in first person, the one rider who could not see themselves (the camera
+-- sweep, 2026-11-08). Now the same orbit: behind the look, at the chase distance, aimed at
+-- a standing rider's chest, the rider drawn; first person still on bmx_cam_first.
+T.test("on skates the chase camera follows the skater, and first person is still a setting", function()
+    local s = scene()
+    local E = s.cl.env
+    s.me._vehicle = nil
+    s.me._pos = E.Vector(100, 50, 0)
+    s.me:SetNWString("BMXWorn", "skates")
+    s.me:SetNWInt("BMXSkateFlags", E.BMX.Skates.Flag.ground)
+    local view
+    for _ = 1, 30 do
+        s.world.time = s.world.time + s.world.dt
+        view = E.hook.Run("CalcView", s.me, E.Vector(), E.Angle(10, 30, 0), 90)
+    end
+    T.ok(view ~= nil and view.drawviewer == true, "a chase view, the skater drawn")
+    if view then
+        local d = view.origin - (s.me:GetPos() + E.Vector(0, 0, 46))
+        T.between(d:Length(), 100, 130, "at the chase distance from the skater's chest, units")
+        T.between(d:GetNormalized():Dot(-E.Angle(10, 30, 0):Forward()), 0.99, 1.01, "behind where they look")
+    end
+    T.eq(E.hook.Run("HUDShouldDraw", "CHudCrosshair"), false, "no crosshair on the skater's back")
+    E.GetConVar("bmx_cam_first"):SetBool(true)
+    T.eq(E.hook.Run("CalcView", s.me, E.Vector(), E.Angle(), 90), nil, "first person on bmx_cam_first")
+    T.eq(E.hook.Run("HUDShouldDraw", "CHudCrosshair"), nil, "the crosshair back in first person")
+    E.GetConVar("bmx_cam_first"):SetBool(false)
+    s.me:SetNWString("BMXWorn", "")
+    T.eq(E.hook.Run("CalcView", s.me, E.Vector(), E.Angle(), 90), nil, "on foot, the engine's view")
+    T.eq(#s.cl.errors, 0, "no errors: " .. table.concat(s.cl.errors, " | "))
+end)

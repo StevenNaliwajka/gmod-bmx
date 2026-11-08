@@ -1783,7 +1783,7 @@ function BMX.RiderSpineLean(ply)
     return total - (ply.bmxReachSm and ply.bmxSpineLeanShown or 0)
 end
 
-hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
+function BMX.PoseRider(ply)
     forgetPose()
     local bike = cv_anim:GetBool() and BMX.LocalBike(ply) or nil
     if not bike then
@@ -1991,7 +1991,42 @@ hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
         end
     end
     animated[ply] = true
+end
+hook.Add("PrePlayerDraw", "BMX.RiderMotion", function(ply)
+    ply.bmxPreRan = true
+    BMX.PoseRider(ply)
 end)
+-- A RIDER DRAWN WITHOUT OUR PrePlayerDraw HAVING RUN: another addon's hook returned first
+-- and the event ended there. Noticed here, after the draw, and remembered for a while: the
+-- vehicle's Draw then poses them (BMX.PoseRidersOf).
+hook.Add("PostPlayerDraw", "BMX.RiderHookCheck", function(ply)
+    if not ply.bmxPreRan and BMX.LocalBike(ply) then ply.bmxPreSkippedAt = CurTime() end
+    ply.bmxPreRan = false
+end)
+
+--------------------------------------------------------------------------
+-- THE VEHICLE POSES ITS OWN RIDERS TOO. The pose went on only from the PrePlayerDraw hook
+-- above, and a hook is skipped whenever another addon's hook for the same event returns
+-- anything first -- even false, as a prop-hunt or a player-hiding addon's does: the rider
+-- was then drawn in the bare driving sit (the jeep/airboat animation), and in some views
+-- and not others (Workshop bug thread, 2026-11-04). A vehicle's Draw is its own method,
+-- which no other addon's hook stands in front of. It poses a rider whose PrePlayerDraw
+-- was seen skipped (BMX.RiderHookCheck, above) in the last two seconds, once a frame, and
+-- leaves everyone else to the hook: with nothing in the way nothing changes and nothing is
+-- spent. A bone moved stays moved, so a rider drawn before their vehicle wears last
+-- frame's pose.
+--------------------------------------------------------------------------
+function BMX.PoseRidersOf(bike)
+    local now = CurTime()
+    for _, ply in ipairs({ bike:GetDriver(), bike.GetPaxPegs and bike:GetPaxPegs() or NULL,
+            bike.GetPaxChild and bike:GetPaxChild() or NULL }) do
+        if IsValid(ply) and ply:IsPlayer() and ply:Alive() and BMX.LocalBike(ply) == bike
+            and not (ply == LocalPlayer() and ply.ShouldDrawLocalPlayer and not ply:ShouldDrawLocalPlayer())
+            and ply.bmxPreSkippedAt and now - ply.bmxPreSkippedAt < 2 then
+            BMX.PoseRider(ply)
+        end
+    end
+end
 
 --------------------------------------------------------------------------
 -- The reach-down while a fallen bike is picked up (BMX.BeginPickUp). A

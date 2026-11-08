@@ -62,7 +62,7 @@ do
     while arg and arg[i] do
         local a = arg[i]
         local key = a:match("^%-%-(.+)$")
-        if key == "count" or key == "spikes" or key == "profile" or key == "joff" or key == "csv" or key == "hooks"
+        if key == "count" or key == "sites" or key == "spikes" or key == "profile" or key == "joff" or key == "csv" or key == "hooks"
             or key == "quiet" or key == "noik" or key == "varied" or key == "slowskel" or key == "buildlog" or key == "build" or key == "nogc" or key == "framelog" then
             opt[key] = true
         elseif key then
@@ -115,7 +115,17 @@ end
 -- separate run from the timing, because the wrappers cost time themselves.
 --------------------------------------------------------------------------
 local tally = setmetatable({}, { __index = function() return 0 end })
-local function bump(k) tally[k] = tally[k] + 1 end
+local sites = {}
+local function bump(k)
+    tally[k] = tally[k] + 1
+    -- --sites: which line of the addon made it (bump <- the wrapper <- the caller).
+    if opt.sites and k == "vec" then
+        local i = debug.getinfo(3, "Sl")
+        local key = i and (i.short_src .. ":" .. (i.currentline or 0)) or "?"
+        sites[key] = (sites[key] or 0) + 1
+    end
+end
+if opt.sites then opt.count = true end
 if opt.count then
     local VA = require("lib.vecang")
     local V0, A0 = VA.Vector, VA.Angle
@@ -727,7 +737,10 @@ local function pct(sorted, p)
     return sorted[math.max(1, math.min(#sorted, math.floor(#sorted * p + 0.5)))]
 end
 
-local function resetTally() for k in pairs(tally) do tally[k] = nil end end
+local function resetTally()
+    for k in pairs(tally) do tally[k] = nil end
+    for k in pairs(sites) do sites[k] = nil end
+end
 
 -- Measure a built scene: timing with the collector running as it would, then the
 -- garbage with it stopped, then (--count) the engine calls.
@@ -804,6 +817,12 @@ local function measure(S)
     local skelKB = skel.kb / G
     local counts = {}
     for k, v in pairs(tally) do counts[k] = v / G end
+    if opt.sites then
+        local rows = {}
+        for k, v in pairs(sites) do rows[#rows + 1] = { k, v / G } end
+        table.sort(rows, function(a, b) return a[2] > b[2] end)
+        for i = 1, math.min(25, #rows) do print(string.format("      vec site %8.1f/frame  %s", rows[i][2], rows[i][1])) end
+    end
     for _, h in ipairs(hooks) do
         h[3] = (hookKB[h[1]] or 0) / G
         local hv = hookVec[h[1]]

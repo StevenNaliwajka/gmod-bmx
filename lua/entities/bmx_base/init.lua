@@ -322,6 +322,43 @@ end
 -- returned as an acceleration triple, so SIM_NOTHING is the correct return: it
 -- tells VPhysics we are not overriding its integration, only adding to it.
 --------------------------------------------------------------------------
+-- Still enough to sleep (ENT:Think): no rider (getting on wakes it: BMX.WakeForRider),
+-- nobody pushing, stable (on its stand, or fallen), and MOVED under REST_MOVE units and REST_TURN degrees between
+-- Thinks for REST_SECONDS. Measured as displacement, not velocity: a vehicle standing on
+-- its wheels reads one tick of gravity (about 9 u/s) that its suspension takes back in
+-- the same step, and never looked still by its velocity (a real game, 2026-11-08).
+local REST_MOVE, REST_TURN, REST_SECONDS = 0.1, 0.15, 1.0
+function BMX.AtRest(ent, st, phys)
+    local pos, ang = ent:GetPos(), ent:GetAngles()
+    local lp, la = ent.bmxRestPos, ent.bmxRestAng
+    ent.bmxRestPos, ent.bmxRestAng = pos, ang
+    local function no() ent.bmxStillSince = nil return false end
+    if not st or IsValid(ent:GetDriver()) then return no() end
+    if (st.pushedUntil or 0) > CurTime() then return no() end
+    -- STABLE ONLY: standing on its stand, or already lying on its side (its wheels are
+    -- then off the ground). A riderless bike balanced on its wheels is falling over,
+    -- however slowly it starts, and asleep it would stand there for good.
+    if not ((st.onStand and st.grounded) or ent.bmxFallen) then return no() end
+    if phys:IsAsleep() then return true end
+    if not lp or pos:DistToSqr(lp) > REST_MOVE * REST_MOVE then return no() end
+    if math.abs(math.AngleDifference(ang.p, la.p)) > REST_TURN or math.abs(math.AngleDifference(ang.y, la.y)) > REST_TURN
+        or math.abs(math.AngleDifference(ang.r, la.r)) > REST_TURN then return no() end
+    ent.bmxStillSince = ent.bmxStillSince or CurTime()
+    return CurTime() - ent.bmxStillSince >= REST_SECONDS
+end
+
+-- A rider (or a passenger) getting on a sleeping vehicle wakes it the same tick, not at
+-- its next (slower, asleep) Think.
+function BMX.WakeForRider(veh)
+    local bike = IsValid(veh) and veh:GetParent()
+    if not (IsValid(bike) and bike.IsBMX) then return end
+    bike.bmxResting, bike.bmxStillSince = false, nil
+    local phys = bike:GetPhysicsObject()
+    if IsValid(phys) then phys:Wake() end
+    bike:NextThink(CurTime())
+end
+hook.Add("PlayerEnteredVehicle", "BMX.WakeForRider", function(_, veh) BMX.WakeForRider(veh) end)
+
 function ENT:PhysicsSimulate(phys, dt)
     BMX.PhysicsStep(self, phys, dt)
     return SIM_NOTHING
@@ -393,8 +430,21 @@ function ENT:Think()
     -- means a tuner sees a change immediately instead of respawning the bike.
     BMX.ApplyConVars()
 
+    -- AT REST, ASLEEP. This kept every vehicle awake for good, so a parked bike nobody
+    -- was near ran the whole tyre, balance and suspension step 66 times a second: eight
+    -- of them cost 78 ms of a server's second (a real game, 2026-11-08), and in a
+    -- singleplayer game that is the player's own frame. A vehicle with nobody aboard or
+    -- leaning on it, on the ground and still for a second, is left to sleep; VPhysics
+    -- wakes it the moment anything touches it, and a rider or a push keeps it awake.
     local phys = self:GetPhysicsObject()
-    if IsValid(phys) then phys:Wake() end
+    if IsValid(phys) then
+        self.bmxResting = BMX.AtRest(self, st, phys)
+        if self.bmxResting then
+            if not phys:IsAsleep() then phys:Sleep() end
+        else
+            phys:Wake()
+        end
+    end
 
     self:NextThink(CurTime() + 0.05)
     return true

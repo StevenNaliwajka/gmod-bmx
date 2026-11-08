@@ -230,6 +230,10 @@ client{ name = "bmx_cam_air", kind = "float", default = 0.6, min = 0, max = 1, d
     category = "camera", label = "Trick camera",
     help = "In the air the camera pulls back and widens a little so the whole trick is in frame, then eases back on landing. 0 turns it off." }
 
+client{ name = "bmx_cam_skates", kind = "bool", default = true, category = "camera",
+    label = "Chase camera on skates",
+    help = "On inline skates, the same chase camera as on a bike: you see your skater, and the mouse turns them. Off: first person." }
+
 client{ name = "bmx_replay_buffer", kind = "bool", default = true, category = "camera",
     label = "Record the replay buffer",
     help = "Keep the last 30 seconds of you and nearby riders so you can watch them back (bmx_replay). Turn it off to save a little memory." }

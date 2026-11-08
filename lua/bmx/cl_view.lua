@@ -196,6 +196,49 @@ function BMX.FrameVehicles()
     return frameList
 end
 
+--------------------------------------------------------------------------
+-- THE SKATER'S CAMERA. Every vehicle had the chase camera and the inline skates had
+-- none: a skater rode in first person with the weapon in hand, the only ride whose own
+-- rider could not be seen (the camera sweep, 2026-11-08; docs/goals/G25 had it as "for
+-- the next pass"). A skater steers by where they look (DESIGN.md), which is exactly what
+-- this orbit does: the mouse turns the view, the skater goes round with it. The same
+-- pull-back with speed, height spring, trick camera in the air and wall trace as on a
+-- bike; aimed at a standing rider's chest rather than a saddle. bmx_cam_first 1 (or
+-- bmx_cam_skates 0) keeps first person.
+--------------------------------------------------------------------------
+local cv_skates = CreateClientConVar("bmx_cam_skates", "1", true, false,
+    "1: on inline skates, the chase camera (as on every vehicle). 0: first person.")
+BMX.SkaterCam = { lift = 20 }      -- above bmx_cam_height: a standing rider's chest, not a saddle
+local sSkater = nil
+function BMX.SkaterView(ply, angles, fov)
+    if cv_fp:GetBool() or not cv_skates:GetBool() then sSkater = nil return end
+    local vel = ply:GetVelocity()
+    local speed = math.sqrt(vel.x * vel.x + vel.y * vel.y)
+    local frac = BMX.Ramp(speed, 0, 340)
+    local grounded = bit.band(ply:GetNWInt("BMXSkateFlags", 0), BMX.Skates.Flag.ground) ~= 0
+    local dt = FrameTime()
+    if sSkater ~= ply then
+        sSkater = ply
+        sZ = nil
+        sDist = cv_dist:GetFloat() * (1 + frac * 0.35)
+        sFov = fov + frac * 16
+        airState.t, airState.phase = 0, 0
+    end
+    local airBlend = BMX.AirCamStep(airState, grounded, dt)
+    local target = ply:GetPos() + Vector(0, 0, cv_height:GetFloat() + BMX.SkaterCam.lift)
+    target.z = followHeight(target.z, dt)
+    sDist = approach(sDist, cv_dist:GetFloat() * (1 + frac * 0.35), 4)
+    sFov = approach(sFov, fov + frac * 16, 4)
+    local airDist, airFov = BMX.AirCamExtras(airBlend, cv_air:GetFloat())
+    local wanted = target - angles:Forward() * (sDist * airDist)
+    local tr = util.TraceHull({
+        start = target, endpos = wanted,
+        mins = Vector(-8, -8, -8), maxs = Vector(8, 8, 8),
+        filter = { ply }, mask = MASK_SOLID_BRUSHONLY,
+    })
+    return { origin = tr.HitPos, angles = angles, fov = sFov + airFov, drawviewer = true }
+end
+
 hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
     -- A replay (cl_replay.lua) or a filmer camera (cl_filmer.lua) owns the view.
     if BMX.ReplayActive and BMX.ReplayActive() then return end
@@ -208,7 +251,16 @@ hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
     end
 
     local bike = BMX.LocalBike(ply)
-    if not bike then sBike = nil return end
+    if not bike then
+        sBike = nil
+        -- ON SKATES (worn, no vehicle): the same chase camera, round the skater.
+        local S = BMX.Skates
+        if S and S.ClientWearing and S.ClientWearing(ply) and ply:Alive() and not ply:InVehicle() then
+            return BMX.SkaterView(ply, angles, fov)
+        end
+        sSkater = nil
+        return
+    end
 
     -- A PASSENGER LOOKS WHERE THEY LIKE (G11): the view is the pod's own, which is
     -- free look and the mouse, and is what a camera person wants (G28).
@@ -311,7 +363,11 @@ end)
 -- crosshair over a chase camera is just noise.
 --------------------------------------------------------------------------
 hook.Add("HUDShouldDraw", "BMX.HideCrosshair", function(name)
-    if name == "CHudCrosshair" and BMX.LocalBike(LocalPlayer()) then
+    if name == "CHudCrosshair" and (BMX.LocalBike(LocalPlayer()) or BMX.SkaterCamOn()) then
         return false
     end
 end)
+
+-- The skater's chase camera is on (BMX.SkaterView): the crosshair, in the middle of the
+-- screen, would sit on the skater's back.
+function BMX.SkaterCamOn() return sSkater ~= nil and sSkater == LocalPlayer() end

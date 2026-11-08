@@ -947,9 +947,11 @@ function BMX.PhysicsStep(ent, phys, dt)
     ----------------------------------------------------------------------
     -- Keep VPhysics awake. An object that falls asleep stops receiving
     -- PhysicsSimulate, and the symptom is a bike that works until you stand
-    -- still for two seconds and then never responds again.
+    -- still for two seconds and then never responds again. Not a vehicle at
+    -- rest with nobody on it (ENT:Think, BMX.AtRest): that one is meant to
+    -- sleep, and a rider getting on wakes it within a Think.
     ----------------------------------------------------------------------
-    phys:Wake()
+    if not ent.bmxResting then phys:Wake() end
 
     -- The motion this substep leaves the bike with, every force above
     -- applied: what an impact on the next one is measured against (2c).

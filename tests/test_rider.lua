@@ -659,3 +659,36 @@ T.test("IK: the body lurches in one frame and the fist is still on the grip that
     end
     T.between(worst, 0, 1.5, "the fist off its grip in the frame of a lurch, at worst, units")
 end)
+
+-- ANOTHER ADDON'S PrePlayerDraw CANNOT TAKE THE POSE AWAY. A hook that returns anything
+-- (false, as a prop-hunt or a player-hiding addon's does) ends the event before ours: the
+-- rider was drawn in the bare driving sit, the "jeep/airboat animation" of the Workshop bug
+-- thread (2026-11-04). The vehicle's own Draw poses its riders too (BMX.PoseRidersOf), once
+-- a frame, so they still sit on the saddle with their hands and feet on the bike.
+T.test("the rider is posed even when another addon's PrePlayerDraw returns first", function()
+    local cl, bike, ply = seated()
+    local E = cl.env
+    local f = 0
+    E.FrameNumber = function() return f end
+    E.hook.Add("PrePlayerDraw", "AAA.SomeOtherAddon", function() return false end)
+    bike:SetCadence(0)
+    for _ = 1, 40 do
+        f = f + 1
+        frame(cl, bike, ply)            -- Draw, then the (blocked) PrePlayerDraw
+        E.hook.Run("PostPlayerDraw", ply)
+    end
+    local t = bike.ikTargets
+    T.ok(ply.bmxPoseFrame == f, "posed this frame, by the vehicle's Draw")
+    T.between(reach(cl, ply, "ValveBiped.Bip01_R_Foot", t.rFoot), 0, 1.5, "the right foot on its pedal")
+    T.between(reach(cl, ply, "ValveBiped.Bip01_R_Hand", t.rHandHeld or t.rHand), 0, 1.5, "the right hand on its grip")
+    T.between(reach(cl, ply, "ValveBiped.Bip01_L_Hand", t.lHandHeld or t.lHand), 0, 1.5, "the left hand on its grip")
+    -- once a frame: the hook, unblocked, finds the frame done and leaves it
+    E.hook.Remove("PrePlayerDraw", "AAA.SomeOtherAddon")
+    local poses = 0
+    local real = E.BMX.SolveRiderIK
+    E.BMX.SolveRiderIK = function(...) poses = poses + 1 return real(...) end
+    for _ = 1, 10 do f = f + 1 frame(cl, bike, ply) E.hook.Run("PostPlayerDraw", ply) end
+    E.BMX.SolveRiderIK = real
+    T.between(poses, 1, 10, "solved at most once a frame with both the Draw and the hook posing")
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)

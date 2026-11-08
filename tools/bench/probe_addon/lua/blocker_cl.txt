@@ -1,0 +1,17 @@
+-- Another addon's PrePlayerDraw that returns false (as a prop-hunt one's does for every
+-- player not a prop), placed AHEAD of BMX's in the hook table's walk (GMod walks it with
+-- pairs: the order is the table's, so names are tried until one comes first).
+local t = hook.GetTable().PrePlayerDraw or {}
+local name
+for i = 1, 400 do
+    local n = "OtherAddon.HidePlayer" .. i
+    hook.Add("PrePlayerDraw", n, function() return false end)
+    local first
+    for k in pairs(hook.GetTable().PrePlayerDraw) do
+        if k == n or k == "BMX.RiderMotion" then first = k break end
+    end
+    if first == n then name = n break end
+    hook.Remove("PrePlayerDraw", n)
+end
+BLOCKER_NAME = name
+file.Write("probe/blocker.txt", "blocker " .. tostring(name) .. " ahead of BMX.RiderMotion")

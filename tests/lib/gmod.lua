@@ -1132,11 +1132,12 @@ function M.Realm(world, which)
     function Phys:EnableCollisions(b) self.collisions = b end
     function Phys:Wake() self.asleep = false end
     function Phys:Sleep() self.asleep = true end
+    function Phys:IsAsleep() return self.asleep == true end
     function Phys:LocalToWorld(v) return self.ent:LocalToWorld(v) end
     function Phys:GetVelocity() return Vector(self.v) end
-    function Phys:SetVelocity(v) self.v = Vector(v) end
+    function Phys:SetVelocity(v) self.asleep = false; self.v = Vector(v) end
     -- GMod's angle velocity is LOCAL and in DEGREES per second.
-    function Phys:SetAngleVelocity(v)
+    function Phys:SetAngleVelocity(v) self.asleep = false;
         local e, r = self.ent, math.rad
         self.w = e._f * r(v.x) + e._l * r(v.y) + e._u * r(v.z)
     end
@@ -1145,8 +1146,8 @@ function M.Realm(world, which)
         return Vector(d(self.w:Dot(e._f)), d(self.w:Dot(e._l)), d(self.w:Dot(e._u)))
     end
     -- (GMod's Add* forms: the same units, added to what is there.)
-    function Phys:AddVelocity(v) self.v = self.v + v end
-    function Phys:AddAngleVelocity(v)
+    function Phys:AddVelocity(v) self.asleep = false; self.v = self.v + v end
+    function Phys:AddAngleVelocity(v) self.asleep = false;
         local e, r = self.ent, math.rad
         self.w = self.w + e._f * r(v.x) + e._l * r(v.y) + e._u * r(v.z)
     end
@@ -1192,12 +1193,12 @@ function M.Realm(world, which)
 
     -- IMPULSE semantics, which is what the addon's `forces` case establishes
     -- the real engine has: dv = J/m.
-    function Phys:ApplyForceCenter(J)
+    function Phys:ApplyForceCenter(J) self.asleep = false;
         if not self.motion then return end
         self.v = self.v + J / self.mass
         R.impulses = (R.impulses or 0) + 1
     end
-    function Phys:ApplyForceOffset(J, at)
+    function Phys:ApplyForceOffset(J, at) self.asleep = false;
         if not self.motion then return end
         self.v = self.v + J / self.mass
         self.w = self.w + self:invI((at - self:COM()):Cross(J))
@@ -1941,12 +1942,16 @@ function M.Realm(world, which)
             if not e._removed and p then
                 -- The motion controller and the collision report are both
                 -- VPhysics callbacks in the engine (see callbackCollisionChanges).
-                self.inPhysics = true
-                if e._controlled and e.PhysicsSimulate and p.motion then
-                    e:PhysicsSimulate(p, dt)
+                -- ASLEEP, as VPhysics has it: no motion controller, no motion, until
+                -- something wakes it (Wake, or a velocity, force or position set on it).
+                if not p.asleep then
+                    self.inPhysics = true
+                    if e._controlled and e.PhysicsSimulate and p.motion then
+                        e:PhysicsSimulate(p, dt)
+                    end
+                    if not e._removed then integrate(p, dt) end
+                    self.inPhysics = false
                 end
-                if not e._removed then integrate(p, dt) end
-                self.inPhysics = false
             end
         end
         self:runTimers()

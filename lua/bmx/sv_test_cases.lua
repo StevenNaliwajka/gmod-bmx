@@ -2936,13 +2936,26 @@ end)
 -- calling `each(st)` every tick until the bike has been in the air and come
 -- down again (or `seconds` run out). Returns whether it flew, and whether it
 -- came down.
-local function rideOffPiece(ctx, xa, back, speed, seconds, each)
+-- `leaveX`: a flight counts only if it began past this x. Below it, a bounce off the
+-- face on the way up (a fast front wheel into the kink where the floor meets a steep
+-- face can lift the bike off it for an air's worth of ticks) is logged and ridden on
+-- through, as a rider would: what is judged is the flight off the top.
+local function rideOffPiece(ctx, xa, back, speed, seconds, each, leaveX)
     ctx:input({ throttle = 1, sprint = true })
     putBike(ctx, Vector(xa - back, ctx.ground.y, ctx.ground.z + BMX.RestHeight(ctx.cfg)),
         Angle(0, 0, 0), Vector(speed, 0, 0))
-    local flew = false
+    local flew, bounce = false, false
     local landed = ctx:waitUntil(function()
         local st = ctx:st()
+        if st.airMode and not flew and not bounce and leaveX and ctx.bike:GetPos().x < leaveX then
+            bounce = true
+            ctx:log(string.format("a bounce on the way up at x %.0f (%s): ridden on through", ctx.bike:GetPos().x, tostring(st.launchKind)))
+        end
+        if bounce then
+            if st.airMode then return false end
+            if st.grounded then bounce = false end
+            return false
+        end
         if st.airMode then flew = true end
         if each then each(st) end
         return flew and st.grounded and not st.airMode
@@ -3026,7 +3039,9 @@ local function spineRun(ctx, speed)
             e:GetVelocity():Length(), math.deg(pitch))
     end)
     local kind, seen, pressedAt, flewYet
+    local leaveX = xa + b.hl * 0.8          -- (a takeoff is near the apex, xa + hl)
     local flew, landed = rideOffPiece(ctx, xa, 380, speed, 12, function(st)
+        if st.airMode and ctx.bike:GetPos().x < leaveX and not flewYet then return end
         if st.airMode then flewYet = true end
         -- where it first came down: the first grounded tick after leaving the coping
         if flewYet and not touch and (st.grounded or ctx.bike.bmxTouchdown) then
@@ -3043,7 +3058,7 @@ local function spineRun(ctx, speed)
         -- A fresh W once the far face has been found, held a moment as a rider's is.
         if st.spineTarget and not pressedAt then pressedAt = CurTime() end
         ctx:input({ pitch = (pressedAt and CurTime() - pressedAt < 0.2) and -1 or 0 })
-    end)
+    end, leaveX)
     ctx:input({})
     hook.Remove("BMX_TricksLanded", "BMX.TestSpine")
     hook.Remove("BMX_Crashed", "BMX.TestSpine")

@@ -325,6 +325,9 @@ function NS.Skater(opts)
 
     local sp, cp = sv:player("Skater"), cl:player("Skater")
     cl.localPlayer = cp
+    -- the scoreboard's ping (ms): the round trip, as the engine reports it
+    local rttMs = (opts.rtt or 0.1) * 1000
+    cp.Ping = function() return rttMs end
     local st = opts.start or { 0, 0, 0 }
     for _, p in ipairs({ sp, cp }) do
         p._pos = E.Vector(st[1], st[2], st[3])
@@ -533,12 +536,13 @@ function NS.Skater(opts)
     function sim:report(from, to)
         from = from or 1
         to = math.min(to or self.svLast, self.svLast, self.k)
-        local errs, lateFlags, staleFlags = {}, {}, {}
+        local errs, lateFlags, staleFlags, svGrind = {}, {}, {}, {}
         for n = from, to do
             local s, d = self.svHist[n], self.shown[n]
             if s and d and not s.tumbling and not d.spectating then
                 errs[#errs + 1] = (d.pos - s.pos):Length()
             end
+            if s then svGrind[n] = s.grind end
             if s and d then
                 local g = d.rail or (d.flag and not self.clTook)
                 lateFlags[n] = s.grind and not g
@@ -557,6 +561,7 @@ function NS.Skater(opts)
         local cs = stats(corr)
         return { err = stats(errs), corr = cs, corrOver1 = big, snaps = snaps, replays = self.replays,
                  grindLate = runs(lateFlags, from, to), grindStale = runs(staleFlags, from, to),
+                 svGrind = runs(svGrind, from, to),
                  lost = { up = up.lost + up.late, down = down.lost + down.late } }
     end
 

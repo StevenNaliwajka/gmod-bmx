@@ -163,6 +163,7 @@ local function run(name, rtt, extra)
     for k, v in pairs(SETUP[name] or {}) do opts[k] = v end
     for k, v in pairs(extra or {}) do if k ~= "key" then opts[k] = v end end
     local sim = NS.Skater(opts)
+    if opts.serverPatch then opts.serverPatch(sim.sv.env) end
     SC[name](sim)
     local r = sim:report(secs(0.5))
     r.errors = #sim.sv.errors + #sim.cl.errors
@@ -274,7 +275,10 @@ T.test("skates ping: on a rail, balancing with A / D, the client stays on the ra
         local r = run("grind_pop", rtt)
         local label = string.format("a one-second grind at %d ms", rtt * 1000)
         clean(r, label)
-        T.eq(#r.grindLate, 1, label .. ": the server grinds once (" .. #r.grindLate .. " runs of a late start)")
+        T.eq(#r.svGrind, 1, label .. ": the server grinds once")
+        -- 1.4.3 and before: one run of a ping (106-242 ms) the server was on the rail and the
+        -- client was not, the lock being the server's alone
+        T.eq(#r.grindLate, 0, label .. ": commands the server was grinding and the client was not")
         -- 1.3.4: 17 (100 ms) and 20 (200 ms) corrections over 4 units, the skater walked off the
         -- rail's side by A and D on their own screen
         local n4, big = over(r, 4)
@@ -300,33 +304,54 @@ T.test("skates ping: a rail that runs out ends on the client too, within a tick 
     local r = run("grind_end", 0.2)
     clean(r, "rail end")
     T.eq(#r.grindStale, 0, "rail end at 200 ms: on the rail on the client after the server came off")
-    T.ok(#r.grindLate <= 2, "the lock (a ping) and at most the end")
-    if #r.grindLate == 2 then T.between(r.grindLate[2], 0, 50, "the client came off early by, ms") end
+    T.eq(#r.svGrind, 1, "rail end: the server grinds once")
+    T.eq(#r.grindLate, 0, "rail end: the client locks and comes off at the server's commands (1.4.3: a ping late, then 15 ms early)")
     T.between(select(2, over(r, 0)), 0, 2, "rail end at 200 ms: the largest correction, units")
 end)
 
 T.test("skates ping: an edge grind's pop pushes away from the ledge on the client too (BMXSkateSide)", function()
     local r = run("ledge_pop", 0.2)
     clean(r, "ledge")
-    T.eq(#r.grindLate, 1, "it locked onto the ledge's edge")
-    -- one correction for the lock (the server's alone), none for the pop: without the side the
-    -- client popped straight up and was 12 units off when the server's answer came
-    T.between(over(r, 1), 0, 1, "corrections over a unit at 200 ms (the lock-on)")
+    T.eq(#r.svGrind, 1, "it locked onto the ledge's edge")
+    -- none for the lock (1.4.3: 10 units at 200 ms, the lock the server's alone), none for the
+    -- pop: without the side the client popped straight up and was 12 units off
+    T.eq(over(r, 1), 0, "corrections over a unit at 200 ms")
+    T.eq(#r.grindLate, 0, "the client on the ledge from the server's own command")
     T.eq(#r.grindStale, 0, "on the ledge on the client after the server came off")
 end)
 
-T.test("skates ping: KNOWN LIMIT: the lock onto a rail is the server's; a backslide's first ping is corrected once", function()
-    -- The client does not run the rail finder (sv_grind.lua), so until the server's flag comes it
-    -- lands on the rail's top and rolls. Along the rail that is near enough a soul grind; turned
-    -- across it the wheels grip and it veers. One correction, then the grind and the pop are
-    -- predicted. Predicting the lock means sharing the finder (docs/goals/G30-netcode-feel.md).
-    local r = run("backslide", 0.1)
-    clean(r, "backslide")
-    T.eq(#r.grindLate, 1, "it locked into a grind")
-    local n1, big = over(r, 1)
-    T.between(n1, 1, 2, "corrections over a unit: the lock-on (and a bail on landing across)")
-    T.between(r.list[1] and r.list[1].d or 0, 4, 20, "the lock-on's correction at 100 ms, units")
-    T.ok(big < 25, "nothing bigger: " .. big)
+T.test("skates ping: the lock onto a rail is predicted: a backslide is never corrected, at 50, 100 and 200 ms", function()
+    -- The client runs the server's rail finder (sh_railfind.lua) and lock (S.FindLock), so it
+    -- turns across the rail at the server's own command. 1.4.3 and before left the lock to the
+    -- server: the client landed on the rail's top and rolled, its wheels gripping across it,
+    -- and was corrected once by 7 / 8 / 30 units at 50 / 100 / 200 ms.
+    for _, rtt in ipairs({ 0.05, 0.1, 0.2 }) do
+        local r = run("backslide", rtt)
+        local label = string.format("backslide at %d ms", rtt * 1000)
+        clean(r, label)
+        T.eq(#r.svGrind, 1, label .. ": the server grinds once")
+        T.eq(#r.grindLate, 0, label .. ": commands the server was grinding and the client was not")
+        T.eq(#r.grindStale, 0, label .. ": commands the client was grinding and the server was not")
+        local n1, big = over(r, 1)
+        T.eq(n1, 0, label .. ": corrections over a unit (largest " .. string.format("%.2f", big) .. ")")
+        T.between(r.err.max, 0, 0.5, label .. ": the client's picture against the server's, worst, units")
+    end
+end)
+
+T.test("skates ping: a lock the server refuses is dropped by the client and settles", function()
+    -- A server that does not lock on where the client did (here: its finder sees no rail; in
+    -- play, state the two ends no longer share) must not leave the client grinding on its own.
+    local r = run("backslide", 0.1, { key = "refused", serverPatch = function(E)
+        E.BMX.MightBeRail = function() return false end
+    end })
+    clean(r, "refused lock")
+    T.eq(#r.svGrind, 0, "the server never grinds")
+    T.ok(#r.grindStale <= 1, "the client's own grind is one run at most: " .. #r.grindStale)
+    -- the flag waited for a round trip and half again plus 0.1 s (1.4.3's POP_WAIT, a whole
+    -- second, left the client grinding alone for 1015 ms and corrected 30 times)
+    T.between(r.grindStale[1] or 0, 0, 300, "and ends within a round trip and the margin, ms")
+    T.ok(#r.list <= 12, "corrections while it ended: " .. #r.list)
+    T.between(r.tail, 0, 0.5, "the client agrees with the server over the last second, units")
 end)
 
 --------------------------------------------------------------------------

@@ -102,6 +102,7 @@ local function keep(p)
     h.phase, h.kicking, h.dv = ps.phase, ps.kicking, ps.dv
     h.expect = p.expect and { x = p.expect.x, y = p.expect.y }
     h.lastOrigin, h.nextPoll, h.brakeMode, h.auto, h.popped = p.lastOrigin, p.nextPoll, p.brakeMode, p.auto, p.popped
+    h.g, h.grindReady = S.CopyGrind(p.g), p.grindReady
     return h
 end
 
@@ -114,6 +115,7 @@ local function takeBack(p, h)
     sk.ps = { phase = h.phase, kicking = h.kicking, dv = h.dv }
     p.expect = h.expect and { x = h.expect.x, y = h.expect.y }
     p.lastOrigin, p.nextPoll, p.brakeMode, p.auto, p.popped = h.lastOrigin, h.nextPoll, h.brakeMode, h.auto, h.popped
+    p.g, p.grindReady = S.CopyGrind(h.g), h.grindReady
 end
 
 -- Skates on, at this command: what the server's Mode.Equip does, from the angles the player had
@@ -126,6 +128,7 @@ local function startSkating(p, ply, mv)
     p.sk.vx, p.sk.vy = v.x, v.y
     p.input = neutral()
     p.expect, p.lastOrigin, p.nextPoll, p.popped = nil, nil, 0, nil
+    p.g, p.grindReady = nil, nil
     p.friction = ply.GetFriction and ply:GetFriction() or 1
     ply:SetFriction(0)
 end
@@ -134,6 +137,7 @@ end
 -- read them for the skates, which took them, before the switch took the skates off).
 local function stopSkating(p, ply, mv)
     p.active = false
+    p.g = nil
     if ply.SetFriction then ply:SetFriction(p.friction or 1) end
     if mv then
         mv:SetForwardSpeed(0)
@@ -183,6 +187,7 @@ local function onRail(ply, p, mv, n, dt)
         p.expect = { x = v.x, y = v.y }
         sk.vx, sk.vy = v.x, v.y
         p.popped = n
+        p.grindReady = CurTime() + G.cooldown
         return false
     end
     -- SPACE let go: the server's pop (sv_skates.lua endGrind "hop"), at the speed it was going,
@@ -204,6 +209,61 @@ local function onRail(ply, p, mv, n, dt)
     sk.vx, sk.vy = dir.x * v, dir.y * v
     p.expect = { x = sk.vx, y = sk.vy }
     return true
+end
+
+local function gravityZ()
+    local g = physenv.GetGravity()
+    return g and g:Length() or 600
+end
+
+-- Off the rail this command, as the server's endGrind: the velocity it leaves with, the
+-- cooldown, and the networked flag (still on for a ping) not obeyed until it clears.
+local function leaveRail(p, mv, n, why, cfg)
+    local g, sk = p.g, p.sk
+    local v = S.GrindExit(g, why, cfg.Grind)
+    p.g = nil
+    p.grindReady = CurTime() + cfg.Grind.cooldown
+    mv:SetVelocity(v)
+    p.expect = { x = v.x, y = v.y }
+    sk.vx, sk.vy = v.x, v.y
+    p.popped = n
+end
+
+-- ONE COMMAND ON A RAIL THE CLIENT LOCKED ONTO ITSELF (p.g), exactly as the server's grindStep:
+-- the shared step (S.GrindStep), then the skater placed by the grind's pose. True while on.
+local function onOwnRail(ply, p, mv, n, dt)
+    local i, sk, cfg = p.input, p.sk, BMX.ConfigFor(p.def)
+    mv:SetForwardSpeed(0)
+    mv:SetSideSpeed(0)
+    mv:SetButtons(bit.band(mv:GetButtons(), bit.bnot(IN_JUMP)))
+    local why = S.GrindStep(p.g, i.jump, i.brake and 1 or 0, dt, cfg, ply, mv:GetOrigin(), gravityZ())
+    if why then leaveRail(p, mv, n, why, cfg) return false end
+    local g = p.g
+    local pos, heading = S.GrindPlace(g, cfg)
+    mv:SetOrigin(pos)
+    mv:SetVelocity(g.dir * g.speed)
+    sk.heading = heading
+    sk.vx, sk.vy = g.dir.x * g.speed, g.dir.y * g.speed
+    p.expect = { x = sk.vx, y = sk.vy }
+    return true
+end
+
+-- What the server's flag says about a grind the client predicted: seen on, the server agrees;
+-- seen on and then off, the server has ended it (its balance meter, which the client cannot
+-- know); never seen within a round trip (lockWait), the server did not lock on: the client's own
+-- grind goes.
+-- How long a predicted lock waits for the server's flag: the round trip (Ping) and half again
+-- for jitter, a tenth of a second for the snapshot and the engine, never more than POP_WAIT.
+local function lockWait(ply)
+    local ping = (ply.Ping and ply:Ping() or 0) / 1000
+    return math.Clamp(ping * 1.5 + 0.1, 0.15, POP_WAIT)
+end
+
+local function reconcileOwnRail(ply, p, n, grinding)
+    local g = p.g
+    if grinding then g.flagSeen = true return true end
+    if g.flagSeen then return false end
+    return (n - (g.lockedAt or n)) * engine.TickInterval() <= lockWait(ply)
 end
 
 hook.Add("SetupMove", "BMX.Skates.Predict", function(ply, mv, cmd)
@@ -254,10 +314,34 @@ hook.Add("SetupMove", "BMX.Skates.Predict", function(ply, mv, cmd)
     if not (fresh and p.since == CurTime()) then S.Decode(ply, p, cmd) end
     local dt = FrameTime()
     local grinding = bit.band(ply:GetNWInt("BMXSkateFlags", 0), S.Flag.grind) ~= 0
+    if p.g and not reconcileOwnRail(ply, p, n, grinding) then
+        -- the server ended or refused it: not straight back on (its cooldown, as after any grind)
+        p.g = nil
+        p.grindReady = CurTime() + BMX.ConfigFor(p.def).Grind.cooldown
+    end
     if not grinding or (p.popped and (n - p.popped) * engine.TickInterval() > POP_WAIT) then p.popped = nil end
-    if grinding and not p.popped then p.onRail = onRail(ply, p, mv, n, dt) end
+    if p.g then
+        p.onRail = onOwnRail(ply, p, mv, n, dt)
+    elseif grinding and not p.popped then
+        -- The server locked on and this client did not (a rail it found and the client's
+        -- finder missed): carried along at the rail's speed until the flag clears.
+        p.onRail = onRail(ply, p, mv, n, dt)
+    end
     if not p.onRail then
         local vel, grounded, cast = S.Observe(ply, p, mv, dt)
+        -- THE LOCK, at the server's own command (its Mode.Setup: in the air, after the observe).
+        if not grounded and not p.g and not (grinding and not p.popped) then
+            local cfg = BMX.ConfigFor(p.def)
+            local g = S.FindLock(ply, p.sk, p.input, p.auto, mv:GetOrigin(), vel, p.grindReady, p.def, cfg)
+            if g then
+                g.lockedAt = n
+                p.g = g
+                p.onRail = onOwnRail(ply, p, mv, n, dt)
+                if p.onRail then done() return end
+                vel = mv:GetVelocity()
+                p.sk.vx, p.sk.vy = vel.x, vel.y
+            end
+        end
         S.Apply(ply, p, mv, dt, vel, grounded, cast)
     end
     done()

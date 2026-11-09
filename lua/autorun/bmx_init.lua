@@ -39,6 +39,7 @@ local SHARED = {
     "bmx/sh_settings.lua",    -- every player and admin setting, in one list (after sh_config: reads its defaults)
     "bmx/sh_permissions.lua", -- CAMI privileges and BMX.Can
     "bmx/sh_util.lua",
+    "bmx/sh_railfind.lua",  -- the rail finder: the server's grinds, and the skates' predicted lock (G30)
     "bmx/sh_lean.lua",      -- the lean/steer controller's arithmetic, shared with the client's prediction (G30)
     "bmx/sh_predict.lua",   -- G30: the pure parts of prediction, the latency probe and lag comp
     "bmx/sh_tricks.lua",    -- the trick registry; the scoring and the overlay read it

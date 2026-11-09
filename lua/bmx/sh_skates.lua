@@ -551,6 +551,151 @@ function S.GrindContact(id, edge, sgn)
     return Vector(g.x, edge and (sgn or 1) * T.edgeY or 0, T.soleZ)
 end
 
+--------------------------------------------------------------------------
+-- THE LOCK AND THE GRIND STEP, shared (G30). The server (sv_skates.lua: tryGrind, grindStep,
+-- endGrind) and the predicting client (cl_skates.lua) both run these, on the shared rail finder
+-- (sh_railfind.lua), so the client locks onto a rail at the very command the server does and
+-- carries the skater along it as the server places them. Before (1.4.3 and earlier) the lock
+-- was the server's alone: until its flag arrived a ping later the client landed on the rail's
+-- top and rolled, and a backslide (turned across the rail, the wheels gripping) was corrected
+-- once by 8-34 units at 100 ms and 30-49 at 200 ms. Nothing here scores, keeps a meter or
+-- calls a hook: those stay the server's.
+--------------------------------------------------------------------------
+local UP = Vector(0, 0, 1)
+
+-- Which move a lock makes, from the skater's heading, the keys and the rail's horizontal unit
+-- direction `dh`: { id, name, mult, yaw, moveIndex, crank, peg(sgn) }, or nil (an angle that
+-- is neither along nor across is a fall onto the rail, not a grind).
+function S.LockMove(heading, keys, dh)
+    local fh = Vector(cos(heading), sin(heading), 0)
+    local angle = math.acos(BMX.Clamp(abs(fh:Dot(dh)), 0, 1))
+    local along = S.IsAlong(angle)
+    local across = abs(angle - PI / 2) <= T.alongAngle
+    if not (along or across) then return nil end
+    local id = S.ClassifyGrind({ w = keys.w, s = keys.s, a = keys.a, d = keys.d }, along)
+    local g = S.Grinds[id]
+    -- Turned off the rail the way the skater already is; one going against the rail's
+    -- direction is turned round half a turn so the same shoulder leads.
+    local L = (dh.x * fh.y - dh.y * fh.x) >= 0 and 1 or -1
+    local yaw
+    if not along then yaw = L * g.yaw
+    elseif fh:Dot(dh) < 0 then yaw = PI
+    else yaw = 0 end
+    local index = 1
+    for i, gid in ipairs(S.GrindOrder) do if gid == id then index = i end end
+    return { id = id, name = g.name, mult = g.mult, yaw = yaw, pitch = 0, signed = false, reverse = false,
+             moveIndex = index, crank = S.GrindContact(id, false),
+             peg = function(sgn) return S.GrindContact(id, true, sgn) end }
+end
+
+-- Try to lock on, this command: the skater in the air (`origin`, `vel` as S.Observe gave
+-- them), `sk` its step state, `keys` its decoded input, `auto` bmx_board_autogrind, `ready`
+-- the time the last grind's cooldown runs out. `moves(rail, dh)` picks the move (the server
+-- passes the platform's, which also notes the move on its state); S.LockMove by default.
+-- Returns the grind's state, or nil: { kind, point, dir, n, side, speed, name, mult, move,
+-- moveIndex, yaw, pitch, localPoint, jumpWas }.
+function S.FindLock(ply, sk, keys, auto, origin, vel, ready, def, cfg, moves)
+    local G = cfg.Grind
+    if not G or not G.enabled then return nil end
+    if not (keys.jump or auto) then return nil end
+    if CurTime() < (ready or 0) then return nil end
+    if vel.z > G.maxEntryVz then return nil end
+    if Vector(vel.x, vel.y, 0):Length() < G.minSpeed then return nil end
+
+    local gp = BMX.GrindPointsFor(def, cfg)
+    local c, s = cos(sk.heading), sin(sk.heading)
+    local point = origin + Vector(gp.crank.x * c - gp.crank.y * s, gp.crank.x * s + gp.crank.y * c, gp.crank.z)
+    if not BMX.MightBeRail(point, cfg, ply) then return nil end
+    local rail = BMX.FindRail(point, vel, cfg, ply, origin + Vector(0, 0, 36))
+    if not rail then return nil end
+
+    local along = vel:Dot(rail.dir)
+    if along < G.minSpeed then return nil end
+    local dh = Vector(rail.dir.x, rail.dir.y, 0):GetNormalized()
+    local mv = moves and moves(rail, dh) or S.LockMove(sk.heading, keys, dh)
+    if not mv then return nil end
+
+    local g = { kind = rail.kind, point = rail.point, dir = rail.dir, n = rail.n, side = rail.side,
+                speed = along, name = mv.name, mult = mv.mult, move = mv.id,
+                moveIndex = mv.moveIndex, yaw = mv.yaw, pitch = mv.pitch, jumpWas = keys.jump }
+    if rail.kind == "crank" then
+        g.localPoint = mv.crank
+    else
+        local left = UP:Cross(dh)
+        local sgn = left:Dot(rail.side) > 0 and 1 or -1
+        g.localPoint = mv.peg(sgn)
+        g.point = g.point + rail.side * G.pegInset
+    end
+    return g
+end
+
+-- ONE COMMAND ON THE RAIL, the part both ends know: the pop (SPACE let go), the speed, and the
+-- grind's point a step further along (the rail found again every third command, which follows
+-- a bend and notices the end). Returns nil while on, else why it ended ("hop", "slow", "end").
+-- The balance meter is the server's (it starts at a random phase) and is checked before this.
+function S.GrindStep(g, jump, brake, dt, cfg, filter, origin, gravity)
+    local G = cfg.Grind
+    if g.jumpWas and not jump then return "hop" end
+    g.jumpWas = jump
+
+    local v = S.GrindSpeed(g.speed, g.dir.z, brake, dt, G, gravity)
+    g.speed = v
+    if v < G.stopSpeed then return "slow" end
+
+    local predicted = g.point + g.dir * (v * dt)
+    g.tick = (g.tick or 0) + 1
+    if g.tick % 3 == 0 then
+        local look = g.kind == "peg" and (predicted - g.side * G.pegInset) or predicted
+        local rail = BMX.FindRail(look + UP * 0.3, g.dir * v, cfg, filter, origin + Vector(0, 0, 36))
+        if not rail then return "end" end
+        local p = rail.point
+        if g.kind == "peg" then p = p + rail.side * G.pegInset end
+        if abs(p.z - predicted.z) > G.maxStepZ then return "end" end
+        -- Only back onto the rail's line and top. Where the found point lies ALONG the rail
+        -- is the middle of the probe cells that hit its top, pulled back near an end as cells
+        -- past it miss; taking it moved the skater along the rail by that much in one tick,
+        -- which a predicting client (carried along at the grind's speed) then had corrected:
+        -- 23 units at a rail's end on a real client (2026-10-19). Along it, the speed's step.
+        local off = p - predicted
+        p = p - g.dir * off:Dot(g.dir)
+        local step = p - g.point
+        if step:Length() > 0.25 then
+            local d = step:GetNormalized()
+            if d:Dot(g.dir) > 0.5 then g.dir = (g.dir * 0.75 + d * 0.25):GetNormalized() end
+        end
+        g.point = p
+    else
+        g.point = predicted
+    end
+    return nil
+end
+
+-- Where the skater is put for the grind: the origin, and the heading the boots take.
+function S.GrindPlace(g, cfg)
+    local pos, ang = BMX.GrindPose(g, cfg)
+    return pos, wrap(math.rad(ang.y))
+end
+
+-- The velocity a grind leaves with: along the rail at its speed; a hop adds the jump, and off
+-- an edge pushes away from its top.
+function S.GrindExit(g, why, G)
+    local vel = g.dir * max(g.speed, 0)
+    if why == "hop" then
+        vel = vel + UP * G.hopSpeed
+        if g.side then vel = vel - g.side * G.hopAway end
+    end
+    return vel
+end
+
+-- A copy of a grind's state for a command's history (cl_skates.lua). Its vectors are only
+-- ever replaced, never changed in place, so a shallow copy is a snapshot.
+function S.CopyGrind(g)
+    if not g then return nil end
+    local c = {}
+    for k, v in pairs(g) do c[k] = v end
+    return c
+end
+
 for _, id in ipairs(S.GrindOrder) do
     local g = S.Grinds[id]
     BMX.RegisterTrick{ id = id, name = g.name, kind = "grind",

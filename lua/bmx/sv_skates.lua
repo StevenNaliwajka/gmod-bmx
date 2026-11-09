@@ -156,32 +156,9 @@ end
 function S.GrindMoves(ply, st, rail, dh, vel)
     local w = ply.BMXWorn
     if not w then return nil end
-    local h = w.sk.heading
-    local fh = Vector(cos(h), sin(h), 0)
-    local angle = math.acos(BMX.Clamp(abs(fh:Dot(dh)), 0, 1))
-    local along = S.IsAlong(angle)
-    local across = abs(angle - math.pi / 2) <= T.alongAngle
-    if not (along or across) then return nil end
-
-    local edge = rail.kind == "peg"
-    local id = S.ClassifyGrind({ w = w.input.w, s = w.input.s, a = w.input.a, d = w.input.d }, along)
-    local g = S.Grinds[id]
-
-    -- Turned off the rail the way the skater already is; one going against the rail's
-    -- direction is turned round half a turn so the same shoulder leads.
-    local L = (dh.x * fh.y - dh.y * fh.x) >= 0 and 1 or -1
-    local reverse = along and fh:Dot(dh) < 0
-    local yaw
-    if not along then yaw = L * g.yaw
-    elseif reverse then yaw = math.pi
-    else yaw = 0 end
-    for i, gid in ipairs(S.GrindOrder) do if gid == id then st.moveIndex = i end end
-
-    return {
-        id = id, name = g.name, mult = g.mult, yaw = yaw, pitch = 0, signed = false, reverse = false,
-        crank = S.GrindContact(id, false),
-        peg = function(sgn) return S.GrindContact(id, true, sgn) end,
-    }
+    local mv = S.LockMove(w.sk.heading, w.input, dh)
+    if mv then st.moveIndex = mv.moveIndex end
+    return mv
 end
 
 local function gravityZ()
@@ -194,41 +171,12 @@ end
 -- skater. Returns true when it did.
 local function tryGrind(ply, w, mv, vel)
     local st, cfg, i = w.st, BMX.ConfigFor(w.def), w.input
-    local G = cfg.Grind
-    if not G or not G.enabled then return false end
-    if not (i.jump or w.auto) then return false end
-    if CurTime() < (st.grindReady or 0) then return false end
-    if st.grounded and (st.groundedFor or 0) > G.landedWindow then return false end
-    if vel.z > G.maxEntryVz then return false end
-    local vh = Vector(vel.x, vel.y, 0)
-    if vh:Length() < G.minSpeed then return false end
-
     local gp = BMX.GrindPointsFor(w.def, cfg)
-    local origin = mv:GetOrigin()
-    local c, s = cos(w.sk.heading), sin(w.sk.heading)
-    local point = origin + Vector(gp.crank.x * c - gp.crank.y * s, gp.crank.x * s + gp.crank.y * c, gp.crank.z)
-    if not BMX.MightBeRail(point, cfg, ply) then return false end
-    local rail = BMX.FindRail(point, vel, cfg, ply, origin + Vector(0, 0, 36))
-    if not rail then return false end
-
-    local along = vel:Dot(rail.dir)
-    if along < G.minSpeed then return false end
-    local dh = Vector(rail.dir.x, rail.dir.y, 0):GetNormalized()
-
-    local mvv = gp.moves(ply, st, rail, dh, vel)
-    if not mvv then return false end
-
-    local g = { kind = rail.kind, point = rail.point, dir = rail.dir, n = rail.n, side = rail.side,
-                speed = along, started = CurTime(), name = mvv.name, mult = mvv.mult, move = mvv.id,
-                moveIndex = st.moveIndex, yaw = mvv.yaw, pitch = mvv.pitch }
-    if rail.kind == "crank" then
-        g.localPoint = mvv.crank
-    else
-        local left = UP:Cross(dh)
-        local sgn = left:Dot(rail.side) > 0 and 1 or -1
-        g.localPoint = mvv.peg(sgn)
-        g.point = g.point + rail.side * G.pegInset
-    end
+    if not gp.crank then return false end
+    local g = S.FindLock(ply, w.sk, i, w.auto, mv:GetOrigin(), vel, st.grindReady, w.def, cfg,
+        gp.moves and function(rail, dh) return gp.moves(ply, st, rail, dh, vel) end)
+    if not g then return false end
+    g.started = CurTime()
 
     -- Whatever the air had earned is paid on the way in, as a bike's is.
     local sk = w.sk
@@ -241,7 +189,6 @@ local function tryGrind(ply, w, mv, vel)
     st.airSince, st.grind, st.grounded = 0, g, true
     g.bal = B.MeterStart(math.random() * 6.28, B.Tune.meterGrind)
     w.meter = 0
-    g.jumpWas = i.jump
     hook.Run("BMX_WornGrind", ply, w.id, g.move)
     return true
 end
@@ -253,11 +200,7 @@ local function endGrind(ply, w, mv, why)
     if not g then return end
     local G = cfg.Grind
     st.grind = nil
-    local vel = g.dir * max(g.speed, 0)
-    if why == "hop" then
-        vel = vel + UP * G.hopSpeed
-        if g.side then vel = vel - g.side * G.hopAway end
-    end
+    local vel = S.GrindExit(g, why, G)
     mv:SetVelocity(vel)
     w.expect = { x = vel.x, y = vel.y }
     w.sk.vx, w.sk.vy = vel.x, vel.y
@@ -278,52 +221,22 @@ end
 -- end). Sets the player's origin and velocity; Mode.Move then takes the movement over.
 local function grindStep(ply, w, mv, dt)
     local st, cfg, i = w.st, BMX.ConfigFor(w.def), w.input
-    local g, G = st.grind, BMX.ConfigFor(w.def).Grind
+    local g = st.grind
 
     -- A and D hold the meter near zero; past one it throws the skater.
     local side = -(i.turn or 0)
     w.meter = BMX.Clamp(B.MeterStep(g.bal, dt, side, B.Tune.meterGrind), -1.2, 1.2)
     if abs(g.bal.v) >= 1 then return endGrind(ply, w, mv, "balance") end
 
-    -- SPACE let go is the pop.
-    if g.jumpWas and not i.jump then return endGrind(ply, w, mv, "hop") end
-    g.jumpWas = i.jump
+    -- The pop, the speed and the step along the rail: shared with the predicting client.
+    local why = S.GrindStep(g, i.jump, i.brake and 1 or 0, dt, cfg, ply, mv:GetOrigin(), gravityZ())
+    if why then return endGrind(ply, w, mv, why) end
 
-    local brake = i.brake and 1 or 0
-    local v = S.GrindSpeed(g.speed, g.dir.z, brake, dt, G, gravityZ())
-    g.speed = v
-    if v < G.stopSpeed then return endGrind(ply, w, mv, "slow") end
-
-    local predicted = g.point + g.dir * (v * dt)
-    g.tick = (g.tick or 0) + 1
-    if g.tick % 3 == 0 then
-        local look = g.kind == "peg" and (predicted - g.side * G.pegInset) or predicted
-        local rail = BMX.FindRail(look + UP * 0.3, g.dir * v, cfg, ply, mv:GetOrigin() + Vector(0, 0, 36))
-        if not rail then return endGrind(ply, w, mv, "end") end
-        local p = rail.point
-        if g.kind == "peg" then p = p + rail.side * G.pegInset end
-        if abs(p.z - predicted.z) > G.maxStepZ then return endGrind(ply, w, mv, "end") end
-        -- Only back onto the rail's line and top. Where the found point lies ALONG the rail
-        -- is the middle of the probe cells that hit its top, pulled back near an end as cells
-        -- past it miss; taking it moved the skater along the rail by that much in one tick,
-        -- which a predicting client (carried along at the grind's speed) then had corrected:
-        -- 23 units at a rail's end on a real client (2026-10-19). Along it, the speed's step.
-        local off = p - predicted
-        p = p - g.dir * off:Dot(g.dir)
-        local step = p - g.point
-        if step:Length() > 0.25 then
-            local d = step:GetNormalized()
-            if d:Dot(g.dir) > 0.5 then g.dir = (g.dir * 0.75 + d * 0.25):GetNormalized() end
-        end
-        g.point = p
-    else
-        g.point = predicted
-    end
-
-    local pos, ang = BMX.GrindPose(g, cfg)
+    local v = g.speed
+    local pos, heading = S.GrindPlace(g, cfg)
     mv:SetOrigin(pos)
     mv:SetVelocity(g.dir * v)
-    w.sk.heading = S.Wrap(math.rad(ang.y))
+    w.sk.heading = heading
     w.sk.vx, w.sk.vy = g.dir.x * v, g.dir.y * v
     w.expect = { x = g.dir.x * v, y = g.dir.y * v }
     st.speed, st.fwdSpeed = v, v

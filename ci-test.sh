@@ -39,5 +39,10 @@ for f in install.sh ci-test.sh tools/*.sh tools/server/*.sh tools/server/bmx-tes
 done
 
 echo "▶ python syntax"
-python3 -m py_compile tools/gmad.py tools/make_icon.py tools/server/rcon.py
+python3 -m py_compile tools/gmad.py tools/make_icon.py tools/server/rcon.py tools/bench/gate.py
 echo "  ok tools/"
+
+echo "▶ GPU gate's judge"
+# The budget the real-client benchmarks are held to (tools/bench/gate.py): its parsers on
+# the benchmarks' real lines, and each budget failing what it should and nothing else.
+python3 -m unittest -q tools/bench/test_gate.py

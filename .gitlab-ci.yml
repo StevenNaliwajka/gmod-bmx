@@ -65,7 +65,7 @@ variables:
 # resource_group SERIALISES those borrows. There is exactly one game server, and
 # two pipelines restarting it at once would interleave into a result that
 # describes neither commit.
-stages: [validate, deploy-dev, headless, deploy-prod, publish]
+stages: [validate, deploy-dev, headless, gpu, deploy-prod, publish]
 
 # ---------------------------------------------------------------------------
 # WHICH RUNNER. The shared template defaults every job to `deploy`, which only
@@ -129,6 +129,43 @@ headless:branch:
     - if: $CI_COMMIT_REF_PROTECTED != "true"
   script:
     - sudo -n /usr/local/bin/bmx-branch-test "$CI_COMMIT_SHA"
+
+# ---------------------------------------------------------------------------
+# THE GPU GATE (tools/bench/gate.sh, budget in tools/bench/gate.py). What a player SEES:
+# every vehicle under four camera passes (no frame with the rider off the bike, every
+# rider posed, no riding frame over 16.7 ms), every kind's first spawn ridden away (no frame
+# over 16.7 ms), every feature's fps and server cost against tools/bench/baseline.json, 8
+# riders in view, and the sweep again held to 30 fps. The headless suite cannot see any of
+# it: srcds draws nothing.
+#
+# WHERE. On the gmod org desktop (VM 118153, runner tag `gmod-gpu`, MGMT
+# Hosting/gmod-gpu-runner.sh), the one gmod machine that can borrow sen4's RTX 2070 for the
+# GMod client (webdesk-guest gpu-claim 119158) and ssh to it. The desktop is on demand: while
+# it is off this job waits as pending, so start it (dev.naliwajka.com, Start it) to run.
+#
+# WHEN. Automatically on a v* tag, failing the tag's pipeline on a broken budget (a release
+# is held to it); by hand on main, where it does not hold the pipeline. ~1 h. One at a time:
+# there is one card.
+gpu-bench:
+  stage: gpu
+  tags: [gmod-gpu]
+  resource_group: gpu-sen4
+  timeout: 3h
+  needs: []
+  variables:
+    BMX_SP_CLIENT: marionette          # the desktop's ssh alias, with the org key
+    GIT_DEPTH: "1"
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+  script:
+    - bash tools/bench/gate.sh "$CI_PROJECT_DIR/bench-out"
+  artifacts:
+    when: always
+    paths: [bench-out/]
+    expire_in: 180 days
 
 # deploy-dev (the shared template's) restarts the same server, so it takes the same
 # lock: without it a main pipeline's deploy restarted the box in the middle of a

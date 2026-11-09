@@ -1,0 +1,266 @@
+{
+ "camsweep_vehicles": [
+  "city",
+  "cruiser",
+  "dh",
+  "dirtbike",
+  "ebike",
+  "emoto",
+  "fixie",
+  "mini",
+  "moped",
+  "penny",
+  "road",
+  "scooter",
+  "skateboard",
+  "skates",
+  "stock",
+  "tandem",
+  "unicycle"
+ ],
+ "features": {
+  "16 parked vehicles in view": {
+   "fps": 102.3,
+   "frames": 614,
+   "max": 27.82,
+   "median": 8.47,
+   "p95": 17.3,
+   "p99": 22.09,
+   "server": 43.19
+  },
+  "BMX menu open": {
+   "fps": 288.8,
+   "frames": 1733,
+   "max": 4.27,
+   "median": 3.48,
+   "p95": 3.79,
+   "p99": 3.88,
+   "server": 0.91
+  },
+  "bike rack with 4 bikes + rental machine": {
+   "fps": 242.8,
+   "frames": 1457,
+   "max": 15.07,
+   "median": 3.61,
+   "p95": 6.61,
+   "p99": 11.41,
+   "server": 12.9
+  },
+  "cinematic camera": {
+   "fps": 282.8,
+   "frames": 1697,
+   "max": 11.74,
+   "median": 3.46,
+   "p95": 4.36,
+   "p99": 5.59,
+   "server": 12.59
+  },
+  "filmer camera watching": {
+   "fps": 283.2,
+   "frames": 1699,
+   "max": 11.78,
+   "median": 3.44,
+   "p95": 4.36,
+   "p99": 5.54,
+   "server": 12.94
+  },
+  "first-person camera": {
+   "fps": 287.0,
+   "frames": 1722,
+   "max": 10.46,
+   "median": 3.48,
+   "p95": 4.15,
+   "p99": 4.54,
+   "server": 10.55
+  },
+  "idle: addon loaded, nothing spawned": {
+   "fps": 290.5,
+   "frames": 1743,
+   "max": 6.05,
+   "median": 3.44,
+   "p95": 3.73,
+   "p99": 3.85,
+   "server": 0.7
+  },
+  "replay playback": {
+   "fps": 283.2,
+   "frames": 1699,
+   "max": 11.71,
+   "median": 3.52,
+   "p95": 4.18,
+   "p99": 5.61,
+   "server": 12.19
+  },
+  "riding city": {
+   "fps": 285.8,
+   "frames": 1715,
+   "max": 10.77,
+   "median": 3.45,
+   "p95": 4.2,
+   "p99": 4.75,
+   "server": 13.42
+  },
+  "riding cruiser": {
+   "fps": 279.5,
+   "frames": 1677,
+   "max": 10.8,
+   "median": 3.48,
+   "p95": 4.61,
+   "p99": 6.3,
+   "server": 14.17
+  },
+  "riding dh": {
+   "fps": 287.2,
+   "frames": 1723,
+   "max": 10.65,
+   "median": 3.46,
+   "p95": 4.14,
+   "p99": 4.59,
+   "server": 10.34
+  },
+  "riding dirtbike": {
+   "fps": 288.3,
+   "frames": 1730,
+   "max": 11.21,
+   "median": 3.43,
+   "p95": 4.19,
+   "p99": 4.57,
+   "server": 12.54
+  },
+  "riding ebike": {
+   "fps": 285.0,
+   "frames": 1710,
+   "max": 10.85,
+   "median": 3.46,
+   "p95": 4.16,
+   "p99": 4.6,
+   "server": 12.42
+  },
+  "riding emoto": {
+   "fps": 290.0,
+   "frames": 1740,
+   "max": 11.1,
+   "median": 3.4,
+   "p95": 4.14,
+   "p99": 4.43,
+   "server": 12.71
+  },
+  "riding fixie": {
+   "fps": 285.8,
+   "frames": 1715,
+   "max": 11.12,
+   "median": 3.46,
+   "p95": 4.14,
+   "p99": 4.78,
+   "server": 12.14
+  },
+  "riding mini": {
+   "fps": 282.2,
+   "frames": 1693,
+   "max": 11.46,
+   "median": 3.47,
+   "p95": 4.38,
+   "p99": 5.73,
+   "server": 11.79
+  },
+  "riding moped": {
+   "fps": 287.2,
+   "frames": 1723,
+   "max": 11.03,
+   "median": 3.44,
+   "p95": 4.18,
+   "p99": 4.65,
+   "server": 11.87
+  },
+  "riding penny": {
+   "fps": 287.5,
+   "frames": 1725,
+   "max": 10.35,
+   "median": 3.44,
+   "p95": 4.11,
+   "p99": 4.46,
+   "server": 11.81
+  },
+  "riding road": {
+   "fps": 285.0,
+   "frames": 1710,
+   "max": 11.34,
+   "median": 3.47,
+   "p95": 4.17,
+   "p99": 4.68,
+   "server": 12.57
+  },
+  "riding scooter": {
+   "fps": 278.5,
+   "frames": 1671,
+   "max": 11.83,
+   "median": 3.57,
+   "p95": 4.85,
+   "p99": 5.52,
+   "server": 12.05
+  },
+  "riding skateboard": {
+   "fps": 282.3,
+   "frames": 1694,
+   "max": 11.44,
+   "median": 3.47,
+   "p95": 4.33,
+   "p99": 5.21,
+   "server": 16.78
+  },
+  "riding skates": {
+   "fps": 288.7,
+   "frames": 1732,
+   "max": 10.81,
+   "median": 3.46,
+   "p95": 4.05,
+   "p99": 4.48,
+   "server": 9.78
+  },
+  "riding stock": {
+   "fps": 281.2,
+   "frames": 1687,
+   "max": 10.24,
+   "median": 3.47,
+   "p95": 4.4,
+   "p99": 5.73,
+   "server": 11.86
+  },
+  "riding stock, replay buffer off": {
+   "fps": 280.2,
+   "frames": 1681,
+   "max": 11.69,
+   "median": 3.48,
+   "p95": 4.41,
+   "p99": 5.9,
+   "server": 13.2
+  },
+  "riding tandem": {
+   "fps": 284.5,
+   "frames": 1707,
+   "max": 10.37,
+   "median": 3.45,
+   "p95": 4.18,
+   "p99": 4.85,
+   "server": 12.42
+  },
+  "riding unicycle": {
+   "fps": 289.2,
+   "frames": 1735,
+   "max": 11.04,
+   "median": 3.44,
+   "p95": 3.99,
+   "p99": 4.23,
+   "server": 8.7
+  },
+  "skate park preset (street_plaza) ridden through": {
+   "fps": 278.7,
+   "frames": 1672,
+   "max": 11.61,
+   "median": 3.49,
+   "p95": 4.54,
+   "p99": 5.94,
+   "server": 11.34
+  }
+ }
+}

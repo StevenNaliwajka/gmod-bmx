@@ -17,6 +17,10 @@
 #   tools/bench/sp.sh features       every feature in its own scene, client and server cost (~6 min)
 #   tools/bench/sp.sh probe           the real-client cost probe (tools/bench/realprobe_*)
 #   tools/bench/sp.sh shots DIR       copy the camera sweep's pictures here
+#   tools/bench/sp.sh riders [N]      N bot riders (8) in view, then behind the camera: client + server cost
+#                                     (needs a session launched with BMX_SP_MAXPLAYERS > N: a listen server)
+#   tools/bench/sp.sh lowfps [FPS] [passes]   the camera sweep with the game held to FPS (30), a weak PC
+#   tools/bench/sp.sh ready           wait for the client VM to answer ssh and its Steam to be up
 #   tools/bench/sp.sh restore         quit, remove what install added, put the Workshop copy back
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,6 +37,14 @@ cmd() { printf '%s\n' "$1" | r "cat >> $G/data/probe/cmd.txt"; }
 focus() { r 'export DISPLAY=:1; w=$(xdotool search --name "Garry" | head -1); [ -n "$w" ] && xdotool windowfocus "$w"; true'; }
 waitfile() { for _ in $(seq 1 "${2:-600}"); do r "grep -q DONE $G/data/$1 2>/dev/null" && return 0; sleep 2; done; return 1; }
 case "${1:-}" in
+  ready)
+    # After the VM boots: ssh, then Steam's web helper (Steam signed in), then a settle. A
+    # game launched before Steam is up hangs on "Failed to initialize Steamworks API".
+    for _ in $(seq 1 90); do r true 2>/dev/null && break; sleep 5; done
+    r true || { echo "no ssh to $CL"; exit 1; }
+    for _ in $(seq 1 60); do r 'pgrep -f steamwebhelper >/dev/null' && break; sleep 5; done
+    r 'pgrep -f steamwebhelper >/dev/null' || { r 'systemctl --user start steam' || true; sleep 60; }
+    sleep "${BMX_SP_SETTLE:-45}"; echo ready ;;
   install)
     r "mkdir -p $G/data/probe; rm -rf $G/addons/gmod-bmx-dev $G/addons/bmxprobe; [ -d $WS/$BMX_WS ] && mv $WS/$BMX_WS $WS/.$BMX_WS.aside || true"
     if [ "${BMX_SP_CLEAN:-1}" = 1 ]; then r "[ -d $WS ] && [ ! -e $WS.clean-aside ] && mv $WS $WS.clean-aside && mkdir -p $WS; true"; fi
@@ -54,7 +66,7 @@ case "${1:-}" in
     # (the old game gone before its log is cleared: a dying session wrote "player ready")
     r "pkill -f GarrysMod/hl2_linu[x]; sleep 2; pkill -9 -f GarrysMod/hl2_linu[x]; while pgrep -f GarrysMod/hl2_linu[x] >/dev/null; do sleep 1; done; rm -f $G/data/probe/cmd.txt $G/data/probe/log.txt; true"
     # -f -n: the game keeps the session's channel open, so a plain ssh never came back
-    ssh -f -n -o BatchMode=yes "$CL" "cd $G/.. && export DISPLAY=:1 SteamAppId=4000 SteamGameId=4000 __GL_SYNC_TO_VBLANK=0 vblank_mode=0 && setsid ~/.steam/steam/ubuntu12_32/steam-runtime/run.sh ./hl2.sh -game garrysmod -windowed -noborder -w 1280 -h 960 -novid -nojoy -condebug +gamemode sandbox +maxplayers 1 +map ${2:-gm_flatgrass} >/tmp/gmod-sp.log 2>&1 </dev/null & disown"; echo launched
+    ssh -f -n -o BatchMode=yes "$CL" "cd $G/.. && export DISPLAY=:1 SteamAppId=4000 SteamGameId=4000 __GL_SYNC_TO_VBLANK=0 vblank_mode=0 && setsid ~/.steam/steam/ubuntu12_32/steam-runtime/run.sh ./hl2.sh -game garrysmod -windowed -noborder -w 1280 -h 960 -novid -nojoy -condebug +gamemode sandbox +maxplayers ${BMX_SP_MAXPLAYERS:-1} $([ "${BMX_SP_MAXPLAYERS:-1}" -gt 1 ] && echo "+sv_lan 1") +map ${2:-gm_flatgrass} >/tmp/gmod-sp.log 2>&1 </dev/null & disown"; echo launched
     for _ in $(seq 1 150); do r "grep -q 'player ready' $G/data/probe/log.txt 2>/dev/null" && { focus; echo "session up"; exit 0; }; sleep 2; done
     echo "no session after 5 min"; exit 1 ;;
   cmd) cmd "$2" ;;
@@ -114,6 +126,23 @@ case "${1:-}" in
     cmd 'lua include("features_sv.lua")'
     for _ in $(seq 1 200); do r "grep -q DONE $G/data/probe/features_sv.txt 2>/dev/null" && break; sleep 5; done
     r "cat $G/data/probe/features_cl.txt; echo; cat $G/data/probe/features_sv.txt" ;;
+  riders)
+    # N bots riding circles in front of the player (probe_addon/lua/riders_sv.lua)
+    focus
+    r "rm -f $G/data/probe/riders.txt"
+    scp -q "$HERE/probe_addon/lua/riders_sv.lua" "$CL:$G/addons/bmxprobe/lua/riders_sv.lua"
+    cmd 'lua BroadcastLua([[RunString(file.Read("realprobe_cl.txt","DATA"),"realprobe")]])'
+    sleep 2
+    cmd "lua RIDERS_N = ${2:-8}"
+    cmd 'lua include("riders_sv.lua")'
+    for _ in $(seq 1 40); do r "grep -q DONE $G/data/probe/riders.txt 2>/dev/null" && break; sleep 3; done
+    r "grep -v DONE $G/data/probe/riders.txt" ;;
+  lowfps)
+    # The camera sweep with the game held to FPS: what a weak PC draws. The rider's pose, the
+    # carried targets and every smoothing must hold at a long frame as they do at a short one.
+    cmd "fps_max ${2:-30}"; sleep 1
+    "$0" camsweep "${3:-2}" "${4:-}"
+    cmd "fps_max 300" ;;
   shots) mkdir -p "$2"; r "cd $G/data/camsweep && tar cf - *.jpg" | tar xf - -C "$2"; ls "$2" | wc -l ;;
   restore)
     r "pkill -f GarrysMod/hl2_linu[x]; sleep 2; pkill -9 -f GarrysMod/hl2_linu[x]; rm -rf $G/addons/gmod-bmx-dev $G/addons/bmxprobe $G/data/camsweep_cl.txt $G/data/realprobe_cl.txt; if [ -d $WS.clean-aside ]; then rmdir $WS 2>/dev/null; mv $WS.clean-aside $WS; fi; [ -d $WS/.$BMX_WS.aside ] && mv $WS/.$BMX_WS.aside $WS/$BMX_WS; true"

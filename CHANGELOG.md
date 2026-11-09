@@ -5,6 +5,38 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.4.4 -- not on the Workshop yet
+
+**Better online**
+
+- **Skates lock onto a rail the moment you do.** Your own client now finds the rail with
+  the server's own finder and locks on at the same instant, instead of landing on top of
+  the rail for a ping and being pulled into the grind when the server answered. A
+  backslide at 200 ms ping was snapped up to 30 units sideways as it locked; it is not
+  moved at all now, and neither is a ledge grind (up to 10 units before).
+- **Tricks count where you pressed them** (`bmx_lagcomp`, now on by default). A hop, ollie
+  or spine transfer pressed at the lip counts at the lip even when it reaches the server
+  a moment late, the way the game already judges shots.
+
+**New by default**
+
+- **Nose manual** (`bmx_nose_manual`, now on): lean forward (left mouse with Ctrl) and let
+  go of the brake to keep rolling on the front wheel, with W and S trimming the balance.
+  Both switches stayed off until the whole test suite had been run with them on.
+
+**Unchanged on purpose**
+
+- `bmx_wheel_sweep` stays off. With it on, a bike rolled up a ledge as tall as its wheel
+  at riding speed, and every wheel cost twice the work.
+
+**Behind the scenes**
+
+- Every vehicle, every first spawn and every feature can now be measured in a real game on
+  a GPU in one run that passes or fails (`tools/bench/gate.sh`), with two new scenes: 8
+  riders in view and a 30 fps PC.
+- The BMX (Mode) gamemode's own tests now run on every change, on a real server with the
+  gamemode on.
+
 ## 1.4.3 -- not on the Workshop yet
 
 The last known hitches from the 1.4.1 and 1.4.2 measurements, fixed and measured again in

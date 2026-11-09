@@ -549,6 +549,12 @@ T.test("client perf: while its model builds, a vehicle up close is drawn from ha
     T.ok(full >= 60, "the full stand-in: " .. full .. " shapes")
     T.ok(pending <= full * 0.65, "while the model builds: " .. pending .. " of " .. full)
     T.ok(B.StandingIn(ent), "standing in")
+    -- asking whether it stands in does not ask for the model (an ask advances its build)
+    local asked = 0
+    B.BikeModelFor = function() asked = asked + 1 return nil end
+    B.StandingIn(ent)
+    T.eq(asked, 0, "StandingIn reads the memo, it does not ask for the model")
+    B.BikeModelFor = function() return nil end
     world.time = world.time + 11
     T.eq(shapes(), full, "a build that never finishes: the full stand-in after 10 s")
     B.BikeModelFor = real

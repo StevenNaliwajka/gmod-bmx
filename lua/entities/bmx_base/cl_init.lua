@@ -604,7 +604,14 @@ function BMX.StandingIn(ent)
     local bike = ent.Bike and ent:Bike()
     if not bike or not bike.look or bike.hasModel or bike.wheelModel then return false end
     if ent.bmxDrawnModel and not ent.bmxDrawnModel.cleared then return false end
-    if BMX.BikeModelFor(ent) then ent.bmxStandInAt = nil return false end
+    -- Ready is read off the vehicle's memo of its model (BikeMesh.Remembered, which every
+    -- lookup of it sets): asking for the model here would be one more ask a frame, and
+    -- an ask advances the build.
+    local memo = ent.bmxModelMemo
+    if memo and memo.model and not memo.model.cleared and memo.rev == BMX.ConfigRevision then
+        ent.bmxStandInAt = nil
+        return false
+    end
     local now = RealTime()
     ent.bmxStandInAt = ent.bmxStandInAt or now
     return now - ent.bmxStandInAt < STANDIN_FOR

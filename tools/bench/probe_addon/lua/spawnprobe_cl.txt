@@ -18,6 +18,34 @@ BM.Get = function(...)
     buildAcc = buildAcc + (SysTime() - s)
     return a, b, c
 end
+-- ONE-TIME WORK, named: each call below that a frame made is listed with its time, so a
+-- slow frame says what loaded in it (a sound's first play, a prop's model, a material).
+local events = {}
+local function evWrap(tbl, key, label)
+    local f = tbl and tbl[key]
+    if not isfunction(f) or C["w_" .. label] then return end
+    C["w_" .. label] = f
+    tbl[key] = function(...)
+        local s = SysTime()
+        local a, b, c, d = f(...)
+        local ms = (SysTime() - s) * 1000
+        local arg = select(1, ...)
+        if label:find(":") then arg = select(2, ...) end
+        events[#events + 1] = string.format("%s(%s) %.2f", label, isstring(arg) and arg:sub(-28) or "", ms)
+        return a, b, c, d
+    end
+end
+evWrap(_G, "CreateSound", "CreateSound")
+evWrap(_G, "ClientsideModel", "ClientsideModel")
+evWrap(_G, "CreateMaterial", "CreateMaterial")
+evWrap(_G, "Material", "Material")
+evWrap(surface, "CreateFont", "CreateFont")
+evWrap(sound, "Play", "sound.Play")
+evWrap(FindMetaTable("CSoundPatch"), "PlayEx", "patch:PlayEx")
+evWrap(FindMetaTable("CSoundPatch"), "Play", "patch:Play")
+evWrap(FindMetaTable("Entity"), "EmitSound", "ent:EmitSound")
+evWrap(FindMetaTable("Entity"), "SetModel", "ent:SetModel")
+hook.Add("OnEntityCreated", "spawnprobe_ev", function(e) events[#events + 1] = "created " .. (IsValid(e) and e:GetClass() or "?") end)
 -- Every BMX hook and each vehicle's Draw timed per frame, for the worst frames' breakdown.
 local parts = {}
 local function timed(name, fn)
@@ -49,7 +77,7 @@ end)
 local cur
 hook.Add("PostRender", "spawnprobe", function()
     local now = SysTime()
-    if not cur then C.last = now buildAcc = 0 return end
+    if not cur then C.last = now buildAcc = 0 events = {} parts = {} return end
     local dt = now - (C.last or now)
     C.last = now
     local heap = collectgarbage("count")
@@ -59,7 +87,12 @@ hook.Add("PostRender", "spawnprobe", function()
     local tops = {}
     for i = 1, math.min(3, #top) do tops[i] = string.format("%s %.1f", top[i][1], top[i][2]) end
     parts = {}
-    cur.rows[#cur.rows + 1] = { dt * 1000, buildAcc * 1000, heap - (cur.lastHeap or heap), resumes, longest * 1000, table.concat(tops, ", ") }
+    local lua = 0
+    for _, x in ipairs(top) do lua = lua + x[2] end
+    local ev = table.concat(events, ", ", 1, math.min(#events, 8)) .. (#events > 8 and (" +" .. (#events - 8)) or "")
+    events = {}
+    cur.rows[#cur.rows + 1] = { dt * 1000, buildAcc * 1000, heap - (cur.lastHeap or heap), resumes, longest * 1000,
+        string.format("BMX Lua %.1f: %s%s", lua, table.concat(tops, ", "), ev ~= "" and (" | events: " .. ev) or "") }
     cur.lastHeap = heap
     buildAcc, resumes, longest = 0, 0, 0
     if now > cur.till then

@@ -224,6 +224,64 @@ first. Left: the session's very first spawn still has one ~22-27 ms frame (the e
 creating the first vehicle and its seat; 6 ms of it is the server's first spawn in
 singleplayer).
 
+## Round 3 (1.4.3): the hitches left over, and what the camera sweep was really seeing
+
+What 1.4.2 left: the session's first spawn (one 22-27 ms frame), one e-bike frame of ~67 ms
+in the camera sweep, the stand-in drawn while a model builds, and single frames with a
+limb off on the scooter and the board. `sp.sh spawns` now names the one-time work in each
+slow frame (a sound's first play, a prop or material made, an entity created), and
+`SPAWN_RIDE=true` rides each kind instead of parking it.
+
+### 12. The first play of a sound
+The probe's first slow frame said it: `patch:PlayEx 10.85 ms`, the first sound of ours to
+play, loaded right there although it was precached. Every sound is now played once at
+volume 0 and stopped after joining (`BMX.WarmSounds`, one each 0.2 s). The motor's whine
+was the first motor loop of the sweep, ridden first on the e-bike. Its first `PlayEx` is
+0.01 ms now. Test: "after joining, every sound is played once at volume 0 and stopped".
+
+### 13. The stand-in's shapes, and its cost
+The stand-in is drawn from three base-game props (cylinder, ball, box) and the tyre, which
+nothing had loaded before the first spawn. They are precached at load and each is drawn
+once, invisibly, in every material it uses, after joining (`BMX.WarmStandIn`). While a model
+is on its way the stand-in is drawn at the middle detail (`BMX.StandingIn`): 39 prop draws
+a frame for a BMX up close instead of 67. Each shape no longer makes a Matrix (75 -> 10 a
+frame) or sets a material it already has. Tests: "while its model builds, a vehicle up
+close is drawn from half the shapes", "after joining, the stand-in's shapes are drawn once
+each, invisibly, and let go". `client_frame.lua --standin` benches it offline.
+
+### 14. The scooter's hands a frame behind the bars
+A rider drawn before the vehicle is posed from last frame's targets carried to where the
+vehicle is now (`BMX.CarryTargets`). The scooter's grips also turn with the steer, so the
+hands were where the bars had been, up to 11 u off in a hard turn. The scooter records its
+steer axis and steer with the targets, and the hands are carried round it too. Test: "a
+rider posed before the scooter is drawn has the hands where this frame's bars are".
+
+### 15. The sweep judged the frame after its own pictures
+Pass 1 takes a picture in every cell. A picture makes the next frame ~60 ms, and a rider
+posed from the frame before's targets is that much behind: every one of the scooter's and
+the board's pass-1 "bad" frames (8-12 each) was the frame after a picture. The sweep no
+longer judges that frame (it already left it out of the frame times) and says how many it
+skipped. Its slow frames (over 30 ms) are listed with how long after a picture they came.
+The scooter's 65 ms frame in one run did not come back in the next two.
+
+### The numbers, 1.4.2 against 1.4.3 (RTX 2070, singleplayer gm_flatgrass)
+
+| | 1.4.2 | 1.4.3 |
+|---|---|---|
+| session's first spawn (stock), worst frame in 5 s | 22.3-27.3 ms (1 over 16.7) | **14.1 ms (none over 16.7)** |
+| first `PlayEx` of a sound of ours | 10.85 ms | **0.01 ms** |
+| camera sweep, worst riding frame | 66.6 ms (e-bike) | **15.1 ms** (any vehicle) |
+| camera sweep, frames with a limb off (17 vehicles, 4 passes) | scooter 9, board 12 (pass 1), + teleport frames | **teleport frames only** (`parked@90`, 1 a pass on 4 vehicles) |
+| stand-in, prop draws a frame (BMX up close) | 67 | **39** |
+| riding a BMX / 16 parked / nothing spawned (fps) | 280.2 / 104.8 / 290.3 | 281.3 / 100.5 / 290.2 (the same, within noise) |
+| server, nothing spawned | 0.9 ms/s | 0.6 ms/s |
+
+Every feature scene of `sp.sh features` is within noise of the 1.4.2 table above.
+Left: the single frame the sweep teleports the bike back to its start (the test's own
+move), and a later first spawn of a kind can still have one frame just over 16.7 ms, the
+Lua collector paying off the build's garbage inside the rider's pose (pointing at it in a
+menu first avoids the build).
+
 ## Next round
 
 Run the loop again when: a vehicle gets a new moving part (anything drawn per frame
@@ -231,6 +289,6 @@ belongs in a mesh), a new hook goes on a player draw (it can be skipped: give it
 fallback as BMX.PoseRidersOf does), a background job is added (who needs it, and does it
 run for everyone?), or a player reports lag. Run `sp.sh features` before a release and
 compare with the table above. Candidates measured but not yet worth the change: the
-per-part matrix maths in `ENT:DrawDetailed` (~10% of what is left), the stand-in drawn
-while a model builds (a client-side prop per tube: dearer than the model it stands in
-for, but shown for well under a second now), and the session's first-spawn frame.
+per-part matrix maths in `ENT:DrawDetailed` (~10% of what is left), and the build's
+garbage collected in the frames after it (one frame just over 16.7 ms on some first
+spawns).

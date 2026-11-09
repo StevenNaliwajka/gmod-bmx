@@ -34,6 +34,8 @@
 ----------------------------------------------------------------------------]]
 
 BMX = BMX or {}
+-- the targets on the bars (they turn with the steer: BMX.CarryTargets)
+local BAR_KEYS = { "rHand", "lHand", "rHandA", "rHandB", "lHandA", "lHandB" }
 local SC = BMX.Scooter
 local T = SC.Tune
 local B = BMX.Board
@@ -520,6 +522,11 @@ BMX.DrawVehicle.scooter = function(ent, kit)
         return bodyRoll ~= 0 and rotAbout(p, bodyC, fwd, bodyRoll) or p
     end, SET.poses)
     ent.ikTargets = ik
+    -- The grips turn with the steer (G, above): a rider posed before this drawing next
+    -- frame has the hands carried round to the bars' new steer too (BMX.CarryTargets),
+    -- not left where the bars were a frame ago.
+    local at = ent.bmxTargetsAt
+    if at then at.bars = { pivot = headB, axis = steerAxis, steer = steer, sign = -1, keys = BAR_KEYS } end
 
     if debug then
         render.DrawLine(headB, headT, Color(255, 200, 60), true)

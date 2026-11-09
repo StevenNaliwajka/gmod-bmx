@@ -116,3 +116,25 @@ T.test("scooter hands: on the grips however the bars are steered, the left hand 
         T.ok(ik.rHandA and ik.rHandB and (ik.rHandB - ik.rHandA):Length() > 3, "a grip's length to hold along")
     end
 end)
+
+-- A RIDER POSED BEFORE THE SCOOTER IS DRAWN (the player is drawn first, most frames) is
+-- posed from last frame's targets, carried to where the scooter is now
+-- (BMX.CarryTargets). The grips also turn with the steer: carried with the body alone,
+-- the hands were where the bars had been a frame ago, up to 11 u off in a hard turn
+-- (the camera sweep, 2026-11-08). They are carried round the steer axis too.
+T.test("scooter hands: a rider posed before the scooter is drawn has the hands where this frame's bars are", function()
+    local cl, ent, E = scene()
+    ent:SetSteer(0)
+    draw(cl, ent)
+    for _, deg in ipairs({ 25, -20, 35 }) do
+        ent:SetSteer(math.rad(deg))
+        ent:SetPos(ent:GetPos() + E.Vector(6, 1, 0))
+        E.BMX.CarryTargets(ent)
+        local carried = {}
+        for _, k in ipairs({ "rHand", "lHand", "rHandA", "lHandB" }) do carried[k] = E.Vector(ent.ikTargets[k]) end
+        local ik = draw(cl, ent)
+        for k, v in pairs(carried) do
+            T.ok((v - ik[k]):Length() < 0.05, "steered to " .. deg .. ": " .. k .. " carried onto the bars: " .. (v - ik[k]):Length())
+        end
+    end
+end)

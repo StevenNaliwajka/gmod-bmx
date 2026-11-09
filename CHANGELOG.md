@@ -5,6 +5,29 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.4.3 -- not on the Workshop yet
+
+The last known hitches from the 1.4.1 and 1.4.2 measurements, fixed and measured again in
+a real game on a GPU (docs/PERFORMANCE.md, round 3).
+
+**Faster**
+
+- **The first spawn of a session no longer hitches.** Its worst frame was 22-27 ms; it is
+  14 ms now, with no frame over 16.7 ms. The shapes a bike is drawn from while its model
+  is built, and every sound the addon plays, are loaded while you join instead of in
+  that spawn's frames.
+- **The e-bike's 67 ms frame is gone.** The first time any sound of ours played, the game
+  loaded it right then (11 ms, more the first time a motor whined). Each one is played
+  once, silently, after joining; its worst frame riding is now 11.5 ms.
+- **The bike shown while its model builds is cheaper to draw.** It is drawn at the
+  middle level of detail meanwhile: 39 shapes a frame for a BMX up close instead of 67,
+  and far less garbage for the game to clean up.
+
+**Fixed**
+
+- **Scooter: the hands stay on the bars in a hard turn.** When the rider was drawn before
+  the scooter, the hands followed the bars a frame late, up to 11 units off the grips.
+
 ## 1.4.2 -- not on the Workshop yet
 
 More speed, measured feature by feature in a real game before and after

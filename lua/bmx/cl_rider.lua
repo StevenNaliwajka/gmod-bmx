@@ -1722,18 +1722,47 @@ function BMX.CarryTargets(bike)
     local at = bike.bmxTargetsAt
     if not at then return end
     local p, f, r, u = bike:GetPos(), bike:GetForward(), bike:GetRight(), bike:GetUp()
-    if p == at.p and f == at.f and u == at.u then return end
-    for _, t in ipairs({ bike.ikTargets or false, bike.ikTargetsStoker or false }) do
-        if t then
-            for k, v in pairs(t) do
-                if isvector(v) and not (isstring(k) and k:sub(-3) == "Rel") then
-                    local d = v - at.p
-                    t[k] = p + f * d:Dot(at.f) + r * d:Dot(at.r) + u * d:Dot(at.u)
+    local moved = not (p == at.p and f == at.f and u == at.u)
+    if moved then
+        local function carry(v)
+            local d = v - at.p
+            return p + f * d:Dot(at.f) + r * d:Dot(at.r) + u * d:Dot(at.u)
+        end
+        for _, t in ipairs({ bike.ikTargets or false, bike.ikTargetsStoker or false }) do
+            if t then
+                for k, v in pairs(t) do
+                    if isvector(v) and not (isstring(k) and k:sub(-3) == "Rel") then t[k] = carry(v) end
                 end
             end
         end
+        local bars = at.bars
+        if bars then
+            bars.pivot = carry(bars.pivot)
+            bars.axis = f * bars.axis:Dot(at.f) + r * bars.axis:Dot(at.r) + u * bars.axis:Dot(at.u)
+        end
+        at.p, at.f, at.r, at.u = p, f, r, u
     end
-    at.p, at.f, at.r, at.u = p, f, r, u
+    -- THE BARS' OWN TURN (at.bars, from a drawer whose grips turn with the steer:
+    -- cl_scooter.lua): the hands go round the steer axis by however far the networked
+    -- steer has moved since, so a rider posed before the vehicle is drawn holds the bars
+    -- where this frame's drawing will put them. It was one frame behind, up to 11 u off
+    -- on a hard turn (the camera sweep, 2026-11-08).
+    local bars, t = at.bars, bike.ikTargets
+    if bars and t and bike.GetSteer and BMX.VisualSteer then
+        local s = BMX.VisualSteer(bike:GetSteer(), bike.GetSpeedUPS and bike:GetSpeedUPS() or 0, bike:Cfg())
+        local ds = (s - bars.steer) * (bars.sign or 1)
+        if ds ~= 0 then
+            local ax, c, sn = bars.axis, math.cos(ds), math.sin(ds)
+            for _, k in ipairs(bars.keys) do
+                local v = t[k]
+                if isvector(v) then
+                    local d = v - bars.pivot
+                    t[k] = bars.pivot + d * c + ax:Cross(d) * sn + ax * (ax:Dot(d) * (1 - c))
+                end
+            end
+            bars.steer = s
+        end
+    end
 end
 
 local animated = {}     -- player -> true while we have bones moved on them

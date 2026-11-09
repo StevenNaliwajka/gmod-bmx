@@ -477,6 +477,117 @@ T.test("client perf: after joining, every vehicle material is made one a tick, b
     T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
 end)
 
+-- THE STAND-IN'S SHAPES LOADED WHILE JOINING: the first spawn of a session drew its
+-- stand-in from base-game models (a cylinder, a ball, a box, the tyre) nothing had
+-- loaded, in four materials, all in that spawn's frames. Each is drawn once after
+-- joining, invisibly, a shape a frame, and nothing is left behind.
+T.test("client perf: after joining, the stand-in's shapes are drawn once each, invisibly, and let go", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    local E, B = cl.env, cl.env.BMX
+    T.ok(E.hook.GetTable().InitPostEntity["BMX.WarmStandIn"] ~= nil, "it starts after joining")
+    local writesOff, hidden, visible = false, {}, 0
+    E.render.OverrideColorWriteEnable = function(on, write) writesOff = on and not write end
+    E.render.OverrideDepthEnable = function() end
+    local made = {}
+    local CSM = E.ClientsideModel
+    E.ClientsideModel = function(...)
+        local m = CSM(...)
+        if m then
+            made[#made + 1] = m
+            local d = m.DrawModel
+            m.DrawModel = function(self)
+                if writesOff then hidden[self.model .. "|" .. tostring(self.material)] = true else visible = visible + 1 end
+                return d(self)
+            end
+        end
+        return m
+    end
+    B.WarmStandIn()
+    local frames = 0
+    for _ = 1, 40 do E.hook.Run("PostDrawOpaqueRenderables", false, false) frames = frames + 1 end
+    for _, kind in ipairs({ "cyl", "sph", "box" }) do
+        for _, mt in pairs(B.BikeMaterials) do
+            T.ok(hidden[B.BikePrimitives[kind].model .. "|" .. mt], kind .. " drawn in " .. mt)
+        end
+    end
+    T.ok(hidden[B.TyreModel .. "|nil"], "the tyre drawn")
+    T.eq(visible, 0, "nothing drawn visibly")
+    T.ok(#made >= 13 and #made <= 14, "a shape a frame: " .. #made .. " made")
+    for _, m in ipairs(made) do T.ok(m.removed, "let go: " .. m.model) end
+    T.eq(E.hook.GetTable().PostDrawOpaqueRenderables["BMX.WarmStandIn"], nil, "and its hook gone when done")
+    E.ClientsideModel = CSM
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
+-- THE STAND-IN, CHEAPER: while a vehicle's model is on its way it is drawn from shapes,
+-- a prop draw per tube and joint (67 for a BMX up close: dearer than the model it
+-- stands in for). It is drawn at the middle detail meanwhile, about half the draws. Not
+-- for a vehicle with the models off (that is its look, in full), and not past 10 s (a
+-- build that has given up leaves the full stand-in).
+T.test("client perf: while its model builds, a vehicle up close is drawn from half the shapes", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    MF.enable(cl)
+    local E, B = cl.env, cl.env.BMX
+    local ent = cl:clientEntity(B.ClassFor("stock"))
+    ent:SetPos(E.Vector(0, 0, 10))
+    ent:SetGrounded(true)
+    cl.eyePos = E.Vector(-110, 0, 60)
+    local real = B.BikeModelFor
+    B.BikeModelFor = function() return nil end
+    local function shapes()
+        cl.drawnCS = {}
+        ent:Draw()
+        return #cl.drawnCS
+    end
+    world.time = world.time + 0.1
+    local pending = shapes()
+    E.GetConVar("bmx_bike_model"):SetInt(0)
+    local full = shapes()
+    E.GetConVar("bmx_bike_model"):SetInt(1)
+    T.ok(full >= 60, "the full stand-in: " .. full .. " shapes")
+    T.ok(pending <= full * 0.65, "while the model builds: " .. pending .. " of " .. full)
+    T.ok(B.StandingIn(ent), "standing in")
+    world.time = world.time + 11
+    T.eq(shapes(), full, "a build that never finishes: the full stand-in after 10 s")
+    B.BikeModelFor = real
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
+-- SOUNDS HEARD ONCE, SILENTLY, WHILE JOINING: the first play of a sound of ours loaded it
+-- inside PlayEx (10.9 ms on a real client; the e-bike's first motor whine). Every sound,
+-- every variant, is played at volume 0 and stopped after joining.
+T.test("client perf: after joining, every sound is played once at volume 0 and stopped", function()
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local E, B = cl.env, cl.env.BMX
+    cl.localPlayer = sv:player("Joiner")
+    T.ok(E.hook.GetTable().InitPostEntity["BMX.WarmSounds"] ~= nil, "it starts after joining")
+    local n0 = #cl.patches
+    B.WarmSounds()
+    for _ = 1, 400 do world.time = world.time + 0.05 cl:runTimers() end
+    local warmed = {}
+    for i = n0 + 1, #cl.patches do
+        local p = cl.patches[i]
+        T.eq(p.vol, 0, "silent: " .. p.path)
+        T.ok(not p.playing, "stopped: " .. p.path)
+        warmed[p.path] = true
+    end
+    local want = 0
+    for _, snd in pairs(B.Sounds) do
+        if snd.path then
+            for i = 1, snd.variants or 1 do
+                local path = snd.variants and string.format(snd.path, i) or snd.path
+                want = want + 1
+                T.ok(warmed[path], "warmed: " .. path)
+            end
+        end
+    end
+    T.ok(want >= 10 and warmed["bmx/motor.wav"], "the motor's whine among " .. want)
+    T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
 local function buildStretches(id)
     local _, world = F.server()
     local cl = F.client(world)

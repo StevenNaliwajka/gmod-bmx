@@ -39,6 +39,32 @@ for _, s in pairs(BMX.Sounds) do
     end
 end
 
+-- HEARD ONCE, SILENTLY, WHILE JOINING. Precaching was not enough: the first time a sound
+-- of ours played, the engine loaded it inside that PlayEx, 10.9 ms on a real client
+-- (the session's first spawn, its rolling loop; the e-bike's motor whine the first time
+-- one was ridden, a ~67 ms frame, 2026-11-08). Each one is played at volume 0 and
+-- stopped, one every 0.2 s from a few seconds after joining.
+function BMX.WarmSounds()
+    local list = {}
+    for _, s in pairs(BMX.Sounds) do
+        if s.path and s.variants then
+            for i = 1, s.variants do list[#list + 1] = string.format(s.path, i) end
+        elseif s.path then
+            list[#list + 1] = s.path
+        end
+    end
+    table.sort(list)
+    local i = 0
+    timer.Create("BMX.WarmSounds", 0.2, #list, function()
+        i = i + 1
+        local ply, path = LocalPlayer(), list[i]
+        if not (IsValid(ply) and path) then return end
+        local patch = CreateSound(ply, path)
+        if patch then patch:PlayEx(0, 100) patch:Stop() end
+    end)
+end
+hook.Add("InitPostEntity", "BMX.WarmSounds", function() timer.Simple(5, BMX.WarmSounds) end)
+
 --------------------------------------------------------------------------
 -- Volumes, per player. 0..1 each, archived, and multiplied onto the sound's own
 -- level rather than replacing it, so 1 is "as designed" and 0 is silent.

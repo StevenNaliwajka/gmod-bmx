@@ -14,6 +14,7 @@
         luajit tools/bench/client_frame.lua --count ...         + engine-call and Vector counts
         luajit tools/bench/client_frame.lua --spikes ...        + the frames that stood out, and why
         luajit tools/bench/client_frame.lua --profile ...       + LuaJIT's sampling profiler (-jp)
+        luajit tools/bench/client_frame.lua --standin ...       the models off: the stand-in drawn while one builds
 
     Options: --frames N (measured, default 240), --warm N (default 60), --fps F
     (the client's frame rate the clock advances by, default 60), --spread D
@@ -63,7 +64,7 @@ do
         local a = arg[i]
         local key = a:match("^%-%-(.+)$")
         if key == "count" or key == "sites" or key == "spikes" or key == "profile" or key == "joff" or key == "csv" or key == "hooks"
-            or key == "quiet" or key == "noik" or key == "varied" or key == "slowskel" or key == "buildlog" or key == "build" or key == "nogc" or key == "framelog" then
+            or key == "quiet" or key == "noik" or key == "varied" or key == "slowskel" or key == "buildlog" or key == "build" or key == "nogc" or key == "framelog" or key == "standin" then
             opt[key] = true
         elseif key then
             opt[key] = arg[i + 1]
@@ -1203,6 +1204,15 @@ for _, id in ipairs(VEHICLES) do
     for _, n in ipairs(COUNTS) do
         local S = scene(id, n)
         S.cmd = usercmd(S.E)
+        -- --standin: the models off, the frame drawn as it is while a model builds
+        if opt.standin then
+            -- models on, but none ever ready: every frame is a stand-in frame
+            S.B.BikeModelFor = function() return nil end
+            for _, k in ipairs({ "BoardModel", "ScooterModel", "OddModel" }) do
+                if S.B[k] then S.B[k] = function() return nil end end
+            end
+        end
+        if opt.lodscale then S.E.GetConVar("bmx_lod_scale"):SetFloat(tonumber(opt.lodscale)) end
         local b = opt.dump and pumpBuilds(S) or prebuild(S)
         if opt.dump then
             local fh = io.open(opt.dump, "a")

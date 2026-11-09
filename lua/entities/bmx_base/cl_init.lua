@@ -156,6 +156,48 @@ BMX.BikeMaterials = MAT
 
 local drawing       -- the bike being drawn, for the shape cache
 
+-- THE STAND-IN'S SHAPES, LOADED WHILE JOINING. The first vehicle of a session drew its
+-- stand-in from three base-game models nothing had loaded yet, and the tyre model, in
+-- four materials: each read from disk and handed to the GPU in that spawn's frames
+-- (the session's first spawn was its one frame over 20 ms, 2026-11-08). They are
+-- precached at load, and each shape is drawn once in every material it is drawn in,
+-- invisibly (no colour, no depth written), a shape a frame a few seconds after joining.
+for _, p in pairs(PRIM) do if util.PrecacheModel then util.PrecacheModel(p.model) end end
+local warmQueue, warmOne
+function BMX.WarmStandIn()
+    warmQueue = {}
+    for _, kind in ipairs({ "cyl", "sph", "box" }) do
+        for _, mt in ipairs({ MAT.paint, MAT.chrome, MAT.satin, MAT.matte }) do
+            warmQueue[#warmQueue + 1] = { PRIM[kind].model, mt }
+        end
+    end
+    if BMX.TyreModel then warmQueue[#warmQueue + 1] = { BMX.TyreModel } end
+    hook.Add("PostDrawOpaqueRenderables", "BMX.WarmStandIn", warmOne)
+end
+hook.Add("InitPostEntity", "BMX.WarmStandIn", function() timer.Simple(4, BMX.WarmStandIn) end)
+function warmOne(depth, sky)
+    if depth or sky then return end
+    local it = warmQueue and table.remove(warmQueue, 1)
+    if not it or not (render.OverrideColorWriteEnable and render.OverrideDepthEnable) then
+        warmQueue = nil
+        hook.Remove("PostDrawOpaqueRenderables", "BMX.WarmStandIn")
+        return
+    end
+    local m = ClientsideModel(it[1], RENDERGROUP_OPAQUE)
+    if not IsValid(m) then return end
+    m:SetNoDraw(true)
+    if it[2] then m:SetMaterial(it[2]) end
+    m:SetPos(EyePos())
+    m:SetAngles(Angle(0, 0, 0))
+    m:SetupBones()
+    render.OverrideColorWriteEnable(true, false)
+    render.OverrideDepthEnable(true, false)
+    m:DrawModel()
+    render.OverrideDepthEnable(false, false)
+    render.OverrideColorWriteEnable(false, false)
+    m:Remove()
+end
+
 local function primModel(kind)
     local ent = drawing
     if not ent then return nil end
@@ -184,11 +226,15 @@ local function roleMaterial(col, override)
     return MAT.paint
 end
 
+-- One matrix for every shape (EnableMatrix copies it), and the material set only when
+-- it changes: the stand-in draws a few dozen shapes a frame, and a fresh Matrix and a
+-- material lookup for each were most of its garbage.
+local primMat = Matrix()
 local function drawPrim(m, pos, ang, scale, col, material)
-    m:SetMaterial(roleMaterial(col, material))
-    local mat = Matrix()
-    mat:Scale(scale)
-    m:EnableMatrix("RenderMultiply", mat)
+    local mt = roleMaterial(col, material)
+    if m.bmxMat ~= mt then m:SetMaterial(mt) m.bmxMat = mt end
+    primMat:SetScale(scale)
+    m:EnableMatrix("RenderMultiply", primMat)
     m:SetPos(pos)
     m:SetAngles(ang)
     m:SetupBones()
@@ -544,6 +590,25 @@ local function shockMeshes(shock, r, L, far)
 end
 local lodScale = CreateClientConVar("bmx_lod_scale", "1", true, false,
     "BMX bike detail by distance: 1 normal, 2 = full detail twice as far, 0 = always full.")
+
+-- THE STAND-IN, CHEAPER. While a vehicle's model is still being built it is drawn from
+-- shapes, a clientside prop per tube and joint: 67 draws a frame for a BMX up close,
+-- dearer than the finished model (a dozen meshes). For those few frames it is drawn at
+-- the middle detail (20 draws: no joint balls, spokes or rings), which is what it looks
+-- like from across the street anyway. Only while a model is on its way: a vehicle with
+-- no model to build (or one whose build has given up, 10 s on) keeps its full detail.
+local STANDIN_FOR = 10
+function BMX.StandingIn(ent)
+    local BM = BMX.BikeMesh
+    if not (BM and BM.Enabled()) then return false end
+    local bike = ent.Bike and ent:Bike()
+    if not bike or not bike.look or bike.hasModel or bike.wheelModel then return false end
+    if ent.bmxDrawnModel and not ent.bmxDrawnModel.cleared then return false end
+    if BMX.BikeModelFor(ent) then ent.bmxStandInAt = nil return false end
+    local now = RealTime()
+    ent.bmxStandInAt = ent.bmxStandInAt or now
+    return now - ent.bmxStandInAt < STANDIN_FOR
+end
 
 function BMX.BikeLOD(ent)
     local k = lodScale:GetFloat()
@@ -1097,6 +1162,7 @@ function ENT:Draw()
     local half = WC.wheelbase * 0.5
     local debug = GetConVar("bmx_debug") and GetConVar("bmx_debug"):GetInt() > 0
     local lod = debug and 0 or BMX.BikeLOD(self)
+    if lod == 0 and not debug and BMX.StandingIn(self) then lod = 1 end
     local debug2 = GetConVar("bmx_debug") and GetConVar("bmx_debug"):GetInt() >= 2
 
     -- A VEHICLE THAT IS NOT THE STOCK BIKE'S SHAPE draws itself (G13, `drawer` in its

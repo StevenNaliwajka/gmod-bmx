@@ -13,6 +13,7 @@
 #   tools/bench/sp.sh camsweep [passes] [ids]   the camera sweep (tools/ride/camsweep_*), results printed
 #   tools/bench/sp.sh parked [TAG]   8 parked vehicles in view: frame times + a line profile
 #   tools/bench/sp.sh spawns [IDS]    the first-spawn hitch: each kind spawned once, every frame logged
+#                                     (SPAWN_INTENT=1.5 pointed at in the menu first; SPAWN_RIDE=true ridden)
 #   tools/bench/sp.sh features       every feature in its own scene, client and server cost (~6 min)
 #   tools/bench/sp.sh probe           the real-client cost probe (tools/bench/realprobe_*)
 #   tools/bench/sp.sh shots DIR       copy the camera sweep's pictures here
@@ -100,6 +101,7 @@ case "${1:-}" in
     scp -q "$HERE/probe_addon/lua/spawnprobe_cl.txt" "$CL:$G/data/spawnprobe_cl.txt"
     [ -n "${2:-}" ] && cmd "lua SPAWNPROBE_IDS = string.Explode(\",\", \"$2\")"
     cmd "lua SPAWNPROBE_INTENT = ${SPAWN_INTENT:-0}"
+    cmd "lua SPAWNPROBE_RIDE = ${SPAWN_RIDE:-false}"
     cmd 'lua include("spawnprobe_sv.lua")'
     for _ in $(seq 1 80); do r "grep -q DONE $G/data/probe/spawns.txt 2>/dev/null" && break; sleep 3; done
     r "cat $G/data/probe/spawns.txt" ;;

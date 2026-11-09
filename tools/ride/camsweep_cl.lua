@@ -147,6 +147,12 @@ hook.Add("PostRender", "camsweep", function()
         local ft = cur.ft[pass .. "|" .. stage] or {}
         cur.ft[pass .. "|" .. stage] = ft
         ft[#ft + 1] = dt
+        -- a slow frame, noted with where it was and how long since a picture was taken
+        if dt > 0.03 then
+            cur.slow = cur.slow or {}
+            cur.slow[#cur.slow + 1] = string.format("%.1f ms p%d %s t%.2f (%s frames after a picture)", dt * 1000, pass, stage, t,
+                cur.shotFrame and tostring(f - cur.shotFrame) or "no")
+        end
     end
     local drawn = cur.plyDrawn == f
     local posed = ply.bmxPoseFrame == f
@@ -157,7 +163,12 @@ hook.Add("PostRender", "camsweep", function()
     -- The fists and feet against what the vehicle drew, judged where the rider means to
     -- hold the bars: not a style pose in the air, not a board (it has no bars).
     local bad
-    if drawn and IsValid(bike) and bike.ikTargets and not (bike.poseW and next(bike.poseW)) and stage ~= "air" then
+    -- (not the frame after a picture: the capture made it ~60 ms long, and a rider posed
+    -- from the frame before's targets is that much behind: 8-12 u on a scooter's or a
+    -- board's kicking foot. Not what a player sees; counted apart.)
+    local afterShot = cur.shotFrame == f - 1
+    if afterShot then cell.afterShot = (cell.afterShot or 0) + 1 end
+    if not afterShot and drawn and IsValid(bike) and bike.ikTargets and not (bike.poseW and next(bike.poseW)) and stage ~= "air" then
         local ik = bike.ikTargets
         local worst = 0
         -- (a board has no grips: its hand targets are not where the hands belong)
@@ -171,7 +182,9 @@ hook.Add("PostRender", "camsweep", function()
             if m then worst = math.max(worst, m) end
         end
         cell.miss[#cell.miss + 1] = worst
-        if worst > BAD_MISS then bad = string.format("limb %.0fu off", worst) end
+        if worst > BAD_MISS then
+            bad = string.format("limb %.0fu off", worst)
+        end
     end
     if drawn and not posed and IsValid(bike) then bad = "drawn without the pose" end
     if bad then
@@ -210,15 +223,18 @@ local function finish()
     for _, l in pairs(r.ft) do for _, v in ipairs(l) do allFt[#allFt + 1] = v end end
     out[#out + 1] = string.format("== %s: frames on foot before %.1f ms median | riding %.1f ms median, p95 %.1f, max %.1f | pictures %d",
         r.id, pre, q(allFt, 0.5) * 1000, q(allFt, 0.95) * 1000, q(allFt, 1) * 1000, r.shots)
+    if r.slow then out[#out + 1] = "  slow frames: " .. table.concat(r.slow, "; ", 1, math.min(#r.slow, 8)) end
     -- Per pass: frames, the rider drawn and posed, worst cells.
     for pass = 1, r.passes do
         local P = PASSES[pass]
         local n, drawn, posed, bikeDrawn, bad, misses = 0, 0, 0, 0, 0, {}
+        local skipped = 0
         local badCells = {}
         for key, c in pairs(r.cells) do
             local kp, ks, kb = key:match("^(%d+)|([^|]+)|(%d+)$")
             if tonumber(kp) == pass then
                 n, drawn, posed, bikeDrawn, bad = n + c.n, drawn + c.drawn, posed + c.posed, bikeDrawn + c.bikeDrawn, bad + c.bad
+                skipped = skipped + (c.afterShot or 0)
                 for _, m in ipairs(c.miss) do misses[#misses + 1] = m end
                 if c.bad > 0 then badCells[#badCells + 1] = string.format("%s@%s %d/%d (%s)", ks, kb, c.bad, c.n, c.why or "?") end
             end
@@ -229,8 +245,8 @@ local function finish()
             local l = r.ft[pass .. "|" .. s[1]]
             if l then ftl[#ftl + 1] = string.format("%s %.1f", s[1], q(l, 0.95) * 1000) end
         end
-        out[#out + 1] = string.format("  pass %d (%s, pitch %d): %d frames, rider drawn %d, posed %d, vehicle drawn %d, bad %d | limb miss median %.1f p95 %.1f max %.1f u",
-            pass, P.mode, P.pitch, n, drawn, posed, bikeDrawn, bad, q(misses, 0.5), q(misses, 0.95), q(misses, 1))
+        out[#out + 1] = string.format("  pass %d (%s, pitch %d): %d frames, rider drawn %d, posed %d, vehicle drawn %d, bad %d (%d after a picture not judged) | limb miss median %.1f p95 %.1f max %.1f u",
+            pass, P.mode, P.pitch, n, drawn, posed, bikeDrawn, bad, skipped, q(misses, 0.5), q(misses, 0.95), q(misses, 1))
         out[#out + 1] = "    p95 frame ms by stage: " .. table.concat(ftl, ", ")
         if #badCells > 0 then
             local shown = {}

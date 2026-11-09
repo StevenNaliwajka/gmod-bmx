@@ -24,6 +24,8 @@ for i, id in ipairs(ids) do
         if SPAWNPROBE_INTENT and SPAWNPROBE_INTENT > 0 then
             o:SendLua(string.format("BMX.ModelIntent(%q)", id))
         end
+        if IsValid(o) and IsValid(o:GetVehicle()) then o:ExitVehicle() end
+        hook.Remove("Think", "spawnprobe_drive")
         -- alone: the last one goes first, so each spawn is measured on its own
         for _, e in ipairs(P.ents) do if IsValid(e) then e:Remove() end end
         P.ents = {}
@@ -35,6 +37,20 @@ for i, id in ipairs(ids) do
             local ms = (SysTime() - t0) * 1000
             file.Append("probe/spawns.txt", string.format("  (server spawn of %s: %.1f ms)\n", id, ms))
             P.ents[#P.ents + 1] = b
+            -- SPAWNPROBE_RIDE: the player gets on and rides it round a circle (the camera
+            -- sweep's e-bike spike was while riding: its motor, its HUD, its sounds)
+            if SPAWNPROBE_RIDE then
+                timer.Simple(0.3, function()
+                    if not (IsValid(b) and IsValid(o)) then return end
+                    if IsValid(o:GetVehicle()) then o:ExitVehicle() end
+                    o.BMXScripted = true
+                    o:EnterVehicle(b:GetPod())
+                end)
+                hook.Add("Think", "spawnprobe_drive", function()
+                    local inp = IsValid(b) and b.input
+                    if inp then inp.throttle, inp.leanTarget, inp.brakeRear, inp.brakeFront = 0.35, 0.3, 0, 0 end
+                end)
+            end
         end)
     end)
 end

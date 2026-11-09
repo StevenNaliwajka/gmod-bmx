@@ -113,8 +113,11 @@ headless:
       # installed this very commit, and install.sh restarts the server: doing it
       # again disconnected anyone riding a second time, eleven seconds after the
       # first. Only a commit that is not on the box yet is checked out.
-      $SSH "$EXEC 'git config --global --add safe.directory ${APP_DIR} && cd ${APP_DIR} && git fetch -q origin && if [ \"\$(git rev-parse HEAD)\" = \"${CI_COMMIT_SHA}\" ] && git diff --quiet HEAD; then echo \"already at ${CI_COMMIT_SHORT_SHA}: no reinstall, no restart\"; else git checkout -f ${CI_COMMIT_SHA} && bash install.sh; fi'"
-      $SSH "$EXEC '/usr/local/bin/bmx-test'"
+      # The checkout, the install and the run, all under bmx-test's lock
+      # (tools/server/bmx-sha-test): another project's run may hold the server, and an
+      # install restarts it. Already at this commit (deploy-dev just installed it): no
+      # reinstall, no restart.
+      $SSH "$EXEC '/usr/local/bin/bmx-sha-test ${CI_COMMIT_SHA}'"
 
 # The same borrow for an unprotected ref, run ON the box by the gmod runner:
 # bmx-branch-test does exactly the two steps above (check this commit out unless

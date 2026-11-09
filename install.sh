@@ -40,6 +40,17 @@ fi
 # On a guest where the server is not running (a twin that has not been cut over),
 # starting it here would silently bring up a SECOND server against the same
 # workshop content and player base.
+#
+# NOT UNDER A TEST RUN. The CI box's server is also the headless suite's, and a restart in
+# the middle of a run wedges it (2026-11-09: a branch job's install restarted the server
+# three cases into gmod-bmx-mode's run). So the restart waits for bmx-test's lock, unless
+# whoever called this already holds it (BMX_TEST_LOCKED=1). A box with no test run
+# (test-gmod, Petopia) never has the lock taken and goes straight through.
+LOCK="${BMX_TEST_LOCK:-/run/lock/bmx-test.lock}"
+if [ -z "${BMX_TEST_LOCKED:-}" ] && [ -d "$(dirname "$LOCK")" ] && command -v flock >/dev/null; then
+  exec 8>"$LOCK"
+  flock -n 8 || { echo "  a test run holds the server; waiting for it to finish"; flock -w 5400 8 || true; }
+fi
 if systemctl is-active --quiet "$UNIT"; then
   echo "  restarting $UNIT (this disconnects players -- addons load at startup)"
   systemctl restart "$UNIT"

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# bmx-sha-test <40-hex sha>: the headless suite against one gmod-bmx commit, start to end
+# under bmx-test's lock. The CI box's server is shared by gmod-bmx's pipelines (main and
+# branch) and gmod-bmx-mode's (bmx-mode-test), and an install restarts it: a branch job's
+# install restarted the server three cases into the mode's run on 2026-11-09 and wedged it,
+# because the lock was only taken by bmx-test, after the install. So the checkout, the
+# install and the run all happen while this holds /run/lock/bmx-test.lock.
+#
+# Used by the main pipeline's headless job and by MGMT's bmx-branch-test (the branch
+# runner's one sudo command). Installed by tools/server/install-server-tools.sh.
+set -euo pipefail
+SHA="${1:-}"
+[[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "bmx-sha-test: want a 40-hex commit sha" >&2; exit 2; }
+APP_DIR="${BMX_DIR:-/opt/gmod/garrysmod/addons/gmod-bmx}"
+exec 9>"${BMX_TEST_LOCK:-/run/lock/bmx-test.lock}"
+if ! flock -n 9; then
+  echo "  another run holds the server; waiting for it"
+  flock -w "${BMX_LOCK_WAIT:-5400}" 9 || { echo "bmx-sha-test: the server stayed busy" >&2; exit 2; }
+fi
+export BMX_TEST_LOCKED=1
+git config --global --add safe.directory "$APP_DIR" >/dev/null 2>&1 || true
+cd "$APP_DIR"
+git fetch -q origin "+refs/heads/*:refs/remotes/origin/*"
+if [ "$(git rev-parse HEAD)" = "$SHA" ] && git diff --quiet HEAD; then
+  echo "already at ${SHA:0:8}: no reinstall, no restart"
+else
+  git checkout -q -f "$SHA" && bash install.sh
+fi
+# the runner as this commit installed it
+exec /usr/local/bin/bmx-test

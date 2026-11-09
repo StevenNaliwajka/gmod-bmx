@@ -107,6 +107,22 @@ evidence() {
 [ -d "$ADDON_DIR" ] || die "no addon checkout at $ADDON_DIR"
 [ -f "$RCON" ]      || die "no RCON client at $RCON (the recipe installs it)"
 
+# --- 0. one run at a time ----------------------------------------------------
+# Two GitLab projects test on this one server (gmod-bmx, and gmod-bmx-mode through
+# bmx-mode-test), and a resource_group only serialises jobs within ONE project. Two runs
+# restarting srcds under each other produce a report that describes neither. A wrapper
+# that already holds the lock (bmx-mode-test, which changes the gamemode first) says so
+# with BMX_TEST_LOCKED=1; its descriptor is inherited, so the lock stays held.
+LOCK="${BMX_TEST_LOCK:-/run/lock/bmx-test.lock}"
+if [ -z "${BMX_TEST_LOCKED:-}" ]; then
+  exec 9>"$LOCK"
+  if ! flock -n 9; then
+    say "another run holds $LOCK; waiting for it (at most ${BMX_LOCK_WAIT:-5400} s)"
+    flock -w "${BMX_LOCK_WAIT:-5400}" 9 || die "the server stayed busy with another run"
+  fi
+  export BMX_TEST_LOCKED=1
+fi
+
 # --- 1. the commit under test ------------------------------------------------
 if [ -n "$REF" ]; then
   say "checking out $REF"

@@ -33,7 +33,7 @@ echo "▶ workshop kit"
 echo "▶ bmx-test keeps a wedged run's console"
 bash tools/server/test-bmx-test-evidence.sh
 echo "▶ shell syntax"
-for f in install.sh ci-test.sh tools/*.sh tools/server/*.sh tools/server/bmx-test; do
+for f in install.sh ci-test.sh tools/*.sh tools/bench/*.sh tools/server/*.sh tools/server/bmx-test tools/server/bmx-mode-test; do
   [ -f "$f" ] || continue
   bash -n "$f" && echo "  ok $f"
 done

@@ -20,6 +20,7 @@ LIB="${LIB_DIR:-/usr/local/lib/gmod}"
 
 install -d -m 0755 "$BIN" "$LIB"
 install -m 0755 "$HERE/bmx-test" "$BIN/bmx-test"
+install -m 0755 "$HERE/bmx-mode-test" "$BIN/bmx-mode-test"
 install -m 0644 "$HERE/rcon.py"  "$LIB/rcon.py"
 
-echo "  installed: $BIN/bmx-test, $LIB/rcon.py"
+echo "  installed: $BIN/bmx-test, $BIN/bmx-mode-test, $LIB/rcon.py"

@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# bmx-mode-test <40-hex sha of gmod/gmod-bmx-mode>: the headless suite with BMX (Mode) on.
+#
+# The gamemode (gmod/gmod-bmx-mode) has cases of its own for the addon's harness
+# (gamemodes/bmx/gamemode/sv_test_cases.lua: the trick bot), and a server that plays BMX
+# runs the addon UNDER the gamemode, which no other run tests. So this puts that commit of
+# the mode on the box as an addon (an addon may carry gamemodes/), starts the server with
+# GMOD_GAMEMODE=bmx through a RUNTIME drop-in (gone on a reboot as well as at the end),
+# runs bmx-test -- every addon case and every mode case -- and puts the box back:
+# drop-in, mode and gamemode removed, the server restarted on sandbox.
+#
+# The mode's source is fetched into /opt/gmod/src/gmod-bmx-mode with that checkout's own
+# read-only project token (MGMT Setup/gitlab-project-credential.sh, ACCESS_LEVEL=20).
+#
+# Exit codes are bmx-test's, plus 1 when the mode's cases never ran (the gamemode did not
+# load, and GMod fell back to sandbox without a word).
+set -euo pipefail
+SHA="${1:-}"
+[[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "bmx-mode-test: want a 40-hex commit sha" >&2; exit 2; }
+SERVER_DIR="${GMOD_DIR:-/opt/gmod}"
+SRC="${BMX_MODE_SRC:-$SERVER_DIR/src/gmod-bmx-mode}"
+MODE_DIR="$SERVER_DIR/garrysmod/addons/gmod-bmx-mode"
+RESULTS="$SERVER_DIR/garrysmod/data/bmx_test_results.txt"
+DROP_DIR=/run/systemd/system/gmod.service.d
+DROP="$DROP_DIR/zz-bmx-mode-test.conf"
+UNIT="${GMOD_UNIT:-gmod}"
+OWNER="${GMOD_USER:-gmod}"
+
+exec 9>"${BMX_TEST_LOCK:-/run/lock/bmx-test.lock}"
+flock -w "${BMX_LOCK_WAIT:-5400}" 9 || { echo "bmx-mode-test: the server stayed busy" >&2; exit 2; }
+export BMX_TEST_LOCKED=1
+
+cleanup() {
+  rm -f "$DROP"
+  systemctl daemon-reload || true
+  rm -rf "$MODE_DIR"
+  systemctl restart "$UNIT" || true
+}
+trap cleanup EXIT
+
+[ -d "$SRC/.git" ] || { echo "bmx-mode-test: no mode checkout at $SRC" >&2; exit 2; }
+git config --global --add safe.directory "$SRC" >/dev/null 2>&1 || true
+git -C "$SRC" fetch -q origin "+refs/heads/*:refs/remotes/origin/*" \
+  || { echo "bmx-mode-test: fetch failed" >&2; exit 2; }
+rm -rf "$MODE_DIR"
+mkdir -p "$MODE_DIR"
+git -C "$SRC" archive "$SHA" | tar xf - -C "$MODE_DIR" \
+  || { echo "bmx-mode-test: no commit $SHA in gmod-bmx-mode" >&2; exit 2; }
+chown -R "$OWNER":"$OWNER" "$MODE_DIR"
+echo "  mode under test: $(git -C "$SRC" log --oneline -1 "$SHA")"
+
+mkdir -p "$DROP_DIR"
+printf '[Service]\nEnvironment=GMOD_GAMEMODE=bmx\n' > "$DROP"
+systemctl daemon-reload
+
+set +e
+/usr/local/bin/bmx-test
+rc=$?
+set -e
+# The mode's cases are named bot_*; none in the results means the gamemode never loaded.
+if [ "$rc" -ne 2 ] && ! grep -q 'bot_' "$RESULTS" 2>/dev/null; then
+  echo "bmx-mode-test: no bot_* case in the results: the bmx gamemode did not load" >&2
+  rc=1
+fi
+exit "$rc"

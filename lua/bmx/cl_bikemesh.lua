@@ -529,6 +529,27 @@ local function pick(frame)
 end
 
 -- One slice of build `m`, `ms` long. Returns the model when it is done.
+-- A BUSY FRAME GETS HALF A SLICE. After a build's first slices the collector is working
+-- through its garbage, and LuaJIT charges that to whoever allocates next: the rider's
+-- pose took 4-10 ms instead of 0.65 in those frames, and a full slice on top made them
+-- 17-18 ms (a real client, 2026-11-09). Collecting inside the slice was tried and was
+-- worse (a step can be the round's whole atomic phase: 69 ms). When the last frame ran
+-- long, this one's slice is halved instead; the build takes a few frames more. "Long" is
+-- against this client's own usual frame (a running mean), so a steady 60 fps machine is
+-- not halved every frame: 1.6 times it, and at least 8 ms.
+local BUSY_MIN, BUSY_RATIO = 0.008, 1.6
+local meanFrame
+hook.Add("Think", "BMX.FrameMean", function()
+    local ft = FrameTime and FrameTime() or 0
+    if ft > 0 then meanFrame = meanFrame and (meanFrame * 0.97 + ft * 0.03) or ft end
+end)
+function BM.SliceBudget()
+    local budget = math.max(cvBudget:GetFloat(), 0.5)
+    local ft = FrameTime and FrameTime() or 0
+    if ft > BUSY_MIN and ft > (meanFrame or ft) * BUSY_RATIO then budget = math.max(budget * 0.5, 0.5) end
+    return budget
+end
+
 local function runSlice(key, m, ms)
     local job = m.job
     local t0 = SysTime()
@@ -646,7 +667,7 @@ function BM.Get(k, radius, kind, opt)
     frameRan = frame
     local run, drawn = pick(frame)
     if not run then return nil end
-    local budget = math.max(cvBudget:GetFloat(), 0.5)
+    local budget = BM.SliceBudget()
     local done = runSlice(run.key, run, drawn and budget or math.max(budget * 0.5, 0.5))
     if run == m then return done end
     return nil

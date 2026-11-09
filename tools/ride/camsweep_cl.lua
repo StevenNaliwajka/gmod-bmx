@@ -182,8 +182,21 @@ hook.Add("PostRender", "camsweep", function()
             if m then worst = math.max(worst, m) end
         end
         cell.miss[#cell.miss + 1] = worst
+        if worst <= BAD_MISS and not cur.pelvisUsual then
+            local seatOff = BMX.SeatFor and BMX.SeatFor(bike:Bike(), bike:Cfg(), "rider")
+            local pb = ply:LookupBone("ValveBiped.Bip01_Pelvis")
+            local pp = pb and ply:GetBonePosition(pb)
+            if seatOff and pp then cur.pelvisUsual = (pp - bike:LocalToWorld(seatOff.offset)):Length() end
+        end
         if worst > BAD_MISS then
-            bad = string.format("limb %.0fu off", worst)
+            -- where the body is against the seat: the whole rider displaced (the engine's
+            -- interpolation of the player after a jump) or only a limb (the pose)
+            local seatOff = BMX.SeatFor and BMX.SeatFor(bike:Bike(), bike:Cfg(), "rider")
+            local pb = ply:LookupBone("ValveBiped.Bip01_Pelvis")
+            local pp = pb and ply:GetBonePosition(pb)
+            local d = (seatOff and pp) and (pp - bike:LocalToWorld(seatOff.offset)):Length() or -1
+            cur.pelvisSeen = cur.pelvisSeen or {}
+            bad = string.format("limb %.0fu off, pelvis %.0fu from the seat (usually %.0f)", worst, d, cur.pelvisUsual or -1)
         end
     end
     if drawn and not posed and IsValid(bike) then bad = "drawn without the pose" end

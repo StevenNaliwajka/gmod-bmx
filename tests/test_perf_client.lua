@@ -594,6 +594,25 @@ T.test("client perf: after joining, every sound is played once at volume 0 and s
     T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
 end)
 
+-- A BUSY FRAME GETS HALF A SLICE: after a long frame (the collector working through a
+-- build's garbage, charged to the rider's pose) the build takes half its slice, so the
+-- two together stay under a 60 fps frame.
+T.test("client perf: after a long frame the model build takes half its slice", function()
+    local _, world = F.server()
+    local cl = F.client(world)
+    local BM = cl.env.BMX.BikeMesh
+    local full = cl.env.GetConVar("bmx_bike_build_ms"):GetFloat()
+    local function settle(dt) world.dt = dt for _ = 1, 300 do cl.env.hook.Run("Think") end end
+    settle(1 / 250)
+    T.near(BM.SliceBudget(), full, 1e-9, "a quick frame: the whole slice")
+    world.dt = 0.018
+    T.near(BM.SliceBudget(), full * 0.5, 1e-9, "an 18 ms frame on a 250 fps machine: half")
+    settle(1 / 60)
+    T.near(BM.SliceBudget(), full, 1e-9, "a steady 60 fps machine: the whole slice, every frame")
+    world.dt = 0.034
+    T.near(BM.SliceBudget(), full * 0.5, 1e-9, "and half after a 34 ms frame there")
+end)
+
 local function buildStretches(id)
     local _, world = F.server()
     local cl = F.client(world)

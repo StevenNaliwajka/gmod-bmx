@@ -12,7 +12,22 @@ neither addon has that we should (`G22`-`G30`).
 The release rule in `docs/GOALS.md` still applies. Nothing here goes to the
 Workshop without the owner's go.
 
-## Where we stand (2026-10-07)
+## Where we stand (2026-11-09)
+
+From the Steam Web API (`GetPublishedFileDetails`), the day the 1.4.4 work was done:
+
+| | Rideable Bicycles | BMX (ours) |
+|---|---|---|
+| Current subscribers | **19,325** | 3,883 |
+| Lifetime subscribers | 27,753 | 6,000 |
+| Favourites | 1,887 | 376 |
+| Last Workshop update | 2026-11-07 | 2026-10-22 (1.4.0; 1.4.1-1.4.4 on `main`, not yet published) |
+| Size | 7.7 MB | 5.4 MB |
+
+The table below is the one written at the start, kept for what it says about where
+both addons began.
+
+## Where we stood (2026-10-07)
 
 | | Rideable Bicycles | BMX Bike (ours) |
 |---|---|---|
@@ -62,6 +77,17 @@ and every bot routine went with them.
 | `bmx_predict 0` (client) | G30 | own-bike lean prediction |
 | `bmx_lagcomp 0` | G30 | tick-dated trick inputs |
 | `bmx_flip_doubletap 0` (client) | G17 | the competitor-style double-tap flip |
+
+**Decided 2026-11-09** (1.4.4), each one ridden through the whole offline suite (1451
+tests) and the headless suite with it on:
+
+| Switch | Now | Why |
+|---|---|---|
+| `bmx_nose_manual` | **on** | nothing in either suite changed with it on; with it off a stoppie still ends with the brake |
+| `bmx_lagcomp` | **on** | nothing changed; a press is judged at the time the rider saw, ping plus `cl_interp` (Source's own lag compensation does the same) |
+| `bmx_wheel_sweep` | off | on, a bike at 250 u/s rolls up a 10-unit ledge (rise 10.8 u, `test_ride_feel`'s band is 8) where it should stop, and each wheel fires two traces a tick: 16 riders cost 64 against a budget of 40 (`test_load`). It needs a face test that refuses a ledge as high as the wheel's radius before it can ship on |
+| `bmx_predict` (client) | off | it changes only what a rider with ping sees; its latency table (docs/TUNING.md) is filled by `tools/bench/netdemo.sh` on the GPU client, not yet run |
+| `bmx_flip_doubletap` (client) | off, an option | not unfinished: holding the key is the taught way to flip, and the double-tap is a preference in the Q menu, tested offline to a full flip |
 
 On by default but new: `bmx_wheel_stiction` (G04), `bmx_air_assist` (G06),
 `bmx_ragmod` (G07), the bell and water (G18).

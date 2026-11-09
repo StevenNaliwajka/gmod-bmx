@@ -327,6 +327,18 @@ rider posed on every drawn frame, no frame over 30 ms; worst riding frame 14.3 m
 `sp.sh features` is within noise of round 3 (riding a BMX 281 fps, 16 parked 102,
 nothing spawned 290; server 0.7 ms/s idle).
 
+## Round 5 (2026-11-09): the gate
+
+The loop above is now one command and a CI job: `tools/bench/gate.sh` runs every
+benchmark on the GPU client and `tools/bench/gate.py` fails the run on any frame with the
+rider off the bike, any unposed rider, any riding or first-spawn frame over 16.7 ms, or a
+scene more than 15% slower than `tools/bench/baseline.json` (round 4's numbers). Two
+scenes are new: 8 bot riders in view (`sp.sh riders`, a listen server) and the camera sweep
+held to 30 fps (`sp.sh lowfps`), and `sp.sh p0` times the per-part point mapping against a
+cached basis. The `gpu-bench` job runs it on the gmod org desktop's runner, automatically on
+a `v*` tag. Its first full run was stopped part way (the card was needed back for Revit
+work), so these new scenes have no numbers yet.
+
 ## Next round
 
 Run the loop again when: a vehicle gets a new moving part (anything drawn per frame

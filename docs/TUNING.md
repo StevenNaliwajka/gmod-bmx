@@ -345,6 +345,7 @@ network, and a stiffer controller only moves the part after it.
 and the predicted column should drop by roughly `ping + cl_interp` from it. If
 it does not, the prediction's horizon is wrong: `P.Horizon` in `sh_predict.lua`.
 
-The prediction (`bmx_predict`, default 0) and the lag compensation
-(`bmx_lagcomp`, default 0) both ship OFF until riders say they are better. See
+The prediction (`bmx_predict`, default 0) ships OFF until this table says it helps;
+`tools/bench/netdemo.sh` fills it on the GPU client against the CI game server. The lag
+compensation (`bmx_lagcomp`) is ON since 1.4.4 (docs/goals/README.md says why). See
 docs/DESIGN.md section 5.

@@ -216,6 +216,23 @@ client runs out of memory in singleplayer with a few hundred Workshop addons mou
 (the script moves them aside while it runs; `sp.sh restore` puts them back).
 `client_frame.lua --sites` lists which line of the addon makes each Vector a frame.
 
+**The GPU gate** (`tools/bench/gate.sh`, the `gpu-bench` CI job) runs these as one
+pass/fail: it borrows the GPU, installs the tree, and runs the camera sweep (17 vehicles x
+4 passes), every kind's first spawn ridden away, every feature's scene, the camera sweep
+again held to 30 fps (`sp.sh lowfps`: what a weak PC draws) and 8 bot riders in view on a
+listen server (`sp.sh riders`); `tools/bench/gate.py` judges them against the budget in its
+header and `tools/bench/baseline.json` (any frame with the rider off the bike, any drawn
+rider unposed, any riding or first-spawn frame over 16.7 ms, a scene more than 15% slower
+than the baseline or its server cost more than 25% + 1 ms/s up, a vehicle or kind that did
+not run). The judge's own tests (`tools/bench/test_gate.py`, `test-gate-claim.sh`) run in
+`ci-test.sh`. Record a new baseline only from a run you have read:
+`python3 tools/bench/gate.py baseline bench-out > tools/bench/baseline.json`.
+
+**Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
+(its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
+straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150
+with `bmx_predict` 0 and 1, eight taps of D each.
+
 ### What a client frame costs
 
 Players feel the client's frame rate, and nothing on a dedicated server runs the
@@ -434,6 +451,11 @@ GitHub Actions runs the same offline suite, which is the only execution
 coverage on that side, since it has no game server. The `headless` stage then checks
 the pipeline's commit out on the game server and runs the suite there, also on
 every branch, serialised by `resource_group` because there is only one server.
+`gpu-bench` (above) runs on the gmod org desktop's runner: automatically on a `v*` tag,
+by hand on main. gmod/gmod-bmx-mode's pipeline runs its own offline suite against
+gmod-bmx main and, on main, `bmx-mode-test`: this suite and the mode's `bot_*` cases with
+the bmx gamemode on. A `resource_group` only orders one project's jobs, so `bmx-test`
+also takes `/run/lock/bmx-test.lock` on the box.
 
 ### Four things that have to be true, and were each not true once
 

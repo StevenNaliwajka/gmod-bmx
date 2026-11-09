@@ -163,3 +163,27 @@ and the headless case `skates_flat_jump` checks it on the engine), and the end o
 step along it (the rail found again every third tick put the skater on the middle of the probe
 cells that hit its top, pulled back near an end; only the line and the top are taken from it
 now, the step along the rail is the grind speed's).
+
+### Update (2026-11-09): the lock onto a rail is predicted
+
+The known limit above is gone. The rail finder moved out of `sv_grind.lua` into the shared
+`sh_railfind.lua`, and the skates' lock, grind step, placement and exit into `sh_skates.lua`
+(`S.FindLock`, `S.GrindStep`, `S.GrindPlace`, `S.GrindExit`). The server and the predicting
+client run the same code on the same state, so the client turns onto the rail at the server's
+own command and carries the skater along it exactly as the server places them. The client's
+grind is kept per command like the rest of its state, so a replay starts from it too.
+
+| `tests/test_skates_ping.lua` | 1.4.3, 50 / 100 / 200 ms | now |
+|---|---|---|
+| Backslide: the lock's correction | 6.9 / 8.4 / 30.2 u | none (worst error 0.00 u) |
+| Ledge grind: the lock's correction | 3.1 / 4.6 / 10.1 u | none |
+| Soul grind: commands the server grinds and the client does not | 106 / 121 / 242 ms | 0 |
+| Rail end: the client off early | 15 ms | 0 |
+
+What the client cannot know is still the server's: the balance meter (it starts at a random
+phase), so a bail off the rail arrives a ping late, as any bail does. And a lock the server
+refuses (state the two ends no longer share) is dropped once the server's flag has not come
+within a round trip and half again plus 0.1 s (`lockWait`, from the scoreboard ping), with the
+grind's cooldown so it does not lock straight back on: one run of about 260 ms at 100 ms,
+where it used to wait a whole second. The headless suite rides the new lock on the engine
+(pipeline 1945, 199/199); a real client with `net_fakelag` has not ridden it yet.

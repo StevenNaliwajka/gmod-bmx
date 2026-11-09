@@ -8,7 +8,8 @@
 # memory ("Out of memory", 2026-11-08, 236 mounted). What is measured is this addon alone.
 #
 #   tools/bench/sp.sh install [REF]   this working tree's addon (or REF's) + the control addon + the sweep scripts
-#   tools/bench/sp.sh launch [map]    start singleplayer (gm_flatgrass, sandbox)
+#   tools/bench/sp.sh launch [map]    start singleplayer (gm_flatgrass, sandbox); BMX_SP_CONNECT=host:port
+#                                     joins that server instead (tools/bench/netdemo.sh)
 #   tools/bench/sp.sh cmd 'LINE'      a console command in the session ("lua <code>" runs Lua)
 #   tools/bench/sp.sh camsweep [passes] [ids]   the camera sweep (tools/ride/camsweep_*), results printed
 #   tools/bench/sp.sh parked [TAG]   8 parked vehicles in view: frame times + a line profile
@@ -66,7 +67,7 @@ case "${1:-}" in
     # (the old game gone before its log is cleared: a dying session wrote "player ready")
     r "pkill -f GarrysMod/hl2_linu[x]; sleep 2; pkill -9 -f GarrysMod/hl2_linu[x]; while pgrep -f GarrysMod/hl2_linu[x] >/dev/null; do sleep 1; done; rm -f $G/data/probe/cmd.txt $G/data/probe/log.txt; true"
     # -f -n: the game keeps the session's channel open, so a plain ssh never came back
-    ssh -f -n -o BatchMode=yes "$CL" "cd $G/.. && export DISPLAY=:1 SteamAppId=4000 SteamGameId=4000 __GL_SYNC_TO_VBLANK=0 vblank_mode=0 && setsid ~/.steam/steam/ubuntu12_32/steam-runtime/run.sh ./hl2.sh -game garrysmod -windowed -noborder -w 1280 -h 960 -novid -nojoy -condebug +gamemode sandbox +maxplayers ${BMX_SP_MAXPLAYERS:-1} $([ "${BMX_SP_MAXPLAYERS:-1}" -gt 1 ] && echo "+sv_lan 1") +map ${2:-gm_flatgrass} >/tmp/gmod-sp.log 2>&1 </dev/null & disown"; echo launched
+    ssh -f -n -o BatchMode=yes "$CL" "cd $G/.. && export DISPLAY=:1 SteamAppId=4000 SteamGameId=4000 __GL_SYNC_TO_VBLANK=0 vblank_mode=0 && setsid ~/.steam/steam/ubuntu12_32/steam-runtime/run.sh ./hl2.sh -game garrysmod -windowed -noborder -w 1280 -h 960 -novid -nojoy -condebug +gamemode sandbox $(if [ -n "${BMX_SP_CONNECT:-}" ]; then echo "+connect $BMX_SP_CONNECT"; else echo "+maxplayers ${BMX_SP_MAXPLAYERS:-1} $([ "${BMX_SP_MAXPLAYERS:-1}" -gt 1 ] && echo "+sv_lan 1") +map ${2:-gm_flatgrass}"; fi) >/tmp/gmod-sp.log 2>&1 </dev/null & disown"; echo launched
     for _ in $(seq 1 150); do r "grep -q 'player ready' $G/data/probe/log.txt 2>/dev/null" && { focus; echo "session up"; exit 0; }; sleep 2; done
     echo "no session after 5 min"; exit 1 ;;
   cmd) cmd "$2" ;;
@@ -143,6 +144,14 @@ case "${1:-}" in
     cmd "fps_max ${2:-30}"; sleep 1
     "$0" camsweep "${3:-2}" "${4:-}"
     cmd "fps_max 300" ;;
+  p0)
+    # the point-mapping micro-benchmark (tools/bench/p0bench_cl.lua)
+    focus
+    r "rm -f $G/data/probe/p0.txt"
+    scp -q "$HERE/p0bench_cl.lua" "$CL:$G/data/p0bench_cl.txt"
+    cmd 'lua BroadcastLua([[RunString(file.Read("p0bench_cl.txt","DATA"),"p0bench")]])'
+    for _ in $(seq 1 40); do r "test -s $G/data/probe/p0.txt" && break; sleep 3; done
+    r "cat $G/data/probe/p0.txt" ;;
   shots) mkdir -p "$2"; r "cd $G/data/camsweep && tar cf - *.jpg" | tar xf - -C "$2"; ls "$2" | wc -l ;;
   restore)
     r "pkill -f GarrysMod/hl2_linu[x]; sleep 2; pkill -9 -f GarrysMod/hl2_linu[x]; rm -rf $G/addons/gmod-bmx-dev $G/addons/bmxprobe $G/data/camsweep_cl.txt $G/data/realprobe_cl.txt; if [ -d $WS.clean-aside ]; then rmdir $WS 2>/dev/null; mv $WS.clean-aside $WS; fi; [ -d $WS/.$BMX_WS.aside ] && mv $WS/.$BMX_WS.aside $WS/$BMX_WS; true"

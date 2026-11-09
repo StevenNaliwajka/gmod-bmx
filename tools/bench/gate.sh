@@ -21,6 +21,8 @@
 # every minute for BMX_GPU_WAIT minutes (default 60). The card and the client are always
 # given back, pass or fail (the trap).
 #
+# BMX_GATE_KEEP=1 leaves the card borrowed and the client as it is at the end, for more
+# checks by hand (tools/bench/netdemo.sh, sp.sh p0); then `sp.sh restore` and the release.
 # BMX_GATE_SKIP="riders lowfps" leaves benchmarks out (each one left out is said in the
 # judgement as "not run"; camsweep, spawns and features are never optional).
 set -uo pipefail
@@ -35,14 +37,23 @@ SKIP=" ${BMX_GATE_SKIP:-} "
 claimed=0
 log() { printf '[gate %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 cleanup() {
+  if [ "${BMX_GATE_KEEP:-0}" = 1 ] && [ "$claimed" = 1 ]; then
+    log "BMX_GATE_KEEP=1: the client and the GPU are left as they are (sp.sh restore, then release, when done)"
+    return
+  fi
   log "restoring the client"; "$SP" restore >/dev/null 2>&1 || true
   if [ "$claimed" = 1 ]; then log "returning the GPU"; $RELEASE || true; fi
 }
 trap cleanup EXIT
 
+# The broker answers in JSON and exits 0 either way: a refusal ("the GPU is in use ...:
+# revit.exe is running") is `"ok": false`, a grant `"ok": true` (perhaps "queued": the card
+# is being handed over and the client VM starts in a minute or two; sp.sh ready waits).
+granted() { local out; out="$($CLAIM 2>&1)"; echo "$out"
+            ! grep -q '"ok": *false' <<<"$out" && grep -q '"ok": *true' <<<"$out"; }
 log "borrowing the GPU: $CLAIM"
 for i in $(seq 1 "${BMX_GPU_WAIT:-60}"); do
-  if $CLAIM; then claimed=1; break; fi
+  if granted; then claimed=1; break; fi
   log "refused (attempt $i), again in a minute"; sleep 60
 done
 [ "$claimed" = 1 ] || { log "never got the GPU"; exit 2; }

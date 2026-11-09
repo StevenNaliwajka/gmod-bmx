@@ -60,7 +60,7 @@ function BMX.AirAssistOn() return airAssist:GetBool() end
 -- controller every rider uses, so it stays OFF until it has been ridden on a real
 -- server: with it off, leaning forward only shifts the weight and a stoppie ends
 -- when the brake does, exactly as before.
-local noseManual = CreateConVar("bmx_nose_manual", "0", FLAGS,
+local noseManual = CreateConVar("bmx_nose_manual", "1", FLAGS,
     "BMX: 1 = lean forward (LMB + Ctrl) and let go of the brake to hold a nose manual; 0 = no nose manual.")
 function BMX.NoseManualOn() return noseManual:GetBool() end
 

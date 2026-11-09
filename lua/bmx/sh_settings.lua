@@ -377,9 +377,9 @@ server{ name = "bmx_air_assist", kind = "bool", default = true, category = "feel
     label = "Air assist on vert ramps",
     help = "Off a vertical ramp A/D turn the bike round to ride back down (an Air 180), the landing aims back into the ramp, and a W press at the top carries a spine transfer. Off leaves the air entirely to the rider." }
 
-server{ name = "bmx_nose_manual", kind = "bool", default = false, category = "feel",
+server{ name = "bmx_nose_manual", kind = "bool", default = true, category = "feel",
     label = "Nose manual",
-    help = "Lean forward (left mouse with Ctrl) and let go of the brake to keep rolling on the front wheel, W and S trimming the balance. Off by default until it has been ridden on your server: with it off, a stoppie ends when the brake does." }
+    help = "Lean forward (left mouse with Ctrl) and let go of the brake to keep rolling on the front wheel, W and S trimming the balance. Off: a stoppie ends when the brake does." }
 server{ name = "bmx_passengers", kind = "bool", default = true, category = "vehicles",
     label = "Allow passengers",
     help = "A second player may ride on a bike's rear pegs or in a child seat (E on the back of a ridden bike). Off: nobody can get on, and anyone already aboard is put off." }
@@ -425,7 +425,7 @@ server{ name = "bmx_water_eject", kind = "bool", default = true, category = "wor
     label = "Deep water throws riders",
     help = "A rider is thrown off when the water reaches their chest. Off keeps them aboard." }
 
-server{ name = "bmx_lagcomp", kind = "bool", default = false, category = "feel",
+server{ name = "bmx_lagcomp", kind = "bool", default = true, category = "feel",
     label = "Tricks count where they were pressed",
     help = "A hop, ollie or spine transfer pressed at the lip counts at the lip even if it reaches the server a moment late. Only changes when a press is judged, not what the bike does. Off judges a press when it arrives." }
 server{ name = "bmx_lagcomp_max", kind = "float", default = 0.15, min = 0, max = 0.5, decimals = 2,

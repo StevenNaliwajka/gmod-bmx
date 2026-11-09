@@ -27,7 +27,7 @@ end
 
 local function rig(noseOn)
     local sv = F.server()
-    if noseOn then sv.env.GetConVar("bmx_nose_manual"):SetString("1") end
+    sv.env.GetConVar("bmx_nose_manual"):SetString(noseOn and "1" or "0")
     local bike = F.bike(sv)
     local ply = F.rider(sv, bike)
     local function send(buttons, fwd, side)
@@ -116,7 +116,7 @@ T.test("lean keys: W and S trim the nose manual on the ground", function()
     T.eq(bike.input.noseTrim, 0, "neither")
 end)
 
-T.test("lean setting: bmx_lmb_mode is a client row with brake and lean, bmx_nose_manual a server row off by default", function()
+T.test("lean setting: bmx_lmb_mode is a client row with brake and lean, bmx_nose_manual a server row on by default (1.4.4)", function()
     local sv = F.server()
     local S = sv.env.BMX.Settings
     local row = S.Get("bmx_lmb_mode")
@@ -127,8 +127,8 @@ T.test("lean setting: bmx_lmb_mode is a client row with brake and lean, bmx_nose
     local nose = S.Get("bmx_nose_manual")
     T.ok(nose, "bmx_nose_manual is described")
     T.eq(nose.scope, "server", "an admin's")
-    T.eq(nose.default, false, "off until it has been ridden on a real server")
-    T.ok(not sv.env.GetConVar("bmx_nose_manual"):GetBool(), "and the convar agrees")
+    T.eq(nose.default, true, "on: the whole headless suite rode with it (1.4.4)")
+    T.ok(sv.env.GetConVar("bmx_nose_manual"):GetBool(), "and the convar agrees")
     T.ok(sv.env.BMX.Tricks.nose_manual, "Nose Manual is a registered trick")
     T.eq(sv.env.BMX.Tricks.nose_manual.kind, "ground", "a ground trick")
 end)
@@ -182,7 +182,7 @@ local function noseManual(opts)
     opts = opts or {}
     local sv = F.server()
     local E = sv.env
-    if opts.on ~= false then E.GetConVar("bmx_nose_manual"):SetString("1") end
+    E.GetConVar("bmx_nose_manual"):SetString(opts.on ~= false and "1" or "0")
     local bike = F.bike(sv)
     F.scripted(sv, bike)
     sv:run(0.5)

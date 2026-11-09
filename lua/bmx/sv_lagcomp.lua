@@ -30,7 +30,7 @@ BMX.LagComp = BMX.LagComp or {}
 local LC = BMX.LagComp
 
 local FLAGS = bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED)
-local cvOn = CreateConVar("bmx_lagcomp", "0", FLAGS,
+local cvOn = CreateConVar("bmx_lagcomp", "1", FLAGS,
     "BMX: 1 = a trick pressed at the lip counts at the lip on the server (hop, ollie, spine transfer); 0 = judged when it arrives.")
 local cvMax = CreateConVar("bmx_lagcomp_max", "0.15", FLAGS,
     "BMX: the most lag, in seconds, a trick press may be back-dated by.", 0, 0.5)

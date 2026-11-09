@@ -258,6 +258,7 @@ end
 
 T.test("lagcomp: off, every input's age is 0 and nothing changes", function()
     local sv, bike, ply = rig()
+    sv.env.GetConVar("bmx_lagcomp"):SetString("0")       -- on by default since 1.4.4
     sv.env.hook.Run("StartCommand", ply, cmd(IN.JUMP, 900))
     T.eq(bike.input.cmdAge, 0, "no age with bmx_lagcomp 0")
     sv.env.hook.Run("StartCommand", ply, cmd(0, 900))
@@ -319,7 +320,7 @@ T.test("settings: the G30 rows exist, with their defaults", function()
     local S = sv.env.BMX.Settings
     local p, l, m = S.Get("bmx_predict"), S.Get("bmx_lagcomp"), S.Get("bmx_lagcomp_max")
     T.ok(p and p.scope == "client" and p.default == false, "bmx_predict: client, off")
-    T.ok(l and l.scope == "server" and l.default == false, "bmx_lagcomp: server, off")
+    T.ok(l and l.scope == "server" and l.default == true, "bmx_lagcomp: server, on (1.4.4)")
     T.ok(m and m.scope == "server" and m.default == 0.15 and m.max <= 0.5, "bmx_lagcomp_max: server, 0.15 s")
-    T.eq(sv.env.GetConVar("bmx_lagcomp"):GetInt(), 0, "bmx_lagcomp convar is off")
+    T.eq(sv.env.GetConVar("bmx_lagcomp"):GetInt(), 1, "bmx_lagcomp convar is on")
 end)

@@ -470,6 +470,8 @@ BMX.DrawVehicle.scooter = function(ent, kit)
     ------------------------------------------------------------------------
     local R = ent.bmxRide or {}
     ent.bmxRide = R
+    -- a jump (put back somewhere, a respawn): the planted foot's spot is the old place's
+    if FrameNumber and ent.bmxJumpFrame == FrameNumber() then R.plantAt, R.strokeEnd, R.liftP = nil, nil, nil end
     local now = CurTime()
     if ent:GetGrounded() then R.airAt = nil elseif not R.airAt then R.airAt = now end
     local airT = R.airAt and (now - R.airAt) or nil

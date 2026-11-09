@@ -543,7 +543,15 @@ hook.Add("Think", "BMX.FrameMean", function()
     local ft = FrameTime and FrameTime() or 0
     if ft > 0 then meanFrame = meanFrame and (meanFrame * 0.97 + ft * 0.03) or ft end
 end)
+-- ...and the frame a vehicle arrives gets none: the engine makes it, its seat and the
+-- first props in that frame (~15 ms of the tandem's 20 ms frame on a real client,
+-- 2026-11-09, the addon's own Lua 0.4 of it); a slice on top was the rest.
+local arrivedFrame
+hook.Add("OnEntityCreated", "BMX.BuildSkipsArrival", function(e)
+    if FrameNumber and (e.IsBMX or (IsValid(e) and e:GetClass():sub(1, 4) == "bmx_")) then arrivedFrame = FrameNumber() end
+end)
 function BM.SliceBudget()
+    if arrivedFrame and FrameNumber and arrivedFrame == FrameNumber() then return 0 end
     local budget = math.max(cvBudget:GetFloat(), 0.5)
     local ft = FrameTime and FrameTime() or 0
     if ft > BUSY_MIN and ft > (meanFrame or ft) * BUSY_RATIO then budget = math.max(budget * 0.5, 0.5) end
@@ -668,6 +676,7 @@ function BM.Get(k, radius, kind, opt)
     local run, drawn = pick(frame)
     if not run then return nil end
     local budget = BM.SliceBudget()
+    if budget <= 0 then return nil end
     local done = runSlice(run.key, run, drawn and budget or math.max(budget * 0.5, 0.5))
     if run == m then return done end
     return nil

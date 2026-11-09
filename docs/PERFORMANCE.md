@@ -282,6 +282,51 @@ move), and a later first spawn of a kind can still have one frame just over 16.7
 Lua collector paying off the build's garbage inside the rider's pose (pointing at it in a
 menu first avoids the build).
 
+## Round 4 (still 1.4.3): the last frames over 16.7 ms, and every bad frame in the sweep
+
+What round 3 left: a frame just over 16.7 ms after some first spawns, and one frame per
+pass on four vehicles in the camera sweep (`parked@90`). Both are gone.
+
+### 16. The frame a vehicle arrives, and a slow frame
+`sp.sh spawns` named them: the tandem's 20.2 ms frame was the one its entity, seat and
+first props were made in (the addon's Lua 0.4 ms of it) with a 4 ms build slice on top;
+the others were the collector working through a build's garbage inside the rider's pose,
+again with a full slice. The build now skips the frame a vehicle of ours is created, and
+takes half its slice after a frame 1.6 times this client's running mean (`BM.SliceBudget`).
+Tried and dropped: collecting inside the build's slice (offline, `--build --heap 200`:
+frames over 16 ms 0 -> 5-8, one step 69 ms), and fewer IK passes on a stand-in (no
+saving offline, and the style poses need all five: tests/test_body_clip.lua).
+Every kind's first spawn, ridden away at once, one after another in one session: **no
+frame over 16.7 ms**, worst 14.7 (was 17-21 on three kinds).
+
+### 17. What the sweep's `parked@90` frames were
+The sweep now says which limb, where the pelvis and the player's origin are against the
+seat, the speed, and (a scooter) the kick and air state. Three causes, none the teleport:
+- **The remount after a crash** (dirt bike): the rider code's memory of the bones it had
+  turned (`ply.bmxIK`) outlived a respawn; posed from it, the left foot was 14 u off its
+  peg. A rider not solved for over half a second now starts from a clean skeleton.
+- **The state the targets were drawn from changed** (penny, scooter): a bike stopped dead
+  (the feet go down), a scooter set down mid-kick (airborne, the kick over): the rider,
+  posed before the vehicle is drawn, had last frame's targets, 11-19 u off. Each drawing
+  records `BMX.TargetSig` (grounded, kicking) and the move it was drawn at; when either has
+  changed by the time the rider is posed (a takeoff, a landing, a kick's start or end, a
+  jump), the vehicle is drawn first. One extra draw on those frames only.
+- **Followed rates across a jump**: the head's turn into a corner read a teleport's heading
+  change as a 90-degree turn in a frame; the drawn frame's seat offset was projected on the
+  bike's new axes. Both start afresh on a jump now.
+The bike's grips are carried with the steer as the scooter's are (14 u in a hard turn).
+Tests: "a rider posed before the bike is drawn has the hands where this frame's bars are",
+"a bike teleported and turned does not throw its rider into a turn", "a scooter leaving the
+ground mid-kick has the feet where this frame puts them" (10.8 u without the fix).
+The sweep also leaves the two frames after a picture out of the frame times (a 63 ms
+frame came two after one).
+
+### The camera sweep now
+All 17 vehicles, 4 passes, every stage and angle: **no bad frame on any vehicle**, the
+rider posed on every drawn frame, no frame over 30 ms; worst riding frame 14.3 ms.
+`sp.sh features` is within noise of round 3 (riding a BMX 281 fps, 16 parked 102,
+nothing spawned 290; server 0.7 ms/s idle).
+
 ## Next round
 
 Run the loop again when: a vehicle gets a new moving part (anything drawn per frame
@@ -289,6 +334,6 @@ belongs in a mesh), a new hook goes on a player draw (it can be skipped: give it
 fallback as BMX.PoseRidersOf does), a background job is added (who needs it, and does it
 run for everyone?), or a player reports lag. Run `sp.sh features` before a release and
 compare with the table above. Candidates measured but not yet worth the change: the
-per-part matrix maths in `ENT:DrawDetailed` (~10% of what is left), and the build's
-garbage collected in the frames after it (one frame just over 16.7 ms on some first
-spawns).
+per-part matrix maths in `ENT:DrawDetailed` (~10% of what is left), and the rider's IK on
+a stand-in on a real client (60-80 skeleton poses a frame for the half second a model
+builds, against ~11 offline: not reproduced in the shim; the frames stay under 16.7 ms).

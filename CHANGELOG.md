@@ -23,10 +23,22 @@ a real game on a GPU (docs/PERFORMANCE.md, round 3).
   middle level of detail meanwhile: 39 shapes a frame for a BMX up close instead of 67,
   and far less garbage for the game to clean up.
 
+- **No frame over 16.7 ms after the first spawn of any kind**, ridden away at once (all
+  16, measured one after another): the model's build skips the frame the vehicle arrives
+  in (the game is busy making it), and takes half its usual slice after a slow frame.
+
 **Fixed**
 
-- **Scooter: the hands stay on the bars in a hard turn.** When the rider was drawn before
-  the scooter, the hands followed the bars a frame late, up to 11 units off the grips.
+- **Hands stay on the bars in a hard turn**, on every bike and the scooter. When the rider
+  was drawn before the vehicle, the hands followed the bars a frame late, up to 11-14
+  units off the grips.
+- **The first frame back on after a crash or respawn** had the left foot up to 19 units off
+  its peg or pedal: the rider was posed from bone turns the game had already undone.
+- **A takeoff, a landing, or a kick starting or ending** no longer leaves a foot a frame
+  behind (up to 11 units): the vehicle works out where the hands and feet go before the
+  rider is posed whenever that changes.
+- **A bike put back somewhere else** (a respawn, a reset) no longer throws its rider's head
+  and hips into a turn that was not there.
 
 ## 1.4.2 -- not on the Workshop yet
 

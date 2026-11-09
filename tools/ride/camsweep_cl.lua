@@ -143,7 +143,10 @@ hook.Add("PostRender", "camsweep", function()
     local cell = cur.cells[key] or newCell()
     cur.cells[key] = cell
     cell.n = cell.n + 1
-    if cur.shotFrame ~= f - 1 then          -- a frame after a picture is not a fair frame time
+    -- (the two frames after a picture are not fair frame times: a capture stalls the GPU's
+    -- queue, and the stall can land a frame later -- a 63 ms frame "2 frames after a
+    -- picture", 2026-11-09)
+    if not (cur.shotFrame and f - cur.shotFrame <= 2) then
         local ft = cur.ft[pass .. "|" .. stage] or {}
         cur.ft[pass .. "|" .. stage] = ft
         ft[#ft + 1] = dt
@@ -170,23 +173,26 @@ hook.Add("PostRender", "camsweep", function()
     if afterShot then cell.afterShot = (cell.afterShot or 0) + 1 end
     if not afterShot and drawn and IsValid(bike) and bike.ikTargets and not (bike.poseW and next(bike.poseW)) and stage ~= "air" then
         local ik = bike.ikTargets
-        local worst = 0
+        local worst, worstK = 0, "?"
         -- (a board has no grips: its hand targets are not where the hands belong)
         local board = bike.Bike and bike:Bike().family == "board"
         for _, side in ipairs(board and {} or { "r", "l" }) do
             local m = handMiss(ply, ik, side)
-            if m then worst = math.max(worst, m) end
+            if m and m > worst then worst, worstK = m, side .. "Hand" end
         end
         for _, k in ipairs({ "rFoot", "lFoot" }) do
             local m = footMiss(ply, ik, k)
-            if m then worst = math.max(worst, m) end
+            if m and m > worst then worst, worstK = m, k end
         end
         cell.miss[#cell.miss + 1] = worst
         if worst <= BAD_MISS and not cur.pelvisUsual then
             local seatOff = BMX.SeatFor and BMX.SeatFor(bike:Bike(), bike:Cfg(), "rider")
             local pb = ply:LookupBone("ValveBiped.Bip01_Pelvis")
             local pp = pb and ply:GetBonePosition(pb)
-            if seatOff and pp then cur.pelvisUsual = (pp - bike:LocalToWorld(seatOff.offset)):Length() end
+            if seatOff and pp then
+                cur.pelvisUsual = (pp - bike:LocalToWorld(seatOff.offset)):Length()
+                cur.originUsual = (ply:GetPos() - bike:LocalToWorld(seatOff.offset)):Length()
+            end
         end
         if worst > BAD_MISS then
             -- where the body is against the seat: the whole rider displaced (the engine's
@@ -196,7 +202,12 @@ hook.Add("PostRender", "camsweep", function()
             local pp = pb and ply:GetBonePosition(pb)
             local d = (seatOff and pp) and (pp - bike:LocalToWorld(seatOff.offset)):Length() or -1
             cur.pelvisSeen = cur.pelvisSeen or {}
-            bad = string.format("limb %.0fu off, pelvis %.0fu from the seat (usually %.0f)", worst, d, cur.pelvisUsual or -1)
+            local od = seatOff and (ply:GetPos() - bike:LocalToWorld(seatOff.offset)):Length() or -1
+            local R = bike.bmxRide
+            local extra = R and string.format(", grounded %s push %.2f air %.2f kick %.2f", tostring(bike:GetGrounded()),
+                bike.GetPushPhase and bike:GetPushPhase() or -9, R.air or -1, R.pushBend or -1) or ""
+            bad = string.format("%s %.0fu off, pelvis %.0fu from the seat (usually %.0f), the player's origin %.0fu (usually %.0f), %.0f u/s",
+                worstK, worst, d, cur.pelvisUsual or -1, od, cur.originUsual or -1, bike:GetVelocity():Length()) .. extra
         end
     end
     if drawn and not posed and IsValid(bike) then bad = "drawn without the pose" end

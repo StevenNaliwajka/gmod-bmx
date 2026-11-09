@@ -567,3 +567,92 @@ T.test("real skeleton: a rider posed before their vehicle is drawn again holds t
     T.between((cb.ikTargets.lHand - was.lHand):Length(), 0, 0.5, "and the left")
     T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
 end)
+
+-- A RIDER POSED BEFORE THE BIKE IS DRAWN is posed from last frame's targets carried to
+-- where the bike is now (BMX.CarryTargets); the grips also turn with the steer, so the
+-- hands are carried round the steer axis too. A steer straightened in a frame (a bike
+-- put back at rest mid-turn) left them 14 u off the bars (the camera sweep, 2026-11-09).
+T.test("real skeleton: a rider posed before the bike is drawn has the hands where this frame's bars are", function()
+    local sv, world, cl = client()
+    local E, B = cl.env, cl.env.BMX
+    local cb = cl:clientEntity(B.ClassFor("dirtbike"))
+    cb:SetPos(E.Vector(0, 0, F.restHeight(sv)))
+    cb:SetGrounded(true)
+    cl.eyePos = cb:GetPos() + E.Vector(0, 150, 50)
+    T.ok(MF.ready(cl, cb), "the model builds")
+    cb:SetSteer(math.rad(25))
+    MF.draw(cl, cb)
+    for _, deg in ipairs({ 0, -20, 15 }) do
+        cb:SetSteer(math.rad(deg))
+        cb:SetPos(cb:GetPos() + E.Vector(5, 0, 0))
+        B.CarryTargets(cb)
+        local carried = {}
+        for _, k in ipairs({ "rHand", "lHand", "rHandA", "lHandB" }) do carried[k] = E.Vector(cb.ikTargets[k]) end
+        MF.draw(cl, cb)
+        for k, v in pairs(carried) do
+            T.ok((v - cb.ikTargets[k]):Length() < 0.05, "steered to " .. deg .. ": " .. k .. " carried onto the bars: " .. (v - cb.ikTargets[k]):Length())
+        end
+    end
+end)
+
+-- A BIKE PUT BACK SOMEWHERE ELSE, turned (a respawn, the camera sweep's reset at each
+-- pass): the rider's followed yaw rate read the jump as a 90-degree turn in a frame and
+-- turned the head and back into a corner that was not there (the body 6-8 u off the
+-- seat for that frame, the camera sweep, 2026-11-09). A jump starts the rates afresh.
+T.test("real skeleton: a bike teleported and turned does not throw its rider into a turn", function()
+    local sv, world, cl, n = client()
+    local E, B = cl.env, cl.env.BMX
+    local cb = cl:clientEntity(B.ClassFor("stock"))
+    cb:SetPos(E.Vector(0, 0, F.restHeight(sv)))
+    cb:SetGrounded(true)
+    local rider = cl:player("Jumper" .. n)
+    rider._skel = SR.load("kleiner_seated")
+    rider._vehicle = seatPod(cl, cb, B.SeatFor(cb:Bike(), cb:Cfg(), "rider"))
+    cb:SetPod(rider._vehicle)
+    cb:SetDriver(rider)
+    cl.eyePos = cb:GetPos() + E.Vector(0, 150, 50)
+    world.dt = 1 / 60
+    local function frame()
+        world.time = world.time + world.dt
+        E.hook.Run("PrePlayerDraw", rider)
+        cb:Draw()
+    end
+    for _ = 1, 40 do frame() end
+    cb:SetPos(cb:GetPos() + E.Vector(600, 300, 0))
+    cb:SetAngles(E.Angle(0, 90, 0))
+    local peak = 0
+    for _ = 1, 10 do frame() peak = math.max(peak, math.abs(cb.bmxSm.look or 0)) end
+    if os.getenv("BMX_TRACE") then print("    peak look after the jump: " .. peak) end
+    T.ok(peak < 0.5, "no turn read into the jump: the head turned at most " .. peak)
+end)
+
+-- A CHANGE OF STATE BETWEEN THE DRAWING AND THE POSE (a takeoff, a landing, a kick
+-- starting or ending): the rider, posed before the vehicle is drawn, was posed from last
+-- frame's targets -- a scooter leaving the ground mid-kick had the kicking foot 11 u off
+-- the deck for that frame (the camera sweep, 2026-11-09). The vehicle is drawn first then.
+T.test("real skeleton: a scooter leaving the ground mid-kick has the feet where this frame puts them", function()
+    local sv, world, cl, n = client()
+    local E, B = cl.env, cl.env.BMX
+    local ent = cl:clientEntity("bmx_scooter")
+    ent:SetPos(E.Vector(0, 0, 3))
+    ent:SetGrounded(true)
+    ent:SetPushPhase(-1)
+    local ply = cl:player("Kicker" .. n)
+    ply._skel = SR.load("kleiner_standing")
+    ply._vehicle = seatPod(cl, ent, B.SeatFor(ent:Bike(), ent:Cfg(), "rider"))
+    ent:SetPod(ply._vehicle)
+    ent:SetDriver(ply)
+    cl.eyePos = ent:GetPos() + E.Vector(0, 150, 50)
+    world.dt = 1 / 60
+    -- the player drawn before the scooter, as on a client
+    local function frame() world.time = world.time + world.dt E.hook.Run("PrePlayerDraw", ply) ent:Draw() end
+    for _ = 1, 20 do frame() end
+    for i = 1, 30 do ent:SetPushPhase(0.3 + i * 0.005) frame() end
+    -- off the ground: the kick ends, the foot comes home onto the deck in this frame's drawing
+    ent:SetGrounded(false)
+    world.time = world.time + world.dt
+    E.hook.Run("PrePlayerDraw", ply)
+    ent:Draw()                  -- the scooter's own turn: this frame's targets, as seen
+    local w = misses(B, ply, ent.ikTargets)
+    T.between(w.rFoot or 0, 0, 1.5, "the kicking foot on this frame's target, units")
+end)

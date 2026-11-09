@@ -1105,8 +1105,9 @@ local function buildBench(id)
             log[#log + 1] = { ms = (now() - a) * 1000, get = inGet * 1000 }
             peak = math.max(peak, collectgarbage("count"))
             if opt.framelog then
-                print(string.format("  frame %d: %.2f ms, build %.2f ms, heap %.1f MB", f, log[#log].ms, log[#log].get,
-                    collectgarbage("count") / 1024))
+                print(string.format("  frame %d: %.2f ms, build %.2f ms, heap %.1f MB, SetupBones %d", f, log[#log].ms, log[#log].get,
+                    collectgarbage("count") / 1024, tally.SetupBones - (S.lastSetups or 0)))
+                S.lastSetups = tally.SetupBones
             end
         until (f - f0 > 2 and not pending()) or f - f0 > 40000
         -- the frames the build ran in (Get still spent time); the last ones may be a

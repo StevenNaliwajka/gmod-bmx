@@ -611,6 +611,15 @@ T.test("client perf: after a long frame the model build takes half its slice", f
     T.near(BM.SliceBudget(), full, 1e-9, "a steady 60 fps machine: the whole slice, every frame")
     world.dt = 0.034
     T.near(BM.SliceBudget(), full * 0.5, 1e-9, "and half after a 34 ms frame there")
+    -- the frame a vehicle arrives (the engine makes it and its seat then): no slice
+    world.dt = 1 / 60
+    local fn = 100
+    cl.env.FrameNumber = function() return fn end
+    local e = cl:clientEntity(cl.env.BMX.ClassFor("stock"))
+    cl.env.hook.Run("OnEntityCreated", e)
+    T.eq(BM.SliceBudget(), 0, "none in the frame a vehicle arrives")
+    fn = 101
+    T.near(BM.SliceBudget(), full, 1e-9, "the whole slice the frame after")
 end)
 
 local function buildStretches(id)

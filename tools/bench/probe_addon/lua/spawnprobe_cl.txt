@@ -45,6 +45,25 @@ evWrap(FindMetaTable("CSoundPatch"), "PlayEx", "patch:PlayEx")
 evWrap(FindMetaTable("CSoundPatch"), "Play", "patch:Play")
 evWrap(FindMetaTable("Entity"), "EmitSound", "ent:EmitSound")
 evWrap(FindMetaTable("Entity"), "SetModel", "ent:SetModel")
+-- how many times a frame the engine re-poses a skeleton (the rider's IK does it per pass)
+local setups = 0
+do
+    local EM = FindMetaTable("Entity")
+    if not C.w_setup then
+        C.w_setup = EM.SetupBones
+        EM.SetupBones = function(e, ...)
+            if e:IsPlayer() then
+                setups = setups + 1
+                -- who asked: the caller's file and line, tallied for the frame
+                local i1, i2 = debug.getinfo(2, "Sl"), debug.getinfo(3, "Sl")
+                local k = (i1 and (i1.short_src:match("[^/]*$") .. ":" .. i1.currentline) or "?") .. "<" .. (i2 and (i2.short_src:match("[^/]*$") .. ":" .. i2.currentline) or "?")
+                C.setupBy = C.setupBy or {}
+                C.setupBy[k] = (C.setupBy[k] or 0) + 1
+            else C.propSetups = (C.propSetups or 0) + 1 end
+            return C.w_setup(e, ...)
+        end
+    end
+end
 hook.Add("OnEntityCreated", "spawnprobe_ev", function(e) events[#events + 1] = "created " .. (IsValid(e) and e:GetClass() or "?") end)
 -- Every BMX hook and each vehicle's Draw timed per frame, for the worst frames' breakdown.
 local parts = {}
@@ -77,7 +96,7 @@ end)
 local cur
 hook.Add("PostRender", "spawnprobe", function()
     local now = SysTime()
-    if not cur then C.last = now buildAcc = 0 events = {} parts = {} return end
+    if not cur then C.last = now buildAcc = 0 events = {} parts = {} setups = 0 return end
     local dt = now - (C.last or now)
     C.last = now
     local heap = collectgarbage("count")
@@ -91,8 +110,16 @@ hook.Add("PostRender", "spawnprobe", function()
     for _, x in ipairs(top) do lua = lua + x[2] end
     local ev = table.concat(events, ", ", 1, math.min(#events, 8)) .. (#events > 8 and (" +" .. (#events - 8)) or "")
     events = {}
+    local by = {}
+    for k, v in pairs(C.setupBy or {}) do by[#by + 1] = { k, v } end
+    table.sort(by, function(a, b) return a[2] > b[2] end)
+    local byS = {}
+    for i = 1, math.min(4, #by) do byS[i] = by[i][1] .. " x" .. by[i][2] end
+    C.setupBy = {}
+    local frameSetups = string.format("%d rider (%s), %d props", setups, table.concat(byS, " "), C.propSetups or 0)
+    setups, C.propSetups = 0, 0
     cur.rows[#cur.rows + 1] = { dt * 1000, buildAcc * 1000, heap - (cur.lastHeap or heap), resumes, longest * 1000,
-        string.format("BMX Lua %.1f: %s%s", lua, table.concat(tops, ", "), ev ~= "" and (" | events: " .. ev) or "") }
+        string.format("SetupBones %s, BMX Lua %.1f: %s%s", frameSetups, lua, table.concat(tops, ", "), ev ~= "" and (" | events: " .. ev) or "") }
     cur.lastHeap = heap
     buildAcc, resumes, longest = 0, 0, 0
     if now > cur.till then

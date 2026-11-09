@@ -256,7 +256,8 @@ local function pennyModel(ent, model, S, ik)
     local function Pf(m) return rPos + rotVec(P0(m) - rA0, right, phi) end
     local upF = rotVec(up, right, phi)
     -- (the rider rides this frame: cl_rider.lua, BMX.RiderFollowFrame)
-    ent.bmxFrameMap = { Pf = Pf, P0 = P0, lift0 = Vector(0, 0, S.sag) }
+    ent.bmxFrameMap = { Pf = Pf, P0 = P0, lift0 = Vector(0, 0, S.sag),
+                        f = ent:GetForward(), r = ent:GetRight(), u = ent:GetUp() }
     local headB = Pf(L.headB)
     local axis = (Pf(L.headT) - headB):GetNormalized()
     local function forkMap(m) return headB + rotVec(Pf(m) - headB, axis, -S.steer) end

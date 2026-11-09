@@ -1540,6 +1540,8 @@ BMX.DrawVehicle.board = function(ent, kit)
     -- PLANTED: the pushing foot's place on the ground, kept from where it went down
     -- while the board runs on from it (B.PushFoot's strokeX).
     local pushGeo = B.PushGeo(T, stance >= 0 and -1 or 1)
+    -- a jump (put back somewhere, a respawn): the planted foot's spot is the old place's
+    if FrameNumber and ent.bmxJumpFrame == FrameNumber() then R.plantAt, R.strokeEnd, R.liftP = nil, nil, nil end
     local pa, pb = B.PushMarks(pushGeo)
     local strokeX
     if pushing and push >= pa then

@@ -858,7 +858,9 @@ function BMX.RiderFollowFrame(ply, bike, seat, stand)
     if fm and seat then
         local m = seat - fm.lift0
         local d = fm.Pf(m) - fm.P0(m)
-        shift = Vector(d:Dot(bike:GetForward()), -d:Dot(bike:GetRight()), d:Dot(bike:GetUp()))
+        -- in the chassis axes it was drawn with: d is the drawing's, in its world, and a
+        -- bike turned since (put back somewhere, a respawn) read it rotated
+        shift = Vector(d:Dot(fm.f or bike:GetForward()), -d:Dot(fm.r or bike:GetRight()), d:Dot(fm.u or bike:GetUp()))
         if shift:Length() > FRAME_SHIFT_MAX or shift:Length() < 0.05 then shift = nil end
     end
     if stand and stand.rise > 0.01 then
@@ -1128,6 +1130,7 @@ end
 
 function BMX.SolveRiderIK(ply, targets, bike)
     forgetPose()
+    ply.bmxSolvedAt = CurTime()
     ply.bmxIK = ply.bmxIK or {}
     ply.bmxGripOff = ply.bmxGripOff or {}
     local fwd, up, right = bike:GetForward(), bike:GetUp(), bike:GetRight()
@@ -1723,6 +1726,17 @@ function BMX.CarryTargets(bike)
     if not at then return end
     local p, f, r, u = bike:GetPos(), bike:GetForward(), bike:GetRight(), bike:GetUp()
     local moved = not (p == at.p and f == at.f and u == at.u)
+    -- A JUMP, not a ride: further than its speed takes it in a frame, or turned over 60
+    -- degrees (a bike put back somewhere, a respawn, a teleport). The rider's followed
+    -- rates (the yaw that turns the head into a corner, the pedalling) start afresh,
+    -- or the jump reads as a 90-degree turn in a frame (PoseRider, below).
+    if moved then
+        local reach = (bike.GetVelocity and bike:GetVelocity():Length() or 0) * math.max(FrameTime(), 1 / 30) * 1.5 + 32
+        if (p - at.p):Length() > reach or f:Dot(at.f) < 0.5 or u:Dot(at.u) < 0.5 then
+            bike.bmxJumped = true
+            bike.bmxJumpFrame = FrameNumber and FrameNumber()     -- (the drawings read it)
+        end
+    end
     if moved then
         local function carry(v)
             local d = v - at.p
@@ -1749,7 +1763,9 @@ function BMX.CarryTargets(bike)
     -- on a hard turn (the camera sweep, 2026-11-08).
     local bars, t = at.bars, bike.ikTargets
     if bars and t and bike.GetSteer and BMX.VisualSteer then
-        local s = BMX.VisualSteer(bike:GetSteer(), bike.GetSpeedUPS and bike:GetSpeedUPS() or 0, bike:Cfg())
+        local raw = bike:GetSteer()
+        if bars.predict and BMX.PredictSteer then raw = BMX.PredictSteer(bike, raw) end
+        local s = BMX.VisualSteer(raw, bike.GetSpeedUPS and bike:GetSpeedUPS() or 0, bike:Cfg())
         local ds = (s - bars.steer) * (bars.sign or 1)
         if ds ~= 0 then
             local ax, c, sn = bars.axis, math.cos(ds), math.sin(ds)
@@ -1825,6 +1841,16 @@ function BMX.PoseRider(ply)
     -- twice as fast and solving the IK twice. A passenger too: theirs eases.
     local frameNo = FrameNumber and FrameNumber()
     if frameNo and ply.bmxPoseFrame == frameNo then return end
+    -- BACK ON AFTER A WHILE: what this file remembers of the bones it turned
+    -- (ply.bmxIK) is stale -- a respawn puts the engine's bones back, and a rider not
+    -- posed for a while was left as they were. Posed from that, the first frame on had
+    -- the left foot 14-19 u off its peg (the camera sweep's remounts after a crash,
+    -- 2026-11-09). Not solved for over half a second: from a clean skeleton.
+    local now0 = CurTime()
+    if ply.bmxSolvedAt and (now0 - ply.bmxSolvedAt > 0.5 or now0 < ply.bmxSolvedAt) then
+        clear(ply)
+        ply.bmxSolvedAt = nil
+    end
     ply.bmxPoseFrame = frameNo
 
     -- A PASSENGER is not at the bars: their pose is their own (cl_passenger.lua).
@@ -1837,6 +1863,22 @@ function BMX.PoseRider(ply)
 
     local C = bike:Cfg()
     BMX.CarryTargets(bike)
+    -- A JUMP, AND THE VEHICLE NOT DRAWN YET THIS FRAME: carried targets are last frame's,
+    -- and a jump is when they are most wrong (a bike stopped dead where it was put: the
+    -- feet go down, the cranks are elsewhere -- 11-19 u off for that frame, the camera
+    -- sweep, 2026-11-09). The vehicle is drawn first, which works this frame's targets
+    -- out; it is drawn again in its own turn, at the same place. Only on a jump.
+    -- And on a change of what the targets were drawn from (BMX.TargetSig: a takeoff, a
+    -- landing, a kick starting or ending): the scooter set down mid-kick had the kicking
+    -- foot 11 u off the deck for that frame.
+    local at = bike.bmxTargetsAt
+    local stale = bike.bmxJumped or (at and at.sig and BMX.TargetSig and at.sig ~= BMX.TargetSig(bike))
+    if stale and not bike.bmxEarlyDraw and bike.Draw then
+        bike.bmxEarlyDraw = true
+        local ok, err = pcall(bike.Draw, bike)
+        bike.bmxEarlyDraw = nil
+        if not ok then ErrorNoHalt("[BMX] " .. tostring(err) .. "\n") end
+    end
     local useIK = cv_ik:GetBool() and bike.ikTargets ~= nil
     -- IK SWITCHED OFF MID-RIDE (bmx_rider_ik 0, the options panel): what the solver
     -- had posed -- forearms, hands, fingers, feet, a board rider's crouch -- stayed
@@ -1855,6 +1897,11 @@ function BMX.PoseRider(ply)
     local dt = FrameTime()
     local st = bike.bmxSm or {}
     bike.bmxSm = st
+    if bike.bmxJumped then
+        bike.bmxJumped = nil
+        st.yaw, st.crank = nil, nil
+        ply.bmxFrameSm = nil        -- the hips' spring (RiderFollowFrame) starts where it is
+    end
 
     -- THE LEGS SOAK UP A LANDING. On touching down with real downward speed
     -- the rider crouches, in proportion to how hard it was, and eases back up

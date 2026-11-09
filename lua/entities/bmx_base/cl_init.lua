@@ -155,6 +155,7 @@ local MAT = {
 BMX.BikeMaterials = MAT
 
 local drawing       -- the bike being drawn, for the shape cache
+local BAR_KEYS = { "rHand", "lHand", "rHandA", "rHandB", "lHandA", "lHandB" }   -- (on the bars)
 
 -- THE STAND-IN'S SHAPES, LOADED WHILE JOINING. The first vehicle of a session drew its
 -- stand-in from three base-game models nothing had loaded yet, and the tyre model, in
@@ -905,7 +906,8 @@ function ENT:DrawDetailed(model, S)
     end
     -- Where this drawing puts a chassis point, for the rider to ride it (cl_rider.lua,
     -- BMX.RiderFollowFrame): a compressed suspension lifts the frame off the chassis.
-    self.bmxFrameMap = { Pf = Pf, P0 = P0, lift0 = S.lift0 }
+    self.bmxFrameMap = { Pf = Pf, P0 = P0, lift0 = S.lift0,
+                         f = self:GetForward(), r = self:GetRight(), u = self:GetUp() }
 
     local headB = Pf(lay.headB)
     local steerAxis = (Pf(lay.headT) - headB):GetNormalized()
@@ -1097,6 +1099,14 @@ function ENT:DrawDetailed(model, S)
     -- What drew them (the riders' limbs ease across when this changes: cl_rider.lua).
     ik.src = "model"
     self.ikTargets = ik
+    -- The grips turn with the steer: a rider posed before this drawing next frame has
+    -- the hands carried round to where the bars will be (cl_rider.lua BMX.CarryTargets).
+    -- A hard turn's steer, or the steer straightened in a frame (a bike put back at
+    -- rest), left the hands 14 u off the bars for that frame (the camera sweep, 2026-11-09).
+    if self.bmxTargetsAt then
+        self.bmxTargetsAt.bars = { pivot = headB, axis = steerAxis, steer = S.steer, sign = -1,
+                                   keys = BAR_KEYS, predict = true }
+    end
     -- A tandem's stoker: their own pedals, and bars fixed to the frame.
     if lay.bb2 then
         local ikS = { rFoot = Pf(tip(1, lay.bb2)) + upF * (0.9 * k), lFoot = Pf(tip(-1, lay.bb2)) + upF * (0.9 * k),
@@ -1150,12 +1160,23 @@ function ENT:CrankAngle(rSpin, C, dt)
     return free + (self.crankOffset or 0)
 end
 
+-- WHAT THE TARGETS WERE DRAWN FROM, in a number: on the ground or not, kicking (a
+-- scooter's, a board's push) or not. When it changes between a drawing and the rider's
+-- pose, the targets carried from that drawing are a frame stale (cl_rider.lua draws the
+-- vehicle first then).
+function BMX.TargetSig(e)
+    local sig = e.GetGrounded and e:GetGrounded() and 1 or 0
+    if e.GetPushPhase and e:GetPushPhase() >= 0 then sig = sig + 2 end
+    return sig
+end
+
 function ENT:Draw()
     drawing = self
     local bike = self:Bike()
     -- (where the vehicle is as this drawing sets its riders' targets: a rider posed
     -- before the next drawing carries them on from here, cl_rider.lua BMX.CarryTargets)
-    self.bmxTargetsAt = { p = self:GetPos(), f = self:GetForward(), r = self:GetRight(), u = self:GetUp() }
+    self.bmxTargetsAt = { p = self:GetPos(), f = self:GetForward(), r = self:GetRight(), u = self:GetUp(),
+                          sig = BMX.TargetSig(self) }
 
     -- A FAMILY THAT DRAWS ITSELF (cl_board.lua: BMX.DrawVehicle.board). The bike is
     -- the procedural drawing below; a skateboard has no frame, fork or bars, and

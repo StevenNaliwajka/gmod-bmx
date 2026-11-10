@@ -655,6 +655,74 @@ function(ctx)
 end)
 
 --------------------------------------------------------------------------
+-- THE REVERSED AIR CONTROLS, ridden (a demo of bmx_air_invert_flip). The
+-- harness writes bike.input below the key decode, so this case drives the
+-- REAL decode itself: the StartCommand hook is called each tick with a
+-- stand-in usercmd holding W, and the bot's userinfo is answered for the
+-- run. One hop (the flat ground has runway for one): W with the option on
+-- must write the back flip's pitchTarget (+1, as air_mode rides it) and the
+-- bike must turn that way (spinPitch > 0; nose up measured +2.3 rad on the box,
+-- 2026-11-10). And the decode alone: off, W is a front flip; on the ground, W pedals.
+--------------------------------------------------------------------------
+T.Case("air_invert_flip_ridden", { timeout = 50,
+    desc = "with bmx_air_invert_flip 1, W in the air turns the bike the back-flip way" },
+function(ctx)
+    local hookFn = (hook.GetTable().StartCommand or {})["BMX.ReadInput"]
+    if not ctx:ok(hookFn ~= nil, "the key decode hook is installed") then return end
+    local bot, inp = ctx.bot, ctx.bike.input
+    local PLY = FindMetaTable("Player")
+    local realInfo = PLY.GetInfoNum
+    local info = {}
+    PLY.GetInfoNum = function(p, name, def)
+        if p == bot and info[name] ~= nil then return info[name] end
+        return realInfo(p, name, def)
+    end
+    ctx.undo = ctx.undo or {}
+    table.insert(ctx.undo, function() PLY.GetInfoNum = realInfo end)
+    local cmd = { GetButtons = function() return IN_FORWARD end,
+        GetForwardMove = function() return 0 end, GetSideMove = function() return 0 end,
+        SetButtons = function() end, SetForwardMove = function() end,
+        SetSideMove = function() end, SetUpMove = function() end }
+    local function decodeW()
+        bot.BMXScripted = nil
+        local ok, err = pcall(hookFn, bot, cmd)
+        bot.BMXScripted = true
+        if not ok then error(err) end
+    end
+
+    -- On the ground, with the option on, W still pedals.
+    info.bmx_air_invert_flip = 1
+    decodeW()
+    ctx:ok((inp.throttle or 0) > 0, "on the ground W still pedals with the option on")
+    ctx:input({})
+
+    if not ctx:accelerateTo(200, 12) then return end
+    ctx:input({ throttle = 0.6 })
+    ctx:hop()
+    if not ctx:waitUntil(function() return ctx:st().airMode end, 2, "air mode") then return end
+    inp.groundFwd, inp.groundSide, inp.wasAirborne = 0, 0, false   -- W is a fresh press, not latched
+    -- First airborne tick with the option off: W is the front flip.
+    info.bmx_air_invert_flip = 0
+    decodeW()
+    ctx:ok(inp.pitchTarget == -1, "option off: W in the air is a front flip (pitchTarget " .. tostring(inp.pitchTarget) .. ")")
+    -- Then on, for the rest of the hop.
+    info.bmx_air_invert_flip = 1
+    local best, target = 0, nil
+    local deadline = CurTime() + 1.4
+    while CurTime() < deadline and ctx:st().airMode do
+        decodeW()
+        target = target or inp.pitchTarget
+        local sp = ctx:st().spinPitch or 0
+        if math.abs(sp) > math.abs(best) then best = sp end
+        coroutine.yield()
+    end
+    ctx:input({})
+    ctx:log(string.format("W inverted: pitchTarget %s, spinPitch peaked at %+.2f rad", tostring(target), best))
+    ctx:ok(target == 1, "W with the option on asks for the back flip (pitchTarget +1)")
+    ctx:between(best, 0.35, 12, "spinPitch on W inverted (back-flip way)", "rad")
+end)
+
+--------------------------------------------------------------------------
 T.Case("crash_ejects", { timeout = 25,
     desc = "a hard impact throws the rider off" },
 function(ctx)

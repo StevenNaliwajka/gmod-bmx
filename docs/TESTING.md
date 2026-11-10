@@ -440,6 +440,11 @@ bmx-test --only vert_turnaround --repeat 20   # just that case (or a prefix: bot
 by re-running a 199-case pipeline: `vert_turnaround` failed once on 1.4.4's main
 pipeline; 10 more runs of 1.4.4 and 30 of 1.4.3 showed the same kink bounce on both
 (about one run in fifteen), so the case was wrong, not the release.
+Smoothing the transitions (16 facets) ended the bounce: 0 in 70 runs. Two rarer
+failures remain, each about 1 in 40 on `vert_turnaround --repeat 40` (2026-11-09):
+the bike hangs on the coping pointing straight up and never comes down, and a clean
+landing at 168 degrees swings 90 degrees on the floor within 0.8 s. Neither has
+failed a pipeline yet; the case's air timeline line is where to start.
 
 Exit 0 is a clean run, 1 is a failing case, and **2 is the harness itself being
 broken** -- the server never came up, the addon never loaded, the suite wedged.
@@ -463,6 +468,14 @@ by hand on main. gmod/gmod-bmx-mode's pipeline runs its own offline suite agains
 gmod-bmx main and, on main, `bmx-mode-test`: this suite and the mode's `bot_*` cases with
 the bmx gamemode on. A `resource_group` only orders one project's jobs, so `bmx-test`
 also takes `/run/lock/bmx-test.lock` on the box.
+`bmx-mode-test <sha> --only bot_backflip --repeat 3` passes the rest to `bmx-test`.
+Its first full run (2026-11-09) failed 11 of the mode's bot cases, and failed them
+against the addon as it was on 10-17 too: a trick waited for the bot's map scan with
+the bike standing still and the bot's own stuck watch cancelled it at 4 s, and a
+catalogued corner ended a trick that could have put its own kicker down (mode 1.0.2:
+215 of 219). Still failing there: the superman backflip (both cases: the flip is
+flown, only Air Time is paid), bot_finds_a_ramp_in_the_world (it finds the plate; the
+navmesh route to its run-up crosses the plate) and skate_game_with_bots (no result).
 
 ### Four things that have to be true, and were each not true once
 

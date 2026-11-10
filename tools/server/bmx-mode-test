@@ -16,6 +16,7 @@
 # load, and GMod fell back to sandbox without a word).
 set -euo pipefail
 SHA="${1:-}"
+shift || true          # the rest goes to bmx-test as it is: --only bot_backflip --repeat 3
 [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "bmx-mode-test: want a 40-hex commit sha" >&2; exit 2; }
 SERVER_DIR="${GMOD_DIR:-/opt/gmod}"
 SRC="${BMX_MODE_SRC:-$SERVER_DIR/src/gmod-bmx-mode}"
@@ -26,9 +27,11 @@ DROP="$DROP_DIR/zz-bmx-mode-test.conf"
 UNIT="${GMOD_UNIT:-gmod}"
 OWNER="${GMOD_USER:-gmod}"
 
-exec 9>"${BMX_TEST_LOCK:-/run/lock/bmx-test.lock}"
-flock -w "${BMX_LOCK_WAIT:-5400}" 9 || { echo "bmx-mode-test: the server stayed busy" >&2; exit 2; }
-export BMX_TEST_LOCKED=1
+if [ -z "${BMX_TEST_LOCKED:-}" ]; then
+  exec 9>"${BMX_TEST_LOCK:-/run/lock/bmx-test.lock}"
+  flock -w "${BMX_LOCK_WAIT:-5400}" 9 || { echo "bmx-mode-test: the server stayed busy" >&2; exit 2; }
+  export BMX_TEST_LOCKED=1
+fi
 
 cleanup() {
   rm -f "$DROP"
@@ -54,7 +57,7 @@ printf '[Service]\nEnvironment=GMOD_GAMEMODE=bmx\n' > "$DROP"
 systemctl daemon-reload
 
 set +e
-/usr/local/bin/bmx-test
+/usr/local/bin/bmx-test "$@"
 rc=$?
 set -e
 # The mode's cases are named bot_*; none in the results means the gamemode never loaded.

@@ -527,6 +527,41 @@ T.test("keys: bmx_flip_doubletap is off by default, and on it a double-tap is a 
     T.eq(bike.input.pitchTarget, 1, "S twice is a back flip")
 end)
 
+T.test("keys: bmx_air_invert_flip / _roll / _spin reverse one axis each, in the air only", function()
+    local sv, bike, ply, send = rig()
+    local i = bike.input
+    bike.st.airMode = true
+    send(IN.FORWARD); T.eq(i.pitchTarget, -1, "off: W is a front flip")
+    send(IN.MOVERIGHT); T.eq(i.leanTarget, 1, "off: D rolls right")
+    send(IN.ATTACK2 + IN.MOVERIGHT); T.eq(i.leanTarget, 1, "off: RMB + D spins right")
+    send(0)
+    ply:ConCommand("bmx_air_invert_flip 1")
+    send(IN.FORWARD); T.eq(i.pitchTarget, 1, "flip inverted: W is a back flip")
+    send(IN.BACK); T.eq(i.pitchTarget, -1, "and S a front flip")
+    send(IN.MOVERIGHT); T.eq(i.leanTarget, 1, "the roll untouched")
+    send(0)
+    ply:ConCommand("bmx_air_invert_flip 0"); ply:ConCommand("bmx_air_invert_roll 1")
+    send(IN.MOVERIGHT); T.eq(i.leanTarget, -1, "roll inverted: D rolls left")
+    send(IN.ATTACK2 + IN.MOVERIGHT); T.eq(i.leanTarget, 1, "the spin untouched")
+    send(IN.FORWARD); T.eq(i.pitchTarget, -1, "the flip untouched")
+    send(0)
+    ply:ConCommand("bmx_air_invert_roll 0"); ply:ConCommand("bmx_air_invert_spin 1")
+    send(IN.ATTACK2 + IN.MOVERIGHT); T.eq(i.leanTarget, -1, "spin inverted: RMB + D spins left")
+    send(IN.MOVERIGHT); T.eq(i.leanTarget, 1, "the roll untouched")
+    send(0)
+    bike.st.launchKind = "vert"
+    send(IN.MOVERIGHT); T.eq(i.leanTarget, -1, "off a vert ramp A/D are a turn, so the spin setting reverses them")
+    bike.st.launchKind = nil
+    send(0)
+    ply:ConCommand("bmx_air_invert_flip 1"); ply:ConCommand("bmx_air_invert_roll 1")
+    send(IN.WALK + IN.MOVELEFT); T.eq(i.pose, "cancan_l", "a pose keeps its keys"); T.eq(i.leanTarget, 0, "and is not a roll")
+    send(0)
+    bike.st.airMode = false
+    send(0); send(IN.MOVERIGHT); T.eq(i.leanTarget, 1, "on the ground D still leans right")
+    T.eq(i.pitchTarget, 0, "and nothing pitches")
+    send(IN.FORWARD); T.ok(i.throttle > 0, "and W pedals")
+end)
+
 --------------------------------------------------------------------------
 -- The real entity and the plant.
 --------------------------------------------------------------------------

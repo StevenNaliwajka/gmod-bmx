@@ -6,6 +6,7 @@
         bmx_tricks         toggle the list
         +bmx_tricks        show it while held (bind a key: bind F4 +bmx_tricks)
         bmx_flip_doubletap 1   double-tap W or S in the air for a flip (off)
+        bmx_air_invert_flip / _roll / _spin 1   reverse that axis in the air (off)
 
     WHY AN OVERLAY. The competitor puts its tricks in a README table, and a
     player who is mid-session will not go and read one. With the modifier keys
@@ -24,6 +25,14 @@ BMX = BMX or {}
 -- with GetInfoNum rather than one setting for the whole server.
 CreateClientConVar("bmx_flip_doubletap", "0", true, true,
     "BMX: 1 = a double-tap of W or S in the air is a flip (stops itself near a full turn); 0 = hold to rotate.")
+
+-- Reversed air controls, one per axis, each rider's own (sv_input.lua).
+CreateClientConVar("bmx_air_invert_flip", "0", true, true,
+    "BMX: 1 = W and S are reversed in the air (W a back flip, S a front flip).")
+CreateClientConVar("bmx_air_invert_roll", "0", true, true,
+    "BMX: 1 = A and D roll the other way in the air.")
+CreateClientConVar("bmx_air_invert_spin", "0", true, true,
+    "BMX: 1 = RMB + A / D spin the other way in the air, and A / D turn the other way off a vert ramp.")
 
 -- What LMB does (G02): "brake" (the front brake; with Ctrl, brake and lean
 -- forward) or "lean" (lean forward; with Ctrl, lean and brake). Userinfo, like

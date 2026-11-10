@@ -43,6 +43,7 @@
                          tabletop, turndown, nothing
         RMB + W          air: X-up
         double-tap W/S   a flip, if bmx_flip_doubletap 1 (off by default)
+        bmx_air_invert_flip / _roll / _spin 1   reverse that axis in the air
 
     Nothing here is predicted. GMod has no vehicle prediction API, so the
     simulation is server-authoritative exactly like simfphys and LVS. High-ping
@@ -300,6 +301,24 @@ hook.Add("StartCommand", "BMX.ReadInput", function(ply, cmd)
         end
     else
         inp.poseMod = false
+    end
+
+    ----------------------------------------------------------------------
+    -- INVERTED AIR CONTROLS, three options (userinfo convars, cl_tricks.lua),
+    -- asked for on the Workshop page (2026-11-09: "How to invert turning and
+    -- leaning in air?"). Each flips one axis IN THE AIR only, after the
+    -- takeoff latch above (which compares raw keys) and before the double-tap
+    -- flip (so a double-tap flips the inverted way too):
+    --   bmx_air_invert_flip   W / S              (W becomes a back flip)
+    --   bmx_air_invert_roll   A / D              (the barrel roll)
+    --   bmx_air_invert_spin   RMB + A / D, and A / D off a vert ramp (a turn)
+    -- Poses, whips and bars keep their keys: those already took fwd/side to 0.
+    ----------------------------------------------------------------------
+    if airborne and not inp.pose then
+        if ply:GetInfoNum("bmx_air_invert_flip", 0) > 0 then fwd = -fwd end
+        local st = bike.st or {}
+        local turning = inp.wheelieMod or (st.launchKind == "vert" and (not BMX.AirAssistOn or BMX.AirAssistOn()))
+        if ply:GetInfoNum(turning and "bmx_air_invert_spin" or "bmx_air_invert_roll", 0) > 0 then side = -side end
     end
 
     ----------------------------------------------------------------------

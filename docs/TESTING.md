@@ -473,9 +473,13 @@ Its first full run (2026-11-09) failed 11 of the mode's bot cases, and failed th
 against the addon as it was on 10-17 too: a trick waited for the bot's map scan with
 the bike standing still and the bot's own stuck watch cancelled it at 4 s, and a
 catalogued corner ended a trick that could have put its own kicker down (mode 1.0.2:
-215 of 219). Still failing there: the superman backflip (both cases: the flip is
-flown, only Air Time is paid), bot_finds_a_ramp_in_the_world (it finds the plate; the
-navmesh route to its run-up crosses the plate) and skate_game_with_bots (no result).
+215 of 219). The last four were real faults too (mode 1.0.3, 218 of 219): a seated
+rider reads as MOVETYPE_NOCLIP to the engine, so no rider's trick counted in a game;
+a flip landed nose-up lost ~10 degrees to the front wheel slapping down and was paid
+as Air Time; the bot rode at its own removed kickers, still in its map catalogue; and
+a pose let go too early on a short flight. The last, bot_finds_a_ramp_in_the_world,
+was the addon's: Nav.Path routed the bot off flatgrass's 515 u ledge, a link a navmesh
+makes for walkers (1.4.4: Nav.Rideable, no step over 48 u down or 18 up).
 
 ### Four things that have to be true, and were each not true once
 

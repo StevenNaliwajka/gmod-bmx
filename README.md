@@ -126,6 +126,12 @@ disagrees with either.
 | `L` | cinematic camera on/off | same |
 | `O` | auto ride on/off: the bike rides itself, the way the trick bot does (needs BMX (Mode)) | same |
 
+**Reversed air controls.** Options > BMX > Rider has one switch per axis, each
+yours alone and off by default: `bmx_air_invert_flip 1` swaps W and S in the air,
+`bmx_air_invert_roll 1` reverses the A / D roll, and `bmx_air_invert_spin 1`
+reverses the RMB + A / D spin (and the A / D turn off a vert ramp). The ground
+controls never change.
+
 **Chase camera.** It eases after the bike's turns and ramps rather than being
 bolted to it; `bmx_cam_smooth 0` bolts it back on. In the air, a lean key
 you were already holding when the wheels left the ground does nothing until
@@ -180,8 +186,8 @@ tricks working and tricks being an accident:
   manual**, rolling on the front wheel, `W` leaning further over and `S` sitting
   up. It pays by the second and chains in a combo. If you would rather have
   `LMB` lean forward (like other bike mods) set `bmx_lmb_mode lean`; then
-  `Ctrl` + `LMB` brakes as well. The nose manual itself is `bmx_nose_manual 1`,
-  off until it has been ridden on your server.
+  `Ctrl` + `LMB` brakes as well. The nose manual is on by default;
+  `bmx_nose_manual 0` turns it off.
 - **Off a vertical ramp the air helps you turn round.** Go up a quarter pipe
   (or a bowl wall) steeper than 60 degrees and tap `A` or `D` in the air: the
   bike turns about the wall, as a rider turns an air, to a half turn and back
@@ -213,7 +219,7 @@ Server console or `server.cfg`; all of them are saved.
 | `bmx_combos 0` | `1` | Tricks still score, but chaining them pays no combo bonus. |
 | `bmx_combo_variety 0` | `1` | Every repeat of a trick counts in full in a combo, as it used to. At `1` a repeat adds less each time and nothing after the fourth, so a combo grows by doing different tricks. |
 | `bmx_crash_ragdoll 0` | `1` | A crash shoves the rider off instead of ragdolling them. |
-| `bmx_nose_manual 1` | `0` | Lets a rider holding weight forward (`Ctrl` + `LMB`) keep rolling on the front wheel after the brake comes off. Off until it has been ridden live: with it off, a stoppie ends when the brake does. |
+| `bmx_nose_manual 0` | `1` | A rider holding weight forward (`Ctrl` + `LMB`) keeps rolling on the front wheel after the brake comes off (a nose manual; W / S trim it). At `0` a stoppie ends when the brake does. |
 | `bmx_air_assist 0` | `1` | No air turn, landing aim or spine transfer off vertical ramps: `A` / `D` stay the barrel roll everywhere. |
 
 ## First run

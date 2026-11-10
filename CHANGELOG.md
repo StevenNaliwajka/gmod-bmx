@@ -24,6 +24,15 @@ a Workshop update goes out only when the owner says so.
   go of the brake to keep rolling on the front wheel, with W and S trimming the balance.
   Both switches stayed off until the whole test suite had been run with them on.
 
+**Reversed air controls, if you want them**
+
+- Three new options under Options > BMX > Rider, each off until you turn it on:
+  **Invert flips in the air** (`bmx_air_invert_flip`: W back flips, S front flips),
+  **Invert rolling in the air** (`bmx_air_invert_roll`: A and D roll the other way) and
+  **Invert turning in the air** (`bmx_air_invert_spin`: right mouse + A / D spin the other
+  way, and so do A / D off a vert ramp). Asked for on the Workshop page. On the ground
+  nothing changes.
+
 **Smoother park ramps**
 
 - **Quarter pipes, spines and drop-ins curve in 16 facets instead of 8.** At speed the

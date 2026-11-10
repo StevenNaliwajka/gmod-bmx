@@ -261,6 +261,15 @@ client{ name = "bmx_stick_deadzone", kind = "float", default = 0.1, min = 0, max
 client{ name = "bmx_flip_doubletap", kind = "bool", default = false, category = "rider",
     label = "Double-tap flips",
     help = "Double-tap W or S in the air for a whole flip that stops itself near a full turn. Off: hold the key to rotate." }
+client{ name = "bmx_air_invert_flip", kind = "bool", default = false, category = "rider",
+    label = "Invert flips in the air",
+    help = "In the air, W does a back flip and S a front flip, the other way round from normal." }
+client{ name = "bmx_air_invert_roll", kind = "bool", default = false, category = "rider",
+    label = "Invert rolling in the air",
+    help = "In the air, A and D roll the bike the other way (the barrel roll)." }
+client{ name = "bmx_air_invert_spin", kind = "bool", default = false, category = "rider",
+    label = "Invert turning in the air",
+    help = "In the air, right mouse + A / D spins the bike the other way, and A / D turn it the other way off a vert ramp." }
 client{ name = "bmx_lmb_mode", kind = "choice", default = "brake", choices = { "brake", "lean" },
     category = "rider", label = "Left mouse",
     help = "What left mouse does on the ground. brake: the front brake (hold Ctrl as well to lean forward over the bars). lean: lean forward, like other bike mods (hold Ctrl as well to brake, for a stoppie)." }

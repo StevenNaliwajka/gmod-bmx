@@ -32,6 +32,12 @@ a Workshop update goes out only when the owner says so.
 - **An Air 180 let go early finishes its turn sooner**, so a short flight no longer comes
   down short of the half turn and falls.
 
+**Routes a bike can ride**
+
+- The trick bot's routes on a navmesh (BMX (Mode)) no longer go off a ledge. A
+  navmesh links a ledge's top to the ground below for walkers; a route now crosses no
+  drop over 48 units or climb over 18.
+
 **Unchanged on purpose**
 
 - `bmx_wheel_sweep` stays off. With it on, a bike rolled up a ledge as tall as its wheel

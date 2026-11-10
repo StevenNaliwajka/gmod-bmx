@@ -65,6 +65,13 @@ Nav.Config = {
     -- took ~30% of a core for ~45 s (a real game, 2026-11-08).
     budgetHost = 0.001,
     flatSlope = 4,      -- deg still counted flat for a runway
+    -- A route is ridden, not walked. A navmesh links a ledge's top to the ground below
+    -- it (a drop a walker steps off), and A* took one: on gm_flatgrass the trick bot's
+    -- way to its run-up went off the 515 u drop west of the spawn and crashed
+    -- (bot_finds_a_ramp_in_the_world, 2026-11-10). No link across a change in height
+    -- bigger than these at the shared edge.
+    pathDrop  = 48,     -- u down a route may step
+    pathRise  = 18,     -- u up
     runStep   = 32,     -- u between runway samples
     runMin    = 500,    -- u: shorter than this is not a runway
     runMax    = 2400,
@@ -659,6 +666,16 @@ end
 
 local PULL_AHEAD = 16
 
+-- Can a bike ride from area a into its neighbour b? Only across a step it can roll
+-- down or up (Nav.Config.pathDrop / pathRise), measured at the edge they share.
+function Nav.Rideable(a, b)
+    if not a.ComputeAdjacentConnectionHeightChange then return true end
+    local dz = a:ComputeAdjacentConnectionHeightChange(b)
+    if not dz then return true end
+    local C = Nav.Config
+    return dz >= -C.pathDrop and dz <= C.pathRise
+end
+
 function Nav.Path(from, to, opts)
     opts = opts or {}
     if not meshed() then return nil, "no navmesh" end
@@ -668,7 +685,9 @@ function Nav.Path(from, to, opts)
     local goalC = B:GetCenter()
     local areas = Nav.AStar(A, B, function(n)
         local out = {}
-        for _, m in ipairs(n:GetAdjacentAreas()) do out[#out + 1] = { m, areaCost(n, m, opts) } end
+        for _, m in ipairs(n:GetAdjacentAreas()) do
+            if Nav.Rideable(n, m) then out[#out + 1] = { m, areaCost(n, m, opts) } end
+        end
         return out
     end, function(n) return n:GetCenter():Distance(goalC) end, function(n) return n:GetID() end, 20000)
     if not areas then return nil, "no way there on the mesh" end

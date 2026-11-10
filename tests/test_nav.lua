@@ -300,3 +300,70 @@ T.test("nav: outside the BMX gamemode the spots are searched for only when asked
     N.Run = run
     T.eq(started[1], "remesh", "the BMX gamemode remeshes a park change straight away")
 end)
+
+-- A ROUTE IS RIDDEN, NOT WALKED. A navmesh links a ledge's top to the ground below it,
+-- and A* took the drop: the trick bot rode off gm_flatgrass's 515 u ledge on the way to
+-- its run-up and crashed (bot_finds_a_ramp_in_the_world, 2026-11-10).
+T.test("nav: a path goes round a drop a bike cannot ride, and finds none where the drop is the only way", function()
+    local E, sv = env()
+    local N = E.BMX.Nav
+    local nm = fakeNavmesh(E)
+    E.navmesh = nm
+    local g = sv.world.groundZ
+    local meta = getmetatable(nm.CreateNavArea(E.Vector(9000, 9000, g), E.Vector(9001, 9001, g)))
+    function meta:GetAdjacentAreas() local o = {} for b in pairs(self.links) do if not b.gone then o[#o + 1] = b end end return o end
+    function meta:ComputeAdjacentConnectionHeightChange(b) return b.z - self.z end
+    nm.GetNearestNavArea = function(p)
+        local best, bd
+        for _, a in ipairs(nm.live()) do
+            if p.x >= a.x0 and p.x <= a.x1 and p.y >= a.y0 and p.y <= a.y1 then
+                local d = math.abs(a.z - p.z)
+                if not bd or d < bd then best, bd = a, d end
+            end
+        end
+        return best
+    end
+    local function area(x0, y0, x1, y1, z) return nm.CreateNavArea(E.Vector(x0, y0, z), E.Vector(x1, y1, z)) end
+    local function link(a, b) a:ConnectTo(b) b:ConnectTo(a) end
+    -- Start S and goal G on the upper floor; the short way is down a 500 u drop (D,
+    -- linked one way, as a navmesh does) and back up a ramp R; the long way round
+    -- (W1, W2) stays on the floor.
+    local S  = area(0, 0, 100, 100, g)
+    local D  = area(100, 0, 200, 100, g - 500)
+    local R  = area(200, 0, 300, 100, g - 10)
+    local Gl = area(300, 0, 400, 100, g)
+    local W1 = area(0, 100, 200, 600, g)
+    local W2 = area(200, 100, 400, 600, g)
+    S:ConnectTo(D)                  -- off the ledge, one way
+    link(D, R) link(R, Gl)
+    link(S, W1) link(W1, W2) link(W2, Gl)
+    local A, B = S, Gl
+    local okA = N.Rideable(S, D)
+    T.ok(not okA, "a 500 u drop is not rideable")
+    T.ok(N.Rideable(S, W1), "level ground is")
+    local areas = N.AStar(A, B, function(n)
+        local out = {}
+        for _, m in ipairs(n:GetAdjacentAreas()) do
+            if N.Rideable(n, m) then out[#out + 1] = { m, n:GetCenter():Distance(m:GetCenter()) } end
+        end
+        return out
+    end, function(n) return n:GetCenter():Distance(B:GetCenter()) end, function(n) return n:GetID() end, 1000)
+    T.ok(areas, "a way there")
+    local viaDrop = false
+    for _, a in ipairs(areas or {}) do if a == D then viaDrop = true end end
+    T.ok(not viaDrop, "and it goes round, not off the ledge")
+    -- With the way round gone, the drop is no way at all.
+    W1:Remove() W2:Remove()
+    local none = N.AStar(A, B, function(n)
+        local out = {}
+        for _, m in ipairs(n:GetAdjacentAreas()) do
+            if N.Rideable(n, m) then out[#out + 1] = { m, 1 } end
+        end
+        return out
+    end, function() return 0 end, function(n) return n:GetID() end, 1000)
+    T.eq(none, nil, "no route that only a fall makes")
+    -- And Nav.Path itself, the route the bot rides.
+    local pts, why = N.Path(S:GetCenter() + E.Vector(0, 0, 4), Gl:GetCenter() + E.Vector(0, 0, 4))
+    T.eq(pts, nil, "Nav.Path finds none either")
+    T.eq(why, "no way there on the mesh", "because the mesh has no ridden way, not because it is missing")
+end)

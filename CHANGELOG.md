@@ -46,6 +46,10 @@ a Workshop update goes out only when the owner says so.
 - The trick bot's routes on a navmesh (BMX (Mode)) no longer go off a ledge. A
   navmesh links a ledge's top to the ground below for walkers; a route now crosses no
   drop over 48 units or climb over 18.
+- Placing or removing a park piece no longer leaves strips of ground with no navmesh
+  round it. The map's own mesh does not line up with the one rebuilt under the piece,
+  and the part of each square the old mesh only half covered was left bare; the bot
+  treated the bare strip as a gap and rode the long way round it, once off a ledge.
 
 **Unchanged on purpose**
 

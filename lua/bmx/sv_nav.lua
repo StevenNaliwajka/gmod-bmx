@@ -104,6 +104,26 @@ function Nav.CellPlane(c, s, C)
 end
 
 --------------------------------------------------------------------------
+-- Pure: rectangles { x0, y0, x1, y1 } less one more, as rectangles that do not
+-- overlap (up to four from each: the strips left, right, below and above it).
+--------------------------------------------------------------------------
+function Nav.RectMinus(rs, o)
+    local out = {}
+    for _, r in ipairs(rs) do
+        if o[1] >= r[3] or o[3] <= r[1] or o[2] >= r[4] or o[4] <= r[2] then
+            out[#out + 1] = r
+        else
+            local ix0, ix1 = max(r[1], o[1]), min(r[3], o[3])
+            if o[1] > r[1] then out[#out + 1] = { r[1], r[2], o[1], r[4] } end
+            if o[3] < r[3] then out[#out + 1] = { o[3], r[2], r[3], r[4] } end
+            if o[2] > r[2] then out[#out + 1] = { ix0, r[2], ix1, o[2] } end
+            if o[4] < r[4] then out[#out + 1] = { ix0, o[4], ix1, r[4] } end
+        end
+    end
+    return out
+end
+
+--------------------------------------------------------------------------
 -- Pure: greedy merge, layer by layer. `cells(i, j)` returns the rideable
 -- cells in that column, each { z00, z10, z01, z11 } (a floor under a beam
 -- and the beam's top are two). Cells merge with a seed when the seed's plane
@@ -368,6 +388,7 @@ function Nav.Build(lo, hi, opts)
 
     -- 2. Cells: one per surface the centre column has.
     local CELLS, why = {}, {}
+    local keptCells = {}   -- a remesh's cells a kept area stands on (see 7)
     local function count(w) why[w] = (why[w] or 0) + 1 end
     local function kept(x, y, z)
         local o = navmesh.GetNavArea(Vector(x, y, z + 8), 24)
@@ -390,7 +411,10 @@ function Nav.Build(lo, hi, opts)
                 -- A REMESH builds only ground no kept area covers: the box is grown to
                 -- the areas it took away, and its edges run through others that stay.
                 -- Built over as well, they were overlapping copies with no links.
-                if ok and opts.keep and kept(cx, cy, zc) then ok, w = false, "kept" end
+                if ok and opts.keep and kept(cx, cy, zc) then
+                    ok, w = false, "kept"
+                    keptCells[#keptCells + 1] = { i = i, j = j, c = c }
+                end
                 count(w or "ok")
                 if ok then c.slope = slope list[#list + 1] = c end
             end
@@ -537,6 +561,66 @@ function Nav.Build(lo, hi, opts)
                 end
             end
             t0 = tickBudget(t0, C)
+        end
+    end
+
+    -- 7. A remesh: the rest of each cell a kept area stands on. The kept areas are
+    -- from another grid (the map's own mesh, or a build at another cell size), so one
+    -- standing on a cell's centre seldom covers all of it: skipped whole, the rest of
+    -- the cell was ground with no area, strips of it along the box's edges. A bot's
+    -- straight line fell into one and routed round it, off flatgrass's ledge (the
+    -- BMX (Mode) suite, 2026-11-10). What the kept areas leave of the cell is built,
+    -- in rectangles (Nav.RectMinus), on the cell's own plane, and linked to whatever
+    -- it touches.
+    if opts.keep and #keptCells > 0 then
+        local pieces = {}
+        for _, kc in ipairs(keptCells) do
+            local c = kc.c
+            local cx0, cy0 = x0 + kc.i * s, y0 + kc.j * s
+            local rs = { { cx0, cy0, cx0 + s, cy0 + s } }
+            local zlo, zhi = min(c.z00, c.z10, c.z01, c.z11) - 12, max(c.z00, c.z10, c.z01, c.z11) + 12
+            for _, o in ipairs(navmesh.FindInBox(Vector(cx0, cy0, zlo), Vector(cx0 + s, cy0 + s, zhi), 1e5, 1e5) or {}) do
+                if IsValid(o) then
+                    local e = o:GetExtentInfo()
+                    local mid = Vector((max(cx0, e.lo.x) + min(cx0 + s, e.hi.x)) * 0.5, (max(cy0, e.lo.y) + min(cy0 + s, e.hi.y)) * 0.5, 0)
+                    local u, v = (mid.x - cx0) / s, (mid.y - cy0) / s
+                    local zp = c.z00 * (1 - u) * (1 - v) + c.z10 * u * (1 - v) + c.z01 * (1 - u) * v + c.z11 * u * v
+                    if abs(o:GetZ(mid) - zp) <= 6 then
+                        rs = Nav.RectMinus(rs, { e.lo.x, e.lo.y, e.hi.x, e.hi.y })
+                    end
+                end
+            end
+            for _, r in ipairs(rs) do
+                if r[3] - r[1] >= 1 and r[4] - r[2] >= 1 then
+                    local function zAt(x, y)
+                        local u, v = (x - cx0) / s, (y - cy0) / s
+                        return c.z00 * (1 - u) * (1 - v) + c.z10 * u * (1 - v) + c.z01 * (1 - u) * v + c.z11 * u * v
+                    end
+                    local nw, ne = Vector(r[1], r[2], zAt(r[1], r[2])), Vector(r[3], r[2], zAt(r[3], r[2]))
+                    local se, sw = Vector(r[3], r[4], zAt(r[3], r[4])), Vector(r[1], r[4], zAt(r[1], r[4]))
+                    local a = navmesh.CreateNavArea(nw, se)
+                    if IsValid(a) then
+                        a:SetCorner(NW, nw) a:SetCorner(NE, ne) a:SetCorner(SE, se) a:SetCorner(SW, sw)
+                        made[#made + 1] = a
+                        pieces[#pieces + 1] = { a = a, r = r, zAt = zAt }
+                    end
+                end
+            end
+            t0 = tickBudget(t0, C)
+        end
+        -- Linked once all are made, so pieces link to each other too: probe just past
+        -- each edge, at its ends and middle.
+        for _, pc in ipairs(pieces) do
+            local r = pc.r
+            for _, side in ipairs({ { r[1] - 1, r[2], r[1] - 1, r[4] }, { r[3] + 1, r[2], r[3] + 1, r[4] },
+                                    { r[1], r[2] - 1, r[3], r[2] - 1 }, { r[1], r[4] + 1, r[3], r[4] + 1 } }) do
+                for _, f in ipairs({ 0.1, 0.5, 0.9 }) do
+                    local ex, ey = side[1] + (side[3] - side[1]) * f, side[2] + (side[4] - side[2]) * f
+                    local ez = pc.zAt(math.Clamp(ex, r[1], r[3]), math.Clamp(ey, r[2], r[4]))
+                    local o = navmesh.GetNavArea(Vector(ex, ey, ez + 8), 24)
+                    if IsValid(o) and o ~= pc.a and abs(o:GetZ(Vector(ex, ey, 0)) - ez) <= 6 then link(pc.a, o) end
+                end
+            end
         end
     end
 

@@ -207,6 +207,29 @@ local function fakeNavmesh(E)
     }
 end
 
+T.test("nav: RectMinus leaves exactly the rest of a rectangle, in pieces that do not overlap", function()
+    local E = env()
+    local N = E.BMX.Nav
+    local function area(rs) local t = 0 for _, r in ipairs(rs) do t = t + (r[3] - r[1]) * (r[4] - r[2]) end return t end
+    local cell = { { 0, 0, 32, 32 } }
+    T.eq(#N.RectMinus(cell, { 40, 0, 80, 32 }), 1, "apart: the cell, whole")
+    T.eq(#N.RectMinus(cell, { -10, -10, 50, 50 }), 0, "covered: nothing")
+    local strip = N.RectMinus(cell, { -48, -48, 20, 80 })
+    T.eq(#strip, 1, "cut by one edge: one strip")
+    T.eq(area(strip), 12 * 32, "and it is the uncovered 12 u")
+    local ell = N.RectMinus(cell, { 10, 10, 50, 50 })
+    T.eq(area(ell), 32 * 32 - 22 * 22, "a corner in it: the L that is left")
+    local hole = N.RectMinus(cell, { 8, 8, 24, 24 })
+    T.eq(#hole, 4, "inside it: a frame of four")
+    T.eq(area(hole), 32 * 32 - 16 * 16, "with the middle gone")
+    for _, rs in ipairs({ ell, hole }) do
+        for i = 1, #rs do for j = i + 1, #rs do
+            local a, b = rs[i], rs[j]
+            T.ok(not (a[1] < b[3] and a[3] > b[1] and a[2] < b[4] and a[4] > b[2]), "pieces do not overlap")
+        end end
+    end
+end)
+
 T.test("nav: a remesh round a piece leaves no ground covered twice, and the new ground is linked to the old", function()
     local E, sv = env()
     local N = E.BMX.Nav
@@ -237,6 +260,20 @@ T.test("nav: a remesh round a piece leaves no ground covered twice, and the new 
         end
     end
     T.eq(twice, 0, "no ground covered twice")
+    -- And no ground left uncovered: the old grid does not line up with the new one, and a
+    -- cell skipped because its centre lay on a kept area left the rest of it bare -- strips
+    -- with no area along the box's edges, which a bot's straight line fell into and routed
+    -- round, off flatgrass's ledge (BMX (Mode) suite, 2026-11-10).
+    local bare, where = 0, nil
+    for x = lo.x + 4, hi.x - 4, 6 do
+        for y = lo.y + 4, hi.y - 4, 6 do
+            if not nm.GetNavArea(E.Vector(x, y, g + 16), 64) then
+                bare = bare + 1
+                where = where or string.format("(%.0f %.0f)", x, y)
+            end
+        end
+    end
+    T.eq(bare, 0, "no ground left bare" .. (where and (", first at " .. where) or ""))
     -- Every area that shares an edge with another is linked to it.
     local unlinked = 0
     for i = 1, #live do

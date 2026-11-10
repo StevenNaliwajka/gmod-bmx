@@ -720,9 +720,13 @@ C.Air = {
     -- key is let go: vertKp / vertKd as angular acceleration per radian and per
     -- rad/s (zeta ~0.9). A turn under vertMin is a tap and settles back to
     -- where it started. The accumulated heading is st.vertSpin.
+    -- 110 / 19 (was 70 / 15, about 8.4 rad/s, the slowest controller in the
+    -- flight): a tap let go at 0.24 s on a short flight (0.50 s) came down only
+    -- 144 degrees round and fell; at 10.5 rad/s the worst of 40 real-server runs
+    -- came down at 156 (vert_turnaround's air timeline, 2026-11-09).
     vertYawRate = 6.0,
-    vertKp = 70,
-    vertKd = 15,
+    vertKp = 110,
+    vertKd = 19,
     vertMin = math.rad(35),
     -- Air 180 pays vertBase + vertPerUnit per unit of height above the lip, per
     -- half turn.

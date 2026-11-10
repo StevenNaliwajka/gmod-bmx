@@ -24,6 +24,14 @@ a Workshop update goes out only when the owner says so.
   go of the brake to keep rolling on the front wheel, with W and S trimming the balance.
   Both switches stayed off until the whole test suite had been run with them on.
 
+**Smoother park ramps**
+
+- **Quarter pipes, spines and drop-ins curve in 16 facets instead of 8.** At speed the
+  front wheel could catch a joint at the foot of a tall quarter pipe and bounce the bike
+  off the face, about one run in fifteen; in 70 runs since, it has not happened once.
+- **An Air 180 let go early finishes its turn sooner**, so a short flight no longer comes
+  down short of the half turn and falls.
+
 **Unchanged on purpose**
 
 - `bmx_wheel_sweep` stays off. With it on, a bike rolled up a ledge as tall as its wheel

@@ -4,6 +4,10 @@
 #   bmx-test                     test whatever the addon checkout is on now
 #   bmx-test --ref <git-ref>     check that commit/branch out first, then test
 #   bmx-test --case lean_steers  show only that case's lines in the report
+#   bmx-test --only vert_turnaround [--repeat 10]
+#                                run just that case (or a prefix: bot_*), N times
+#                                on one boot; the report counts the passes. For
+#                                telling a flaky case from a broken one in minutes
 #
 # Exit 0  every case passed
 # Exit 1  at least one case failed  (the report says which)
@@ -76,18 +80,24 @@ RUN_MAX="${BMX_RUN_MAX:-2700}"            # budget ceiling
 RUN_STALL="${BMX_RUN_STALL:-420}"         # no progress change for this long = wedged
 REF=""
 CASE=""
+ONLY=""
+REPEAT=1
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --ref)  REF="${2:-}"; shift 2 ;;
     --case) CASE="${2:-}"; shift 2 ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    --only) ONLY="${2:-}"; shift 2 ;;
+    --repeat) REPEAT="${2:-}"; shift 2 ;;
+    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
     *) echo "bmx-test: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
 
 say() { echo "  $*"; }
 die() { echo "bmx-test: $*" >&2; exit 2; }
+case "$REPEAT" in ''|*[!0-9]*|0) die "--repeat wants a count of 1 or more, not '$REPEAT'" ;; esac
+[ "$REPEAT" = 1 ] || [ -n "$ONLY" ] || die "--repeat needs --only: a whole suite N times is a night, not a check"
 
 # A WEDGE MUST LEAVE EVIDENCE. The exit trap restarts the server onto the play map, and
 # srcds -condebug rewrites console.log on every start, so the console of a stalled run
@@ -243,8 +253,10 @@ until rcon "echo ping" >/dev/null 2>&1; do
   [ "$waited" -lt "$BOOT_TIMEOUT" ] || die "RCON never answered within ${BOOT_TIMEOUT}s"
 done
 
+run_once() {
 # --- 5. run it ---------------------------------------------------------------
-reply="$(rcon "bmx_test")"
+rm -f "$RESULTS" "$PROGRESS"
+reply="$(rcon "bmx_test${ONLY:+ $ONLY}")"
 case "$reply" in
   *"a run is already in progress"*)
     die "a run was already in progress on a server we just restarted, which
@@ -296,12 +308,23 @@ fi
 summary="$(grep -E '^[0-9]+ passed, [0-9]+ failed' "$RESULTS" | tail -1)"
 [ -n "$summary" ] || die "the results file has no summary line -- report() did not finish"
 failed="$(echo "$summary" | sed -E 's/.*[, ]([0-9]+) failed.*/\1/')"
+}
+
+runs_ok=0
+for run_n in $(seq 1 "$REPEAT"); do
+  [ "$REPEAT" = 1 ] || say "run $run_n of $REPEAT"
+  run_once
+  if [ "$failed" = "0" ]; then runs_ok=$((runs_ok + 1)); else grep -E '^\[FAIL\]' "$RESULTS" >&2 || true; fi
+done
 
 echo
+if [ "$REPEAT" != 1 ]; then
+  echo "bmx-test: ${ONLY} passed ${runs_ok}/${REPEAT} runs"
+  [ "$runs_ok" = "$REPEAT" ] && exit 0 || exit 1
+fi
 if [ "$failed" = "0" ]; then
   echo "bmx-test: PASS -- $summary"
   exit 0
 fi
 echo "bmx-test: FAIL -- $summary" >&2
-grep -E '^\[FAIL\]' "$RESULTS" >&2 || true
 exit 1

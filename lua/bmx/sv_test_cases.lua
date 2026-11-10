@@ -2979,15 +2979,34 @@ function(ctx)
     ctx:wait(0.3)
 
     local kind, peak = nil, 0
+    -- Judge the flight off the coping, not a bounce on the way up: now and then the
+    -- front wheel hits the kink where the floor meets the face and lifts the bike
+    -- for an air's worth of ticks (classified ramp, 42-53 u up; 2026-11-09: 2 runs
+    -- in 21 on 1.4.4, 1 in 30 on 1.4.3, so not the 1.4.4 switches), and the case
+    -- ended on that bounce. Same rule as spine_transfer's (a242d95): a flight counts
+    -- from 80% of the way to the coping, which sits a deck (28 u) short of the end.
+    local leaveX = xa + 0.8 * (2 * b.hl - 28)
+    -- The flight's timeline, for a run that comes down short of the half turn:
+    -- when the key was let go, the turn at the apex, when the drop back in took
+    -- over, and the turn at touchdown.
+    local t0, tRel, tApex, tDrop, spinApex
     local flew, landed = rideOffPiece(ctx, xa, 380, 430, 12, function(st)
         if st.airMode then
+            t0 = t0 or CurTime()
             kind = kind or st.launchKind
-            peak = math.max(peak, ctx.bike:GetPos().z - g.z)
+            local z = ctx.bike:GetPos().z - g.z
+            if z > peak then peak, tApex, spinApex = z, CurTime() - t0, st.vertSpin or 0 end
             -- A tap: D until the heading has turned a little over a radian,
             -- then let go. The assist settles it on the half turn from there.
-            ctx:input({ lean = math.abs(st.vertSpin or 0) < 1.0 and 1 or 0 })
+            local hold = math.abs(st.vertSpin or 0) < 1.0
+            if not hold and not tRel then tRel = CurTime() - t0 end
+            if st.vertDrop and not tDrop then tDrop = CurTime() - t0 end
+            ctx:input({ lean = hold and 1 or 0 })
         end
-    end)
+    end, leaveX)
+    ctx:log(string.format("air %.2f s: let go at %s s, apex at %.2f s turned %.0f deg, drop from %s s, touchdown turned %.0f deg",
+        t0 and CurTime() - t0 or 0, tRel and string.format("%.2f", tRel) or "-", tApex or 0,
+        math.deg(spinApex or 0), tDrop and string.format("%.2f", tDrop) or "-", math.deg(ctx:st().vertSpin or 0)))
     ctx:input({})
     ctx:log(string.format("flew %s, kind %s, peak %.0f u over the floor, turned %.0f deg",
         tostring(flew), tostring(kind), peak, math.deg(ctx:st().vertSpin or 0)))

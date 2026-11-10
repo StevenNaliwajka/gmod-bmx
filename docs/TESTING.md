@@ -432,7 +432,14 @@ and prints the same report to console. On a provisioned server:
 bmx-test                     # restart, run every case, report, exit 0/1/2
 bmx-test --ref my-branch     # check that out first
 bmx-test --case lean_steers  # same run, just show one case
+bmx-test --only vert_turnaround --repeat 20   # just that case (or a prefix: bot_*),
+                             # 20 times on one boot: "passed 19/20 runs"
 ```
+
+`--repeat` is how a flaky case is told from a broken one in minutes rather than
+by re-running a 199-case pipeline: `vert_turnaround` failed once on 1.4.4's main
+pipeline; 10 more runs of 1.4.4 and 30 of 1.4.3 showed the same kink bounce on both
+(about one run in fifteen), so the case was wrong, not the release.
 
 Exit 0 is a clean run, 1 is a failing case, and **2 is the harness itself being
 broken** -- the server never came up, the addon never loaded, the suite wedged.

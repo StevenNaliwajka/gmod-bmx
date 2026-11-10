@@ -66,7 +66,16 @@ local HEIGHT_NAMES = { "Low", "Mid", "Tall" }
 -- Where a transition leaves the vertical: 70 degrees, so it is a pipe and not
 -- a wall. R = H / (1 - cos 70).
 local TRANS_DEG = 70
-local TRANS_N = 8
+-- Facets in a straight transition (quarter pipe, spine, drop-in). Each joint is a
+-- concave kink of TRANS_DEG / TRANS_N, and a fast wheel crossing one sees its ground
+-- normal step by that much in a substep: at 8 facets (8.75 degrees) the tall quarter
+-- pipe's foot kicked a bike at 430 u/s off its face about one run in fifteen
+-- (vert_turnaround, real server, 2026-11-09), where a real ramp is one smooth curve.
+-- 16 halves the step. The bowl corner sweeps its arc round a corner as well, so
+-- its hulls go as the square of this; it keeps TRANS_N_BOWL to stay inside a
+-- piece's hull budget (tests/test_park.lua).
+local TRANS_N = 16
+local TRANS_N_BOWL = 8
 
 -- Surface colours by key; cl_park.lua reads these. Plain tables: this file
 -- loads on the server too, where there is no Color.
@@ -240,12 +249,13 @@ end
 
 -- A transition: a circular arc from the floor to TRANS_DEG, as a polyline
 -- starting at (0, 0) and rising toward +x.
-local function arcLine(H)
+local function arcLine(H, n)
+    n = n or TRANS_N
     local a = rad(TRANS_DEG)
     local R = H / (1 - cos(a))
     local line = {}
-    for i = 0, TRANS_N do
-        local t = a * i / TRANS_N
+    for i = 0, n do
+        local t = a * i / n
         line[#line + 1] = { R * sin(t), R * (1 - cos(t)) }
     end
     return line, R
@@ -435,7 +445,7 @@ end)
 -- of the square footprint, and a deck fills the rest of the square.
 shape("bowlcorner", "Bowl corner", HEIGHT_NAMES, function(G, f, v)
     local H, Rin, deckW = HEIGHTS[v], 56 * f, 24
-    local line = arcLine(H)
+    local line = arcLine(H, TRANS_N_BOWL)
     local xl = line[#line][1]
     local rTop = Rin + xl
     local S = rTop + deckW

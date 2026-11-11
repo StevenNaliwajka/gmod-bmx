@@ -262,6 +262,16 @@ all in pass 2), in this run only and not judged. The camera sweep now times ever
 the vehicle's Draw each frame and names the three dearest in a slow frame's note, so the next
 run says whether the e-bike's frame is the addon's Lua or the engine.
 
+**The fourth run** (17:16-17:47; queued behind a devloop-corpus Revit job, and before that
+behind 110130's QEMU guest agent, which had not come back after a restart: the broker cannot
+ask what the VM runs and refuses, fails closed) failed 4. The e-bike's frame (64.7 ms, pass 2,
+pedalling) had 1.5 ms of BMX Lua in it (RiderMotion 0.8, the vehicle's Draw 0.5, HUD 0.2),
+no collection and no build: an ENGINE stall, not the addon's Lua; what the engine loads the
+first time (a sound, a texture, a shader for that view) is the next question, and it needs a
+real-client profile (`+showbudget`/`vprof`). New: one 20.7 ms frame on the dirtbike. Still:
+the mount frame (city 21.2, cruiser 18.9 ms). Features, riders (81.8 fps, 29.5 ms worst) and
+the 30 fps sweep all passed.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

@@ -134,6 +134,13 @@ hook.Add("PostRender", "camsweep", function()
     local stage = stageAt(t)
     if not stage then return end
     local f = FrameNumber()
+    -- What the frame had in it, for a slow one's note: the Lua heap against the last frame
+    -- (a drop is a collection) and the models still building (BM.Status). The e-bike's
+    -- one 60-64 ms frame in pass 2, both whole gate runs (2026-11-11), said only where it
+    -- was.
+    local heap = collectgarbage("count")
+    local dHeap = heap - (cur.lastHeap or heap)
+    cur.lastHeap = heap
     local ply = LocalPlayer()
     local bike = cur.bike
     local subject = IsValid(bike) and bike or ply
@@ -153,8 +160,13 @@ hook.Add("PostRender", "camsweep", function()
         -- a slow frame, noted with where it was and how long since a picture was taken
         if dt > 0.03 then
             cur.slow = cur.slow or {}
-            cur.slow[#cur.slow + 1] = string.format("%.1f ms p%d %s t%.2f (%s frames after a picture)", dt * 1000, pass, stage, t,
-                cur.shotFrame and tostring(f - cur.shotFrame) or "no")
+            local building = 0
+            local BM = BMX.BikeMesh
+            for _, v in pairs(BM and BM.Status and BM.Status() or {}) do
+                if v == "building" or v == "warming" then building = building + 1 end
+            end
+            cur.slow[#cur.slow + 1] = string.format("%.1f ms p%d %s t%.2f (%s frames after a picture; heap %+.0f KB, %d models building)",
+                dt * 1000, pass, stage, t, cur.shotFrame and tostring(f - cur.shotFrame) or "no", dHeap, building)
         end
     end
     local drawn = cur.plyDrawn == f

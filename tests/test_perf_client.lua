@@ -611,6 +611,11 @@ T.test("client perf: after joining, every sound is played once at volume 0 and s
     T.ok(E.hook.GetTable().InitPostEntity["BMX.WarmSounds"] ~= nil, "it starts after joining")
     local n0 = #cl.patches
     B.WarmSounds()
+    -- held a while, silent, so the engine has loaded it before it is stopped (stopped in the
+    -- frame it started, the e-bike's whine still cost its first ride a 60-65 ms frame)
+    for _ = 1, 6 do world.time = world.time + 0.05 cl:runTimers() end
+    local first = cl.patches[n0 + 1]
+    T.ok(first and first.playing and first.vol == 0, "the first is still playing, silent, 0.1 s after it started")
     for _ = 1, 400 do world.time = world.time + 0.05 cl:runTimers() end
     local warmed = {}
     for i = n0 + 1, #cl.patches do

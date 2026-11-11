@@ -43,7 +43,7 @@ end
 -- of ours played, the engine loaded it inside that PlayEx, 10.9 ms on a real client
 -- (the session's first spawn, its rolling loop; the e-bike's motor whine the first time
 -- one was ridden, a ~67 ms frame, 2026-11-08). Each one is played at volume 0 and
--- stopped, one every 0.2 s from a few seconds after joining.
+-- stopped half a second later, one every 0.2 s from a few seconds after joining.
 function BMX.WarmSounds()
     local list = {}
     for _, s in pairs(BMX.Sounds) do
@@ -60,7 +60,13 @@ function BMX.WarmSounds()
         local ply, path = LocalPlayer(), list[i]
         if not (IsValid(ply) and path) then return end
         local patch = CreateSound(ply, path)
-        if patch then patch:PlayEx(0, 100) patch:Stop() end
+        if not patch then return end
+        -- Kept playing, silent, for half a second before it is stopped: stopped in the frame
+        -- it started, the engine need not have loaded it yet. The e-bike still had a 60-65 ms
+        -- frame the first time its whine played, with 1.5 ms of BMX Lua in it, in all four
+        -- whole GPU gate runs (2026-11-11), after this warm-up had played it.
+        patch:PlayEx(0, 100)
+        timer.Simple(0.5, function() patch:Stop() end)
     end)
 end
 hook.Add("InitPostEntity", "BMX.WarmSounds", function() timer.Simple(5, BMX.WarmSounds) end)

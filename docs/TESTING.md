@@ -246,6 +246,14 @@ server never arrived (the router drops traffic between networks unless MGMT's
 service-needs declares the path, and none is declared from the gmod network to
 10.0.1.49 udp 27015); netdemo.sh now checks that first and stops in seconds.
 
+**The second whole run** (2026-11-11 01:56-02:30, with 2238ca6) failed 4: every features
+scene in budget (idle 0.64 ms/s, riding stock 13.0), 8 riders in view 80 fps and 32.2 ms at
+worst once their 8 models were built (21 s), the netdemo stopped at its reach check. Left:
+the e-bike's one 60-64 ms frame in camera pass 2, in both runs (a real spike, not noise:
+the next thing to profile, the camera sweep does not break slow frames down by hook); the
+scooter's push foot at 30 fps, one frame in one pass; and the mount frame, which lands on a
+different first spawn each run (city and cruiser this time, 17.5-21.8 ms).
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

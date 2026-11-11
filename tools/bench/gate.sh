@@ -62,7 +62,16 @@ done
 "$SP" install >/dev/null || { log "install failed"; exit 2; }
 up=0
 for _ in 1 2; do "$SP" launch >/dev/null && { up=1; break; }; log "no session, launching again"; done
-[ "$up" = 1 ] || { log "the game never reached a session"; exit 2; }
+if [ "$up" != 1 ]; then
+  # What the client said: its launch log and the game's console (the fifth whole run,
+  # 2026-11-11, never reached a session twice in 12 min, and the client was off again, with
+  # the card, before anyone could look).
+  log "the game never reached a session; the client's last words:"
+  CLV="${BMX_SP_CLIENT:-marionette@10.9.1.58}"
+  GV="${BMX_SP_GMOD:-/home/marionette/.steam/debian-installation/steamapps/common/GarrysMod/garrysmod}"
+  ssh -o BatchMode=yes "$CLV" "tail -n 25 /tmp/gmod-sp.log; echo ---; tail -n 40 $GV/console.log" 2>&1 | sed 's/^/    /'
+  exit 2
+fi
 
 bench() {  # name, then the command; its output to OUT/name.txt
   local name="$1"; shift

@@ -254,6 +254,14 @@ the next thing to profile, the camera sweep does not break slow frames down by h
 scooter's push foot at 30 fps, one frame in one pass; and the mount frame, which lands on a
 different first spawn each run (city and cruiser this time, 17.5-21.8 ms).
 
+**The third run** (03:00-03:39) failed 5, the same kinds: the e-bike's 62.5 ms frame in
+pass 2 (now with no collection and no model building in it: not the GC, not a build), the
+scooter's foot at 30 fps (2 frames) and the skateboard's (1), the mount frame (city, unicycle).
+The 30 fps sweep also had three single stalls of 225-667 ms (stock, e-moto, skateboard,
+all in pass 2), in this run only and not judged. The camera sweep now times every BMX hook and
+the vehicle's Draw each frame and names the three dearest in a slow frame's note, so the next
+run says whether the e-bike's frame is the addon's Lua or the engine.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

@@ -120,11 +120,48 @@ local function wrapChase()
 end
 wrapChase()
 
+-- WHERE A SLOW FRAME WENT: every BMX hook and the vehicle's Draw timed, per frame, and a slow
+-- frame's note names the three dearest. Without it the e-bike's 60-64 ms frame in pass 2
+-- (all three whole gate runs, 2026-11-11: no collection, no model building) could not be
+-- told from an engine stall. Put back by camsweep_unhook.
+C.parts = C.parts or {}
+C.wrappedHooks = C.wrappedHooks or {}
+local function timed(name, fn)
+    return function(...)
+        local s0 = SysTime()
+        local a, b, c, d, e = fn(...)
+        local P = C.parts
+        P[name] = (P[name] or 0) + (SysTime() - s0)
+        return a, b, c, d, e
+    end
+end
+if not C.hooksTimed then
+    C.hooksTimed = true
+    for ev, list in pairs(hook.GetTable()) do
+        for id, fn in pairs(list) do
+            if isstring(id) and id:sub(1, 3) == "BMX" and not (ev == "CalcView" and id == "BMX.ChaseCam") then
+                C.wrappedHooks[#C.wrappedHooks + 1] = { ev, id, fn }
+                hook.Add(ev, id, timed(ev .. ":" .. id, fn))
+            end
+        end
+    end
+end
+local function dearest(tbl)
+    local rows = {}
+    for k, v in pairs(tbl) do rows[#rows + 1] = { k, v } end
+    table.sort(rows, function(a, b) return a[2] > b[2] end)
+    local out = {}
+    for i = 1, math.min(3, #rows) do out[i] = string.format("%s %.1f", rows[i][1], rows[i][2] * 1000) end
+    return #out > 0 and table.concat(out, ", ") or "none"
+end
+
 -- After the frame is drawn: judge it.
 hook.Add("PostRender", "camsweep", function()
     local now = SysTime()
     local dt = C.last and (now - C.last) or 0
     C.last = now
+    local spent = C.parts or {}
+    C.parts = {}
     if not cur then return end
     local pass, t = clock()
     if not pass then
@@ -165,8 +202,8 @@ hook.Add("PostRender", "camsweep", function()
             for _, v in pairs(BM and BM.Status and BM.Status() or {}) do
                 if v == "building" or v == "warming" then building = building + 1 end
             end
-            cur.slow[#cur.slow + 1] = string.format("%.1f ms p%d %s t%.2f (%s frames after a picture; heap %+.0f KB, %d models building)",
-                dt * 1000, pass, stage, t, cur.shotFrame and tostring(f - cur.shotFrame) or "no", dHeap, building)
+            cur.slow[#cur.slow + 1] = string.format("%.1f ms p%d %s t%.2f (%s frames after a picture; heap %+.0f KB, %d models building; BMX Lua ms: %s)",
+                dt * 1000, pass, stage, t, cur.shotFrame and tostring(f - cur.shotFrame) or "no", dHeap, building, dearest(spent))
         end
     end
     local drawn = cur.plyDrawn == f
@@ -312,7 +349,8 @@ net.Receive("camsweep_go", function()
         r.bike = Entity(bi)
         if IsValid(r.bike) then
             local orig = r.bike.Draw
-            r.bike.Draw = function(self, ...) r.bikeDrawnAt = FrameNumber() return orig(self, ...) end
+            local timedDraw = timed("vehicle Draw", orig)
+            r.bike.Draw = function(self, ...) r.bikeDrawnAt = FrameNumber() return timedDraw(self, ...) end
         end
     end)
     timer.Simple(math.max(0, t0 - CurTime()) + passes * passLen + 0.3, function() if cur == r then finish() end end)
@@ -321,6 +359,8 @@ end)
 concommand.Add("camsweep_unhook", function()
     for _, h in ipairs({ "CreateMove", "PostPlayerDraw", "PostRender" }) do hook.Remove(h, "camsweep") end
     if C.origChase then hook.Add("CalcView", "BMX.ChaseCam", C.origChase) C.origChase, C.chaseWrapped = nil, nil end
+    for _, h in ipairs(C.wrappedHooks or {}) do hook.Add(h[1], h[2], h[3]) end
+    C.wrappedHooks, C.hooksTimed = {}, nil
     cur = nil
 end)
 print("[camsweep] client ready " .. BMX.Version)

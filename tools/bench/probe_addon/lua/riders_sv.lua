@@ -128,7 +128,37 @@ end
 
 o:SetPos(g + Vector(-150, 0, 8))
 o:SetEyeAngles(Angle(12, 0, 0))
-timer.Simple(5, function()
+
+-- THE MODELS FIRST. Eight kinds spawned at once build eight models, a slice a frame; measured
+-- 5 s in (the first whole gate run, 2026-11-11) the scene was still building them, so its
+-- frames were the builds' as much as the riders'. The first spawn's hitch is the spawns
+-- bench's to judge: this one waits for every model to be ready (the client says so in
+-- probe/riders_ready.txt; a listen server shares the data folder), up to 30 s, and writes
+-- how long that took.
+local READY = "probe/riders_ready.txt"
+file.Delete(READY)
+o:SendLua([[local t0 = RealTime() timer.Create("riders_ready", 0.25, 0, function()
+    local st = BMX.BikeMesh and BMX.BikeMesh.Status and BMX.BikeMesh.Status() or {}
+    local n, busy = 0, 0
+    for _, v in pairs(st) do n = n + 1 if v == "building" or v == "warming" then busy = busy + 1 end end
+    if (n > 0 and busy == 0) or RealTime() - t0 > 30 then
+        file.Write("probe/riders_ready.txt", string.format("%d models, %d still building, after %.1f s", n, busy, RealTime() - t0))
+        timer.Remove("riders_ready")
+    end
+end)]])
+local function whenReady(k)
+    local tries = 0
+    timer.Create("riders_wait", 0.25, 0, function()
+        tries = tries + 1
+        if file.Exists(READY, "DATA") or tries > 160 then
+            timer.Remove("riders_wait")
+            file.Append(OUT, "(models: " .. (file.Read(READY, "DATA") or "the client never said") .. ")\n")
+            k()
+        end
+    end)
+end
+
+timer.Simple(2, function() whenReady(function()
     measure(N .. " riders in view", function()
         o:SetEyeAngles(Angle(12, 180, 0))
         timer.Simple(1, function()
@@ -142,4 +172,4 @@ timer.Simple(5, function()
             end)
         end)
     end)
-end)
+end) end)

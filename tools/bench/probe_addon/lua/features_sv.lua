@@ -12,6 +12,22 @@ F.ents = F.ents or {}
 file.Delete("probe/features_cl.txt")
 file.Delete("probe/features_sv.txt")
 
+-- A CLEAN WORLD FIRST. The benches before this one in the same session (the camera sweep,
+-- the first spawns) may have left a vehicle, a drive hook or the player in a seat; each
+-- scene would then measure it as well. Anything BMX in the world is removed and said.
+do
+    for _, h in ipairs({ "spawnprobe_drive", "camsweep_drive", "riders_drive" }) do hook.Remove("Think", h) end
+    if IsValid(o) and IsValid(o:GetVehicle()) then o:ExitVehicle() end
+    if IsValid(o) then o.BMXScripted = nil end
+    local stray = {}
+    for _, e in ipairs(ents.FindByClass("bmx_*")) do
+        if IsValid(e) and not e:IsWeapon() then stray[#stray + 1] = e:GetClass() e:Remove() end
+    end
+    if #stray > 0 then
+        file.Append("probe/features_sv.txt", "(cleared before the first scene: " .. table.concat(stray, ", ") .. ")\n")
+    end
+end
+
 local function clearAll()
     hook.Remove("Think", "feat_drive")
     if IsValid(o) then

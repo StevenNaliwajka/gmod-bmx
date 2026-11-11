@@ -54,4 +54,17 @@ for i, id in ipairs(ids) do
         end)
     end)
 end
-timer.Simple(2 + #ids * (6 + (SPAWNPROBE_INTENT or 0)) + 1, function() file.Append("probe/spawns.txt", "DONE\n") end)
+-- AND PUT EVERYTHING AWAY at the end: the last vehicle, the drive hook and the seat. Left
+-- behind (2026-11-11, the first whole gate run), the player rode the skateboard round its
+-- circle through every scene of the features bench after it: +12 ms/s of server physics in
+-- each, "idle" included, and every one of them failed its baseline.
+timer.Simple(2 + #ids * (6 + (SPAWNPROBE_INTENT or 0)) + 1, function()
+    hook.Remove("Think", "spawnprobe_drive")
+    if IsValid(o) then
+        if IsValid(o:GetVehicle()) then o:ExitVehicle() end
+        o.BMXScripted = nil
+    end
+    for _, e in ipairs(P.ents) do if IsValid(e) then e:Remove() end end
+    P.ents = {}
+    file.Append("probe/spawns.txt", "DONE\n")
+end)

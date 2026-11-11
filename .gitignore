@@ -22,3 +22,6 @@ tools/rider/studio/.build/
 tools/rider/studio/.model/
 # ...and the BlazePose models tools/rider/refpose/blazepose.py reads (Google's, fetched by hand)
 tools/rider/refpose/.models/
+
+# The GPU gate's results (tools/bench/gate.sh OUT, read and kept by hand)
+bench-out/

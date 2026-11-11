@@ -36,6 +36,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# CAN THE CLIENT REACH THE SERVER AT ALL? The estate drops traffic between networks unless a
+# path is declared (MGMT Config/service-needs.json): the first run (2026-11-11) waited 7 min
+# for a client whose connects never arrived ("Connection failed after 6 retries") while a
+# query from another network was answered. So the client asks the server for its info first
+# (an A2S query, answered whatever the map or the lock) and this stops at once if it cannot.
+reach() {
+  c "python3 -c \"import socket,sys;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);h,p='${SV_ADDR%:*}',int('${SV_ADDR##*:}');[s.sendto(b'\\xff\\xff\\xff\\xffTSource Engine Query\\x00',(h,p)) for _ in (1,)];s.recvfrom(1400);print('ok')\"" 2>/dev/null | grep -q ok
+}
+log "checking the client reaches $SV_ADDR (udp)"
+if ! reach; then
+  log "the client ($CL) gets no answer from $SV_ADDR over udp: the router has no path from its network"
+  log "to the game server (MGMT Config/service-needs.json declares paths). Not run."
+  trap - EXIT
+  exit 2
+fi
+
 log "taking the server's run lock (waits for a pipeline's run to end)"
 s "nohup flock /run/lock/bmx-test.lock sleep 7201 >/dev/null 2>&1 &"
 for _ in $(seq 1 180); do s "pgrep -f 'sleep 7201' >/dev/null" && break; sleep 20; done

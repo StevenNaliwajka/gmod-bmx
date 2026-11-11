@@ -101,6 +101,18 @@ class Judge(unittest.TestCase):
         bad = run_of(camsweep=CAM, spawns=SPAWNS, features=FEAT.replace("11.86 ms/s", "17.00 ms/s"))
         self.assertEqual(failed(gate.judge(bad, self.base)), ["features 'riding stock': server ms/s"])
 
+    def test_a_vehicle_left_by_an_earlier_bench_fails_and_is_named(self):
+        # 2026-11-11, the first whole gate run: the spawn bench left its skateboard ridden
+        # round its circle, and every features scene measured it too.
+        dirty = FEAT.replace("\nidle: addon loaded, nothing spawned server",
+                             "\n(cleared before the first scene: bmx_skateboard)\nidle: addon loaded, nothing spawned server")
+        run = run_of(camsweep=CAM, spawns=SPAWNS, features=dirty)
+        self.assertEqual(run["features"], gate.parse_features(FEAT), "the cleared line is not a scene")
+        rows = gate.judge(run, self.base)
+        self.assertEqual(failed(rows), ["benches before features left the world clean"])
+        self.assertIn("bmx_skateboard", [d for n, ok, d in rows if not ok][0])
+        self.assertEqual(failed(gate.judge(self.run, self.base)), [])
+
     def test_a_missing_benchmark_or_scene_fails(self):
         r = run_of(camsweep=CAM, features=FEAT)
         self.assertEqual(failed(gate.judge(r, self.base)), ["spawns: ran"])

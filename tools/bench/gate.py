@@ -43,6 +43,7 @@ SPAWN = re.compile(r"^(\S+)\s+(\d+) frames \| median ([\d.]+) p95 ([\d.]+) max (
 FEAT_CL = re.compile(r"^(.+?): (\d+) frames, ([\d.]+) fps \| frame ms median ([\d.]+) p95 ([\d.]+) "
                      r"p99 ([\d.]+) max ([\d.]+)")
 FEAT_SV = re.compile(r"^(.+?)\s+server\s+([\d.]+) ms/s")
+CLEARED = re.compile(r"^\(cleared before the first scene: (.*)\)$", re.M)
 
 
 def read(path):
@@ -107,6 +108,11 @@ def load_run(d):
         text = read(os.path.join(d, name + ".txt"))
         if text is not None:
             run[name] = parse(text)
+            # features_sv.lua clears what an earlier bench left in the world, and says so:
+            # its scenes are then clean, but the bench that leaked is a bug to fix.
+            m = CLEARED.search(text) if name == "features" else None
+            if m:
+                run["features_cleared"] = m[1]
     return run
 
 
@@ -145,6 +151,11 @@ def judge(run, baseline, budget=BUDGET):
     for kind, s in sorted((run.get("spawns") or {}).items()):
         check(f"spawn {kind}: no frame over {B['frame_ms']} ms", s["over_16"] == 0,
               f"{s['over_16']} frames over, worst {s['max']:.1f} ms")
+
+    if run.get("features") is not None:
+        left = run.get("features_cleared")
+        check("benches before features left the world clean", not left,
+              "nothing left" if not left else "left behind: " + left)
 
     for key in ("features", "riders"):
         base = (baseline or {}).get(key) or {}

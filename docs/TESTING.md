@@ -228,6 +228,24 @@ not run). The judge's own tests (`tools/bench/test_gate.py`, `test-gate-claim.sh
 `ci-test.sh`. Record a new baseline only from a run you have read:
 `python3 tools/bench/gate.py baseline bench-out > tools/bench/baseline.json`.
 
+**The first whole gate run** (2026-11-11, 23:57-00:36, after the Revit sessions on 110130
+were done) failed 33 checks. 28 were the harness's: the spawns bench left its last vehicle,
+the skateboard, ridden round its circle with the player on it, and every features scene
+after it measured that board too (+12 ms/s of server physics, "idle" included). The spawns
+bench now puts everything away at its end, features clears whatever is left and says so,
+and the judge fails a run that had anything to clear ("benches before features left the
+world clean"). The riders scene had measured eight models still building; it now waits for
+the client to say every model is ready. Still to look at on the next run: one 63.5 ms frame
+on the e-bike, parked, at the start of camera pass 2; the scooter's push foot 10-11 u off
+for one frame a pass at 30 fps; the first frame on a vehicle (61-72 skeleton poses, ~11 an
+ordinary frame: every joint starts from the animation's pose), which took the first spawns of
+the mini, penny and unicycle to 17.5-21.8 ms. `test_perf_client.lua` holds the mount frame at
+today's level; a cap on poses a frame halved it but starved a rider posed twice at one time,
+so it was not shipped. The network demo did not run: the client's connects to the CI
+server never arrived (the router drops traffic between networks unless MGMT's
+service-needs declares the path, and none is declared from the gmod network to
+10.0.1.49 udp 27015); netdemo.sh now checks that first and stops in seconds.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

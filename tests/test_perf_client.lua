@@ -40,7 +40,17 @@ local function counter(cl)
     local E, P = cl.env, cl.ENGINE.player
     local n = { setup = 0, lookup = 0, vec = 0 }
     local setup, lookup = P.SetupBones, P.LookupBone
-    P.SetupBones = function(...) n.setup = n.setup + 1 return setup(...) end
+    n.by = {}
+    P.SetupBones = function(...)
+        n.setup = n.setup + 1
+        if os.getenv("BMX_SB_BY") then
+            local k = {}
+            for lv = 3, 6 do local i = debug.getinfo(lv, "Sl") if i and i.source:find("cl_rider") then k[#k + 1] = i.currentline end end
+            local key = table.concat(k, "<")
+            n.by[key] = (n.by[key] or 0) + 1
+        end
+        return setup(...)
+    end
     P.LookupBone = function(...) n.lookup = n.lookup + 1 return lookup(...) end
     local V0 = E.Vector
     E.Vector = function(...) n.vec = n.vec + 1 return V0(...) end
@@ -64,7 +74,7 @@ end
 -- `id` ridden by kleiner near the view at `speed`, at 60 frames a second: what one
 -- frame costs, averaged over `frames` after half a settling second. Worn skates have no
 -- entity: the skater is drawn in PrePlayerDraw / PostPlayerDraw.
-local function rideCost(id, speed, frames)
+local function rideCost(id, speed, frames, warm)
     local sv, world = F.server()
     local cl = F.client(world)
     local E, B = cl.env, cl.env.BMX
@@ -101,12 +111,24 @@ local function rideCost(id, speed, frames)
         E.hook.Run("PrePlayerDraw", ply)
         E.hook.Run("PostPlayerDraw", ply)
     end
-    for _ = 1, 30 do frame() end
+    for _ = 1, warm or 30 do frame() end
     local n = counter(cl)
-    for _ = 1, frames do frame() end
+    local worst, last = 0, 0
+    for _ = 1, frames do
+        frame()
+        worst = math.max(worst, n.setup - last)
+        if os.getenv("BMX_SB_BY") then io.write(" [", n.setup - last, "]") end
+        last = n.setup
+    end
     n.stop()
+    if os.getenv("BMX_SB_BY") then
+        local rows = {}
+        for k, v in pairs(n.by) do rows[#rows + 1] = { k, v } end
+        table.sort(rows, function(a, b) return a[2] > b[2] end)
+        for i = 1, math.min(8, #rows) do print("      " .. id .. " " .. rows[i][1] .. " x" .. rows[i][2]) end
+    end
     T.eq(#cl.errors, 0, id .. ": no errors: " .. table.concat(cl.errors, " | "))
-    local out = { setup = n.setup / frames, lookup = n.lookup / frames, vec = n.vec / frames }
+    local out = { setup = n.setup / frames, lookup = n.lookup / frames, vec = n.vec / frames, worst = worst }
     if os.getenv("BMX_TRACE") then
         print(string.format("    %s: %.1f SetupBones, %.1f LookupBone, %.0f Vectors a frame",
             id, out.setup, out.lookup, out.vec))
@@ -121,6 +143,23 @@ T.test("client perf: a BMX rider near the view poses the skeleton a dozen times 
     T.between(c.lookup, 0, 4, "bones looked up by name a frame (1.3.4: 82)")
     -- the IK and the simple bike's drawing together: about 1,100
     T.between(c.vec, 0, 2200, "Vectors made a frame, the rider and the bike drawn")
+end)
+
+T.test("client perf: the first frames on a vehicle pose the rider at most a few ordinary frames' worth each", function()
+    for _, id in ipairs({ "stock", "mini", "penny", "unicycle" }) do
+        local c = rideCost(id, 150, 4, 0)
+        if os.getenv("BMX_TRACE") then
+            print(string.format("    mount %s: worst %d SetupBones in a frame of the first 4, %.1f a frame", id, c.worst, c.setup))
+        end
+        -- 2026-11-11: 61 (stock), 58 (mini), 72 (penny), 42 (unicycle) in the first frame,
+        -- the hand calibration included, against ~11 an ordinary frame: every joint starts
+        -- from the animation's pose. On a real client that frame was 11-15 ms of Lua, and
+        -- each first spawn of the mini, penny and unicycle went just over 16.7 ms (the first
+        -- whole GPU gate run). A cap on poses a frame cut it to 31-43 but starved a rider
+        -- posed twice at one time (the preview tool, a re-pose before the bike is drawn):
+        -- not shipped. This holds today's level until a warm start does better.
+        T.between(c.worst, 1, 80, id .. ": SetupBones in the worst of the first frames on it")
+    end
 end)
 
 T.test("client perf: a rider standing still on a scooter or a board is barely posed at all", function()

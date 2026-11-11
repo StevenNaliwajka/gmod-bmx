@@ -24,4 +24,4 @@ tools/rider/studio/.model/
 tools/rider/refpose/.models/
 
 # The GPU gate's results (tools/bench/gate.sh OUT, read and kept by hand)
-bench-out/
+bench-out*/

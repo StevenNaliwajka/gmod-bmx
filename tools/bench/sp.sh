@@ -69,11 +69,17 @@ case "${1:-}" in
     missing=$(r "cd $G/.. && LD_LIBRARY_PATH=$G/bin:$G/../bin:\${LD_LIBRARY_PATH:-} ~/.steam/steam/ubuntu12_32/steam-runtime/run.sh ldd garrysmod/bin/client.so 2>/dev/null | awk '/not found/{print \$1}' | sort -u | tr '\n' ' '")
     if [ -n "${missing// /}" ]; then
       echo "client.so cannot find: $missing"
-      case "$missing" in *libgtk-x11-2.0*|*libgdk-x11-2.0*)
-        r "sudo -n dpkg --add-architecture i386 && sudo -n apt-get update -qq && sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgtk2.0-0:i386" \
-          && echo "installed libgtk2.0-0:i386" \
-          || echo "could not install libgtk2.0-0:i386 on $CL (sudo needs a password): install it by hand" ;;
-      esac
+      # Debian i386 packages for what a GMod update has been seen to need (GTK 2 on 11-11;
+      # NSS/NSPR on 11-12, "client.so: libnss3.so: cannot open shared object file").
+      pkgs=""
+      case "$missing" in *libgtk-x11-2.0*|*libgdk-x11-2.0*) pkgs="$pkgs libgtk2.0-0:i386" ;; esac
+      case "$missing" in *libnss3*|*libnssutil3*|*libsmime3*) pkgs="$pkgs libnss3:i386" ;; esac
+      case "$missing" in *libnspr4*|*libplc4*|*libplds4*) pkgs="$pkgs libnspr4:i386" ;; esac
+      if [ -n "$pkgs" ]; then
+        r "sudo -n dpkg --add-architecture i386 && sudo -n apt-get update -qq && sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq$pkgs" \
+          && echo "installed$pkgs" \
+          || echo "could not install$pkgs on $CL (sudo needs a password): install it by hand"
+      fi
     fi
     echo "installed ${2:-$(cd "$ROOT" && git describe --always --dirty)}" ;;
   launch)

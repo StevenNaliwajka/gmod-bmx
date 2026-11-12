@@ -75,9 +75,11 @@ a real game on a GPU (docs/PERFORMANCE.md, round 3).
   14 ms now, with no frame over 16.7 ms. The shapes a bike is drawn from while its model
   is built, and every sound the addon plays, are loaded while you join instead of in
   that spawn's frames.
-- **The e-bike's 67 ms frame is gone.** The first time any sound of ours played, the game
+- **Sounds are loaded while you join.** The first time any sound of ours played, the game
   loaded it right then (11 ms, more the first time a motor whined). Each one is played
-  once, silently, after joining; its worst frame riding is now 11.5 ms.
+  once, silently, after joining. (This entry first said it removed the e-bike's 67 ms
+  frame. It did not: that frame comes ten minutes into any game session, whatever is
+  ridden, and is the engine's, not the addon's; docs/TESTING.md, runs 12-15.)
 - **The bike shown while its model builds is cheaper to draw.** It is drawn at the
   middle level of detail meanwhile: 39 shapes a frame for a BMX up close instead of 67,
   and far less garbage for the game to clean up.

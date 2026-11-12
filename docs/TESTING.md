@@ -309,6 +309,13 @@ the sweep, whatever is ridden there: something the engine or the sweep's own pic
 does at that point, not the e-bike. What is left to learn is which (a sweep without
 pictures would say).
 
+**The first-ride frame** (45973da): the rider's IK now starts from the pose the model last
+settled on, kept when a rider's pose is cleared, not from the animation's. Offline (the
+client perf test "back on a bike after another"): the worst first frame's skeleton poses
+59-62 -> 20-22 on the mini, road and city after the stock bike, 72 -> 42 on the penny, the
+fists and feet as close to their marks (under 0.01 u). Offline 1456/1456, in-game
+(pipeline 2409) 200/200. Not yet measured on the GPU client.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

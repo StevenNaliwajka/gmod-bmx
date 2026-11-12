@@ -36,6 +36,7 @@ BUDGET = {
 }
 
 CAM_VEH = re.compile(r"^== (\S+): .*riding ([\d.]+) ms median, p95 ([\d.]+), max ([\d.]+)")
+CAM_ENGINE10 = re.compile(r"\| engine ten-minute frame ([\d.]+) ms \(not judged\)")
 CAM_PASS = re.compile(r"^\s+pass (\d+) \(([^)]*)\): (\d+) frames, rider drawn (\d+), posed (\d+), "
                       r"vehicle drawn (\d+), bad (\d+)")
 SPAWN = re.compile(r"^(\S+)\s+(\d+) frames \| median ([\d.]+) p95 ([\d.]+) max ([\d.]+) ms \| "
@@ -62,6 +63,9 @@ def parse_camsweep(text):
         if m:
             cur = {"riding_median": float(m[2]), "riding_p95": float(m[3]), "riding_max": float(m[4]),
                    "passes": []}
+            e = CAM_ENGINE10.search(line)
+            if e:
+                cur["engine10"] = float(e[1])
             out[m[1]] = cur
             continue
         m = CAM_PASS.match(line)
@@ -147,6 +151,10 @@ def judge(run, baseline, budget=BUDGET):
             if key == "camsweep":
                 check(f"camsweep {veh}: longest riding frame", v["riding_max"] < B["frame_ms"],
                       f"{v['riding_max']:.1f} ms (budget {B['frame_ms']})")
+                if v.get("engine10"):
+                    # reported, not failed: the owner's call, 2026-11-12 (see camsweep_cl.lua)
+                    check(f"camsweep {veh}: the engine's ten-minute frame (reported, not judged)", True,
+                          f"{v['engine10']:.1f} ms")
 
     for kind, s in sorted((run.get("spawns") or {}).items()):
         check(f"spawn {kind}: no frame over {B['frame_ms']} ms", s["over_16"] == 0,

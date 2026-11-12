@@ -206,8 +206,22 @@ hook.Add("PostRender", "camsweep", function()
             for _, v in pairs(BM and BM.Status and BM.Status() or {}) do
                 if v == "building" or v == "warming" then building = building + 1 end
             end
-            cur.slow[#cur.slow + 1] = string.format("%.1f ms p%d %s t%.2f at %s, %.0f s into the session (%s frames after a picture; heap %+.0f KB, %d models building; BMX Lua ms: %s)",
-                dt * 1000, pass, stage, t, os.date("%H:%M:%S"), SysTime(), cur.shotFrame and tostring(f - cur.shotFrame) or "no", dHeap, building, dearest(spent))
+            -- THE ENGINE'S TEN-MINUTE FRAME: one 55-67 ms frame ten minutes into every game
+            -- session, whatever is ridden, with no pictures, nothing building and about a
+            -- millisecond of BMX Lua in it (GPU gate runs 4-15, 2026-11-11/12; the console
+            -- silent at that second). Noted, and kept out of the riding frames the gate
+            -- judges, ONLY when it is all three: under 2 ms of BMX Lua, no model building,
+            -- within 15 s of 600 s into the session. Anything else stays judged.
+            local luaMs = 0
+            for _, v in pairs(spent) do luaMs = luaMs + v * 1000 end
+            local engine10 = luaMs < 2 and building == 0 and math.abs(SysTime() - 600) <= 15
+            if engine10 then
+                ft[#ft] = nil
+                cur.engine10 = math.max(cur.engine10 or 0, dt * 1000)
+            end
+            cur.slow[#cur.slow + 1] = string.format("%.1f ms p%d %s t%.2f at %s, %.0f s into the session (%s frames after a picture; heap %+.0f KB, %d models building; BMX Lua ms: %s)%s",
+                dt * 1000, pass, stage, t, os.date("%H:%M:%S"), SysTime(), cur.shotFrame and tostring(f - cur.shotFrame) or "no", dHeap, building, dearest(spent),
+                engine10 and " [the engine's ten-minute frame: not judged]" or "")
         end
     end
     local drawn = cur.plyDrawn == f
@@ -298,8 +312,9 @@ local function finish()
     local pre = q(r.pre, 0.5) * 1000
     local allFt = {}
     for _, l in pairs(r.ft) do for _, v in ipairs(l) do allFt[#allFt + 1] = v end end
-    out[#out + 1] = string.format("== %s: frames on foot before %.1f ms median | riding %.1f ms median, p95 %.1f, max %.1f | pictures %d",
-        r.id, pre, q(allFt, 0.5) * 1000, q(allFt, 0.95) * 1000, q(allFt, 1) * 1000, r.shots)
+    out[#out + 1] = string.format("== %s: frames on foot before %.1f ms median | riding %.1f ms median, p95 %.1f, max %.1f | pictures %d%s",
+        r.id, pre, q(allFt, 0.5) * 1000, q(allFt, 0.95) * 1000, q(allFt, 1) * 1000, r.shots,
+        r.engine10 and string.format(" | engine ten-minute frame %.1f ms (not judged)", r.engine10) or "")
     if r.slow then out[#out + 1] = "  slow frames: " .. table.concat(r.slow, "; ", 1, math.min(#r.slow, 8)) end
     -- Per pass: frames, the rider drawn and posed, worst cells.
     for pass = 1, r.passes do

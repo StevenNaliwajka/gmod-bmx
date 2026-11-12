@@ -84,6 +84,19 @@ class Judge(unittest.TestCase):
         r = run_of(camsweep=CAM.replace("max 12.3", "max 17.0"), spawns=SPAWNS, features=FEAT)
         self.assertEqual(failed(gate.judge(r, self.base)), ["camsweep stock: longest riding frame"])
 
+    def test_the_engines_ten_minute_frame_is_reported_not_failed(self):
+        # the sweep keeps it out of `max` and names it; the gate lists it as a passing row
+        line = "| pictures 78 | engine ten-minute frame 63.5 ms (not judged)"
+        r = run_of(camsweep=CAM.replace("| pictures 78", line, 1), spawns=SPAWNS, features=FEAT)
+        rows = gate.judge(r, self.base)
+        self.assertEqual(failed(rows), [])
+        self.assertIn("camsweep stock: the engine's ten-minute frame (reported, not judged)",
+                      [name for name, ok, _ in rows if ok])
+        # a long frame the sweep did not set aside still fails, ten-minute note or not
+        r = run_of(camsweep=CAM.replace("max 12.3", "max 17.0").replace("| pictures 78", line, 1),
+                   spawns=SPAWNS, features=FEAT)
+        self.assertEqual(failed(gate.judge(r, self.base)), ["camsweep stock: longest riding frame"])
+
     def test_a_spawn_hitch_fails(self):
         r = run_of(camsweep=CAM, spawns=SPAWNS.replace(">16.7ms 0 >33ms 0 | build 160", ">16.7ms 1 >33ms 0 | build 160"),
                    features=FEAT)

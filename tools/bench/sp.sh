@@ -27,6 +27,13 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 CL="${BMX_SP_CLIENT:-marionette@10.9.1.58}"
+# The Steam runtime the game runs in, picked on the client. A Steam update (2026-11-12) left
+# ubuntu12_32/steam-runtime a stub ("This is not a complete version of the legacy Steam Runtime;
+# try steamapps/common/LegacySteamRuntime"), and client.so lost NSS, gconf, libpng12, libgcrypt11:
+# the game reached its menu but never loaded its client. LegacySteamRuntime first, then the
+# copy Steam kept as steam-runtime.old if it is a full one, then whatever is there.
+# BMX_SP_RUNTIME overrides it.
+RTSEL="rt='${BMX_SP_RUNTIME:-}'; "'if [ -z "$rt" ]; then for c in ~/.steam/debian-installation/steamapps/common/LegacySteamRuntime/run.sh ~/.steam/steam/steamapps/common/LegacySteamRuntime/run.sh; do [ -x "$c" ] && rt=$c && break; done; fi; u=~/.steam/steam/ubuntu12_32; if [ -z "$rt" ]; then rt=$u/steam-runtime/run.sh; if [ -L "$rt" ] && [ -d $u/steam-runtime.old/i386/usr/lib ] && [ -x $u/steam-runtime.old/run.sh ]; then rt=$u/steam-runtime.old/run.sh; fi; fi'
 G="${BMX_SP_GMOD:-/home/marionette/.steam/debian-installation/steamapps/common/GarrysMod/garrysmod}"
 WS="${BMX_SP_WORKSHOP:-/home/marionette/.steam/debian-installation/steamapps/workshop/content/4000}"
 BMX_WS=3814420080
@@ -66,7 +73,7 @@ case "${1:-}" in
     # them its tier0, vstdlib, steam_api... read as missing, and a run was stopped for
     # nothing). What is still missing is named; GTK 2 is installed if sudo needs no password.
     # A warning, not a stop: the gate prints the game's console if no session comes up.
-    missing=$(r "cd $G/.. && LD_LIBRARY_PATH=$G/bin:$G/../bin:\${LD_LIBRARY_PATH:-} ~/.steam/steam/ubuntu12_32/steam-runtime/run.sh ldd garrysmod/bin/client.so 2>/dev/null | awk '/not found/{print \$1}' | sort -u | tr '\n' ' '")
+    missing=$(r "$RTSEL; cd $G/.. && LD_LIBRARY_PATH=$G/bin:$G/../bin:\${LD_LIBRARY_PATH:-} \$rt ldd garrysmod/bin/client.so 2>/dev/null | awk '/not found/{print \$1}' | sort -u | tr '\n' ' '")
     if [ -n "${missing// /}" ]; then
       echo "client.so cannot find: $missing"
       # Debian i386 packages for what a GMod update has been seen to need (GTK 2 on 11-11;
@@ -89,7 +96,7 @@ case "${1:-}" in
     # (the old game gone before its log is cleared: a dying session wrote "player ready")
     r "pkill -f GarrysMod/hl2_linu[x]; sleep 2; pkill -9 -f GarrysMod/hl2_linu[x]; while pgrep -f GarrysMod/hl2_linu[x] >/dev/null; do sleep 1; done; rm -f $G/data/probe/cmd.txt $G/data/probe/log.txt; true"
     # -f -n: the game keeps the session's channel open, so a plain ssh never came back
-    ssh -f -n -o BatchMode=yes "$CL" "cd $G/.. && export DISPLAY=:1 SteamAppId=4000 SteamGameId=4000 __GL_SYNC_TO_VBLANK=0 vblank_mode=0 && setsid ~/.steam/steam/ubuntu12_32/steam-runtime/run.sh ./hl2.sh -game garrysmod -windowed -noborder -w 1280 -h 960 -novid -nojoy -condebug +gamemode sandbox $(if [ -n "${BMX_SP_CONNECT:-}" ]; then echo "+connect $BMX_SP_CONNECT"; else echo "+maxplayers ${BMX_SP_MAXPLAYERS:-1} $([ "${BMX_SP_MAXPLAYERS:-1}" -gt 1 ] && echo "+sv_lan 1") +map ${2:-gm_flatgrass}"; fi) >/tmp/gmod-sp.log 2>&1 </dev/null & disown"; echo launched
+    ssh -f -n -o BatchMode=yes "$CL" "$RTSEL; echo runtime \$rt; cd $G/.. && export DISPLAY=:1 SteamAppId=4000 SteamGameId=4000 __GL_SYNC_TO_VBLANK=0 vblank_mode=0 && setsid \$rt ./hl2.sh -game garrysmod -windowed -noborder -w 1280 -h 960 -novid -nojoy -condebug +gamemode sandbox $(if [ -n "${BMX_SP_CONNECT:-}" ]; then echo "+connect $BMX_SP_CONNECT"; else echo "+maxplayers ${BMX_SP_MAXPLAYERS:-1} $([ "${BMX_SP_MAXPLAYERS:-1}" -gt 1 ] && echo "+sv_lan 1") +map ${2:-gm_flatgrass}"; fi) >/tmp/gmod-sp.log 2>&1 </dev/null & disown"; echo launched
     for _ in $(seq 1 150); do r "grep -q 'player ready' $G/data/probe/log.txt 2>/dev/null" && { focus; echo "session up"; exit 0; }; sleep 2; done
     echo "no session after 5 min"; exit 1 ;;
   cmd) cmd "$2" ;;

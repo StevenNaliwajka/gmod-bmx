@@ -144,11 +144,18 @@ hook.Add("PostRender", "spawnprobe", function()
         for i = 1, math.min(4, #worst) do
             w[i] = string.format("\n      %.1f ms: build %.1f (longest slice %.1f), heap %+.0f KB | %s", worst[i][1], worst[i][2], worst[i][5], worst[i][3], worst[i][6])
         end
-        file.Append("probe/spawns.txt", string.format("%-10s %4d frames | median %.2f p95 %.2f max %.1f ms | >16.7ms %d >33ms %d | build %.0f ms in all | collections %d | frames with 2+ slices %d | worst: %s\n",
-            r.id, #r.rows, q(0.5), q(0.95), q(1), over16, over33, buildTot, gcs, two, table.concat(w, "; ")))
+        local ik = {}
+        for _, k in ipairs({ "warm", "same", "none" }) do
+            local d = ((BMX.IKStarts or {})[k] or 0) - ((r.ik0 or {})[k] or 0)
+            if d > 0 then ik[#ik + 1] = k .. " " .. d end
+        end
+        file.Append("probe/spawns.txt", string.format("%-10s %4d frames | median %.2f p95 %.2f max %.1f ms | >16.7ms %d >33ms %d | build %.0f ms in all | collections %d | frames with 2+ slices %d | IK starts %s | worst: %s\n",
+            r.id, #r.rows, q(0.5), q(0.95), q(1), over16, over33, buildTot, gcs, two, #ik > 0 and table.concat(ik, ", ") or "none", table.concat(w, "; ")))
     end
 end)
 net.Receive("spawnprobe", function()
     local id, secs = net.ReadString(), net.ReadFloat()
-    cur = { id = id, till = SysTime() + secs, rows = {} }
+    local ik0 = {}
+    for k, v in pairs(BMX.IKStarts or {}) do ik0[k] = v end
+    cur = { id = id, till = SysTime() + secs, rows = {}, ik0 = ik0 }
 end)

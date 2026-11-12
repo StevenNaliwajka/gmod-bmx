@@ -218,6 +218,16 @@ T.test("client perf: the first frames on a vehicle pose the rider at most a few 
     end
 end)
 
+if os.getenv("BMX_PAIRS") then
+    T.test("client perf: (diagnostic) the first frame after each previous vehicle", function()
+        for pair in os.getenv("BMX_PAIRS"):gmatch("[^,]+") do
+            local prev, id = pair:match("([^:]+):([^:]+)")
+            local c = rideCost(id, 150, 4, 0, prev)
+            print(string.format("    %s after %s: worst %d", id, prev, c.worst))
+        end
+    end)
+end
+
 T.test("client perf: back on a bike after another, the rider starts from the pose they had (a warm start)", function()
     -- The spawn benchmark's first-ride frames (mini, road, city; 17-20 ms on a real client,
     -- the GPU gate run 11, 2026-11-12) came after another bike had been ridden. The solve

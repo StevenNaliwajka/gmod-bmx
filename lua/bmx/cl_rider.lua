@@ -365,6 +365,7 @@ end
 -- bike is posed much the same way whatever the bike. Set through setManip, so what this
 -- file remembers and what the engine has are the same.
 local warmIK = {}           -- model -> { bone -> Angle }
+BMX.IKStarts = BMX.IKStarts or {}   -- how the solves from a clean skeleton started: warm / same / none
 local function keepWarm(ply)
     local ik = ply.bmxIK
     if not ik or next(ik) == nil then return end
@@ -1157,6 +1158,9 @@ function BMX.SolveRiderIK(ply, targets, bike)
         -- pose before, a parked dirt bike's foot-down came 14 u off in every pass (the
         -- GPU gate, run 14, 2026-11-12).
         local seed = ply.bmxIKBike ~= bike and ply.GetModel and warmIK[ply:GetModel()]
+        -- (counted, for the spawn benchmark: which first solves started warm, and why not)
+        local why = seed and "warm" or (ply.bmxIKBike == bike and "same" or "none")
+        BMX.IKStarts[why] = (BMX.IKStarts[why] or 0) + 1
         if seed then
             for b, a in pairs(seed) do setManip(ply, b, Angle(a.p, a.y, a.r)) end
         end

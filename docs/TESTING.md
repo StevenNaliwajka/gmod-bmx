@@ -336,6 +336,26 @@ the game started. The timestamped console says nothing at that second (the achie
 tick is on the minute, 13 s off). It is the engine's or the client box's, at ten minutes,
 whatever is ridden; not the addon. The gate still reports it as it is.
 
+**Run 16** (15:08-15:44) held 287 of 292, and the NETWORK DEMO RAN for the first time (the
+owner opened gmod-marionette -> CI server udp/27015 on 2026-11-12, MGMT
+feat/gmod-netdemo-path). The ten-minute frame (65.4 ms on the e-bike, 601 s in) was set
+aside and reported, as decided. Failing: the session's first ride (stock 29.1 ms), the
+first-ride frame of three spawns (fixie 23.0, mini 19.7, city 17.5: 66-74 skeleton poses,
+so the warm start did NOT apply there, where offline it gives 20-22 after any bike; the
+spawn report now counts the IK's warm and cold starts per kind to say why), and one bad
+frame on the scooter at 30 fps. Latency (docs/TUNING.md's table, bench-out.7/latency.txt),
+D tapped to a turn seen, ms median of 8:
+
+| net_fakelag | ping | networked | drawn, bmx_predict 0 | drawn, bmx_predict 1 |
+|---|---|---|---|---|
+| 0 | 5 | 113-115 | 115 | 79 |
+| 50 | 53-56 | 174-177 | 177 | 89 |
+| 100 | 99-102 | 218-224 | 218 | 161 |
+| 150 | 148-149 | 385-387 | 385 | 329 |
+
+Prediction takes 36-88 ms off what is drawn up to 50 ms of lag, and less past it (57 ms at
+100, 56 at 150, with a 314 ms worst at 100): the next question for bmx_predict.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

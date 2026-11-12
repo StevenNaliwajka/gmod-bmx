@@ -61,22 +61,19 @@ case "${1:-}" in
     scp -q "$ROOT/tools/bench/realprobe_cl.lua" "$CL:$G/data/realprobe_cl.txt"
     # THE GAME'S OWN LIBRARIES. A Garry's Mod update left client.so needing GTK 2, which the
     # client did not have ("Couldn't load ... client.so: libgtk-x11-2.0.so.0: cannot open
-    # shared object file", 2026-11-11): the game never reached a session, twice, in two runs.
-    # Checked inside the Steam runtime (as the game starts); what is missing is installed if
-    # sudo needs no password, and otherwise named, and the run stops.
-    missing=$(r "cd $G/.. && ~/.steam/steam/ubuntu12_32/steam-runtime/run.sh ldd garrysmod/bin/client.so 2>/dev/null | awk '/not found/{print \$1}' | sort -u")
-    if [ -n "$missing" ]; then
+    # shared object file", 2026-11-11): the game never reached a session, in two runs.
+    # Checked inside the Steam runtime with the game's own bin folders on the path (without
+    # them its tier0, vstdlib, steam_api... read as missing, and a run was stopped for
+    # nothing). What is still missing is named; GTK 2 is installed if sudo needs no password.
+    # A warning, not a stop: the gate prints the game's console if no session comes up.
+    missing=$(r "cd $G/.. && LD_LIBRARY_PATH=$G/bin:$G/../bin:\${LD_LIBRARY_PATH:-} ~/.steam/steam/ubuntu12_32/steam-runtime/run.sh ldd garrysmod/bin/client.so 2>/dev/null | awk '/not found/{print \$1}' | sort -u | tr '\n' ' '")
+    if [ -n "${missing// /}" ]; then
       echo "client.so cannot find: $missing"
-      pk=""
-      for lib in $missing; do
-        case "$lib" in
-          libgtk-x11-2.0.so.0|libgdk-x11-2.0.so.0) pk="$pk libgtk2.0-0:i386" ;;
-          *) pk="$pk $(echo "$lib" | sed 's/\.so.*//'):i386" ;;
-        esac
-      done
-      r "sudo -n dpkg --add-architecture i386 && sudo -n apt-get update -qq && sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $pk" \
-        || { echo "could not install$pk on $CL (sudo -n): install it by hand, then run again"; exit 1; }
-      echo "installed$pk"
+      case "$missing" in *libgtk-x11-2.0*|*libgdk-x11-2.0*)
+        r "sudo -n dpkg --add-architecture i386 && sudo -n apt-get update -qq && sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgtk2.0-0:i386" \
+          && echo "installed libgtk2.0-0:i386" \
+          || echo "could not install libgtk2.0-0:i386 on $CL (sudo needs a password): install it by hand" ;;
+      esac
     fi
     echo "installed ${2:-$(cd "$ROOT" && git describe --always --dirty)}" ;;
   launch)

@@ -60,7 +60,7 @@ done
 
 "$SP" ready || { log "the client never came up"; exit 2; }
 inst=$("$SP" install 2>&1) || { log "install failed:"; echo "$inst" | sed 's/^/    /'; exit 2; }
-echo "$inst" | grep -E "cannot find|installed lib" | sed 's/^/    /' || true
+echo "$inst" | grep -E "cannot find|installed lib|could not install" | sed 's/^/    /' || true
 up=0
 for _ in 1 2; do "$SP" launch >/dev/null && { up=1; break; }; log "no session, launching again"; done
 if [ "$up" != 1 ]; then

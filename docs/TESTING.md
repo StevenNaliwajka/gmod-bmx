@@ -299,6 +299,16 @@ three spawns, 17.1-19.6 ms against 16.7. Riders 73.3 fps (8 in view), features a
 30 fps sweep passed. The e-bike's frame has come in pass 2 (camera pitched 40 degrees down)
 in all six measuring runs, at a different stage each time.
 
+**Runs 12 and 13** (10:08, 10:17) asked whose frame the "e-bike's" was. Ridden first in a
+fresh session the e-bike's worst frame was 25.6 ms (the first vehicle of any session has
+one such frame: the fixie's 26.4 ms led run 13), and ridden again 11.4 ms. With the sweep
+rotated by four (the e-bike 8th) the e-bike was clean (11.6 ms) and the 55.3 ms frame went
+to the skateboard, now 12th, in pass 2 again (1.0 ms of BMX Lua, no build). The frame
+belongs to the TWELFTH VEHICLE'S SECOND PASS, about ten minutes and some 860 pictures into
+the sweep, whatever is ridden there: something the engine or the sweep's own picture-taking
+does at that point, not the e-bike. What is left to learn is which (a sweep without
+pictures would say).
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

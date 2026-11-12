@@ -28,6 +28,10 @@ local PASSES = {
     { pitch = -12, mode = "chase" },
     { pitch = 8, mode = "first", shots = true },
 }
+-- No pictures (data/camsweep_noshots.txt present; sp.sh with BMX_SWEEP_NOSHOTS=1): to tell
+-- a stall the sweep's own captures cause from one the riding does (runs 12-13, 2026-11-12:
+-- one 55-65 ms frame in the 12th vehicle's second pass, whatever vehicle that was).
+local NOSHOTS = file.Exists("camsweep_noshots.txt", "DATA")
 local ORBIT = 300          -- degrees a second the mouse turns the view
 local BAD_MISS = 7         -- units: a fist or foot this far off its grip or pedal
 local BONE = { rFoot = "ValveBiped.Bip01_R_Foot", lFoot = "ValveBiped.Bip01_L_Foot" }
@@ -266,7 +270,7 @@ hook.Add("PostRender", "camsweep", function()
     end
     -- Pictures.
     local shotKey = P.mode == "first" and (pass .. "|" .. stage) or key
-    if P.shots and not cur.shotDone[shotKey] and cur.shotFrame ~= f - 1 then
+    if P.shots and not NOSHOTS and not cur.shotDone[shotKey] and cur.shotFrame ~= f - 1 then
         cur.shotDone[shotKey] = true
         shoot(string.format("%s_%s_%s_az%03d_el%+03d", cur.id, P.mode, stage, bucket, math.floor(el + 0.5)))
     end

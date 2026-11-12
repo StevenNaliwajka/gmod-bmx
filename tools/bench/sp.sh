@@ -112,7 +112,8 @@ case "${1:-}" in
   focus) focus ;;
   camsweep)
     focus
-    r "rm -rf $G/data/camsweep"
+    r "rm -rf $G/data/camsweep; rm -f $G/data/camsweep_noshots.txt"
+    [ "${BMX_SWEEP_NOSHOTS:-0}" = 1 ] && r "touch $G/data/camsweep_noshots.txt"
     cmd "lua include(\"camsweep_sv.lua\")"; sleep 1; cmd "camsweep_owner *"; cmd "camsweep_push"; sleep 3
     cmd "camsweep_run ${2:-4} $(echo "${3:-}" | tr , " ")"
     waitfile camsweep/result.txt 900 || echo "(timed out)"

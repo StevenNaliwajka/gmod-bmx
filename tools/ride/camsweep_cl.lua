@@ -206,8 +206,8 @@ hook.Add("PostRender", "camsweep", function()
             for _, v in pairs(BM and BM.Status and BM.Status() or {}) do
                 if v == "building" or v == "warming" then building = building + 1 end
             end
-            cur.slow[#cur.slow + 1] = string.format("%.1f ms p%d %s t%.2f (%s frames after a picture; heap %+.0f KB, %d models building; BMX Lua ms: %s)",
-                dt * 1000, pass, stage, t, cur.shotFrame and tostring(f - cur.shotFrame) or "no", dHeap, building, dearest(spent))
+            cur.slow[#cur.slow + 1] = string.format("%.1f ms p%d %s t%.2f at %s, %.0f s into the session (%s frames after a picture; heap %+.0f KB, %d models building; BMX Lua ms: %s)",
+                dt * 1000, pass, stage, t, os.date("%H:%M:%S"), SysTime(), cur.shotFrame and tostring(f - cur.shotFrame) or "no", dHeap, building, dearest(spent))
         end
     end
     local drawn = cur.plyDrawn == f

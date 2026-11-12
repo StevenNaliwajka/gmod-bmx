@@ -357,6 +357,25 @@ local function setManip(ply, b, a)
     manip(ply, b, a)
 end
 
+-- A WARM START. Every joint of a rider just on a vehicle started from the animation's
+-- pose: the first frame's solve was 40-75 skeleton poses against ~11 an ordinary frame,
+-- and the first ride of each spawn went 17-20 ms on a real client (the GPU gate, run 11,
+-- 2026-11-12). What the solve last settled on, per model, is kept when a rider's pose is
+-- cleared, and the next solve from a clean skeleton starts there: the same model on a
+-- bike is posed much the same way whatever the bike. Set through setManip, so what this
+-- file remembers and what the engine has are the same.
+local warmIK = {}           -- model -> { bone -> Angle }
+local function keepWarm(ply)
+    local ik = ply.bmxIK
+    if not ik or next(ik) == nil then return end
+    local mdl = ply.GetModel and ply:GetModel()
+    if not mdl then return end
+    local copy = {}
+    for b, a in pairs(ik) do copy[b] = Angle(a.p, a.y, a.r) end
+    warmIK[mdl] = copy
+end
+
+
 -- Signed angle from u to v about unit axis h, both first flattened onto the
 -- plane square to h. Degrees.
 local function planeAngle(u, v, h)
@@ -1131,7 +1150,13 @@ end
 function BMX.SolveRiderIK(ply, targets, bike)
     forgetPose()
     ply.bmxSolvedAt = CurTime()
-    ply.bmxIK = ply.bmxIK or {}
+    if not ply.bmxIK then
+        ply.bmxIK = {}
+        local seed = ply.GetModel and warmIK[ply:GetModel()]
+        if seed then
+            for b, a in pairs(seed) do setManip(ply, b, Angle(a.p, a.y, a.r)) end
+        end
+    end
     ply.bmxGripOff = ply.bmxGripOff or {}
     local fwd, up, right = bike:GetForward(), bike:GetUp(), bike:GetRight()
     -- (A stand-in for the bike, the board's, names its pose set itself.)
@@ -1799,6 +1824,7 @@ local LIMB_KEYS = { rThigh = true, lThigh = true, rCalf = true, lCalf = true,
                     rArm = true, lArm = true }
 
 local function clear(ply)
+    keepWarm(ply)
     for _, name in pairs(BONES) do
         local b = ply:LookupBone(name)
         if b then manip(ply, b, Angle(0, 0, 0)) end

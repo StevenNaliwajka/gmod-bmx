@@ -74,11 +74,35 @@ end
 -- `id` ridden by kleiner near the view at `speed`, at 60 frames a second: what one
 -- frame costs, averaged over `frames` after half a settling second. Worn skates have no
 -- entity: the skater is drawn in PrePlayerDraw / PostPlayerDraw.
-local function rideCost(id, speed, frames, warm)
+local function rideCost(id, speed, frames, warm, prev)
     local sv, world = F.server()
     local cl = F.client(world)
     local E, B = cl.env, cl.env.BMX
     world.dt = 1 / 60
+    if prev then
+        -- ridden first, in this client, and got off: on foot for a second
+        local p = cl:player("Rider")
+        p._skel = SR.load("kleiner_seated")
+        cl.localPlayer = sv:player("Looker")
+        local e = cl:clientEntity(B.ClassFor(prev))
+        local C0 = e:Cfg()
+        e:SetPos(E.Vector(0, 0, C0.Wheel.radius)); e:SetGrounded(true)
+        if e.SetPedalling then e:SetPedalling(true) end
+        e:SetSpeedUPS(speed); e._vel = e:GetForward() * speed
+        local pod = seatPod(cl, e, B.SeatFor(e:Bike(), C0, "rider"))
+        e:SetPod(pod); e:SetDriver(p); p._vehicle = pod
+        cl.eyePos = p:GetPos() + E.Vector(-110, 0, 60)
+        for _ = 1, 30 do
+            world.time = world.time + world.dt
+            e:Draw(); E.hook.Run("PrePlayerDraw", p); E.hook.Run("PostPlayerDraw", p)
+        end
+        e:SetDriver(nil); p._vehicle = nil
+        for _ = 1, 60 do
+            world.time = world.time + world.dt
+            E.hook.Run("PrePlayerDraw", p); E.hook.Run("PostPlayerDraw", p)
+        end
+        e:Remove()
+    end
     local def = B.Vehicles[id] or B.Bikes[id]
     local standing = def.family == "board" or def.family == "scooter" or def.worn
     local ply = cl:player("Rider")
@@ -129,6 +153,36 @@ local function rideCost(id, speed, frames, warm)
     end
     T.eq(#cl.errors, 0, id .. ": no errors: " .. table.concat(cl.errors, " | "))
     local out = { setup = n.setup / frames, lookup = n.lookup / frames, vec = n.vec / frames, worst = worst }
+    -- How far the fists and feet are from what the vehicle drew for them, the last frame
+    -- (as the camera sweep judges it): a cheaper pose that lands worse is no saving.
+    local ik = ent and ent.ikTargets
+    if ik then
+        local function seg(P, A, Bv)
+            local g = Bv - A
+            local t = math.max(0, math.min(1, (P - A):Dot(g) / math.max(g:Dot(g), 1e-6)))
+            return (A + g * t - P):Length()
+        end
+        local function bpos(name)
+            local b = ply:LookupBone(name)
+            local m = b and ply:GetBoneMatrix(b)
+            return m and m:GetTranslation()
+        end
+        local miss = 0
+        for _, side in ipairs({ "r", "l" }) do
+            local k = side .. "Hand"
+            local fc = B.RiderFistCentre and B.RiderFistCentre(ply, side:upper())
+            if fc and ik[k] then
+                local A2, B2 = ik[k .. "A"], ik[k .. "B"]
+                miss = math.max(miss, (A2 and B2) and seg(fc, A2, B2) or (fc - ik[k]):Length())
+            end
+        end
+        for k, bones in pairs({ rFoot = { "ValveBiped.Bip01_R_Foot", "ValveBiped.Bip01_R_Toe0" },
+                                lFoot = { "ValveBiped.Bip01_L_Foot", "ValveBiped.Bip01_L_Toe0" } }) do
+            local a, t = bpos(bones[1]), bpos(bones[2])
+            if a and t and ik[k] then miss = math.max(miss, seg(ik[k], a, t)) end
+        end
+        out.miss = miss
+    end
     if os.getenv("BMX_TRACE") then
         print(string.format("    %s: %.1f SetupBones, %.1f LookupBone, %.0f Vectors a frame",
             id, out.setup, out.lookup, out.vec))
@@ -159,6 +213,23 @@ T.test("client perf: the first frames on a vehicle pose the rider at most a few 
         -- posed twice at one time (the preview tool, a re-pose before the bike is drawn):
         -- not shipped. This holds today's level until a warm start does better.
         T.between(c.worst, 1, 80, id .. ": SetupBones in the worst of the first frames on it")
+    end
+end)
+
+T.test("client perf: back on a bike after another, the rider starts from the pose they had (a warm start)", function()
+    -- The spawn benchmark's first-ride frames (mini, road, city; 17-20 ms on a real client,
+    -- the GPU gate run 11, 2026-11-12) came after another bike had been ridden. The solve
+    -- starts where the model's last one settled, not from the animation's pose.
+    for _, id in ipairs({ "mini", "road", "city", "penny" }) do
+        local cold = rideCost(id, 150, 4, 0)
+        local warm = rideCost(id, 150, 4, 0, "stock")
+        if os.getenv("BMX_TRACE") then
+            print(string.format("    mount %s: worst %d cold, %d after the stock bike; limbs off %.2f cold, %.2f warm",
+                id, cold.worst, warm.worst, cold.miss or -1, warm.miss or -1))
+        end
+        T.ok(cold.miss and warm.miss, id .. ": the limbs were measured")
+        T.between(warm.miss or 99, 0, math.max((cold.miss or 0) + 0.5, 1.5), id .. ": the fists and feet land as well after another ride (u)")
+        T.between(warm.worst, 1, math.max(cold.worst * 0.75, 12), id .. ": SetupBones in the worst first frame, after another ride")
     end
 end)
 

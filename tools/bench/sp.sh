@@ -59,6 +59,25 @@ case "${1:-}" in
     for f in "$ROOT/tools/ride/camsweep_sv.lua" "$ROOT/tools/bench/realprobe_sv.lua"; do scp -q "$f" "$CL:$G/addons/bmxprobe/lua/$(basename "$f")"; done
     scp -q "$ROOT/tools/ride/camsweep_cl.lua" "$CL:$G/data/camsweep_cl.txt"
     scp -q "$ROOT/tools/bench/realprobe_cl.lua" "$CL:$G/data/realprobe_cl.txt"
+    # THE GAME'S OWN LIBRARIES. A Garry's Mod update left client.so needing GTK 2, which the
+    # client did not have ("Couldn't load ... client.so: libgtk-x11-2.0.so.0: cannot open
+    # shared object file", 2026-11-11): the game never reached a session, twice, in two runs.
+    # Checked inside the Steam runtime (as the game starts); what is missing is installed if
+    # sudo needs no password, and otherwise named, and the run stops.
+    missing=$(r "cd $G/.. && ~/.steam/steam/ubuntu12_32/steam-runtime/run.sh ldd garrysmod/bin/client.so 2>/dev/null | awk '/not found/{print \$1}' | sort -u")
+    if [ -n "$missing" ]; then
+      echo "client.so cannot find: $missing"
+      pk=""
+      for lib in $missing; do
+        case "$lib" in
+          libgtk-x11-2.0.so.0|libgdk-x11-2.0.so.0) pk="$pk libgtk2.0-0:i386" ;;
+          *) pk="$pk $(echo "$lib" | sed 's/\.so.*//'):i386" ;;
+        esac
+      done
+      r "sudo -n dpkg --add-architecture i386 && sudo -n apt-get update -qq && sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $pk" \
+        || { echo "could not install$pk on $CL (sudo -n): install it by hand, then run again"; exit 1; }
+      echo "installed$pk"
+    fi
     echo "installed ${2:-$(cd "$ROOT" && git describe --always --dirty)}" ;;
   launch)
     # An unfocused window sleeps engine_no_focus_sleep (50 ms) a frame: exactly 20 fps on a

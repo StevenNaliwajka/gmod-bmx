@@ -272,6 +272,13 @@ real-client profile (`+showbudget`/`vprof`). New: one 20.7 ms frame on the dirtb
 the mount frame (city 21.2, cruiser 18.9 ms). Features, riders (81.8 fps, 29.5 ms worst) and
 the 30 fps sweep all passed.
 
+**The fifth and sixth runs** (18:40, 19:47) measured nothing: the game never reached a
+session. The client's console said why: `Couldn't load .../garrysmod/bin/client.so:
+libgtk-x11-2.0.so.0: cannot open shared object file` (a Garry's Mod update; the client had
+no GTK 2). `sp.sh install` now checks client.so's libraries inside the Steam runtime and
+installs what is missing (`sudo -n`), or names it and stops; the gate prints the client's
+launch log and console when a session never comes up.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

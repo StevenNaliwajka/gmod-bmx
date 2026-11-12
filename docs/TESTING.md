@@ -279,6 +279,26 @@ no GTK 2). `sp.sh install` now checks client.so's libraries inside the Steam run
 installs what is missing (`sudo -n`), or names it and stops; the gate prints the client's
 launch log and console when a session never comes up.
 
+**Runs 7-10** (2026-11-11/12) measured nothing either, each one a layer further down the
+same cause. GTK 2 went on as root through the guest agent (sudo on the client wants a
+password); then client.so wanted NSS and NSPR (installed the same way); then gconf, libpng12
+and libgcrypt11, which Debian 12 does not ship. The cause under all of it: a Steam update
+left `ubuntu12_32/steam-runtime` a stub ("not a complete version of the legacy Steam
+Runtime"), and the game ran without the scout libraries it was built against. `sp.sh` now
+runs the game in a complete runtime (LegacySteamRuntime, then a full `steam-runtime.old`;
+`BMX_SP_RUNTIME` overrides); on the client today that is the scout tarball Steam still
+keeps, unpacked to `~/bmx-scout`.
+
+**The eleventh run** (09:30-10:03, 2026-11-12) held 286 of 291 checks. Better than the
+fourth: the dirtbike's worst frame 20.7 -> 13.3 ms, and the mount frame no longer fails
+(city, cruiser under 16.7 ms on the camera sweep). Still failing: the e-bike's one frame in
+camera pass 2 (65.8 ms; 1.2 ms of BMX Lua, no model building), now with the motor sound
+warmed and still there, so not the whine's first play (the e-moto plays the same file and
+never stalls); one bad frame on the tandem (a 9.6 u limb miss); and the first-ride frame of
+three spawns, 17.1-19.6 ms against 16.7. Riders 73.3 fps (8 in view), features and the
+30 fps sweep passed. The e-bike's frame has come in pass 2 (camera pitched 40 degrees down)
+in all six measuring runs, at a different stage each time.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

@@ -327,6 +327,15 @@ The sweep WITHOUT PICTURES (`BMX_SWEEP_NOSHOTS=1`) still had the 12th vehicle's 
 (stock 26.5 ms; the fixie's 26.4 in run 13: the session's first ride) and 8 riders' worst
 frame 33.9 ms against 33.4 (78.5 fps). Kept in bench-out.6.
 
+**Run 15** (12:53-13:11). The warm-start guard holds: the dirt bike after the e-moto, and in
+the whole sweep, had no bad frame. And THE STALL IS THE TEN-MINUTE MARK: with the session
+started earlier (a short sweep first), the one 67.4 ms frame went to the downhill bike, the
+10th vehicle, at 601 s into the session (BMX Lua 1.3 ms, no build, no pictures). Every
+measuring run's "e-bike frame" (60-65 ms, the 12th vehicle) was the same ten minutes after
+the game started. The timestamped console says nothing at that second (the achievement
+tick is on the minute, 13 s off). It is the engine's or the client box's, at ten minutes,
+whatever is ridden; not the addon. The gate still reports it as it is.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

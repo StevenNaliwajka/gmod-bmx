@@ -74,6 +74,37 @@ end
 -- `id` ridden by kleiner near the view at `speed`, at 60 frames a second: what one
 -- frame costs, averaged over `frames` after half a settling second. Worn skates have no
 -- entity: the skater is drawn in PrePlayerDraw / PostPlayerDraw.
+-- How far the fists and feet are from what the vehicle drew for them (as the camera
+-- sweep judges it): a cheaper pose that lands worse is no saving.
+local function limbMiss(B, ply, ik)
+    if not ik then return nil end
+    local function seg(P, A, Bv)
+        local g = Bv - A
+        local t = math.max(0, math.min(1, (P - A):Dot(g) / math.max(g:Dot(g), 1e-6)))
+        return (A + g * t - P):Length()
+    end
+    local function bpos(name)
+        local b = ply:LookupBone(name)
+        local m = b and ply:GetBoneMatrix(b)
+        return m and m:GetTranslation()
+    end
+    local miss = 0
+    for _, side in ipairs({ "r", "l" }) do
+        local k = side .. "Hand"
+        local fc = B.RiderFistCentre and B.RiderFistCentre(ply, side:upper())
+        if fc and ik[k] then
+            local A2, B2 = ik[k .. "A"], ik[k .. "B"]
+            miss = math.max(miss, (A2 and B2) and seg(fc, A2, B2) or (fc - ik[k]):Length())
+        end
+    end
+    for k, bones in pairs({ rFoot = { "ValveBiped.Bip01_R_Foot", "ValveBiped.Bip01_R_Toe0" },
+                            lFoot = { "ValveBiped.Bip01_L_Foot", "ValveBiped.Bip01_L_Toe0" } }) do
+        local a, t = bpos(bones[1]), bpos(bones[2])
+        if a and t and ik[k] then miss = math.max(miss, seg(ik[k], a, t)) end
+    end
+    return miss
+end
+
 local function rideCost(id, speed, frames, warm, prev)
     local sv, world = F.server()
     local cl = F.client(world)
@@ -153,36 +184,7 @@ local function rideCost(id, speed, frames, warm, prev)
     end
     T.eq(#cl.errors, 0, id .. ": no errors: " .. table.concat(cl.errors, " | "))
     local out = { setup = n.setup / frames, lookup = n.lookup / frames, vec = n.vec / frames, worst = worst }
-    -- How far the fists and feet are from what the vehicle drew for them, the last frame
-    -- (as the camera sweep judges it): a cheaper pose that lands worse is no saving.
-    local ik = ent and ent.ikTargets
-    if ik then
-        local function seg(P, A, Bv)
-            local g = Bv - A
-            local t = math.max(0, math.min(1, (P - A):Dot(g) / math.max(g:Dot(g), 1e-6)))
-            return (A + g * t - P):Length()
-        end
-        local function bpos(name)
-            local b = ply:LookupBone(name)
-            local m = b and ply:GetBoneMatrix(b)
-            return m and m:GetTranslation()
-        end
-        local miss = 0
-        for _, side in ipairs({ "r", "l" }) do
-            local k = side .. "Hand"
-            local fc = B.RiderFistCentre and B.RiderFistCentre(ply, side:upper())
-            if fc and ik[k] then
-                local A2, B2 = ik[k .. "A"], ik[k .. "B"]
-                miss = math.max(miss, (A2 and B2) and seg(fc, A2, B2) or (fc - ik[k]):Length())
-            end
-        end
-        for k, bones in pairs({ rFoot = { "ValveBiped.Bip01_R_Foot", "ValveBiped.Bip01_R_Toe0" },
-                                lFoot = { "ValveBiped.Bip01_L_Foot", "ValveBiped.Bip01_L_Toe0" } }) do
-            local a, t = bpos(bones[1]), bpos(bones[2])
-            if a and t and ik[k] then miss = math.max(miss, seg(ik[k], a, t)) end
-        end
-        out.miss = miss
-    end
+    out.miss = ent and limbMiss(B, ply, ent.ikTargets)
     if os.getenv("BMX_TRACE") then
         print(string.format("    %s: %.1f SetupBones, %.1f LookupBone, %.0f Vectors a frame",
             id, out.setup, out.lookup, out.vec))
@@ -230,6 +232,47 @@ T.test("client perf: back on a bike after another, the rider starts from the pos
         T.ok(cold.miss and warm.miss, id .. ": the limbs were measured")
         T.between(warm.miss or 99, 0, math.max((cold.miss or 0) + 0.5, 1.5), id .. ": the fists and feet land as well after another ride (u)")
         T.between(warm.worst, 1, math.max(cold.worst * 0.75, 12), id .. ": SetupBones in the worst first frame, after another ride")
+    end
+end)
+
+T.test("client perf: back on the SAME vehicle after a pause, the rider is posed from a clean skeleton, not the pose before", function()
+    -- The warm start is for a different vehicle. Seeded on the same one after a pause,
+    -- a parked dirt bike's foot-down came 14 u off its mark in every pass of the camera
+    -- sweep (the GPU gate, run 14, 2026-11-12).
+    for _, id in ipairs({ "dirtbike", "stock", "city" }) do
+        local sv, world = F.server()
+        local cl = F.client(world)
+        local E, B = cl.env, cl.env.BMX
+        world.dt = 1 / 60
+        local ply = cl:player("Rider")
+        ply._skel = SR.load("kleiner_seated")
+        cl.localPlayer = sv:player("Looker")
+        local ent = cl:clientEntity(B.ClassFor(id))
+        local C = ent:Cfg()
+        ent:SetPos(E.Vector(0, 0, C.Wheel.radius)); ent:SetGrounded(true)
+        if ent.SetPedalling then ent:SetPedalling(true) end
+        ent:SetSpeedUPS(250); ent._vel = ent:GetForward() * 250
+        local pod = seatPod(cl, ent, B.SeatFor(ent:Bike(), C, "rider"))
+        ent:SetPod(pod); ent:SetDriver(ply); ply._vehicle = pod
+        cl.eyePos = ply:GetPos() + E.Vector(-110, 0, 60)
+        local function frame()
+            world.time = world.time + world.dt
+            ent:Draw(); E.hook.Run("PrePlayerDraw", ply); E.hook.Run("PostPlayerDraw", ply)
+        end
+        for _ = 1, 40 do frame() end
+        -- a second not drawn, and parked when next seen
+        world.time = world.time + 1
+        if ent.SetPedalling then ent:SetPedalling(false) end
+        ent:SetSpeedUPS(0); ent._vel = E.Vector(0, 0, 0)
+        frame()
+        local first = limbMiss(B, ply, ent.ikTargets)
+        for _ = 1, 3 do frame() end
+        local settled = limbMiss(B, ply, ent.ikTargets)
+        if os.getenv("BMX_TRACE") then
+            print(string.format("    %s parked after a pause: limbs off %.2f the first frame, %.2f settled", id, first or -1, settled or -1))
+        end
+        T.eq(#cl.errors, 0, id .. ": no errors")
+        T.between(first or 99, 0, 7, id .. ": the first frame back, every fist and foot within 7 u (the sweep's bad frame)")
     end
 end)
 

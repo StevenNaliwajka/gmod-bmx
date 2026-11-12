@@ -316,6 +316,17 @@ client perf test "back on a bike after another"): the worst first frame's skelet
 fists and feet as close to their marks (under 0.01 u). Offline 1456/1456, in-game
 (pipeline 2409) 200/200. Not yet measured on the GPU client.
 
+**Run 14** (11:43-12:29) held 284 of 291. The warm start on the real client: the mini's and
+road's first-ride frames 17.1/19.6 -> 12.9/14.1 ms (the city still 18.9 ms: 65 poses, its
+upright bars far from the pose before). But the dirt bike's parked foot-down came 14 u off
+for one frame in passes 2 and 3 and the 30 fps sweep: thrown off and back on the SAME bike,
+the warm start seeded the pose from before the pause, where the clean skeleton is the
+point. Fixed: seeded only on a different vehicle (a test for the same one after a pause).
+The sweep WITHOUT PICTURES (`BMX_SWEEP_NOSHOTS=1`) still had the 12th vehicle's frame
+(the e-bike, 63.5 ms, pass 2): not the captures. Also new: the first vehicle's first frames
+(stock 26.5 ms; the fixie's 26.4 in run 13: the session's first ride) and 8 riders' worst
+frame 33.9 ms against 33.4 (78.5 fps). Kept in bench-out.6.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

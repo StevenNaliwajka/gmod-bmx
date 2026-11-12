@@ -1152,11 +1152,16 @@ function BMX.SolveRiderIK(ply, targets, bike)
     ply.bmxSolvedAt = CurTime()
     if not ply.bmxIK then
         ply.bmxIK = {}
-        local seed = ply.GetModel and warmIK[ply:GetModel()]
+        -- Only on a DIFFERENT vehicle: back on the same one after a pause (a respawn, the
+        -- camera sweep's remounts) the clean skeleton is the point -- seeded from the
+        -- pose before, a parked dirt bike's foot-down came 14 u off in every pass (the
+        -- GPU gate, run 14, 2026-11-12).
+        local seed = ply.bmxIKBike ~= bike and ply.GetModel and warmIK[ply:GetModel()]
         if seed then
             for b, a in pairs(seed) do setManip(ply, b, Angle(a.p, a.y, a.r)) end
         end
     end
+    ply.bmxIKBike = bike
     ply.bmxGripOff = ply.bmxGripOff or {}
     local fwd, up, right = bike:GetForward(), bike:GetUp(), bike:GetRight()
     -- (A stand-in for the bike, the board's, names its pose set itself.)

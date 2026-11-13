@@ -382,6 +382,13 @@ on the dirt bike in the sweep, and the scooter at 30 fps (its kicking foot 12 u 
 pedal@180: in 7 of 9 measuring runs, 7-14 u, the same cell; the kick moves further than the
 pose follows in a 33 ms frame). Kept in bench-out.9.
 
+**Run 21** (00:43-00:47, 2026-11-13, 7dce596). The scooter at 30 fps: no bad frame in either
+pass (the kicking foot 4.6 u at worst, against 7-14 u in 7 of 9 runs before): drawn before
+the pose through a kick on a slow frame. The spawn bench again: run 20's city, unicycle and
+road first rides (21.6, 22.9, 17.6 ms, each with a big collection) came in at 14.7, 11.7
+and 12.7 ms, every kind under 16.7 ms but the session's very first spawn (stock 18.6 ms,
+61 skeleton poses: 13.0-15.0 ms in runs 18-20). Kept in bench-out.10.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

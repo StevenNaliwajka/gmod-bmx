@@ -364,8 +364,118 @@ end
 -- cleared, and the next solve from a clean skeleton starts there: the same model on a
 -- bike is posed much the same way whatever the bike. Set through setManip, so what this
 -- file remembers and what the engine has are the same.
-local warmIK = {}           -- model -> { bone -> Angle }
+-- Per model, the pose last settled on: `last` (whatever vehicle) and `by[vehicle id]`.
+-- A new ride starts from the same vehicle's pose where there is one (a motorbike's pegs
+-- are not a pedal bike's cranks: the dirt bike after the e-moto still took 21.5 ms), else
+-- the model's last. KEPT BETWEEN SESSIONS in data/bmx/ik_warm.json, so the first ride of a
+-- session starts warm too (cold, it was the session's slowest frame: 29-31 ms, GPU gate
+-- runs 16-17). Bone indices are the model's own, the same every session.
+-- (the engine's rotation sign, learnt by tryTurn below and kept with the poses: a session
+-- that has to learn it tries both signs at every joint until six answers agree)
+local ikSign, ikVotes = nil, 0
+-- (and what is measured once per model: the fingers' curl axis, cl_rider's closeHand, and
+-- the pelvis's offset map, pelvisMap: about thirty skeleton poses on a model's first ride)
+local curlAxis = {}                -- model -> side -> local axis, or false
+local thumbAxis = {}               -- the same, for the thumb
+local pelvisMaps = {}           -- model -> { x, y, z column Vectors } or false
+local WARM_FILE = "bmx/ik_warm.json"
+local warmIK                -- model -> { last = { bone -> Angle }, by = { id -> { bone -> Angle } } }
 BMX.IKStarts = BMX.IKStarts or {}   -- how the solves from a clean skeleton started: warm / same / none
+local function decodePose(t)
+    local out = {}
+    for b, a in pairs(type(t) == "table" and t or {}) do
+        local bi = tonumber(b)
+        if bi and type(a) == "table" and tonumber(a[1]) and tonumber(a[2]) and tonumber(a[3]) then
+            out[bi] = Angle(tonumber(a[1]), tonumber(a[2]), tonumber(a[3]))
+        end
+    end
+    return next(out) and out or nil
+end
+local function loadWarm()
+    if warmIK then return warmIK end
+    warmIK = {}
+    local raw = file and file.Read and file.Read(WARM_FILE, "DATA")
+    local ok, doc = pcall(function() return raw and util.JSONToTable(raw) end)
+    if ok and type(doc) == "table" then
+        if (doc._ikSign == 1 or doc._ikSign == -1) and not ikSign then ikSign = doc._ikSign end
+        local function vec(t)
+            return type(t) == "table" and tonumber(t[1]) and tonumber(t[2]) and tonumber(t[3])
+                and Vector(tonumber(t[1]), tonumber(t[2]), tonumber(t[3])) or nil
+        end
+        for mdl, sides in pairs(type(doc._curl) == "table" and doc._curl or {}) do
+            if type(mdl) == "string" and type(sides) == "table" and curlAxis[mdl] == nil then
+                local c = {}
+                for side, ax in pairs(sides) do
+                    local si = tonumber(side)
+                    if si == 1 or si == -1 then c[si] = vec(ax) end
+                end
+                curlAxis[mdl] = c
+            end
+        end
+        for mdl, sides in pairs(type(doc._thumb) == "table" and doc._thumb or {}) do
+            if type(mdl) == "string" and type(sides) == "table" and thumbAxis[mdl] == nil then
+                local c = {}
+                for side, ax in pairs(sides) do
+                    local si = tonumber(side)
+                    if si == 1 or si == -1 then c[si] = vec(ax) end
+                end
+                thumbAxis[mdl] = c
+            end
+        end
+        for mdl, cols in pairs(type(doc._pelvis) == "table" and doc._pelvis or {}) do
+            if type(mdl) == "string" and type(cols) == "table" and pelvisMaps[mdl] == nil then
+                local a, b, c = vec(cols[1]), vec(cols[2]), vec(cols[3])
+                if a and b and c then pelvisMaps[mdl] = { a, b, c } end
+            end
+        end
+        for mdl, m in pairs(doc) do
+            if type(mdl) == "string" and type(m) == "table" then
+                local e = { last = decodePose(m.last), by = {} }
+                for id, pose in pairs(type(m.by) == "table" and m.by or {}) do
+                    if type(id) == "string" then e.by[id] = decodePose(pose) end
+                end
+                warmIK[mdl] = e
+            end
+        end
+    end
+    return warmIK
+end
+local function saveWarm()
+    if not (file and file.Write and util and util.TableToJSON) then return end
+    local doc = {}
+    for mdl, m in pairs(warmIK or {}) do
+        local function enc(pose)
+            local t = {}
+            for b, a in pairs(pose or {}) do t[tostring(b)] = { math.Round(a.p, 2), math.Round(a.y, 2), math.Round(a.r, 2) } end
+            return t
+        end
+        local by = {}
+        for id, pose in pairs(m.by) do by[id] = enc(pose) end
+        doc[mdl] = { last = enc(m.last), by = by }
+    end
+    doc._ikSign = ikSign
+    local function v3(v) return { math.Round(v.x, 4), math.Round(v.y, 4), math.Round(v.z, 4) } end
+    doc._curl, doc._thumb, doc._pelvis = {}, {}, {}
+    for key, axes in pairs({ _curl = curlAxis, _thumb = thumbAxis }) do
+        for mdl, sides in pairs(axes) do
+            local c = {}
+            for side, ax in pairs(sides) do if ax then c[tostring(side)] = v3(ax) end end
+            if next(c) then doc[key][mdl] = c end
+        end
+    end
+    for mdl, cols in pairs(pelvisMaps) do
+        if cols then doc._pelvis[mdl] = { v3(cols[1]), v3(cols[2]), v3(cols[3]) } end
+    end
+    if file.CreateDir then file.CreateDir("bmx") end
+    file.Write(WARM_FILE, util.TableToJSON(doc))
+end
+local function warmFor(ply, bike)
+    local mdl = ply.GetModel and ply:GetModel()
+    local m = mdl and loadWarm()[mdl]
+    if not m then return nil end
+    local id = bike and bike.BikeID
+    return (id and m.by[id]) or m.last
+end
 local function keepWarm(ply)
     local ik = ply.bmxIK
     if not ik or next(ik) == nil then return end
@@ -373,7 +483,13 @@ local function keepWarm(ply)
     if not mdl then return end
     local copy = {}
     for b, a in pairs(ik) do copy[b] = Angle(a.p, a.y, a.r) end
-    warmIK[mdl] = copy
+    local W = loadWarm()
+    W[mdl] = W[mdl] or { by = {} }
+    W[mdl].last = copy
+    local id = ply.bmxIKBikeID
+    if isstring(id) then W[mdl].by[id] = copy end
+    -- (written a moment later, once: a crash and a remount clear twice in a second)
+    if timer and timer.Create then timer.Create("BMX.SaveWarmIK", 2, 1, saveWarm) else saveWarm() end
 end
 
 
@@ -391,7 +507,6 @@ end
 -- `better()` says it helped. The engine's rotation sign is not assumed: if the
 -- turn made things worse the opposite one is tried, and the first answers fix
 -- the sign for good (ikSign). Tested converging under both conventions.
-local ikSign, ikVotes = nil, 0
 local function tryTurn(ply, b, h, deg, better, twist)
     local M = ply:GetBoneMatrix(b)
     if not M or math.abs(deg) < 0.05 then return false end
@@ -522,8 +637,6 @@ end
 local FINGERS = { "1", "2", "3", "4" }
 local CURL = 55                    -- degrees at each finger joint: round a grip
 local THUMB_CURL = 40              -- ...and at the thumb's middle joint (its tip 0.6 of it)
-local curlAxis = {}                -- model -> side -> local axis, or false
-local thumbAxis = {}               -- the same, for the thumb
 BMX.RiderCurlAxis = curlAxis
 
 -- Each side's bone names, made once (they were put together afresh at every use).
@@ -786,7 +899,6 @@ end
 -- rider faces the way the vehicle does), as the board's crouch measures its way down.
 local FRAME_SHIFT_MAX = 12      -- units: more than this is a wheel lost, not a landing
 local FRAME_TAU = 0.05          -- s: how closely the hips follow it (below)
-local pelvisMaps = {}           -- model -> { x, y, z column Vectors } or false
 local function pelvisMap(ply, bike, pb)
     local model = ply:GetModel()
     local m = pelvisMaps[model]
@@ -1157,7 +1269,7 @@ function BMX.SolveRiderIK(ply, targets, bike)
         -- camera sweep's remounts) the clean skeleton is the point -- seeded from the
         -- pose before, a parked dirt bike's foot-down came 14 u off in every pass (the
         -- GPU gate, run 14, 2026-11-12).
-        local seed = ply.bmxIKBike ~= bike and ply.GetModel and warmIK[ply:GetModel()]
+        local seed = ply.bmxIKBike ~= bike and warmFor(ply, bike)
         -- (counted, for the spawn benchmark: which first solves started warm, and why not)
         local why = seed and "warm" or (ply.bmxIKBike == bike and "same" or "none")
         BMX.IKStarts[why] = (BMX.IKStarts[why] or 0) + 1
@@ -1165,7 +1277,7 @@ function BMX.SolveRiderIK(ply, targets, bike)
             for b, a in pairs(seed) do setManip(ply, b, Angle(a.p, a.y, a.r)) end
         end
     end
-    ply.bmxIKBike = bike
+    ply.bmxIKBike, ply.bmxIKBikeID = bike, bike.BikeID
     ply.bmxGripOff = ply.bmxGripOff or {}
     local fwd, up, right = bike:GetForward(), bike:GetUp(), bike:GetRight()
     -- (A stand-in for the bike, the board's, names its pose set itself.)

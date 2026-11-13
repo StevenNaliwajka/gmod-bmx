@@ -105,9 +105,10 @@ local function limbMiss(B, ply, ik)
     return miss
 end
 
-local function rideCost(id, speed, frames, warm, prev)
+local function rideCost(id, speed, frames, warm, prev, files)
     local sv, world = F.server()
     local cl = F.client(world)
+    for k, v in pairs(files or {}) do cl.files[k] = v end
     local E, B = cl.env, cl.env.BMX
     world.dt = 1 / 60
     if prev then
@@ -183,7 +184,9 @@ local function rideCost(id, speed, frames, warm, prev)
         for i = 1, math.min(8, #rows) do print("      " .. id .. " " .. rows[i][1] .. " x" .. rows[i][2]) end
     end
     T.eq(#cl.errors, 0, id .. ": no errors: " .. table.concat(cl.errors, " | "))
-    local out = { setup = n.setup / frames, lookup = n.lookup / frames, vec = n.vec / frames, worst = worst }
+    -- (the data folder as this session leaves it: a getting-off that wrote the warm pose)
+    local out = { setup = n.setup / frames, lookup = n.lookup / frames, vec = n.vec / frames, worst = worst,
+                  files = cl.files, cl = cl, world = world, ply = ply, ent = ent }
     out.miss = ent and limbMiss(B, ply, ent.ikTargets)
     if os.getenv("BMX_TRACE") then
         print(string.format("    %s: %.1f SetupBones, %.1f LookupBone, %.0f Vectors a frame",
@@ -242,6 +245,42 @@ T.test("client perf: back on a bike after another, the rider starts from the pos
         T.ok(cold.miss and warm.miss, id .. ": the limbs were measured")
         T.between(warm.miss or 99, 0, math.max((cold.miss or 0) + 0.5, 1.5), id .. ": the fists and feet land as well after another ride (u)")
         T.between(warm.worst, 1, math.max(cold.worst * 0.75, 12), id .. ": SetupBones in the worst first frame, after another ride")
+    end
+end)
+
+T.test("client perf: the first ride of a session starts warm from the pose kept from the last one, per vehicle", function()
+    -- Cold, the session's first ride was its slowest frame on a real client (29-31 ms, GPU
+    -- gate runs 16-17), and a motorbike seeded from a pedal bike's pose still took 21.5 ms.
+    -- Ride, get off (the pose is written to data/bmx/ik_warm.json), then a NEW session with
+    -- that data folder: its first ride starts from the same vehicle's kept pose.
+    for _, id in ipairs({ "stock", "dirtbike", "emoto" }) do
+        local cold = rideCost(id, 150, 4, 0)
+        -- a session that rode it and got off
+        local r = rideCost(id, 150, 4, 30)
+        local E = r.cl.env
+        r.ent:SetDriver(nil); r.ply._vehicle = nil
+        for _ = 1, 60 do
+            r.world.time = r.world.time + r.world.dt
+            E.hook.Run("PrePlayerDraw", r.ply); E.hook.Run("PostPlayerDraw", r.ply)
+        end
+        r.world.time = r.world.time + 3
+        r.cl:runTimers()
+        local saved = r.files["bmx/ik_warm.json"]
+        T.ok(saved and #saved > 20, id .. ": the pose was kept in data/bmx/ik_warm.json")
+        local warm = rideCost(id, 150, 4, 0, nil, { ["bmx/ik_warm.json"] = saved })
+        if os.getenv("BMX_TRACE") then
+            print(string.format("    %s, a session's first ride: worst %d cold, %d from the kept pose; limbs off %.2f / %.2f",
+                id, cold.worst, warm.worst, cold.miss or -1, warm.miss or -1))
+        end
+        T.between(warm.worst, 1, math.max(cold.worst * 0.6, 12), id .. ": SetupBones in the worst first frame, from the kept pose")
+        T.between(warm.miss or 99, 0, math.max((cold.miss or 0) + 0.5, 1.5), id .. ": the fists and feet land as well (u)")
+    end
+end)
+
+T.test("client perf: a kept-pose file that is damaged or foreign is ignored, not trusted", function()
+    for _, junk in ipairs({ "not json", "[]", '{"x":{"last":{"a":[1,2]},"by":5}}', '{"models/player/kleiner.mdl":{"last":{"1":["a","b","c"]}}}' }) do
+        local c = rideCost("stock", 150, 4, 0, nil, { ["bmx/ik_warm.json"] = junk })
+        T.ok(c.worst >= 1, "rode with a damaged file: " .. junk)
     end
 end)
 

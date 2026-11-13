@@ -363,6 +363,14 @@ city 17.5 -> 12.7. Still over 16.7 ms: the session's first ride (stock 31.0, not
 start warm from), the dirt bike 21.5 and the e-moto 17.3. The skateboard does not start
 warm (its pose is the board's own) and does not need to (11.5 ms).
 
+**Run 18** (20:10-20:43, the IK poses kept per vehicle and between sessions, 36c3de9) held
+290 of 292, the best yet. The session's first ride: stock 31.0 -> 13.0 ms (camera sweep
+12.2); the dirt bike 21.5 -> 11.8, the e-moto 17.3 -> 13.5; every spawn kind under 16.7 ms
+but one. The ten-minute frame (62.6 ms on the e-bike, 600 s in) was reported and set aside.
+Left: the cruiser's first ride, 18.2 ms (74 skeleton poses despite a warm start, with a
+5.9 MB collection in the same frame), and one scooter frame at 30 fps with the kicking
+foot 7 u off (the bad-frame line is 7 u). Kept in bench-out.8.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

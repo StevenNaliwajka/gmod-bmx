@@ -389,6 +389,15 @@ road first rides (21.6, 22.9, 17.6 ms, each with a big collection) came in at 14
 and 12.7 ms, every kind under 16.7 ms but the session's very first spawn (stock 18.6 ms,
 61 skeleton poses: 13.0-15.0 ms in runs 18-20). Kept in bench-out.10.
 
+**Run 22** (01:17-01:49, the whole gate on 7dce596) held 285 of 291. The ten-minute frame
+(55.2 ms on the e-bike, 600 s in) was not set aside: 2.8 ms of BMX Lua in it, over the 2 ms
+line, so the line is now 2 ms or a tenth of the frame. The scooter at full frame rate had a
+bad frame in passes 2 and 3 (8 and 14 u, none in the five runs before): the kick drawn first
+on every slow frame, not only at a low frame rate, so it is now drawn first only while the
+frame time, followed over ~10 frames, is over 1/45 s. First rides over 16.7 ms with a big
+collection in the frame again (cruiser 19.9, penny 22.4, unicycle 18.1; 11.7-14.7 in
+run 21). Kept in bench-out.11.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

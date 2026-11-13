@@ -1939,6 +1939,7 @@ local LAND_RECOVER = 2.0    -- per second: back up in about half a second
 -- frame: every frame near the view, every IK_FAR_EVERY frames out to IK_FAR, and
 -- not at all beyond (they keep the pose they had). It used to stop at IK_RANGE,
 -- and a rider across the park froze mid-stroke on a moving bike.
+local slowFt       = 1 / 60  -- frame time, followed over ~10 frames (a kick drawn first when slow)
 local IK_FAR       = 3000
 local IK_FAR_EVERY = 4
 local LIMB_KEYS = { rThigh = true, lThigh = true, rCalf = true, lCalf = true,
@@ -2024,7 +2025,12 @@ function BMX.PoseRider(ply)
     -- stroke, and a pose from the last frame's targets left it 7-14 u off at 30 fps, at the
     -- same point of the stroke in 7 of 9 GPU gate runs (the 30 fps sweep, scooter pedal@180).
     -- At 45 fps and up it is carried, as before: a scooter's drawing is cheap, but not free.
-    if not stale and bike.ikTargets and bike.ikTargets.kicking and FrameTime() > 1 / 45 then stale = true end
+    -- (A SUSTAINED low frame rate, a weak PC's, not one slow frame at full speed: drawn
+    -- early on every hitch, the scooter's sweep at full frame rate had a bad frame in two
+    -- passes it had none in before, GPU gate run 22.)
+    local ft = FrameTime()
+    slowFt = slowFt + (ft - slowFt) * 0.1
+    if not stale and bike.ikTargets and bike.ikTargets.kicking and slowFt > 1 / 45 then stale = true end
     if stale and not bike.bmxEarlyDraw and bike.Draw then
         bike.bmxEarlyDraw = true
         local ok, err = pcall(bike.Draw, bike)

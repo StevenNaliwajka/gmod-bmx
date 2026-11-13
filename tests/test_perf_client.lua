@@ -388,6 +388,41 @@ T.test("client perf: a scooter kicking at 30 fps keeps the kicking foot on this 
     T.between(w30, 0, 2, "the kicking foot at 30 fps on its mark (4.4 u off, posed from the last frame's targets) (u)")
 end)
 
+T.test("client perf: a scooter drawn twice in one frame sets the same targets both times", function()
+    -- A slow frame mid-kick draws the vehicle before the rider is posed, and again in its
+    -- own turn: the kick's planted foot and lift-off are worked out once a frame, or the
+    -- second drawing moved the foot after the pose (8-14 u, GPU gate run 22's sweep).
+    local sv, world = F.server()
+    local cl = F.client(world)
+    local E, B = cl.env, cl.env.BMX
+    world.dt = 1 / 30
+    local ply = cl:player("Rider")
+    ply._skel = SR.load("kleiner_standing")
+    cl.localPlayer = sv:player("Looker")
+    local ent = cl:clientEntity(B.ClassFor("scooter"))
+    local C = ent:Cfg()
+    ent:SetPos(E.Vector(0, 0, C.Wheel.radius)); ent:SetGrounded(true)
+    ent:SetSpeedUPS(60)
+    local pod = seatPod(cl, ent, B.SeatFor(ent:Bike(), C, "rider"))
+    ent:SetPod(pod); ent:SetDriver(ply); ply._vehicle = pod
+    local worst, n = 0, 0
+    for i = 1, 90 do
+        world.time = world.time + world.dt
+        world.frame = (world.frame or 0) + 1
+        -- moving on, so the planted foot's spot matters
+        ent:SetPos(ent:GetPos() + ent:GetForward() * (60 * world.dt))
+        ent:SetPushPhase(i >= 10 and ((i - 10) * world.dt) % 1 or -1)
+        ent:Draw()
+        local a = ent.ikTargets and ent.ikTargets.rFoot
+        ent:Draw()
+        local b = ent.ikTargets and ent.ikTargets.rFoot
+        if a and b and ent.ikTargets.kicking then n = n + 1 worst = math.max(worst, (a - b):Length()) end
+    end
+    if os.getenv("BMX_TRACE") then print(string.format("    kicking foot moved by a second drawing: worst %.2f u over %d frames", worst, n)) end
+    T.ok(n > 10, "kicking frames: " .. n)
+    T.between(worst, 0, 0.01, "the second drawing in a frame leaves the kicking foot where the first put it (u)")
+end)
+
 T.test("client perf: a rider standing still on a scooter or a board is barely posed at all", function()
     -- 1.3.4: 49 (scooter) and 42 (board) a frame for a rider who did not move; now 2
     T.between(rideCost("scooter", 0, 20).setup, 0, 6, "SetupBones a frame, a scooter rider standing")

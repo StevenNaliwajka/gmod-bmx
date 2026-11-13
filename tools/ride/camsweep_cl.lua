@@ -210,11 +210,13 @@ hook.Add("PostRender", "camsweep", function()
             -- session, whatever is ridden, with no pictures, nothing building and about a
             -- millisecond of BMX Lua in it (GPU gate runs 4-15, 2026-11-11/12; the console
             -- silent at that second). Noted, and kept out of the riding frames the gate
-            -- judges, ONLY when it is all three: under 2 ms of BMX Lua, no model building,
+            -- judges, ONLY when it is all three: under 2 ms of BMX Lua (or a tenth of the frame), no model building,
             -- within 15 s of 600 s into the session. Anything else stays judged.
             local luaMs = 0
             for _, v in pairs(spent) do luaMs = luaMs + v * 1000 end
-            local engine10 = luaMs < 2 and building == 0 and math.abs(SysTime() - 600) <= 15
+            -- (BMX Lua under 2 ms or a tenth of the frame: run 22's was 55.2 ms with 2.8 ms of it,
+            -- the e-bike's drawing and the rider's pose as in any frame)
+            local engine10 = luaMs < math.max(2, dt * 1000 * 0.1) and building == 0 and math.abs(SysTime() - 600) <= 15
             if engine10 then
                 ft[#ft] = nil
                 cur.engine10 = math.max(cur.engine10 or 0, dt * 1000)

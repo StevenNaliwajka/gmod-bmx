@@ -550,8 +550,22 @@ local arrivedFrame
 hook.Add("OnEntityCreated", "BMX.BuildSkipsArrival", function(e)
     if FrameNumber and (e.IsBMX or (IsValid(e) and e:GetClass():sub(1, 4) == "bmx_")) then arrivedFrame = FrameNumber() end
 end)
+-- ...and neither do a ride's first frames: the rider is posed from a clean skeleton then
+-- (cl_rider.lua BMX.SolveRiderIK calls BM.QuietFor), the dearest pose a ride has, and with
+-- a slice and the collector's work landing in it, the first ride went 17-21 ms (the GPU
+-- gate's spawn bench, runs 20-25: a 9.3 ms slice in the mini's). The build waits them out.
+local quietUntil
+function BM.QuietFor(frames)
+    if not FrameNumber then return end
+    local f = FrameNumber() + (frames or 3)
+    if not quietUntil or f > quietUntil then quietUntil = f end
+end
+function BM.Quiet()
+    return quietUntil ~= nil and FrameNumber ~= nil and FrameNumber() <= quietUntil
+end
 function BM.SliceBudget()
     if arrivedFrame and FrameNumber and arrivedFrame == FrameNumber() then return 0 end
+    if BM.Quiet() then return 0 end
     local budget = math.max(cvBudget:GetFloat(), 0.5)
     local ft = FrameTime and FrameTime() or 0
     if ft > BUSY_MIN and ft > (meanFrame or ft) * BUSY_RATIO then budget = math.max(budget * 0.5, 0.5) end
@@ -653,7 +667,7 @@ function BM.Get(k, radius, kind, opt)
     if m and m.warmQ then
         -- built, being warmed: only from a drawn vehicle's Draw (a 3D draw), a slice a frame
         local frame = FrameNumber()
-        if not background and not norender and frameRan ~= frame then
+        if not background and not norender and frameRan ~= frame and not BM.Quiet() then
             frameRan = frame
             if BM.Warm(m, math.max(cvBudget:GetFloat(), 0.5)) then return m end
         end

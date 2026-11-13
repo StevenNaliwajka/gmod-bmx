@@ -909,6 +909,26 @@ end)
 -- A BUSY FRAME GETS HALF A SLICE: after a long frame (the collector working through a
 -- build's garbage, charged to the rider's pose) the build takes half its slice, so the
 -- two together stay under a 60 fps frame.
+T.test("client perf: a ride's first frames get no model-build slice (the dearest pose has the frame)", function()
+    -- The rider posed from a clean skeleton, a build slice and the collector's work in one
+    -- frame: the mini's first ride 20.9 ms with a 9.3 ms slice in it (GPU gate run 25).
+    local _, world = F.server()
+    local cl = F.client(world)
+    local BM = cl.env.BMX.BikeMesh
+    world.dt = 1 / 250
+    for _ = 1, 300 do cl.env.hook.Run("Think") end
+    world.frame = 1
+    cl.env.FrameNumber = cl.env.FrameNumber or function() return world.frame end
+    T.ok(BM.SliceBudget() > 0, "an ordinary frame has its slice")
+    BM.QuietFor(3)
+    for i = 1, 3 do
+        T.eq(BM.SliceBudget(), 0, "frame " .. i .. " of the ride: no slice")
+        world.frame = world.frame + 1
+    end
+    world.frame = world.frame + 1
+    T.ok(BM.SliceBudget() > 0, "after them, the build goes on")
+end)
+
 T.test("client perf: after a long frame the model build takes half its slice", function()
     local _, world = F.server()
     local cl = F.client(world)

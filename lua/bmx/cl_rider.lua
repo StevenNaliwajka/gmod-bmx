@@ -1271,6 +1271,8 @@ function BMX.SolveRiderIK(ply, targets, bike)
     ply.bmxSolvedAt = CurTime()
     if not ply.bmxIK then
         ply.bmxIK = {}
+        -- (a solve from a clean skeleton is the dearest: no model build in these frames)
+        if BMX.BikeMesh and BMX.BikeMesh.QuietFor then BMX.BikeMesh.QuietFor(3) end
         -- Only on a DIFFERENT vehicle: back on the same one after a pause (a respawn, the
         -- camera sweep's remounts) the clean skeleton is the point -- seeded from the
         -- pose before, a parked dirt bike's foot-down came 14 u off in every pass (the

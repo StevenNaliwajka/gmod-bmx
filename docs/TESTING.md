@@ -418,6 +418,15 @@ vehicle's cost. The scooter at 30 fps: no bad frame in either pass (4.6 u at wor
 bad-frame note now naming whether a foot's target moved after the pose (cl_rider keeps
 what each foot was posed to). Kept in bench-out.13.
 
+**Run 25** (12:24-12:58, the whole gate with first spawns best of two, c35f6a4) held 290 of
+292. Every first ride passed in one session or the other but the mini's: 20.9 ms (a 9.3 ms
+build slice in the same frame, against a 4 ms budget, and a 2.7 MB collection) and 17.4 ms
+in the fresh session (a 4.9 MB collection, 11.5 ms of BMX Lua). The scooter at 30 fps: one
+frame, the STANDING foot 7 u off at mid-kick (push 0.49, the pelvis dropped 9 u by the kick's
+crouch), and its target had not moved since the pose (the new note): a reach the pose falls
+short of on the client's player model, where kleiner's offline stays on its mark (0.0 u
+through the whole stroke). Kept in bench-out.14.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

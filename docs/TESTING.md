@@ -371,6 +371,17 @@ Left: the cruiser's first ride, 18.2 ms (74 skeleton poses despite a warm start,
 5.9 MB collection in the same frame), and one scooter frame at 30 fps with the kicking
 foot 7 u off (the bad-frame line is 7 u). Kept in bench-out.8.
 
+**Runs 19 and 20** (21:51 and 23:39, 1.4.5). The cruiser's bars swept back: its first ride
+18.2 -> 11.5 ms at 1.5 inches (run 19) and 14.2 ms at the shipped 1 inch (run 20); the
+session's first ride 15.0 ms with the ride sounds warmed first (run 19, before that change,
+had a 28.4 ms frame, 23.6 ms of it the rolling loop's first PlayEx). Run 20 held 287 of 292:
+the first rides of the city (21.6 ms), unicycle (22.9) and road bike (17.6) went over again,
+each with a 4-13 MB collection in the same frame and a warm start (run 18 had them at
+11.9-13.5 ms on the same pose code: the collector's timing, run to run), one 20.8 ms frame
+on the dirt bike in the sweep, and the scooter at 30 fps (its kicking foot 12 u off at
+pedal@180: in 7 of 9 measuring runs, 7-14 u, the same cell; the kick moves further than the
+pose follows in a 33 ms frame). Kept in bench-out.9.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

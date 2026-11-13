@@ -102,6 +102,16 @@ class Judge(unittest.TestCase):
                    features=FEAT)
         self.assertEqual(failed(gate.judge(r, self.base)), ["spawn tandem: no frame over 16.7 ms"])
 
+    def test_a_spawn_over_the_line_once_of_two_holds_and_twice_fails(self):
+        over = SPAWNS.replace(">16.7ms 0 >33ms 0 | build 160", ">16.7ms 1 >33ms 0 | build 160")
+        # once (the second fresh session clean): one frame's spread, held
+        r = run_of(camsweep=CAM, spawns=over, features=FEAT)
+        r["spawns2"] = gate.parse_spawns(SPAWNS)
+        self.assertEqual(failed(gate.judge(r, self.base)), [])
+        # both sessions over: a real hitch
+        r["spawns2"] = gate.parse_spawns(over)
+        self.assertEqual(failed(gate.judge(r, self.base)), ["spawn tandem: no frame over 16.7 ms"])
+
     def test_fps_within_the_drop_holds_and_past_it_fails(self):
         ok = run_of(camsweep=CAM, spawns=SPAWNS, features=FEAT.replace("281.2 fps", "250.0 fps"))
         self.assertEqual(failed(gate.judge(ok, self.base)), [])

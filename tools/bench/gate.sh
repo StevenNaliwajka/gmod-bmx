@@ -7,6 +7,7 @@
 # Borrows the GPU for the client VM, installs THIS working tree's addon, and runs:
 #   camsweep.txt  every vehicle, 4 camera passes (no bad frame, every rider posed, <16.7 ms)
 #   spawns.txt    every kind's first spawn, ridden away at once (no frame over 16.7 ms)
+#   spawns2.txt   the same in a fresh session: a kind fails only if both go over
 #   features.txt  every feature in its own scene (fps and server cost against baseline.json)
 #   riders.txt    8 riders on bots in view, if the client can host a listen server (see sp.sh riders)
 #   lowfps.txt    the camera sweep held to 30 fps, a weak PC's rate (no bad frame)
@@ -89,6 +90,14 @@ bench lowfps "$SP" lowfps 30
 case "$SKIP" in *" riders "*) ;; *)
   if BMX_SP_MAXPLAYERS=9 "$SP" launch >/dev/null; then bench riders "$SP" riders 8
   else log "no listen server session: riders not run"; fi ;;
+esac
+# EVERY FIRST SPAWN AGAIN, in a fresh session (models are built once a session): a kind's
+# first ride fails only when both go over. One frame's spread on this client is 0.3-1.8 ms
+# either side of the line, a different kind each run (runs 18-24); the owner's call,
+# 2026-11-13: best of two spawns.
+case "$SKIP" in *" spawns "*) ;; *)
+  if "$SP" launch >/dev/null; then bench spawns2 env SPAWN_RIDE=true "$SP" spawns
+  else log "no session for the second spawn bench"; fi ;;
 esac
 
 python3 "$HERE/gate.py" judge "$OUT" --json "$OUT/gate.json"

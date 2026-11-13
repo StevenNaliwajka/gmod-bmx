@@ -398,6 +398,16 @@ frame time, followed over ~10 frames, is over 1/45 s. First rides over 16.7 ms w
 collection in the frame again (cruiser 19.9, penny 22.4, unicycle 18.1; 11.7-14.7 in
 run 21). Kept in bench-out.11.
 
+**Run 23** (06:33-07:05, 2026-11-13, the whole gate on f5fc658) held 289 of 292. The
+ten-minute frame (62.2 ms, 601 s in, 2 ms of BMX Lua) was set aside and reported; the
+scooter's full-rate sweep clean again (bad 0 in every pass); no motorbike or cruiser over.
+Left, each at the edge of its line: the scooter at 30 fps (2 frames of 43 at pedal@180, the
+kicking foot 7 u off, the line being 7; 4.6 u at worst in run 21), and the city's and road
+bike's first rides at 18.0 and 17.0 ms, each with a 3-4 MB collection in the frame (12.7-14.7
+in run 21). An earlier try at 04:31 lost its slot: the broker granted the card, the client
+VM never started, and the sweep handed the card home; the run now checks the client is
+running within three minutes of the grant. Kept in bench-out.12.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

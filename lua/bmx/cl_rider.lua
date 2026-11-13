@@ -2020,6 +2020,11 @@ function BMX.PoseRider(ply)
     -- foot 11 u off the deck for that frame.
     local at = bike.bmxTargetsAt
     local stale = bike.bmxJumped or (at and at.sig and BMX.TargetSig and at.sig ~= BMX.TargetSig(bike))
+    -- And through a KICK ON A SLOW FRAME: the kicking foot sweeps the ground fastest mid-
+    -- stroke, and a pose from the last frame's targets left it 7-14 u off at 30 fps, at the
+    -- same point of the stroke in 7 of 9 GPU gate runs (the 30 fps sweep, scooter pedal@180).
+    -- At 45 fps and up it is carried, as before: a scooter's drawing is cheap, but not free.
+    if not stale and bike.ikTargets and bike.ikTargets.kicking and FrameTime() > 1 / 45 then stale = true end
     if stale and not bike.bmxEarlyDraw and bike.Draw then
         bike.bmxEarlyDraw = true
         local ok, err = pcall(bike.Draw, bike)

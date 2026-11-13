@@ -338,6 +338,56 @@ T.test("client perf: back on the SAME vehicle after a pause, the rider is posed 
     end
 end)
 
+T.test("client perf: a scooter kicking at 30 fps keeps the kicking foot on this frame's mark", function()
+    -- The rider is posed before the vehicle is drawn, from the targets carried on from the
+    -- last drawing. At 30 fps the kick sweeps far in a frame: the kicking foot was 7-14 u off
+    -- mid-stroke in 7 of 9 GPU gate runs (the 30 fps sweep, scooter pedal@180). On a slow
+    -- frame through a kick the vehicle is drawn first now.
+    local function worstKick(dt)
+        local sv, world = F.server()
+        local cl = F.client(world)
+        local E, B = cl.env, cl.env.BMX
+        world.dt = dt
+        local ply = cl:player("Rider")
+        ply._skel = SR.load("kleiner_standing")
+        cl.localPlayer = sv:player("Looker")
+        local ent = cl:clientEntity(B.ClassFor("scooter"))
+        local C = ent:Cfg()
+        ent:SetPos(E.Vector(0, 0, C.Wheel.radius)); ent:SetGrounded(true)
+        ent:SetSpeedUPS(60); ent._vel = ent:GetForward() * 60
+        local pod = seatPod(cl, ent, B.SeatFor(ent:Bike(), C, "rider"))
+        ent:SetPod(pod); ent:SetDriver(ply); ply._vehicle = pod
+        cl.eyePos = ply:GetPos() + E.Vector(-110, 0, 60)
+        local worst, phase, seen = 0, -1, 0
+        for i = 1, 90 do
+            world.time = world.time + dt
+            -- kicking from frame 20, one stroke a second
+            if i >= 20 then phase = ((i - 20) * dt) % 1 end
+            if ent.SetPushPhase then ent:SetPushPhase(phase) end
+            E.hook.Run("PrePlayerDraw", ply); E.hook.Run("PostPlayerDraw", ply)
+            ent:Draw()
+            if i > 24 and ent.ikTargets and ent.ikTargets.kicking then
+                seen = seen + 1
+                local b = ply:LookupBone("ValveBiped.Bip01_R_Foot")
+                local t = ply:LookupBone("ValveBiped.Bip01_R_Toe0")
+                local A, Tt = b and ply:GetBoneMatrix(b), t and ply:GetBoneMatrix(t)
+                if A and Tt then
+                    local P, a, c = ent.ikTargets.rFoot, A:GetTranslation(), Tt:GetTranslation()
+                    local g = c - a
+                    local u = math.max(0, math.min(1, (P - a):Dot(g) / math.max(g:Dot(g), 1e-6)))
+                    worst = math.max(worst, (a + g * u - P):Length())
+                end
+            end
+        end
+        T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+        T.ok(seen > 10, "kicking frames measured: " .. seen)
+        return worst
+    end
+    local w30, w60 = worstKick(1 / 30), worstKick(1 / 60)
+    if os.getenv("BMX_TRACE") then print(string.format("    kicking foot off its mark: worst %.2f u at 30 fps, %.2f at 60", w30, w60)) end
+    T.between(w30, 0, 2, "the kicking foot at 30 fps on its mark (4.4 u off, posed from the last frame's targets) (u)")
+end)
+
 T.test("client perf: a rider standing still on a scooter or a board is barely posed at all", function()
     -- 1.3.4: 49 (scooter) and 42 (board) a frame for a rider who did not move; now 2
     T.between(rideCost("scooter", 0, 20).setup, 0, 6, "SetupBones a frame, a scooter rider standing")

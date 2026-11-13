@@ -512,6 +512,7 @@ BMX.DrawVehicle.scooter = function(ent, kit)
     local fwdW, leftW, upW2 = ent:GetForward(), -ent:GetRight(), ent:GetUp()
     local ik = {
         lFoot = C2W(t.lFoot), rFoot = C2W(t.rFoot), ankles = true,
+        kicking = t.kicking,          -- (a slow frame mid-kick is drawn before the pose: cl_rider.lua)
         lFootPole = (fwdW + leftW * 0.6 + upW2 * 0.15):GetNormalized(),
         rFootPole = (fwdW - leftW * 0.4 + upW2 * 0.15):GetNormalized(),
         rFootYaw = push >= 0 and 0 or -BACK_TOE_OUT,

@@ -356,6 +356,13 @@ D tapped to a turn seen, ms median of 8:
 Prediction takes 36-88 ms off what is drawn up to 50 ms of lag, and less past it (57 ms at
 100, 56 at 150, with a 314 ms worst at 100): the next question for bmx_predict.
 
+**Run 17** (19:29-19:32, the spawn bench alone, with the IK's warm and cold starts counted):
+the warm start applied on every vehicle after the first ("IK starts warm 1"), and the
+first-ride frames that failed in run 16 held: fixie 23.0 -> 12.2 ms, mini 19.7 -> 11.2,
+city 17.5 -> 12.7. Still over 16.7 ms: the session's first ride (stock 31.0, nothing to
+start warm from), the dirt bike 21.5 and the e-moto 17.3. The skateboard does not start
+warm (its pose is the board's own) and does not need to (11.5 ms).
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

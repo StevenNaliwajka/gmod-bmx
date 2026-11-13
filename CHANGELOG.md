@@ -5,7 +5,7 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
-## 1.4.4 -- not on the Workshop yet
+## 1.4.4 -- on the Workshop 2026-11-12 (as 1.4.4)
 
 **Better online**
 
@@ -64,7 +64,7 @@ a Workshop update goes out only when the owner says so.
 - The BMX (Mode) gamemode's own tests now run on every change, on a real server with the
   gamemode on.
 
-## 1.4.3 -- not on the Workshop yet
+## 1.4.3 -- on the Workshop 2026-11-12 (as 1.4.4)
 
 The last known hitches from the 1.4.1 and 1.4.2 measurements, fixed and measured again in
 a real game on a GPU (docs/PERFORMANCE.md, round 3).
@@ -101,7 +101,7 @@ a real game on a GPU (docs/PERFORMANCE.md, round 3).
 - **A bike put back somewhere else** (a respawn, a reset) no longer throws its rider's head
   and hips into a turn that was not there.
 
-## 1.4.2 -- not on the Workshop yet
+## 1.4.2 -- on the Workshop 2026-11-12 (as 1.4.4)
 
 More speed, measured feature by feature in a real game before and after
 (docs/PERFORMANCE.md has every number).
@@ -127,7 +127,7 @@ More speed, measured feature by feature in a real game before and after
   recent are kept, setting "Vehicle models kept in memory"). Every model used to stay for
   the whole game: up to about 200 MB once you had spawned every kind.
 
-## 1.4.1 -- not on the Workshop yet
+## 1.4.1 -- on the Workshop 2026-11-12 (as 1.4.4)
 
 The performance update, from the bug reports: "the mod causing the most lag", "frames go
 down the drain whenever I spawn something", and "the riding pose only shows up in certain

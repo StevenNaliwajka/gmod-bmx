@@ -497,6 +497,11 @@ BMX.RegisterBike("cruiser", {
     description = "24-inch cruiser: longer, heavier and faster at the top end, slower off the line.",
     colorIndex  = 8,            -- blue
     seats       = { pegs = {} },
+    -- THE BARS SWEPT BACK TOWARD THE RIDER (design inches, before the x 43/39 scale): the
+    -- whole BMX scaled up put the grips past the rider's comfortable reach, so the torso
+    -- searched for them every frame and the first ride took 18.2 ms on a real client (GPU
+    -- gate run 18, 2026-11-12). The stem stays; the bar's ends come back.
+    barBack     = 1.0,
     physics = {
         Chassis = { mass = 94, seatOffset = Vector(-11.6, 0, 19.8) },  -- x 43/39
         -- restLength 10 rather than 8: more travel for a bigger wheel, and

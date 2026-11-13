@@ -705,11 +705,14 @@ end
 local function bikeModel(bike, C)
     local WC = C.Wheel
     local k = WC.wheelbase / 39
-    return BMX.BikeMesh.Get(k, WC.radius, bike.look, bike.look ~= "bmx" and {
+    if bike.look == "bmx" then
+        return BMX.BikeMesh.Get(k, WC.radius, bike.look, bike.barBack and { barBack = bike.barBack } or nil)
+    end
+    return BMX.BikeMesh.Get(k, WC.radius, bike.look, {
         wheelbase = WC.wheelbase, rearRadius = WC.rearRadius, restLength = WC.restLength,
         seat = { C.Chassis.seatOffset.x, C.Chassis.seatOffset.y, C.Chassis.seatOffset.z },
         extra = BMX.ModelExtra(bike, C),
-    } or nil)
+    })
 end
 
 function BMX.BikeModelFor(ent)
@@ -1447,7 +1450,7 @@ function ENT:Draw()
     -- offset from the head tube is re-expressed along the STEERED forward.
     -- Then the tricks: a barspin turns them about the steer axis, an X-up
     -- half a turn more, and a turndown folds them forward about the stem.
-    local d = P(FRAME.bars) - headT
+    local d = P(FRAME.bars - Vector(bike.barBack or 0, 0, 0)) - headT
     local barsC0 = headT + steeredFwd * d:Dot(fwd) + up * d:Dot(up)
     local stemTop0 = headT + up * (3 * k)
     local function barsAt(spin, turn)

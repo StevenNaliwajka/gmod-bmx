@@ -639,6 +639,8 @@ BM.LastBuilds = {}
 function BM.Get(k, radius, kind, opt)
     if not BM.Enabled() then return nil end
     local key = string.format("%.3f/%.3f", k, radius)
+    local barBack = (not kind or kind == "bmx") and opt and tonumber(opt.barBack) or nil
+    if barBack and barBack ~= 0 then key = string.format("%s/bars-%.2f", key, barBack) end
     if kind and kind ~= "bmx" then
         if not BMX.BikeGeo.Kinds[kind] then return nil end
         local seat = opt and opt.seat
@@ -658,7 +660,7 @@ function BM.Get(k, radius, kind, opt)
         return nil
     end
     if not m then
-        local build = { k = k, radius = radius }
+        local build = { k = k, radius = radius, barBack = barBack }
         if kind and kind ~= "bmx" then
             build = {}
             for kk, v in pairs(opt or {}) do build[kk] = v end

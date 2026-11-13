@@ -5,6 +5,21 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.4.5 -- not on the Workshop yet
+
+**Faster first rides**
+
+- **Getting on any bike starts from where your rider last sat on it.** The rider's pose
+  used to be worked out from scratch on every new ride, and that first frame was the
+  slowest of the ride. Now it starts from the pose your rider settled into on that vehicle
+  (or the last one), kept between sessions in data/bmx/ik_warm.json along with what the
+  game measures once per player model. Measured in a real game on a GPU: the first ride
+  of a session 31 -> 13 ms, the dirt bike's first ride 21.5 -> 11.8 ms, the e-moto's
+  17.3 -> 13.5 ms, the fixie's 23 -> 12 ms; a 60 fps frame is 16.7 ms.
+- **The cruiser's bars sweep back a little** (1 inch before its scale), so the rider
+  reaches its grips without stretching; its first frame no longer costs half as much
+  again as other bikes'.
+
 ## 1.4.4 -- on the Workshop 2026-11-12 (as 1.4.4)
 
 **Better online**

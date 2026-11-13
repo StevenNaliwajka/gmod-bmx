@@ -329,6 +329,9 @@ local TOP_LEVEL = {
     physics = true,
     -- the bikes' extras: gears (G09), a score multiplier (G09), the bar shape (G09)
     gears = true, scoreMult = true, barStyle = true,
+    -- the "bmx" look's bar ends swept back toward the rider, design inches (0..4): a
+    -- scaled-up frame (the cruiser's) puts the grips past the rider's reach otherwise
+    barBack = true,
     -- the built-in detailed model to draw: "bmx" (cl_bikegeo.lua), or nil for the simple bike
     look = true,
     -- a box small props ride in (G12, sv_basket.lua)
@@ -464,6 +467,10 @@ function BMX.ValidateVehicle(def)
 
     for k in pairs(def) do
         if not TOP_LEVEL[k] then bad[#bad + 1] = string.format("unknown field %q", tostring(k)) end
+    end
+
+    if def.barBack ~= nil and not (isnumber(def.barBack) and def.barBack >= 0 and def.barBack <= 4) then
+        bad[#bad + 1] = "barBack must be a number of design inches, 0 to 4"
     end
 
     if not (isstring(def.id) and def.id:match("^[%w_]+$")) then

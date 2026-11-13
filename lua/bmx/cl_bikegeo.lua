@@ -727,6 +727,7 @@ function G.Layout()
     L.clamp = add(add(L.stemBase, mul(L.steer, 0.85)), V(1.5, 0, 0.15))   -- bar clamp centre
     -- U-brake bosses on the seat stays, where a pad reaches the rim.
     L.brakeT = 0.5
+    L.bars = F.bars                                           -- (moved back by G.Build's opt.barBack)
     return L
 end
 
@@ -1036,7 +1037,7 @@ end
 local function barPath(L, side)
     -- one side, from the clamp centre out to the bar end: 9" rise, swept back
     local c = L.clamp
-    local gx, gz = G.FRAME.bars[1], G.FRAME.bars[3]
+    local gx, gz = L.bars[1], L.bars[3]
     return {
         c,
         add(c, V(0, 1.6 * side, 0)),
@@ -1097,7 +1098,7 @@ local function buildBars(M, L)
     -- grips: ribbed rubber with a flange at the inside end and a bar-end plug
     local Rb = M:bucket("bars", "rubber")
     for _, s in ipairs({ 1, -1 }) do
-        local o = V(F.bars[1], G.GRIP_IN * s - 0.15 * s, F.bars[3])
+        local o = V(L.bars[1], G.GRIP_IN * s - 0.15 * s, L.bars[3])
         local prof = { { 0.44, -0.1, true }, { 0.95, -0.1, true }, { 0.98, 0.0 }, { 0.95, 0.12, true }, { 0.66, 0.16, true } }
         local h = 0.16
         local gl = G.GRIP_OUT - G.GRIP_IN + 0.5
@@ -1117,14 +1118,14 @@ local function buildBars(M, L)
     -- brake lever on the right: perch round the bar, blade along the grip
     do
         local s = -1
-        local perch = V(F.bars[1], (G.GRIP_IN - 0.55) * s, F.bars[3])
+        local perch = V(L.bars[1], (G.GRIP_IN - 0.55) * s, L.bars[3])
         lathe(Bk, { { 0.48, -0.3, true }, { 0.62, -0.3, true }, { 0.62, 0.3, true }, { 0.48, 0.3, true } },
               perch, V(0, 1, 0), 18)
         local body = add(perch, V(0.75, 0, -0.1))
         sweep(Bk, { add(perch, V(0.4, 0, 0)), body, add(body, V(0.35, 0.1 * s, 0.05)) },
               function() return 0.3, 0.42 end, 12, { up = V(0, 0, 1) })
         local blade = spline({ add(body, V(0.3, 0, 0)), add(body, V(1.05, -0.3 * s, -0.25)),
-                               V(F.bars[1] + 1.35, -12.6, F.bars[3] - 0.7), V(F.bars[1] + 1.1, -14.4, F.bars[3] - 0.85) }, 5)
+                               V(L.bars[1] + 1.35, -12.6, L.bars[3] - 0.7), V(L.bars[1] + 1.1, -14.4, L.bars[3] - 0.85) }, 5)
         sweep(Bk, blade, function(t) return 0.13, 0.3 - 0.08 * t end, 10, { up = V(0, 0, 1) })
         -- barrel adjuster where the housing leaves the lever
         lathe(M:bucket("bars", "chrome", true), { { 0, 0, true }, { 0.16, 0, true }, { 0.16, 0.45 }, { 0.12, 0.5, true }, { 0, 0.5, true } },
@@ -1780,6 +1781,8 @@ function G.Build(opt)
     local radius = (opt.radius or 10 * k) / k
     local M = newModel()
     local L = G.Layout()
+    -- the bars' ends, swept back toward the rider by opt.barBack (the cruiser's: sh_bikes.lua)
+    L.bars = V(G.FRAME.bars[1] - (opt.barBack or 0), G.FRAME.bars[2], G.FRAME.bars[3])
     local R = G.WheelDims(radius)
     buildFrame(M, L, k)
     buildDecals(M, L)
@@ -1804,13 +1807,13 @@ function G.Build(opt)
     scaleModel(M, k)
     -- Points the drawing code needs, in scaled design space (docs/MODELS.md).
     local function grip(side)
-        return { A = mul(V(F.bars[1], -G.GRIP_IN * side, F.bars[3]), k),
-                 B = mul(V(F.bars[1], -G.GRIP_OUT * side, F.bars[3]), k) }
+        return { A = mul(V(L.bars[1], -G.GRIP_IN * side, L.bars[3]), k),
+                 B = mul(V(L.bars[1], -G.GRIP_OUT * side, L.bars[3]), k) }
     end
     M.layout = {
         k = k, steer = L.steer, gyro = mul(L.gyro, k), stemTop = mul(L.stemTop, k),
         clamp = mul(L.clamp, k), yoke = mul(yoke, k),
-        lever = mul(V(G.FRAME.bars[1] + 0.75 + 0.35, -(G.GRIP_IN - 0.55), G.FRAME.bars[3] + 0.05), k),
+        lever = mul(V(L.bars[1] + 0.75 + 0.35, -(G.GRIP_IN - 0.55), L.bars[3] + 0.05), k),
         headT = mul(F.headT, k), headB = mul(F.headB, k), bb = mul(F.bb, k),
         rear = mul(F.rear, k), front = mul(F.front, k),
         crank = G.CRANK * k, pedalY = (G.Q + 1.8) * k,

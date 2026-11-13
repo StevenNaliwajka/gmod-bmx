@@ -53,9 +53,28 @@ function BMX.WarmSounds()
             list[#list + 1] = s.path
         end
     end
-    table.sort(list)
+    -- THE SOUNDS A FIRST RIDE PLAYS FIRST: the rolling loops, the wind, the motors. Taken in
+    -- name order, one every 0.2 s from 5 s after joining, the last was warm ~16 s in, and a
+    -- bike spawned sooner had its rolling loop load inside its PlayEx: a 28.4 ms frame, 23.6
+    -- of it that call (GPU spawn bench, run 19, 2026-11-12). They go first now, one every
+    -- 0.05 s from 2 s in: every sound is warm by about 5 s after joining.
+    local rank, n = {}, 0
+    for _, key in ipairs(BMX.WarmFirst or {}) do
+        local s = BMX.Sounds[key]
+        if s and s.path then
+            for v = 1, s.variants or 1 do
+                local path = s.variants and string.format(s.path, v) or s.path
+                if not rank[path] then n = n + 1 rank[path] = n end
+            end
+        end
+    end
+    table.sort(list, function(a, b)
+        local ra, rb = rank[a] or math.huge, rank[b] or math.huge
+        if ra ~= rb then return ra < rb end
+        return a < b
+    end)
     local i = 0
-    timer.Create("BMX.WarmSounds", 0.2, #list, function()
+    timer.Create("BMX.WarmSounds", 0.05, #list, function()
         i = i + 1
         local ply, path = LocalPlayer(), list[i]
         if not (IsValid(ply) and path) then return end
@@ -69,7 +88,8 @@ function BMX.WarmSounds()
         timer.Simple(0.5, function() patch:Stop() end)
     end)
 end
-hook.Add("InitPostEntity", "BMX.WarmSounds", function() timer.Simple(5, BMX.WarmSounds) end)
+BMX.WarmFirst = { "roll", "roll_wheel", "wind", "freewheel", "motor", "engine", "engine2t" }
+hook.Add("InitPostEntity", "BMX.WarmSounds", function() timer.Simple(2, BMX.WarmSounds) end)
 
 --------------------------------------------------------------------------
 -- Volumes, per player. 0..1 each, archived, and multiplied onto the sound's own

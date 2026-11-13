@@ -277,6 +277,19 @@ T.test("client perf: the first ride of a session starts warm from the pose kept 
     end
 end)
 
+T.test("client perf: the cruiser's bars are within the rider's reach (its first frame costs what other bikes' do)", function()
+    -- The whole BMX scaled x 43/39 put the cruiser's grips past the rider's reach: the torso
+    -- searched for them every frame and its first ride took 18.2 ms on a real client (GPU
+    -- gate run 18, 2026-11-12; 34 skeleton poses offline against the mini's 22). barBack
+    -- sweeps its bar ends 1 inch back toward the rider.
+    local c = rideCost("cruiser", 150, 4, 0, "cruiser")
+    local m = rideCost("mini", 150, 4, 0, "mini")
+    if os.getenv("BMX_TRACE") then print(string.format("    cruiser %d, mini %d; limbs off %.2f", c.worst, m.worst, c.miss or -1)) end
+    -- (1 inch, not more: further back, its X-up crossed the arms deeper than any bike's)
+    T.between(c.worst, 1, m.worst + 7, "cruiser: SetupBones in its worst first frame, against the mini's (34 before)")
+    T.between(c.miss or 99, 0, 1, "cruiser: the fists and feet on their marks (u)")
+end)
+
 T.test("client perf: a kept-pose file that is damaged or foreign is ignored, not trusted", function()
     for _, junk in ipairs({ "not json", "[]", '{"x":{"last":{"a":[1,2]},"by":5}}', '{"models/player/kleiner.mdl":{"last":{"1":["a","b","c"]}}}' }) do
         local c = rideCost("stock", 150, 4, 0, nil, { ["bmx/ik_warm.json"] = junk })
@@ -798,6 +811,13 @@ T.test("client perf: after joining, every sound is played once at volume 0 and s
         end
     end
     T.ok(want >= 10 and warmed["bmx/motor.wav"], "the motor's whine among " .. want)
+    -- the riding sounds first: a bike spawned soon after joining found its rolling loop cold
+    -- (a 28.4 ms frame, 23.6 ms of it PlayEx; GPU spawn bench, run 19)
+    local rollPath = B.Sounds.roll and (B.Sounds.roll.variants and string.format(B.Sounds.roll.path, 1) or B.Sounds.roll.path)
+    local rollAt
+    for i = n0 + 1, #cl.patches do if cl.patches[i].path == rollPath then rollAt = i - n0 break end end
+    T.ok(rollAt and rollAt <= 4, "the rolling loop among the first warmed (it was #" .. tostring(rollAt) .. ")")
+    T.ok(want * 0.05 + 2 <= 6, "every sound warm within ~6 s of joining (" .. want .. " of them)")
     T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
 end)
 

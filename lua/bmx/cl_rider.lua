@@ -1262,6 +1262,12 @@ end
 
 function BMX.SolveRiderIK(ply, targets, bike)
     forgetPose()
+    -- (what the feet were posed to, for the camera sweep's bad-frame note: a foot off its
+    -- mark because its target moved after the pose, or because the pose fell short)
+    ply.bmxPosedFeet = ply.bmxPosedFeet or {}
+    ply.bmxPosedFeet.rFoot = targets.rFoot and Vector(targets.rFoot) or nil
+    ply.bmxPosedFeet.lFoot = targets.lFoot and Vector(targets.lFoot) or nil
+    ply.bmxPosedFeet.early = bike and bike.bmxEarlyDraw and true or false
     ply.bmxSolvedAt = CurTime()
     if not ply.bmxIK then
         ply.bmxIK = {}
@@ -2035,6 +2041,7 @@ function BMX.PoseRider(ply)
         bike.bmxEarlyDraw = true
         local ok, err = pcall(bike.Draw, bike)
         bike.bmxEarlyDraw = nil
+        bike.bmxEarlyFrame = FrameNumber and FrameNumber()
         if not ok then ErrorNoHalt("[BMX] " .. tostring(err) .. "\n") end
     end
     local useIK = cv_ik:GetBool() and bike.ikTargets ~= nil

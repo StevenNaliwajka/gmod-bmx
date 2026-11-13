@@ -408,6 +408,16 @@ in run 21). An earlier try at 04:31 lost its slot: the broker granted the card, 
 VM never started, and the sweep handed the card home; the run now checks the client is
 running within three minutes of the grant. Kept in bench-out.12.
 
+**Run 24** (11:42-11:48, 2026-11-13: the last failures, for their causes). The spawn bench
+twice in fresh sessions. As shipped: every kind under 16.7 ms but the tandem (18.5; the
+city 13.0, the road bike 11.2, which went 18.0 and 17.0 in run 23). With the build's
+garbage collected in 256 KB steps after each slice (an experiment, not kept): every kind's
+worst frame 1-3 ms HIGHER, the stock bike 17.4. So the first-ride frame over the line is a
+different kind in each run, by 0.3-1.8 ms: the spread of one frame on this client, not a
+vehicle's cost. The scooter at 30 fps: no bad frame in either pass (4.6 u at worst), with the
+bad-frame note now naming whether a foot's target moved after the pose (cl_rider keeps
+what each foot was posed to). Kept in bench-out.13.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

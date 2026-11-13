@@ -275,8 +275,14 @@ hook.Add("PostRender", "camsweep", function()
             local R = bike.bmxRide
             local extra = R and string.format(", grounded %s push %.2f air %.2f kick %.2f", tostring(bike:GetGrounded()),
                 bike.GetPushPhase and bike:GetPushPhase() or -9, R.air or -1, R.pushBend or -1) or ""
+            -- where that foot was POSED to against where it is judged: moved after the pose
+            -- (a target drawn later in the frame) or a pose that fell short of it
+            local pf = ply.bmxPosedFeet
+            local posedAt = pf and ik[worstK] and pf[worstK]
+            local drift = posedAt and string.format(", its target moved %.1fu since the pose (drawn early: %s, frame %.1f ms)",
+                (posedAt - ik[worstK]):Length(), tostring(bike.bmxEarlyFrame == f), FrameTime() * 1000) or ""
             bad = string.format("%s %.0fu off, pelvis %.0fu from the seat (usually %.0f), the player's origin %.0fu (usually %.0f), %.0f u/s",
-                worstK, worst, d, cur.pelvisUsual or -1, od, cur.originUsual or -1, bike:GetVelocity():Length()) .. extra
+                worstK, worst, d, cur.pelvisUsual or -1, od, cur.originUsual or -1, bike:GetVelocity():Length()) .. extra .. drift
         end
     end
     if drawn and not posed and IsValid(bike) then bad = "drawn without the pose" end

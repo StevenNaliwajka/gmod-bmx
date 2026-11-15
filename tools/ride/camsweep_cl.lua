@@ -32,6 +32,20 @@ local PASSES = {
 -- a stall the sweep's own captures cause from one the riding does (runs 12-13, 2026-11-12:
 -- one 55-65 ms frame in the 12th vehicle's second pass, whatever vehicle that was).
 local NOSHOTS = file.Exists("camsweep_noshots.txt", "DATA")
+-- HELD TO A FRAME RATE (data/camsweep_fps.txt: sp.sh lowfps). fps_max is the client's, and
+-- the probe's commands run on the server's console, so the "30 fps" sweep ran at ~280 fps
+-- (a riding median of 3.6 ms, GPU gate runs 14-26). Each frame waits out its share of
+-- 1/FPS here instead: a CPU that cannot keep up, which is what a weak PC is.
+local HOLD_FPS = tonumber(file.Read("camsweep_fps.txt", "DATA") or "")
+hook.Remove("PostRender", "camsweep_hold")
+if HOLD_FPS and HOLD_FPS > 0 then
+    local per, last = 1 / HOLD_FPS, SysTime()
+    hook.Add("PostRender", "camsweep_hold", function()
+        local due = last + per
+        while SysTime() < due do end
+        last = SysTime()
+    end)
+end
 local ORBIT = 300          -- degrees a second the mouse turns the view
 local BAD_MISS = 7         -- units: a fist or foot this far off its grip or pedal
 local BONE = { rFoot = "ValveBiped.Bip01_R_Foot", lFoot = "ValveBiped.Bip01_L_Foot" }

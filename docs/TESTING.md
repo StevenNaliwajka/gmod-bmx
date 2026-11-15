@@ -427,6 +427,16 @@ crouch), and its target had not moved since the pose (the new note): a reach the
 short of on the client's player model, where kleiner's offline stays on its mark (0.0 u
 through the whole stroke). Kept in bench-out.14.
 
+**Run 26** (16:06-16:40, 2026-11-15, the whole gate on 55a4ce7) held 289 of 291. EVERY first
+spawn passed, in both sessions (the build waits out a ride's first frames: the mini's 20.9 ms
+is gone). Left: one 63.7 ms frame on the e-moto (1.8 ms of BMX Lua, nothing building, the
+ten-minute frame's look) at 674 s into the session, outside the 600 +-15 s it is set aside
+in; and the "30 fps" scooter, which turns out never to have run at 30 fps: the riding
+median of the low-fps sweep is 3.6 ms in every run since 14 (fps_max went to the server's
+console, and is the client's). The sweep now holds itself to the rate (data/camsweep_fps.txt,
+a frame waits out its 1/FPS). The scooter's frame (rFoot 12 u, push 0.68) was a full-rate
+frame whose pose fell short of a target that had not moved. Kept in bench-out.15.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

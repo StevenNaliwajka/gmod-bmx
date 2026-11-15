@@ -171,9 +171,11 @@ case "${1:-}" in
   lowfps)
     # The camera sweep with the game held to FPS: what a weak PC draws. The rider's pose, the
     # carried targets and every smoothing must hold at a long frame as they do at a short one.
-    cmd "fps_max ${2:-30}"; sleep 1
+    # (held by the sweep's own client code, data/camsweep_fps.txt: fps_max set from the
+    # probe's server console never reached the client, and the sweep ran at full rate)
+    r "echo ${2:-30} > $G/data/camsweep_fps.txt"; cmd "fps_max ${2:-30}"; sleep 1
     "$0" camsweep "${3:-2}" "${4:-}"
-    cmd "fps_max 300" ;;
+    r "rm -f $G/data/camsweep_fps.txt"; cmd "fps_max 300" ;;
   p0)
     # the point-mapping micro-benchmark (tools/bench/p0bench_cl.lua)
     focus
@@ -184,7 +186,7 @@ case "${1:-}" in
     r "cat $G/data/probe/p0.txt" ;;
   shots) mkdir -p "$2"; r "cd $G/data/camsweep && tar cf - *.jpg" | tar xf - -C "$2"; ls "$2" | wc -l ;;
   restore)
-    r "pkill -f GarrysMod/hl2_linu[x]; sleep 2; pkill -9 -f GarrysMod/hl2_linu[x]; rm -rf $G/addons/gmod-bmx-dev $G/addons/bmxprobe $G/data/camsweep_cl.txt $G/data/realprobe_cl.txt; if [ -d $WS.clean-aside ]; then rmdir $WS 2>/dev/null; mv $WS.clean-aside $WS; fi; [ -d $WS/.$BMX_WS.aside ] && mv $WS/.$BMX_WS.aside $WS/$BMX_WS; true"
+    r "pkill -f GarrysMod/hl2_linu[x]; sleep 2; pkill -9 -f GarrysMod/hl2_linu[x]; rm -rf $G/addons/gmod-bmx-dev $G/addons/bmxprobe $G/data/camsweep_cl.txt $G/data/realprobe_cl.txt $G/data/camsweep_fps.txt; if [ -d $WS.clean-aside ]; then rmdir $WS 2>/dev/null; mv $WS.clean-aside $WS; fi; [ -d $WS/.$BMX_WS.aside ] && mv $WS/.$BMX_WS.aside $WS/$BMX_WS; true"
     echo restored ;;
   *) sed -n '2,15p' "$0"; exit 2 ;;
 esac

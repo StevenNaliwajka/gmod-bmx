@@ -65,7 +65,10 @@ rcon "sv_cheats 1" >/dev/null
 scp -q "$HERE/netdemo_sv.lua" "$SV:$SG/data/netdemo_sv.txt" && s "chown gmod:gmod $SG/data/netdemo_sv.txt"
 
 log "the client connects to $SV_ADDR"
-scp -q "$HERE/latency_cl.lua" "$CL:$G/data/latency_cl.txt"
+# BMX_LAT_ROWS (Lua, e.g. "{ {100,1,0.3,0.1}, {100,1,0.5,0.03} }"): an experiment's rows,
+# { net_fakelag, bmx_predict [, lead cap s, ease s] }, in place of the table's own
+{ [ -n "${BMX_LAT_ROWS:-}" ] && echo "LAT_ROWS = ${BMX_LAT_ROWS}"; cat "$HERE/latency_cl.lua"; } > "/tmp/latency_cl.$$.lua"
+scp -q "/tmp/latency_cl.$$.lua" "$CL:$G/data/latency_cl.txt"; rm -f "/tmp/latency_cl.$$.lua"
 c "rm -f $G/data/probe/latency.txt"
 BMX_SP_CONNECT="$SV_ADDR" "$HERE/sp.sh" launch >/dev/null 2>&1 &
 joined=0

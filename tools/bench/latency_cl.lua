@@ -20,8 +20,10 @@ P.ProbeReport = function(...)
     local a, b = pr and P.Summary(pr.results), shown and P.Summary(shown.results)
     local row = ROWS[L.i] or { -1, -1 }
     local function f(s) return s and string.format("median %.0f min %.0f max %.0f n %d", s.median, s.min, s.max, s.n) or "none" end
-    file.Append(OUT, string.format("net_fakelag %d bmx_predict %d ping %d | networked %s | drawn %s\n",
-        row[1], row[2], LocalPlayer():Ping(), f(a), f(b)))
+    local interp = GetConVar("cl_interp") and GetConVar("cl_interp"):GetFloat() or -1
+    file.Append(OUT, string.format("net_fakelag %d bmx_predict %d ping %d | networked %s | drawn %s | lead cap %.2f ease %.2f interp %.3f horizon %.3f\n",
+        row[1], row[2], LocalPlayer():Ping(), f(a), f(b), P.MAX_HORIZON, P.EASE_TIME, interp,
+        P.Horizon((LocalPlayer():Ping() or 0) / 1000, interp)))
     L.phase, L.t = "next", RealTime()
     return L.report(...)
 end
@@ -50,12 +52,16 @@ hook.Add("Think", "bmx_latdemo", function()
             key("forward", false)
             hook.Remove("Think", "bmx_latdemo")
             RunConsoleCommand("net_fakelag", "0")
+            if L.keep then P.MAX_HORIZON, P.EASE_TIME = L.keep[1], L.keep[2] end
             P.ProbeReport = L.report
             file.Append(OUT, "DONE\n")
             return
         end
         RunConsoleCommand("net_fakelag", tostring(row[1]))
         RunConsoleCommand("bmx_predict", tostring(row[2]))
+        -- (an experiment's row may set the lead's cap and ease, rows 3 and 4: put back after)
+        L.keep = L.keep or { P.MAX_HORIZON, P.EASE_TIME }
+        P.MAX_HORIZON, P.EASE_TIME = row[3] or L.keep[1], row[4] or L.keep[2]
         L.phase, L.t = "settle", now
     elseif L.phase == "settle" and now - L.t > 4 then
         RunConsoleCommand("bmx_latency_probe", tostring(TRIALS))

@@ -5,6 +5,20 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.4.6 -- on the Workshop 2026-11-16
+
+**Smoother at low frame rates**
+
+- **Hands and feet stay on the bike at 30 fps.** When your game runs slowly, your own
+  bike is now placed before your rider is posed on it, so the grips and pedals are where
+  this frame drew them. On five bikes the hands were drawn 7-9 units off the grips at a
+  steady 30 fps; now under 2.
+- **The scooter's kicking foot meets the ground at 30 fps** instead of kicking the air
+  beside it.
+- **The mini's first ride no longer hitches.** Model building waits out the first three
+  frames of a ride, so the rider's first pose has the frame to itself (20.9 ms -> under
+  the 16.7 ms of a 60 fps frame).
+
 ## 1.4.5 -- on the Workshop 2026-11-12
 
 **Faster first rides**

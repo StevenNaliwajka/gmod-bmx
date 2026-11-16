@@ -1267,6 +1267,8 @@ function BMX.SolveRiderIK(ply, targets, bike)
     ply.bmxPosedFeet = ply.bmxPosedFeet or {}
     ply.bmxPosedFeet.rFoot = targets.rFoot and Vector(targets.rFoot) or nil
     ply.bmxPosedFeet.lFoot = targets.lFoot and Vector(targets.lFoot) or nil
+    ply.bmxPosedFeet.rHand = targets.rHand and Vector(targets.rHand) or nil
+    ply.bmxPosedFeet.lHand = targets.lHand and Vector(targets.lHand) or nil
     ply.bmxPosedFeet.early = bike and bike.bmxEarlyDraw and true or false
     ply.bmxSolvedAt = CurTime()
     if not ply.bmxIK then
@@ -2038,7 +2040,14 @@ function BMX.PoseRider(ply)
     -- passes it had none in before, GPU gate run 22.)
     local ft = FrameTime()
     slowFt = slowFt + (ft - slowFt) * 0.1
-    if not stale and bike.ikTargets and bike.ikTargets.kicking and slowFt > 1 / 45 then stale = true end
+    -- And at a sustained low frame rate, the LOCAL rider's own vehicle every frame: the first
+    -- sweep truly held to 30 fps (GPU gate run 27) had hands 7-9 u off on five bikes and the
+    -- board's kicking foot 8 u (its target 7.6 u on from where it was posed). Another
+    -- rider's vehicle is carried, as before: a crowd at 30 fps must not draw twice.
+    if not stale and bike.ikTargets and slowFt > 1 / 45
+        and (bike.ikTargets.kicking or (LocalPlayer and ply == LocalPlayer())) then
+        stale = true
+    end
     if stale and not bike.bmxEarlyDraw and bike.Draw then
         bike.bmxEarlyDraw = true
         local ok, err = pcall(bike.Draw, bike)

@@ -157,6 +157,14 @@ def judge(run, baseline, budget=BUDGET):
                     check(f"camsweep {veh}: the engine's ten-minute frame (reported, not judged)", True,
                           f"{v['engine10']:.1f} ms")
 
+    # ONE ENGINE FRAME A SWEEP is set aside (camsweep_cl.lua); a second is not the engine's
+    # once-a-session stall, and fails (the owner's call, 2026-11-16)
+    for key in ("camsweep", "lowfps"):
+        set_aside = [veh for veh, v in (run.get(key) or {}).items() if v.get("engine10")]
+        if set_aside:
+            check(f"{key}: at most one engine frame set aside", len(set_aside) <= 1,
+                  "on " + ", ".join(sorted(set_aside)))
+
     # BEST OF TWO (spawns2.txt, a second fresh session, when it ran): a kind fails only when
     # both of its first rides went over -- one frame's spread is a different kind each run.
     second = run.get("spawns2") or {}

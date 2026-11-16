@@ -97,6 +97,16 @@ class Judge(unittest.TestCase):
                    spawns=SPAWNS, features=FEAT)
         self.assertEqual(failed(gate.judge(r, self.base)), ["camsweep stock: longest riding frame"])
 
+    def test_one_engine_frame_a_sweep_is_set_aside_and_a_second_fails(self):
+        tag = " | engine ten-minute frame 61.0 ms (not judged)"
+        one = CAM.replace("max 12.3 | pictures 78", "max 12.3 | pictures 78" + tag, 1)
+        r = run_of(camsweep=one, spawns=SPAWNS, features=FEAT)
+        self.assertEqual(failed(gate.judge(r, self.base)), [])
+        two = one.replace("max 12.1 | pictures 19", "max 12.1 | pictures 19" + tag, 1)
+        r = run_of(camsweep=two, spawns=SPAWNS, features=FEAT)
+        self.assertEqual(sum(1 for v in r["camsweep"].values() if v.get("engine10")), 2)
+        self.assertEqual(failed(gate.judge(r, self.base)), ["camsweep: at most one engine frame set aside"])
+
     def test_a_spawn_hitch_fails(self):
         r = run_of(camsweep=CAM, spawns=SPAWNS.replace(">16.7ms 0 >33ms 0 | build 160", ">16.7ms 1 >33ms 0 | build 160"),
                    features=FEAT)

@@ -388,6 +388,47 @@ T.test("client perf: a scooter kicking at 30 fps keeps the kicking foot on this 
     T.between(w30, 0, 2, "the kicking foot at 30 fps on its mark (4.4 u off, posed from the last frame's targets) (u)")
 end)
 
+T.test("client perf: at 30 fps your own rider's hands are on this frame's grips through a hard turn", function()
+    -- Posed before the bike is drawn, from last frame's targets: at a real 30 fps the hands
+    -- were 7-9 u off on five bikes (the first truly held low-fps sweep, GPU gate run 27).
+    local function worstHand(dt)
+        local sv, world = F.server()
+        local cl = F.client(world)
+        local E, B = cl.env, cl.env.BMX
+        world.dt = dt
+        local ply = cl:player("Rider")
+        ply._skel = SR.load("kleiner_seated")
+        cl.localPlayer = ply
+        local ent = cl:clientEntity(B.ClassFor("stock"))
+        local C = ent:Cfg()
+        ent:SetPos(E.Vector(0, 0, C.Wheel.radius)); ent:SetGrounded(true)
+        if ent.SetPedalling then ent:SetPedalling(true) end
+        ent:SetSpeedUPS(200); ent._vel = ent:GetForward() * 200
+        local pod = seatPod(cl, ent, B.SeatFor(ent:Bike(), C, "rider"))
+        ent:SetPod(pod); ent:SetDriver(ply); ply._vehicle = pod
+        cl.eyePos = ply:GetPos() + E.Vector(-110, 0, 60)
+        local worst, n = 0, 0
+        for i = 1, 90 do
+            world.time = world.time + dt
+            world.frame = (world.frame or 0) + 1
+            -- the bars swing hard, side to side, twice a second
+            if ent.SetSteer then ent:SetSteer(0.5 * math.sin(world.time * 4 * math.pi)) end
+            E.hook.Run("PrePlayerDraw", ply); E.hook.Run("PostPlayerDraw", ply)
+            ent:Draw()
+            if i > 30 then
+                local m = limbMiss(B, ply, ent.ikTargets)
+                if m then n = n + 1 worst = math.max(worst, m) end
+            end
+        end
+        T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+        T.ok(n > 30, "frames measured: " .. n)
+        return worst
+    end
+    local w30 = worstHand(1 / 30)
+    if os.getenv("BMX_TRACE") then print(string.format("    hands and feet off their marks at 30 fps: worst %.2f u", w30)) end
+    T.between(w30, 0, 2, "your own rider at 30 fps, every fist and foot on this frame's mark (u)")
+end)
+
 T.test("client perf: a scooter drawn twice in one frame sets the same targets both times", function()
     -- A slow frame mid-kick draws the vehicle before the rider is posed, and again in its
     -- own turn: the kick's planted foot and lift-off are worked out once a frame, or the

@@ -437,6 +437,16 @@ console, and is the client's). The sweep now holds itself to the rate (data/cams
 a frame waits out its 1/FPS). The scooter's frame (rFoot 12 u, push 0.68) was a full-rate
 frame whose pose fell short of a target that had not moved. Kept in bench-out.15.
 
+**Run 28** (00:28-01:02, 2026-11-16, the whole gate on 8221a35): **293 of 293, the gate
+passes.** The low-fps sweep truly held to 30 fps (every vehicle's riding median 33.3 ms,
+the first run to be) with no bad frame on any vehicle, the full-rate sweep with none either;
+every first spawn under 16.7 ms; the one engine frame of the session (58.7 ms on the e-bike)
+set aside, as decided. What got it there since run 25: model builds wait out a ride's first
+frames (55a4ce7), the low-fps sweep held to its rate (6963f8c; it had run at ~280 fps), and
+the local rider's vehicle drawn before the pose at a sustained low frame rate (8221a35).
+Run 27, the same day: prediction holds at high ping, the turn drawn in 92-93 ms at 100 and
+150 ms of fake lag against 221-265 networked (bench-out.15 for run 26). Kept in bench-out.16.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

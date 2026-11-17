@@ -55,7 +55,7 @@ end
 --------------------------------------------------------------------------
 local function startFlip(ent, st, b, id, now)
     b.flip = { id = id, def = B.Flips[id], t0 = now, nollie = b.nollie,
-               switch = b.switch, fakie = b.fakie }
+               switch = b.switch, fakie = b.fakie, stance = B.Stance(b.goofy, b.switch) }
     hook.Run("BMX_BoardFlipStarted", ent, ent:GetDriver(), id)
 end
 
@@ -83,7 +83,7 @@ local function advanceFlip(b, now)
         b.flipRoll, b.flipYaw, b.flipPitch = 0, 0, 0
         return
     end
-    b.flipRoll, b.flipYaw, b.flipPitch = B.FlipAngles(f.def, now - f.t0)
+    b.flipRoll, b.flipYaw, b.flipPitch = B.FlipAnglesFor(f.def, now - f.t0, f.stance)
 end
 
 --------------------------------------------------------------------------

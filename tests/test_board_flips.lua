@@ -338,3 +338,69 @@ T.test("flip ride: the mouse flick picks a flip too, when it is on", function()
     sv:run(0.3)
     T.ok(e.st.board.flip and e.st.board.flip.id == "kickflip", "a flick left is a kickflip")
 end)
+
+--------------------------------------------------------------------------
+-- WHICH WAY THE DECK TURNS, against the side the rider faces (a Workshop player,
+-- 2026-11-16: the shove-its and the 360 flip went frontside, and the tricks only
+-- matched their names riding switch). The rider faces where the seat's +Y is turned
+-- to (Tune.seatYaw); the toe side is that side. A kickflip's top rolls toward the
+-- toes, a heelflip's toward the heels; a pop shove-it, a 360 flip and a varial
+-- kickflip swing the tail behind, to the heels (backside); a front shove-it, a
+-- hardflip and a varial heelflip swing it to the toes (frontside). Mirrored for the
+-- other foot forward, whichever way that came about (goofy, or regular switch).
+--------------------------------------------------------------------------
+T.test("flips turn the right way for the side the rider faces, regular, goofy and switch", function()
+    local sv = F.server()
+    local B = sv.env.BMX.Board
+    local function face(yawDeg)          -- the seat's +Y, turned by its yaw about Z
+        local a = math.rad(yawDeg)
+        return -math.sin(a), math.cos(a)
+    end
+    local want = {
+        kickflip = { top = "toes" }, heelflip = { top = "heels" },
+        popshove = { tail = "heels" }, frontshove = { tail = "toes" },
+        flip360 = { top = "toes", tail = "heels" }, varialkick = { top = "toes", tail = "heels" },
+        varialheel = { top = "heels", tail = "toes" }, hardflip = { top = "toes", tail = "toes" },
+    }
+    local cases = {
+        { "regular", B.Stance(false, false), B.Tune.seatYaw.regular },
+        { "goofy", B.Stance(true, false), B.Tune.seatYaw.goofy },
+        { "regular switch", B.Stance(false, true), B.Tune.seatYaw.goofy },
+        { "goofy switch", B.Stance(true, true), B.Tune.seatYaw.regular },
+    }
+    for _, c in ipairs(cases) do
+        local label, stance, yaw = c[1], c[2], c[3]
+        local fx, fy = face(yaw)
+        for id, w in pairs(want) do
+            local r, y = B.FlipAnglesFor(B.Flips[id], 0.02, stance)
+            -- the top (0,0,1) rolled about +X by r moves toward (0,-sin r); the tail
+            -- (-1,0,0) yawed about +Z by y moves toward (0,-sin y)
+            if w.top then
+                local toward = (0 * fx + (-math.sin(r)) * fy) > 0 and "toes" or "heels"
+                T.eq(toward, w.top, label .. " " .. id .. ": the deck's top rolls to the " .. w.top)
+            end
+            if w.tail then
+                local toward = (0 * fx + (-math.sin(y)) * fy) > 0 and "toes" or "heels"
+                T.eq(toward, w.tail, label .. " " .. id .. ": the tail swings to the " .. w.tail)
+            end
+        end
+    end
+end)
+
+T.test("flip ride: a goofy rider's kickflip rolls the deck the other way to a regular one's", function()
+    local rolls = {}
+    for _, goofy in ipairs({ false, true }) do
+        local sv, e = ridden()
+        local ply = e:GetDriver()
+        if sv.env.IsValid(ply) and ply.ConCommand then ply:ConCommand("bmx_stance " .. (goofy and "goofy" or "regular")) end
+        e.st.board.goofy = goofy
+        press(e, { throttle = 1, fwd = 1 })
+        sv:run(3)
+        press(e, { jump = true })
+        sv:run(0.4)
+        press(e, { side = -1 })
+        sv:run(0.12)
+        rolls[#rolls + 1] = e.st.board.flipRoll or 0
+    end
+    T.ok(rolls[1] > 0.1 and rolls[2] < -0.1, string.format("regular %.2f, goofy %.2f", rolls[1], rolls[2]))
+end)

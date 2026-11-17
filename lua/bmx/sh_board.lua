@@ -408,6 +408,17 @@ end
 -- the cross axis (the impossible, which wraps the board round the back foot).
 -- Angles are the total each turns through, radians; `dur` how long it takes.
 --
+-- WHICH WAY, for a REGULAR rider (left foot forward, facing the deck's right, -Y:
+-- the toe side). A positive roll takes the deck's top toward -Y: the kickflip, whose
+-- flick pushes the toe edge down. A positive yaw swings the tail toward -Y, the toes:
+-- frontside. So the pop shove-it (the back foot scooping the tail behind, to the
+-- heels: backside) is a NEGATIVE yaw, and so are the 360 flip's and the varial
+-- kickflip's; the front shove-it, hardflip and varial heelflip go frontside. Until
+-- 1.4.7 the yaws were the other way round, and none of it followed the stance: a
+-- Workshop player (2026-11-16) saw the shove-its and the 360 flip go frontside, and
+-- the tricks only matching their names riding switch. A goofy or switch rider faces
+-- the other side, so B.FlipSign mirrors the roll and the yaw (B.FlipAnglesFor).
+--
 -- THE CATCH. Land with the deck within Tune.catchAngle (20 degrees) of flat and
 -- wheels down, or bail. "Flat" for a roll or pitch is a whole turn and for yaw a
 -- half turn (a deck is the same either way round), so the catch window is the
@@ -420,17 +431,17 @@ B.Flips = {
     heelflip   = { name = "Heelflip",        w = false, s = false, a = false, d = true,
                    roll = -TAU, yaw = 0,   pitch = 0,   dur = 0.42, points = 300, input = "D after the pop" },
     popshove   = { name = "Pop Shove-it",    w = false, s = true,  a = false, d = false,
-                   roll = 0,    yaw = PI,  pitch = 0,   dur = 0.36, points = 200, input = "S after the pop" },
+                   roll = 0,    yaw = -PI, pitch = 0,   dur = 0.36, points = 200, input = "S after the pop" },
     frontshove = { name = "Front Shove-it",  w = true,  s = false, a = false, d = false,
-                   roll = 0,    yaw = -PI, pitch = 0,   dur = 0.36, points = 200, input = "W after the pop" },
+                   roll = 0,    yaw =  PI, pitch = 0,   dur = 0.36, points = 200, input = "W after the pop" },
     flip360    = { name = "360 Flip",        w = false, s = true,  a = true,  d = false,
-                   roll =  TAU, yaw = TAU, pitch = 0,   dur = 0.55, points = 600, input = "S + A after the pop" },
+                   roll =  TAU, yaw = -TAU, pitch = 0,  dur = 0.55, points = 600, input = "S + A after the pop" },
     varialheel = { name = "Varial Heelflip", w = false, s = true,  a = false, d = true,
-                   roll = -TAU, yaw = -PI, pitch = 0,   dur = 0.46, points = 400, input = "S + D after the pop" },
+                   roll = -TAU, yaw =  PI, pitch = 0,   dur = 0.46, points = 400, input = "S + D after the pop" },
     varialkick = { name = "Varial Kickflip", w = true,  s = false, a = false, d = true,
-                   roll =  TAU, yaw = PI,  pitch = 0,   dur = 0.46, points = 400, input = "W + D after the pop" },
+                   roll =  TAU, yaw = -PI, pitch = 0,   dur = 0.46, points = 400, input = "W + D after the pop" },
     hardflip   = { name = "Hardflip",        w = true,  s = false, a = true,  d = false,
-                   roll =  TAU, yaw = -PI, pitch = 0,   dur = 0.50, points = 450, input = "W + A after the pop" },
+                   roll =  TAU, yaw =  PI, pitch = 0,   dur = 0.50, points = 450, input = "W + A after the pop" },
     impossible = { name = "Impossible",      w = true,  s = true,  a = false, d = false,
                    roll = 0,    yaw = 0,   pitch = TAU, dur = 0.50, points = 500, input = "W + S after the pop" },
 }
@@ -470,6 +481,17 @@ function B.FlipAngles(flip, t)
     local x = BMX.Clamp((t or 0) / flip.dur, 0, 1)
     local e = 1 - (1 - x) * (1 - x)
     return flip.roll * e, flip.yaw * e, flip.pitch * e
+end
+
+-- The flip as the deck turns for a rider in `stance` (+1 left foot forward, -1 right:
+-- B.Stance): a right-foot-forward rider's toes are on the other side, so the roll
+-- and the yaw go the other way. The pitch (the impossible) wraps round the back foot
+-- either way.
+function B.FlipSign(stance) return (stance or 1) >= 0 and 1 or -1 end
+function B.FlipAnglesFor(flip, t, stance)
+    local r, y, p = B.FlipAngles(flip, t)
+    local k = B.FlipSign(stance)
+    return r * k, y * k, p
 end
 
 -- How far from a flat landing the deck is at time `t`: the largest, over its three

@@ -216,8 +216,8 @@ T.test("board flips: the flick goes off the edge the deck's top rolls toward, th
     T.ok(math.abs(kick[2]) < 0.5, "the back foot only pops")
     local shove = flipFeet(B, "popshove")
     local front = flipFeet(B, "frontshove")
-    T.ok(shove[2] < -2.5, "a pop shove-it (yaw +, tail toward -Y): the back foot scoops with the tail: " .. shove[2])
-    T.ok(front[2] > 2.5, "a front shove-it the other way: " .. front[2])
+    T.ok(shove[2] > 2.5, "a pop shove-it (yaw -, tail toward +Y, a regular rider's heels: backside): the back foot scoops with the tail: " .. shove[2])
+    T.ok(front[2] < -2.5, "a front shove-it the other way: " .. front[2])
     local nk = flipFeet(B, "kickflip", true)
     T.ok(nk[2] < -3, "a nollie kickflip is flicked by the back foot: " .. nk[2])
     for _, id in ipairs(B.FlipOrder) do

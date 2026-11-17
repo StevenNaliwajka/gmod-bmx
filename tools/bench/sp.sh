@@ -20,6 +20,8 @@
 #   tools/bench/sp.sh shots DIR       copy the camera sweep's pictures here
 #   tools/bench/sp.sh riders [N]      N bot riders (8) in view, then behind the camera: client + server cost
 #                                     (needs a session launched with BMX_SP_MAXPLAYERS > N: a listen server)
+#   tools/bench/sp.sh camshake [KINDS]  the camera's shake while riding: each kind straight, turning,
+#                                     in a slalom and still, smoothing on and off, full rate and 30 fps
 #   tools/bench/sp.sh lowfps [FPS] [passes]   the camera sweep with the game held to FPS (30), a weak PC
 #   tools/bench/sp.sh ready           wait for the client VM to answer ssh and its Steam to be up
 #   tools/bench/sp.sh restore         quit, remove what install added, put the Workshop copy back
@@ -168,6 +170,17 @@ case "${1:-}" in
     cmd 'lua include("riders_sv.lua")'
     for _ in $(seq 1 40); do r "grep -q DONE $G/data/probe/riders.txt 2>/dev/null" && break; sleep 3; done
     r "grep -v DONE $G/data/probe/riders.txt" ;;
+  camshake)
+    # tools/bench/camshake_{sv,cl}.lua: the third-person camera's shake (Workshop reports 11-16)
+    focus
+    r "rm -f $G/data/probe/camshake.txt"
+    scp -q "$HERE/camshake_sv.lua" "$CL:$G/data/camshake_sv.txt"
+    { [ -n "${2:-}" ] && echo "CAMSHAKE_KINDS = { \"$(echo "$2" | sed 's/,/", "/g')\" }"; cat "$HERE/camshake_cl.lua"; } | r "cat > $G/data/camshake_cl.txt"
+    cmd 'lua RunString(file.Read("camshake_sv.txt","DATA"),"camshake_sv")'
+    sleep 2
+    cmd 'lua BroadcastLua([[RunString(file.Read("camshake_cl.txt","DATA"),"camshake_cl")]])'
+    for _ in $(seq 1 600); do r "grep -q DONE $G/data/probe/camshake.txt 2>/dev/null" && break; sleep 3; done
+    r "cat $G/data/probe/camshake.txt" ;;
   lowfps)
     # The camera sweep with the game held to FPS: what a weak PC draws. The rider's pose, the
     # carried targets and every smoothing must hold at a long frame as they do at a short one.

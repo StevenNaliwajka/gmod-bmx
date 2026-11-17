@@ -64,6 +64,17 @@ for _ in $(seq 1 30); do rcon "echo up" >/dev/null 2>&1 && break; sleep 2; done
 rcon "sv_cheats 1" >/dev/null
 scp -q "$HERE/netdemo_sv.lua" "$SV:$SG/data/netdemo_sv.txt" && s "chown gmod:gmod $SG/data/netdemo_sv.txt"
 
+# BMX_NET_PROBE=camshake: the camera shake probe (camshake_{sv,cl}.lua) in place of the
+# latency table, at BMX_NET_LAG ms of faked ping (0), its rows CAMSHAKE_KINDS (BMX_NET_KINDS)
+PROBE="${BMX_NET_PROBE:-latency}"
+if [ "$PROBE" = camshake ]; then
+  scp -q "$HERE/camshake_sv.lua" "$SV:$SG/data/camshake_sv.txt" && s "chown gmod:gmod $SG/data/camshake_sv.txt"
+  { echo "CAMSHAKE_LAG = ${BMX_NET_LAG:-0}"; echo "CAMSHAKE_PASSES = { {0,1,0}, {0,0,0}, {30,1,0}, {30,0,0} }"
+    [ -n "${BMX_NET_KINDS:-}" ] && echo "CAMSHAKE_KINDS = { \"$(echo "$BMX_NET_KINDS" | sed 's/,/", "/g')\" }"
+    cat "$HERE/camshake_cl.lua"; } > "/tmp/camshake_cl.$$.lua"
+  scp -q "/tmp/camshake_cl.$$.lua" "$CL:$G/data/camshake_cl.txt"; rm -f "/tmp/camshake_cl.$$.lua"
+  c "rm -f $G/data/probe/camshake.txt"
+fi
 log "the client connects to $SV_ADDR"
 # BMX_LAT_ROWS (Lua, e.g. "{ {100,1,0.3,0.1}, {100,1,0.5,0.03} }"): an experiment's rows,
 # { net_fakelag, bmx_predict [, lead cap s, ease s] }, in place of the table's own
@@ -79,6 +90,14 @@ done
 [ "$joined" = 1 ] || { log "the client never joined (Steam validation? see the client's console.log)"; c "tail -20 $G/console.log"; exit 2; }
 sleep 20
 "$HERE/sp.sh" focus
+if [ "$PROBE" = camshake ]; then
+  log "the camera shake probe (~2 min a kind)"
+  rcon 'lua_run RunString(file.Read("camshake_sv.txt","DATA"),"camshake_sv")' >/dev/null
+  rcon 'lua_run for _,p in ipairs(player.GetHumans()) do p:SendLua([[RunString(file.Read("camshake_cl.txt","DATA"),"camshake_cl")]]) end' >/dev/null
+  for _ in $(seq 1 240); do c "grep -q DONE $G/data/probe/camshake.txt 2>/dev/null" && break; sleep 5; done
+  c "cat $G/data/probe/camshake.txt" | tee "$OUT/camshake.txt"
+  grep -q DONE "$OUT/camshake.txt"; exit $?
+fi
 log "seating it and riding the table (~5 min)"
 rcon 'lua_run RunString(file.Read("netdemo_sv.txt","DATA"),"netdemo")' >/dev/null
 for _ in $(seq 1 120); do c "grep -q DONE $G/data/probe/latency.txt 2>/dev/null" && break; sleep 5; done

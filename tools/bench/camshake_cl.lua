@@ -55,6 +55,21 @@ hook.Add("PostRender", "camshake_hold", function()
     last = SysTime()
 end)
 
+-- WHAT THE CAMERA WAS GIVEN, every frame: the angles the engine handed CalcView, the seat's
+-- angles and the player's own eye angles, read in BMX's own chase hook (wrapped). On the
+-- worst frames the report says whether the vehicle itself jumped or only the view did.
+local CV = hook.GetTable().CalcView or {}
+C.origChase = C.origChase or CV["BMX.ChaseCam"]
+if C.origChase then
+    hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov, ...)
+        local bike = BMX.LocalBike and BMX.LocalBike(ply)
+        local pod = bike and bike.GetPod and bike:GetPod()
+        C.given = { a = Angle(angles.p, angles.y, angles.r), eye = ply:EyeAngles(),
+            pod = IsValid(pod) and pod:GetAngles() or nil, bpos = bike and bike:GetPos() or nil }
+        return C.origChase(ply, origin, angles, fov, ...)
+    end)
+end
+
 local function pct(t, q)
     if #t == 0 then return 0 end
     local s = {}
@@ -71,13 +86,14 @@ end
 
 local function report(st)
     local s, rec = st.step, st.rec
-    local scr, ang, pos, rev, fts = {}, {}, {}, 0, {}
+    local scr, ang, pos, rev, fts, worst = {}, {}, {}, 0, {}, {}
     for i = 3, #rec do
         local a, b, c = rec[i - 2], rec[i - 1], rec[i]
         if not (a.jump or b.jump or c.jump) then
             local dx1, dy1 = b.sx - a.sx, b.sy - a.sy
             local dx2, dy2 = c.sx - b.sx, c.sy - b.sy
             scr[#scr + 1] = math.sqrt((dx2 - dx1) ^ 2 + (dy2 - dy1) ^ 2)
+            worst[#worst + 1] = { d = scr[#scr], i = i }
             if (dx1 * dx2 < 0 and math.abs(dx1) > 0.5 and math.abs(dx2) > 0.5)
                 or (dy1 * dy2 < 0 and math.abs(dy1) > 0.5 and math.abs(dy2) > 0.5) then rev = rev + 1 end
             local function d2(f) return math.AngleDifference(math.AngleDifference(c[f], b[f]), math.AngleDifference(b[f], a[f])) end
@@ -93,6 +109,18 @@ local function report(st)
         s.kind, s.fps == 0 and "max" or tostring(s.fps), s.smooth, s.fp == 1 and "1st" or "3rd", s.seg,
         rms(scr), pct(scr, 0.99), pct(scr, 1), secs > 0 and rev / secs or 0, rms(ang), pct(ang, 0.99), rms(pos), pct(pos, 0.99),
         #fts, #fts > 0 and secs / #fts * 1000 or 0, st.speed or 0))
+    -- the two worst frames over 3 px: what moved
+    table.sort(worst, function(x, y) return x.d > y.d end)
+    for k = 1, math.min(2, #worst) do
+        local w = worst[k]
+        if w.d < 3 then break end
+        local a, b, c = rec[w.i - 2], rec[w.i - 1], rec[w.i]
+        local function ad(x, y, f) return x[f] and y[f] and math.AngleDifference(y[f].y, x[f].y) or 0 end
+        local function pd(x, y) return (x.bpos and y.bpos) and (y.bpos - x.bpos):Length() or -1 end
+        local function ga(x, y, f) return (x[f] and y[f]) and string.format("%.2f/%.2f/%.2f", math.AngleDifference(y[f].p, x[f].p), math.AngleDifference(y[f].y, x[f].y), math.AngleDifference(y[f].r, x[f].r)) or "-" end
+        file.Append(OUT, string.format("    worst %.1f px (frame %d of %d, ft %.1f/%.1f ms): bike moved %.2f then %.2f u | engine angles step %s then %s | seat %s then %s | eye %s then %s\n",
+            w.d, w.i, #rec, b.ft * 1000, c.ft * 1000, pd(a, b), pd(b, c), ga(a, b, "ga"), ga(b, c, "ga"), ga(a, b, "pod"), ga(b, c, "pod"), ga(a, b, "eye"), ga(b, c, "eye")))
+    end
 end
 
 C.i, C.st = 0, nil
@@ -104,6 +132,7 @@ local function nextStep()
         holdFps = 0
         RunConsoleCommand("bmx_cam_smooth", "1") RunConsoleCommand("bmx_cam_first", "0")
         hook.Remove("Think", "camshake") hook.Remove("HUDPaint", "camshake") hook.Remove("PostRender", "camshake_hold")
+        if C.origChase then hook.Add("CalcView", "BMX.ChaseCam", C.origChase) C.origChase = nil end
         RunConsoleCommand("camshake_done")
         if CAMSHAKE_LAG then RunConsoleCommand("net_fakelag", "0") end
         file.Append(OUT, "DONE\n")
@@ -170,7 +199,9 @@ hook.Add("HUDPaint", "camshake", function()
     local sp = at:ToScreen()
     local a, o = EyeAngles(), EyePos()
     local prev = st.rec[#st.rec]
+    local g = C.given or {}
     st.rec[#st.rec + 1] = { sx = sp.x, sy = sp.y, p = a.p, y = a.y, r = a.r, o = o, ft = FrameTime(),
+        ga = g.a, pod = g.pod, eye = g.eye, bpos = g.bpos,
         jump = prev and (o - prev.o):Length() > 200 or false }
 end)
 print("[camshake] client half running, " .. #plan .. " steps")

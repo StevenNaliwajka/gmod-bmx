@@ -447,6 +447,21 @@ the local rider's vehicle drawn before the pose at a sustained low frame rate (8
 Run 27, the same day: prediction holds at high ping, the turn drawn in 92-93 ms at 100 and
 150 ms of fake lag against 221-265 networked (bench-out.15 for run 26). Kept in bench-out.16.
 
+**The camera's shake** (runs 29-31, 2026-11-17; `sp.sh camshake`, and on the game server
+`BMX_NET_PROBE=camshake netdemo.sh` with `BMX_NET_LAG`), after two Workshop players reported
+the third-person camera shaking hard, worse with smoothing on and none in first person. Each
+kind rides straight, a held turn, a slalom and still, smoothing on and off, at full rate and
+held to 30 fps; every drawn frame the vehicle's place on screen and the view's angles and
+origin, scored by their second difference (shake goes back and forth; following does not),
+with the engine's angles, the seat's and the eye's on the worst frames. **No shake found**:
+singleplayer (stock, cruiser, downhill, skateboard, scooter) and the server at 0 and 120 ms of
+fake lag (stock, downhill, skateboard), third person under 0.05 px a frame riding straight at
+full rate, no reversals anywhere with smoothing on. The largest steps are the slalom at 30 fps
+with smoothing off (6-9 px, the view bolted to the bike's own swing: what smoothing is for).
+One 13 px single frame each on two kinds in run 30 did not come back in run 31. Not yet ridden:
+rough ground, another addon's camera (one reporter runs a Roblox camera addon), a player's
+real connection; the replies ask.
+
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a
 straight line and fills docs/TUNING.md's latency table: `net_fakelag` 0 / 50 / 100 / 150

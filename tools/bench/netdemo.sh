@@ -45,7 +45,10 @@ reach() {
   c "python3 -c \"import socket,sys;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);h,p='${SV_ADDR%:*}',int('${SV_ADDR##*:}');[s.sendto(b'\\xff\\xff\\xff\\xffTSource Engine Query\\x00',(h,p)) for _ in (1,)];s.recvfrom(1400);print('ok')\"" 2>/dev/null | grep -q ok
 }
 log "checking the client reaches $SV_ADDR (udp)"
-if ! reach; then
+# (a few tries: right after a previous demo put the server back, it is still restarting,
+# and the first run of two, 2026-11-17, read that as no path)
+ok=0; for _ in $(seq 1 12); do reach && { ok=1; break; }; sleep 10; done
+if [ "$ok" != 1 ]; then
   log "the client ($CL) gets no answer from $SV_ADDR over udp: the router has no path from its network"
   log "to the game server (MGMT Config/service-needs.json declares paths). Not run."
   trap - EXIT

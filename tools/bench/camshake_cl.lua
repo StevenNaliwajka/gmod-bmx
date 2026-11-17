@@ -13,7 +13,7 @@
 CAMSHAKE_CL = CAMSHAKE_CL or {}
 local C = CAMSHAKE_CL
 local KINDS = CAMSHAKE_KINDS or { "stock", "cruiser", "dh", "skateboard", "scooter" }
-local SEG = { { "straight", 4 }, { "turn", 4 }, { "slalom", 4.2 }, { "still", 3 } }
+local SEG = { { "straight", 4 }, { "turn", 4 }, { "slalom", 4.2 }, { "bumps", 4 }, { "still", 3 } }
 local SETTLE = 1.2
 local OUT = "probe/camshake.txt"
 file.CreateDir("probe")
@@ -30,7 +30,7 @@ for _, k in ipairs(KINDS) do
     plan[#plan + 1] = { seat = k }
     for _, p in ipairs(PASSES) do
         for _, s in ipairs(SEG) do
-            plan[#plan + 1] = { kind = k, fps = p[1], smooth = p[2], fp = p[3], seg = s[1], len = s[2] }
+            plan[#plan + 1] = { kind = k, fps = p[1], smooth = p[2], fp = p[3], other = p[4], seg = s[1], len = s[2] }
         end
     end
 end
@@ -61,13 +61,14 @@ end)
 local CV = hook.GetTable().CalcView or {}
 C.origChase = C.origChase or CV["BMX.ChaseCam"]
 if C.origChase then
-    hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov, ...)
+    C.wrapped = function(ply, origin, angles, fov, ...)
         local bike = BMX.LocalBike and BMX.LocalBike(ply)
         local pod = bike and bike.GetPod and bike:GetPod()
         C.given = { a = Angle(angles.p, angles.y, angles.r), eye = ply:EyeAngles(),
             pod = IsValid(pod) and pod:GetAngles() or nil, bpos = bike and bike:GetPos() or nil }
         return C.origChase(ply, origin, angles, fov, ...)
-    end)
+    end
+    hook.Add("CalcView", "BMX.ChaseCam", C.wrapped)
 end
 
 local function pct(t, q)
@@ -106,9 +107,13 @@ local function report(st)
     for _, f in ipairs(fts) do secs = secs + f end
     file.Append(OUT, string.format(
         "%-10s fps %-3s smooth %d %s %-8s | screen d2 rms %5.2f p99 %6.2f max %6.2f px | reversals %5.1f/s | view ang d2 rms %5.3f p99 %6.3f deg | origin d2 rms %5.2f p99 %6.2f u | frames %d ft %.1f ms | speed %3.0f\n",
-        s.kind, s.fps == 0 and "max" or tostring(s.fps), s.smooth, s.fp == 1 and "1st" or "3rd", s.seg,
+        s.kind, s.fps == 0 and "max" or tostring(s.fps), s.smooth, s.other == 2 and "bth" or s.other == 1 and "oth" or (s.fp == 1 and "1st" or "3rd"), s.seg,
         rms(scr), pct(scr, 0.99), pct(scr, 1), secs > 0 and rev / secs or 0, rms(ang), pct(ang, 0.99), rms(pos), pct(pos, 0.99),
         #fts, #fts > 0 and secs / #fts * 1000 or 0, st.speed or 0))
+    if s.other == 2 then
+        file.Append(OUT, string.format("    other cameras answered %d of %d frames; stepped aside: %s\n", C.otherAnswered or 0, #rec,
+            table.concat(BMX.CameraSteppedAside or {}, ", ")))
+    end
     -- the two worst frames over 3 px: what moved
     table.sort(worst, function(x, y) return x.d > y.d end)
     for k = 1, math.min(2, #worst) do
@@ -132,6 +137,8 @@ local function nextStep()
         holdFps = 0
         RunConsoleCommand("bmx_cam_smooth", "1") RunConsoleCommand("bmx_cam_first", "0")
         hook.Remove("Think", "camshake") hook.Remove("HUDPaint", "camshake") hook.Remove("PostRender", "camshake_hold")
+        hook.Remove("CalcView", "camshake_other")
+        for _, n in ipairs(C.otherNames or {}) do hook.Remove("CalcView", n) end
         if C.origChase then hook.Add("CalcView", "BMX.ChaseCam", C.origChase) C.origChase = nil end
         RunConsoleCommand("camshake_done")
         if CAMSHAKE_LAG then RunConsoleCommand("net_fakelag", "0") end
@@ -144,9 +151,45 @@ local function nextStep()
         return
     end
     holdFps = s.fps
+    -- ANOTHER ADDON'S THIRD-PERSON CAMERA (a pass's 4th field): the usual kind, which wins
+    -- the CalcView call and follows the player's eye from behind with its own easing. BMX's
+    -- chase camera is out of the way for the pass. Shake here is the player's own position
+    -- (seated on a BMX vehicle) jittering, which every such addon would show.
+    hook.Remove("CalcView", "camshake_other")
+    for _, n in ipairs(C.otherNames or {}) do hook.Remove("CalcView", n) end
+    if s.other == 2 then
+        -- both cameras present, the order the game's own (BMX.CameraTakeOver's case): a few
+        -- names, so at least one is likely asked before BMX's
+        -- (BMX's added back AFTER them: an addon that loaded before BMX did)
+        hook.Remove("CalcView", "BMX.ChaseCam")
+        C.otherNames = { "camshake_other", "ThirdPerson", "RobloxCam", "TPCam", "zcam" }
+        for _, n in ipairs(C.otherNames) do
+            local last
+            hook.Add("CalcView", n, function(ply, origin, angles, fov)
+                C.otherAnswered = (C.otherAnswered or 0) + 1
+                local want = ply:EyePos() - angles:Forward() * 110 + Vector(0, 0, 10)
+                last = last and LerpVector(math.min(1, FrameTime() * 12), last, want) or want
+                return { origin = last, angles = angles, fov = fov, drawviewer = true }
+            end)
+        end
+        C.otherAnswered = 0
+        if C.wrapped then hook.Add("CalcView", "BMX.ChaseCam", C.wrapped) end
+    elseif s.other == 1 then
+        hook.Remove("CalcView", "BMX.ChaseCam")
+        local last
+        hook.Add("CalcView", "camshake_other", function(ply, origin, angles, fov)
+            local want = ply:EyePos() - angles:Forward() * 110 + Vector(0, 0, 10)
+            last = last and LerpVector(math.min(1, FrameTime() * 12), last, want) or want
+            return { origin = last, angles = angles, fov = fov, drawviewer = true }
+        end)
+    elseif C.wrapped then
+        hook.Add("CalcView", "BMX.ChaseCam", C.wrapped)
+    end
     RunConsoleCommand("bmx_cam_smooth", tostring(s.smooth))
     RunConsoleCommand("bmx_cam_first", tostring(s.fp))
     C.st = { step = s, t0 = RealTime(), rec = {}, speeds = 0, n = 0 }
+    -- the bumps go down in front of the vehicle as their segment starts
+    if s.seg == "bumps" then RunConsoleCommand("camshake_bumps") end
 end
 
 hook.Add("Think", "camshake", function()

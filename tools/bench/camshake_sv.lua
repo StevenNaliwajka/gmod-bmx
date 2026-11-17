@@ -31,7 +31,36 @@ concommand.Add("camshake_seat", function(ply, _, args)
     end)
 end)
 
+-- ROUGH GROUND: a strip of small frozen bumps (2-4 units high, across the path every 24-40
+-- units, a few skewed) laid ahead of the asker's vehicle for the "bumps" segment, gone after.
+concommand.Add("camshake_bumps", function(ply)
+    if not IsValid(ply) then ply = player.GetHumans()[1] end
+    for _, e in ipairs(C.bumps or {}) do if IsValid(e) then e:Remove() end end
+    C.bumps = {}
+    local bike = IsValid(C.bike) and C.bike
+    if not bike then return end
+    local f = bike:GetForward() f.z = 0 f:Normalize()
+    local r = f:Cross(Vector(0, 0, 1))
+    local p0 = bike:GetPos()
+    local x = 120
+    math.randomseed(17)
+    while x < 1400 do
+        local e = ents.Create("prop_physics")
+        e:SetModel("models/hunter/plates/plate1x3.mdl")
+        local at = p0 + f * x + r * math.Rand(-10, 10)
+        local g = util.TraceLine({ start = at + Vector(0, 0, 64), endpos = at - Vector(0, 0, 256), mask = MASK_SOLID_BRUSHONLY }).HitPos
+        e:SetPos(g + Vector(0, 0, math.Rand(0.5, 2.5)))
+        e:SetAngles(f:Angle() + Angle(math.Rand(-4, 4), 90 + math.Rand(-15, 15), math.Rand(-3, 3)))
+        e:Spawn()
+        local ph = e:GetPhysicsObject()
+        if IsValid(ph) then ph:EnableMotion(false) end
+        C.bumps[#C.bumps + 1] = e
+        x = x + math.Rand(24, 40)
+    end
+end)
+
 concommand.Add("camshake_done", function()
+    for _, e in ipairs(C.bumps or {}) do if IsValid(e) then e:Remove() end end
     if IsValid(C.bike) then C.bike:Remove() end
     hook.Remove("Think", "camshake_wrap")
 end)

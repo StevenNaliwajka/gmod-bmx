@@ -226,6 +226,9 @@ client{ name = "bmx_cam_smooth", kind = "bool", default = true, category = "came
 client{ name = "bmx_cinematic", kind = "bool", default = false, category = "camera",
     label = "Cinematic camera",
     help = "Cut between film-style shots of your ride. You can also toggle it with L while riding. It is not remembered between sessions." }
+client{ name = "bmx_cam_own", kind = "bool", default = true, category = "camera",
+    label = "BMX camera while riding",
+    help = "Use BMX's camera while you ride even if another camera addon (third person and the like) would take over. Those follow your eye, which leans with the bike, and shake." }
 client{ name = "bmx_cam_air", kind = "float", default = 0.6, min = 0, max = 1, decimals = 2,
     category = "camera", label = "Trick camera",
     help = "In the air the camera pulls back and widens a little so the whole trick is in frame, then eases back on landing. 0 turns it off." }

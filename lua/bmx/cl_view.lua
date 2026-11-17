@@ -239,7 +239,75 @@ function BMX.SkaterView(ply, angles, fov)
     return { origin = tr.HitPos, angles = angles, fov = sFov + airFov, drawviewer = true }
 end
 
+--------------------------------------------------------------------------
+-- ANOTHER ADDON'S CAMERA. Only one CalcView answer is used a frame, and the order the
+-- hooks are asked in is a hash walk: a third-person camera addon could take every frame of
+-- a ride from this one. Such cameras follow the player's eye, and on a bike the eye rides
+-- up the leaning frame: a slalom at 30 fps put the bike back and forth on screen 4.6 times
+-- a second, 5.3 px a frame, against none for this camera (tools/bench/camshake, 11-17,
+-- after two Workshop players reported "insane camera shake" in third person, one of them
+-- with a Roblox-style camera addon). So when a ride's frames are being taken, the other
+-- cameras are stepped aside while riding (and only then), once, with a line in chat.
+-- bmx_cam_own 0 leaves them alone.
+--------------------------------------------------------------------------
+local cv_own = CreateClientConVar("bmx_cam_own", "1", true, false,
+    "1: while you ride, BMX's camera is used even if another addon's camera would take the frame. 0: leave other camera addons alone.")
+local camRanAt, stolenFrames = nil, 0
+local stepped = setmetatable({}, { __mode = "k" })
+BMX.CameraSteppedAside = BMX.CameraSteppedAside or {}
+
+-- Riding where this camera answers: the rider of a BMX vehicle (not a passenger).
+function BMX.CameraOwnsRide(ply)
+    local bike = BMX.LocalBike(ply)
+    if not bike then return false end
+    if BMX.IsPassenger and BMX.IsPassenger(ply) then return false end
+    return true
+end
+
+-- Wrap every other CalcView hook so it answers nothing while its player rides here.
+-- Returns the names newly wrapped.
+function BMX.CameraTakeOver()
+    local names = {}
+    local t = hook.GetTable().CalcView or {}
+    local todo = {}
+    for id, fn in pairs(t) do
+        if id ~= "BMX.ChaseCam" and isfunction(fn) and not stepped[fn] then todo[#todo + 1] = { id, fn } end
+    end
+    for _, e in ipairs(todo) do
+        local id, orig = e[1], e[2]
+        local w = function(ply, ...)
+            if cv_own:GetBool() and IsValid(ply) and BMX.CameraOwnsRide(ply) then return nil end
+            return orig(ply, ...)
+        end
+        stepped[w] = true
+        hook.Add("CalcView", id, w)
+        names[#names + 1] = tostring(id)
+        BMX.CameraSteppedAside[#BMX.CameraSteppedAside + 1] = tostring(id)
+    end
+    return names
+end
+
+-- After each frame is drawn: did this camera answer it? Three ridden frames in a row
+-- that it did not are another addon's.
+hook.Add("PostRender", "BMX.CameraOwn", function()
+    local ply = LocalPlayer()
+    if not (IsValid(ply) and BMX.CameraOwnsRide(ply)) or not cv_own:GetBool() then stolenFrames = 0 return end
+    local f = FrameNumber()
+    if camRanAt == f then stolenFrames = 0 return end
+    stolenFrames = stolenFrames + 1
+    if stolenFrames < 3 then return end
+    stolenFrames = 0
+    local names = BMX.CameraTakeOver()
+    if #names > 0 and chat and chat.AddText then
+        chat.AddText(Color(255, 170, 60), "[BMX] ", color_white,
+            "Another addon's camera (" .. table.concat(names, ", ") .. ") was taking over while you ride, " ..
+            "and a camera that follows your eye shakes on a leaning bike. BMX's camera is used while riding now; " ..
+            "bmx_cam_own 0 gives it back.")
+    end
+end)
+
 hook.Add("CalcView", "BMX.ChaseCam", function(ply, origin, angles, fov)
+    camRanAt = FrameNumber and FrameNumber() or nil
     -- A replay (cl_replay.lua) or a filmer camera (cl_filmer.lua) owns the view.
     if BMX.ReplayActive and BMX.ReplayActive() then return end
     if BMX.FilmerViewing and BMX.FilmerViewing() then return end

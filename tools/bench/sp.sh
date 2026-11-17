@@ -175,7 +175,10 @@ case "${1:-}" in
     focus
     r "rm -f $G/data/probe/camshake.txt"
     scp -q "$HERE/camshake_sv.lua" "$CL:$G/data/camshake_sv.txt"
-    { [ -n "${2:-}" ] && echo "CAMSHAKE_KINDS = { \"$(echo "$2" | sed 's/,/", "/g')\" }"; cat "$HERE/camshake_cl.lua"; } | r "cat > $G/data/camshake_cl.txt"
+    # BMX_CAMSHAKE_PASSES (Lua): the passes, { {fps, smooth, firstperson [, other addon's camera]} ... }
+    { [ -n "${2:-}" ] && echo "CAMSHAKE_KINDS = { \"$(echo "$2" | sed 's/,/", "/g')\" }"
+      [ -n "${BMX_CAMSHAKE_PASSES:-}" ] && echo "CAMSHAKE_PASSES = ${BMX_CAMSHAKE_PASSES}"
+      cat "$HERE/camshake_cl.lua"; } | r "cat > $G/data/camshake_cl.txt"
     cmd 'lua RunString(file.Read("camshake_sv.txt","DATA"),"camshake_sv")'
     sleep 2
     cmd 'lua BroadcastLua([[RunString(file.Read("camshake_cl.txt","DATA"),"camshake_cl")]])'

@@ -1208,3 +1208,42 @@ T.test("on skates the chase camera follows the skater, and first person is still
     T.eq(E.hook.Run("CalcView", s.me, E.Vector(), E.Angle(), 90), nil, "on foot, the engine's view")
     T.eq(#s.cl.errors, 0, "no errors: " .. table.concat(s.cl.errors, " | "))
 end)
+
+--------------------------------------------------------------------------
+-- ANOTHER ADDON'S CAMERA taking a ride's frames (a third-person addon's CalcView asked
+-- first): it follows the player's eye, which leans with the bike, and shakes (11-17, two
+-- Workshop players). After three ridden frames this camera did not answer, the others are
+-- stepped aside while riding, and only then; bmx_cam_own 0 leaves them alone.
+--------------------------------------------------------------------------
+T.test("camera: another addon's camera that takes a ride's frames is stepped aside while riding, not otherwise", function()
+    local s = scene()
+    local E = s.cl.env
+    local frame = 0
+    E.FrameNumber = function() return frame end
+    local said = {}
+    E.chat = { AddText = function(...) said[#said + 1] = select("#", ...) end }
+    E.Color = E.Color or function(r, g, b) return { r = r, g = g, b = b } end
+    E.color_white = E.color_white or { r = 255, g = 255, b = 255 }
+    local theirs = E.Vector(1, 2, 3)
+    E.hook.Add("CalcView", "AAA.ThirdPerson", function() return { origin = theirs } end)
+    local function frameOnce()
+        frame = frame + 1
+        local v = chase(s, E)
+        E.hook.Run("PostRender")
+        return v
+    end
+    T.ok(frameOnce().origin == theirs, "first, the other camera takes the frame (asked first)")
+    frameOnce() frameOnce()
+    T.eq(#said, 1, "one line in chat when it is stepped aside")
+    local v = frameOnce()
+    T.ok(v.origin ~= theirs, "then BMX's camera answers the ride")
+    -- off the bike, the other camera is untouched
+    s.me._vehicle = nil
+    T.ok(E.hook.GetTable().CalcView["AAA.ThirdPerson"](s.me, E.Vector(), E.Angle(), 90).origin == theirs,
+        "off the bike the other camera answers as before")
+    s.me._vehicle = s.cb:GetPod()
+    -- bmx_cam_own 0: it is left alone
+    E.RunConsoleCommand("bmx_cam_own", "0")
+    T.ok(chase(s, E).origin == theirs, "bmx_cam_own 0 gives the ride back to it")
+    T.eq(#said, 1, "and nothing more is said")
+end)

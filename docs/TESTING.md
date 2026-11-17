@@ -458,9 +458,14 @@ singleplayer (stock, cruiser, downhill, skateboard, scooter) and the server at 0
 fake lag (stock, downhill, skateboard), third person under 0.05 px a frame riding straight at
 full rate, no reversals anywhere with smoothing on. The largest steps are the slalom at 30 fps
 with smoothing off (6-9 px, the view bolted to the bike's own swing: what smoothing is for).
-One 13 px single frame each on two kinds in run 30 did not come back in run 31. Not yet ridden:
-rough ground, another addon's camera (one reporter runs a Roblox camera addon), a player's
-real connection; the replies ask.
+One 13 px single frame each on two kinds in run 30 did not come back in run 31. **Rough
+ground** (run 32, a strip of frozen plates laid ahead): no shake either. **Another addon's
+camera** (run 33; the usual kind, following the player's eye from behind with its own easing)
+is what shakes: on a slalom at 30 fps the bike went back and forth on screen 4.6 times a second,
+5.3 px a frame, against none for BMX's camera, because on a bike the eye leans with the frame.
+So BMX's camera now steps any other CalcView hook aside while riding once it sees a ride's
+frames taken (bmx_cam_own, 31f27f2). Run 34: with five such cameras added after BMX's, BMX's
+answered every frame (the game asked it first); run 35 adds them before it.
 
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a

@@ -465,7 +465,11 @@ is what shakes: on a slalom at 30 fps the bike went back and forth on screen 4.6
 5.3 px a frame, against none for BMX's camera, because on a bike the eye leans with the frame.
 So BMX's camera now steps any other CalcView hook aside while riding once it sees a ride's
 frames taken (bmx_cam_own, 31f27f2). Run 34: with five such cameras added after BMX's, BMX's
-answered every frame (the game asked it first); run 35 adds them before it.
+answered every frame (the game asked it first). Run 35 registers them before it: they got
+3 frames a pass (the 3 it takes to notice), then BMX's camera; the 30 fps slalom went from
+run 33's 5.3 px and 4.6 reversals a second to 0.35 px and none. It also showed the take-over
+wrapping BMX's own replay and filmer views, which would have blanked a replay watched from
+the saddle; BMX.* hooks are now left alone.
 
 **Over a real network** (`tools/bench/netdemo.sh`): the GPU client joins the CI game server
 (its run lock held, gm_flatgrass, `sv_cheats 1` for `net_fakelag`), rides a stock bike in a

@@ -1246,4 +1246,20 @@ T.test("camera: another addon's camera that takes a ride's frames is stepped asi
     E.RunConsoleCommand("bmx_cam_own", "0")
     T.ok(chase(s, E).origin == theirs, "bmx_cam_own 0 gives the ride back to it")
     T.eq(#said, 1, "and nothing more is said")
+    -- BMX's own views (replay, filmer) are never wrapped: they hand over to the chase camera
+    -- themselves, and a replay watched from the saddle must still show.
+    local ct = E.hook.GetTable().CalcView
+    for _, id in ipairs({ "BMX.ReplayView", "BMX.FilmerView" }) do
+        if ct[id] then
+            T.ok(not table.HasValue(E.BMX.CameraSteppedAside, id), id .. " is not stepped aside")
+        end
+    end
+    T.ok(ct["BMX.ReplayView"] or ct["BMX.FilmerView"], "the client loads a BMX view besides the chase camera")
+    -- asked again, a camera is listed once
+    E.RunConsoleCommand("bmx_cam_own", "1")
+    E.hook.Add("CalcView", "AAA.ThirdPerson", function() return { origin = theirs } end)
+    E.BMX.CameraTakeOver()
+    local n = 0
+    for _, id in ipairs(E.BMX.CameraSteppedAside) do if id == "AAA.ThirdPerson" then n = n + 1 end end
+    T.eq(n, 1, "a camera stepped aside twice is listed once")
 end)

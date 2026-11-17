@@ -271,7 +271,9 @@ function BMX.CameraTakeOver()
     local t = hook.GetTable().CalcView or {}
     local todo = {}
     for id, fn in pairs(t) do
-        if id ~= "BMX.ChaseCam" and isfunction(fn) and not stepped[fn] then todo[#todo + 1] = { id, fn } end
+        -- BMX's own views (replay, filmer, ...) hand over to the chase camera themselves.
+        local ours = isstring(id) and id:sub(1, 4) == "BMX."
+        if not ours and isfunction(fn) and not stepped[fn] then todo[#todo + 1] = { id, fn } end
     end
     for _, e in ipairs(todo) do
         local id, orig = e[1], e[2]
@@ -282,7 +284,9 @@ function BMX.CameraTakeOver()
         stepped[w] = true
         hook.Add("CalcView", id, w)
         names[#names + 1] = tostring(id)
-        BMX.CameraSteppedAside[#BMX.CameraSteppedAside + 1] = tostring(id)
+        if not table.HasValue(BMX.CameraSteppedAside, tostring(id)) then
+            BMX.CameraSteppedAside[#BMX.CameraSteppedAside + 1] = tostring(id)
+        end
     end
     return names
 end

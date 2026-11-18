@@ -5,6 +5,30 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.4.8 -- on the Workshop 2026-11-18
+
+**Skateboard: CTRL for full spins, combos that match their parts, six new flips**
+
+From a Workshop player's ideas thread.
+
+- **Hold CTRL with a shove for a whole turn.** CTRL + S is a 360 shove-it, CTRL + W a 360
+  front shove-it, CTRL + S + A the 360 flip, CTRL + W + D the laser flip, CTRL + W + A a
+  360 hardflip, CTRL + S + D a 360 inward heelflip. A whole turn has to be finished:
+  a 360 shove-it put down half way round pays as a pop shove-it.
+- **Every combo is now built from its parts.** A kicks, D heels, S spins the tail behind
+  you (backside), W in front (frontside):
+  - S + A is the varial kickflip (it was the 360 flip, now CTRL + S + A);
+  - W + D the varial heelflip (it was S + D; W + D used to be the varial kickflip);
+  - S + D the new inward heelflip; W + A is still the hardflip.
+- **The harder way round pays more.** Heelflip 350 (kickflip 300), front shove-it 250
+  (pop shove-it 200), varial heelflip 450 (varial kickflip 400). Each 360 pays more than
+  its half turn.
+- **Cleaner feet in every flip.** The feet stay up until the deck is nearly flat and
+  come down onto it for the catch, instead of resting on an edge still 50 degrees round,
+  and through a whole turn they stay up past the half-way point.
+- CTRL + A / D in the air is still the body spin. CTRL that picked a full turn
+  becomes a spin again once you let it go and press it again.
+
 ## 1.4.7 -- on the Workshop 2026-11-18
 
 **Skateboard flips turn the right way; a steady camera with other camera addons**

@@ -440,23 +440,37 @@ S.styles = function()
     end
 end
 
+-- Every flip (sh_board.lua's B.Flips, the shipped angles and stance), or the ones in
+-- STUDIO_FLIPS (comma-separated ids): popped, turned as the server turns it, a shot
+-- at a quarter, half and three quarters of its turn and one at the catch.
+-- STUDIO_GOOFY=1 for the right foot forward.
 S.flips = function()
     local Bd = B.Board
+    local goofy = os.getenv("STUDIO_GOOFY") == "1" or nil
+    local stance = Bd.Stance(goofy, false)
+    local ids = Bd.FlipOrder
+    if os.getenv("STUDIO_FLIPS") then ids = {} for id in os.getenv("STUDIO_FLIPS"):gmatch("[^,]+") do ids[#ids + 1] = id end end
+    ent:SetBoardFlags(Bd.PackFlags({ goofy = goofy }))
+    if goofy then ply._vehicle:SetAngles(ent:LocalToWorldAngles(E.Angle(0, Bd.Tune.seatYaw.goofy, 0))) end
     setSpeed(220)
     run(30)
-    for _, trick in ipairs({ { "kickflip", 1, 0 }, { "shove-it", 0, 1 } }) do
+    for _, id in ipairs(ids) do
+        local f = Bd.Flips[id]
         for i = 1, 12 do ent:SetCrouch(math.min(1, i / 10)) frame() end
         ent:SetCrouch(0)
         ent:SetGrounded(false)
         lift(16)
-        local n = 14
+        ent:SetBoardFlags(Bd.PackFlags({ goofy = goofy, fullspin = Bd.FullSpin(f) }))
+        local n = math.max(8, math.floor(f.dur / world.dt + 0.5))
+        local marks = { [math.floor(n * 0.25 + 0.5)] = "25%", [math.floor(n * 0.5 + 0.5)] = "50%",
+                        [math.floor(n * 0.75 + 0.5)] = "75%", [n] = "catch" }
         for i = 1, n do
-            local a = (i / n) * 2 * math.pi
-            ent:SetBoardBits(Bd.PackBits(trick[2] * a, trick[3] * (a / 2), 0))
+            ent:SetBoardBits(Bd.PackBits(Bd.FlipAnglesFor(f, i / n * f.dur, stance)))
             frame()
-            if i == 4 or i == 7 or i == 10 then shot(string.format("%s %d%%", trick[1], math.floor(i / n * 100))) end
+            if marks[i] then shot(string.format("%s %s", f.name, marks[i])) end
         end
         ent:SetBoardBits(0)
+        ent:SetBoardFlags(Bd.PackFlags({ goofy = goofy }))
         run(4)
         ent:SetGrounded(true)
         lift(-16)

@@ -21,17 +21,28 @@ T.test("flips: each direction picks its own flip, W + S is the impossible, A + D
     local B = sv.env.BMX.Board
     local function pick(keys)
         local k = { w = false, s = false, a = false, d = false }
-        for c in keys:gmatch(".") do k[c:lower()] = true end
+        for c in keys:gmatch(".") do if c == "c" then k.duck = true else k[c:lower()] = true end end
         return B.FlipFor(k)
     end
     T.eq(pick("a"), "kickflip", "A")
     T.eq(pick("d"), "heelflip", "D")
     T.eq(pick("s"), "popshove", "S")
     T.eq(pick("w"), "frontshove", "W")
-    T.eq(pick("sa"), "flip360", "S + A")
-    T.eq(pick("sd"), "varialheel", "S + D")
-    T.eq(pick("wd"), "varialkick", "W + D")
+    -- each combo is its parts: S backside, W frontside, A kick, D heel
+    T.eq(pick("sa"), "varialkick", "S + A")
+    T.eq(pick("wd"), "varialheel", "W + D")
     T.eq(pick("wa"), "hardflip", "W + A")
+    T.eq(pick("sd"), "inwardheel", "S + D")
+    -- CTRL ("c") held: the shove goes a whole turn
+    T.eq(pick("cs"), "shove360", "CTRL + S")
+    T.eq(pick("cw"), "front360", "CTRL + W")
+    T.eq(pick("csa"), "flip360", "CTRL + S + A")
+    T.eq(pick("cwd"), "laserflip", "CTRL + W + D")
+    T.eq(pick("cwa"), "hardflip360", "CTRL + W + A")
+    T.eq(pick("csd"), "inward360", "CTRL + S + D")
+    T.eq(pick("ca"), nil, "CTRL + A is the body spin, not a flip")
+    T.eq(pick("cd"), nil, "CTRL + D likewise")
+    T.eq(pick("cws"), "impossible", "CTRL + W + S is still the impossible")
     T.eq(pick("ws"), "impossible", "W + S")
     T.eq(pick("wsa"), "impossible", "W + S + A is still the impossible")
     T.eq(pick(""), nil, "no keys, no flip")
@@ -40,12 +51,12 @@ T.test("flips: each direction picks its own flip, W + S is the impossible, A + D
     local seen = {}
     for _, id in ipairs(B.FlipOrder) do
         local f = B.Flips[id]
-        local key = tostring(f.w) .. tostring(f.s) .. tostring(f.a) .. tostring(f.d)
+        local key = tostring(f.w) .. tostring(f.s) .. tostring(f.a) .. tostring(f.d) .. tostring(f.full or false)
         T.ok(not seen[key], id .. " has its own keys")
         seen[key] = true
         T.eq(sv.env.BMX.Tricks[id].name, f.name, id .. " is a registered trick")
     end
-    T.eq(#B.FlipOrder, 9, "nine")
+    T.eq(#B.FlipOrder, 15, "nine, and six whole-turn ones")
 end)
 
 T.test("flips: the keys come from the board record, or from the standard fields a scripted rider writes", function()
@@ -112,6 +123,46 @@ T.test("flips: a clean catch pays more than a late one, switch and nollie pay mo
     T.near(B.FlipPoints(f, "ok", false, false, true), ok * 1.1, 1, "nollie a little")
     T.eq(B.FlipPoints(f, nil), 0, "a bail pays nothing")
     T.ok(B.FlipPoints(B.Flips.flip360, "ok") > B.FlipPoints(B.Flips.kickflip, "ok"), "a 360 flip is worth more than a kickflip")
+end)
+
+-- A whole turn has to be finished: half way round its deck is flat, but that is the
+-- half-turn flip it started as, and it pays as that, not as the 360.
+T.test("flips: a whole-turn flip put down half way round pays as its half turn, not the 360", function()
+    local sv = F.server()
+    local B = sv.env.BMX.Board
+    for full, half in pairs(B.HalfOf) do
+        local def = B.Flips[full]
+        local x = 1 - math.sqrt(0.5)              -- the ease puts the deck half way round here
+        local t = def.dur * x
+        T.ok(B.CatchError(def, t) > B.Tune.catchAngle, full .. ": half way round is not its catch")
+        T.eq(B.HalfFlip(def, t), half, full .. " put down half way round is a " .. half)
+        local entry = B.JudgeFlip({ id = full, def = def, t0 = 0 }, t)
+        T.ok(entry and entry.name == B.Flips[half].name, full .. " half way pays as " .. B.Flips[half].name .. ": " .. tostring(entry and entry.name))
+        local done = B.JudgeFlip({ id = full, def = def, t0 = 0 }, def.dur)
+        T.ok(done and done.name == def.name and done.points > entry.points, full .. " finished pays as itself, and more")
+        T.ok(B.CatchFrom(def) > t, full .. ": its catch window opens after half way")
+    end
+end)
+
+-- The same player: "front shove and heel flip could possibly give a bit more points
+-- than shuv and kickflip bc they are a bit more difficult in rl". And a whole turn is
+-- worth more than the half turn it comes from.
+T.test("flips: the harder way round pays more, and every whole turn more than its half", function()
+    local sv = F.server()
+    local B = sv.env.BMX.Board
+    local P = function(id) return B.Flips[id].points end
+    T.ok(P("heelflip") > P("kickflip"), "heelflip over kickflip")
+    T.ok(P("frontshove") > P("popshove"), "front shove-it over pop shove-it")
+    T.ok(P("varialheel") > P("varialkick"), "varial heelflip over varial kickflip")
+    for half, full in pairs({ popshove = "shove360", frontshove = "front360", varialkick = "flip360",
+                              varialheel = "laserflip", hardflip = "hardflip360", inwardheel = "inward360" }) do
+        T.ok(P(full) > P(half), full .. " pays more than " .. half)
+        T.ok(B.Flips[full].full and not B.Flips[half].full, full .. " is the CTRL one")
+        T.eq(B.Flips[full].roll, B.Flips[half].roll, full .. " flips the same way as " .. half)
+        T.eq(B.Flips[full].yaw, 2 * B.Flips[half].yaw, full .. " turns twice as far, the same way")
+        T.ok(B.Flips[full].dur > B.Flips[half].dur, full .. " takes longer")
+        T.ok(B.FullSpin(B.Flips[full]) and not B.FullSpin(B.Flips[half]), full .. " is a full spin for the feet")
+    end
 end)
 
 T.test("flips: judging a landing, with the stance in the name and a fault for a bad catch", function()
@@ -197,7 +248,7 @@ local function popAndFlip(keys, hold)
     local k = { w = keys:find("w") ~= nil, s = keys:find("s") ~= nil,
                 a = keys:find("a") ~= nil, d = keys:find("d") ~= nil }
     press(e, { side = (k.d and 1 or 0) - (k.a and 1 or 0), fwd = (k.w and 1 or 0) - (k.s and 1 or 0),
-               w = k.w, s = k.s })
+               w = k.w, s = k.s, duck = keys:find("c") ~= nil })
     local seenBits, id = false, nil
     sv:run(2.0, function()
         if e.st.board.flip then id = e.st.board.flip.id end
@@ -225,8 +276,10 @@ T.test("flip ride: a kickflip off a full pop is caught: the deck turns, it lands
 end)
 
 T.test("flip ride: every flip off a full pop lands, caught, and pays under its own name", function()
-    local keys = { kickflip = "a", heelflip = "d", popshove = "s", frontshove = "w", flip360 = "sa",
-                   varialheel = "sd", varialkick = "wd", hardflip = "wa", impossible = "ws" }
+    local keys = { kickflip = "a", heelflip = "d", popshove = "s", frontshove = "w", varialkick = "sa",
+                   varialheel = "wd", hardflip = "wa", inwardheel = "sd", impossible = "ws",
+                   shove360 = "cs", front360 = "cw", flip360 = "csa", laserflip = "cwd",
+                   hardflip360 = "cwa", inward360 = "csd" }
     for id, k in pairs(keys) do
         local sv, e, landed, bailed, picked = popAndFlip(k, 0.5)
         local def = sv.env.BMX.Board.Flips[id]
@@ -361,8 +414,11 @@ T.test("flips turn the right way for the side the rider faces, regular, goofy an
     local want = {
         kickflip = { top = "heels" }, heelflip = { top = "toes" },
         popshove = { tail = "heels" }, frontshove = { tail = "toes" },
-        flip360 = { top = "heels", tail = "heels" }, varialkick = { top = "heels", tail = "heels" },
-        varialheel = { top = "toes", tail = "toes" }, hardflip = { top = "heels", tail = "toes" },
+        varialkick = { top = "heels", tail = "heels" }, varialheel = { top = "toes", tail = "toes" },
+        hardflip = { top = "heels", tail = "toes" }, inwardheel = { top = "toes", tail = "heels" },
+        shove360 = { tail = "heels" }, front360 = { tail = "toes" },
+        flip360 = { top = "heels", tail = "heels" }, laserflip = { top = "toes", tail = "toes" },
+        hardflip360 = { top = "heels", tail = "toes" }, inward360 = { top = "toes", tail = "heels" },
     }
     local cases = {
         { "regular", B.Stance(false, false), B.Tune.seatYaw.regular },

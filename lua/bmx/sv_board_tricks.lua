@@ -42,7 +42,7 @@ local KEYS = { "w", "s", "a", "d" }
 local function freshKeys(b, keys)
     local l = b.latch
     if not l then return keys end
-    local fresh = {}
+    local fresh = { duck = keys.duck }      -- CTRL is a modifier, never latched
     for _, k in ipairs(KEYS) do
         if not keys[k] then l[k] = false end
         fresh[k] = keys[k] and not l[k]
@@ -56,6 +56,9 @@ end
 local function startFlip(ent, st, b, id, now)
     b.flip = { id = id, def = B.Flips[id], t0 = now, nollie = b.nollie,
                switch = b.switch, fakie = b.fakie, stance = B.Stance(b.goofy, b.switch) }
+    -- CTRL picked a full turn: it is not a body spin until it is let go and pressed
+    -- again (sv_board.lua's decoder reads this).
+    if B.Flips[id].full then b.duckHeld = true end
     hook.Run("BMX_BoardFlipStarted", ent, ent:GetDriver(), id)
 end
 
@@ -93,15 +96,21 @@ end
 -- window through it.
 --------------------------------------------------------------------------
 function B.JudgeFlip(flip, now)
-    local err = B.CatchError(flip.def, now - flip.t0)
+    local def = flip.def
+    local err = B.CatchError(def, now - flip.t0)
     local grade = B.CatchGrade(err)
+    if not grade then
+        -- a whole turn put down flat half way round: the half turn it started as
+        local half = B.HalfFlip(def, now - flip.t0)
+        if half then def, grade, err = B.Flips[half], "late", T.okAngle end
+    end
     if grade then
-        local mult = B.FlipPoints(flip.def, grade, flip.switch, flip.fakie, flip.nollie)
-        local name = flip.def.name
+        local mult = B.FlipPoints(def, grade, flip.switch, flip.fakie, flip.nollie)
+        local name = def.name
         if flip.nollie then name = "Nollie " .. name end
         if flip.switch then name = "Switch " .. name
         elseif flip.fakie then name = "Fakie " .. name end
-        return { name = name, count = 1, points = mult, flip = flip.def and flip.id, catch = grade }, nil, err
+        return { name = name, count = 1, points = mult, flip = def.id or flip.id, catch = grade }, nil, err
     end
     local sev = BMX.Clamp(0.35 + (err - T.catchAngle) / math.pi * 0.65, 0, 1)
     return nil, { reason = "flip", severity = sev }, err

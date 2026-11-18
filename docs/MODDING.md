@@ -589,7 +589,9 @@ is true if it was popped off the nose.
 ### `BMX_BoardFlipStarted` (bike, ply, flipId)
 
 *Server.* The deck began a flip. `flipId` is `kickflip`, `heelflip`, `popshove`,
-`frontshove`, `flip360`, `varialheel`, `varialkick`, `hardflip` or `impossible`
+`frontshove`, `varialkick`, `varialheel`, `hardflip`, `inwardheel`, `impossible`,
+or with CTRL held a whole turn: `shove360`, `front360`, `flip360`, `laserflip`,
+`hardflip360` or `inward360`
 (`BMX.Board.Flips`). Whether it was caught is `BMX_TrickLanded` (paid) or
 `BMX_Crashed` with the reason `"flip"` (not).
 

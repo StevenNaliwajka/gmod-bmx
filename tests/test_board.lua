@@ -244,6 +244,32 @@ T.test("board: in the air A and D are flip flicks, not a roll, and CTRL + A / D 
     T.eq(e.input.throttle, 0, "W is not a push in the air")
 end)
 
+-- CTRL is also the whole-turn modifier of a flip (CTRL + S is a 360 shove-it). While
+-- a flip may still be picked with W or S down, and while the CTRL that picked a whole
+-- turn is held, it does not spin the body; let go and pressed again, it does.
+T.test("board: CTRL picking a whole-turn flip is not a body spin until it is pressed again", function()
+    local sv = F.server()
+    local e = board(sv)
+    local ply = F.rider(sv, e, { name = "Skater" })
+    local IN = require("lib.gmod").IN
+    local B = sv.env.BMX.Board
+    local b = B.InputOf(e.input)
+    e.st.airMode = true
+    b.popAt = sv.env.CurTime()
+    sv.env.hook.Run("StartCommand", ply, cmd(IN.BACK + IN.MOVELEFT + IN.DUCK))
+    T.ok(not e.input.wheelieMod, "CTRL + S + A in the pop window: a 360 flip being picked, no spin")
+    b.flip = { id = "flip360", def = B.Flips.flip360, t0 = sv.env.CurTime() }
+    b.duckHeld = true
+    sv.env.hook.Run("StartCommand", ply, cmd(IN.MOVELEFT + IN.DUCK))
+    T.ok(not e.input.wheelieMod, "CTRL still held from the pick: no spin")
+    sv.env.hook.Run("StartCommand", ply, cmd(IN.MOVELEFT))
+    sv.env.hook.Run("StartCommand", ply, cmd(IN.MOVELEFT + IN.DUCK))
+    T.ok(e.input.wheelieMod, "let go and pressed again: the body spin")
+    b.flip, b.popAt = nil, nil
+    sv.env.hook.Run("StartCommand", ply, cmd(IN.MOVERIGHT + IN.DUCK))
+    T.ok(e.input.wheelieMod, "CTRL + D with no flip to pick is the body spin, as before")
+end)
+
 T.test("board: the bike's decoder is unchanged: a bike still reads its own map", function()
     local sv = F.server()
     local bike = F.bike(sv)

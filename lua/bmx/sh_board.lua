@@ -276,6 +276,7 @@ end
 B.Flag = {
     goofy = 1, switch = 2, fakie = 4, meter = 8, manual = 16, nose = 32,
     slide = 64, powerslide = 128, nollie = 256, grind = 512,
+    fullspin = 1024,      -- the flip in the air turns the deck a whole turn about the vertical
 }
 
 function B.PackFlags(t)
@@ -326,7 +327,7 @@ BMX.RegisterInputMap{
         jump    = { key = IN_JUMP,      ctx = { G, A, GR }, label = "Crouch, release to ollie; hold to grind" },
         alt     = { key = IN_WALK,      ctx = { G, A },     label = "Nollie" },
         grab    = { key = IN_ATTACK2,   ctx = { G, A, M },  label = "Manual; grab in the air" },
-        crouch  = { key = IN_DUCK,      ctx = { G, A },     label = "Powerslide with A / D; body spin in the air" },
+        crouch  = { key = IN_DUCK,      ctx = { G, A },     label = "Powerslide with A / D; in the air, a full-turn shove-it with W / S, or a body spin with A / D" },
         swap    = { key = IN_ATTACK,    ctx = { G },        label = "Switch stance" },
     },
 }
@@ -371,7 +372,7 @@ function B.Keys(inp)
     if b and (b.flickF ~= 0 or b.flickS ~= 0) then
         w, s, a, d = b.flickF > 0, b.flickF < 0, b.flickS < 0, b.flickS > 0
     end
-    return { w = w, s = s, a = a, d = d }
+    return { w = w, s = s, a = a, d = d, duck = b and b.duck or false }
 end
 
 -- The rider's direction for a flick or a flip, as -1/0/1 each: forward (W), side
@@ -394,15 +395,25 @@ end
 
 --------------------------------------------------------------------------
 -- THE FLIPS. During the pop window (Tune.flipWindow after an ollie) a direction
--- picks the flip, THPS style:
+-- picks the flip, THPS style. Each combo is built from its parts: A kicks, D heels,
+-- S spins the tail behind (backside), W in front (frontside). Without CTRL a
+-- shove spins half a turn; WITH CTRL held, a whole one (a Workshop player's idea,
+-- 2026-11-16: "+DUCK to 360 shuv, 360 flip, laserflip"):
 --
---           W            front shove-it
---      W+A  hardflip     W+D  varial kickflip
---       A   kickflip      D   heelflip
---      S+A  360 flip     S+D  varial heelflip
---           S            pop shove-it           W+S  impossible
+--      keys     no CTRL               CTRL held
+--       S       pop shove-it          360 shove-it
+--       W       front shove-it        360 front shove-it
+--      S+A      varial kickflip       360 flip
+--      W+D      varial heelflip       laser flip
+--      W+A      hardflip              360 hardflip
+--      S+D      inward heelflip       360 inward heelflip
+--       A       kickflip              (CTRL + A / D is the body spin)
+--       D       heelflip
+--      W+S      impossible            impossible
 --
--- (Skate's mouse flick picks the same directions, bmx_board_flick.) A flip is the
+-- Until 1.4.8 the 360 flip was S + A without CTRL and the varials were W + D
+-- (varial kickflip) and S + D (varial heelflip), keys that did not match their
+-- parts. (Skate's mouse flick picks the same directions, bmx_board_flick.) A flip is the
 -- DECK rotating on its own axes while the rider stays put: roll about its long
 -- axis (the kick and heel), yaw about the vertical (the shove-its), pitch about
 -- the cross axis (the impossible, which wraps the board round the back foot).
@@ -412,12 +423,14 @@ end
 -- the toe side). A positive roll takes the deck's top toward -Y, the toes: the
 -- HEELFLIP. The kickflip's front foot flicks off diagonally toward the heels, so its
 -- top rolls to the heels (toe edge up and over; clockwise seen from the nose), a
--- NEGATIVE roll; so do the 360 flip's, the varial kickflip's and the hardflip's.
+-- NEGATIVE roll; so do the varial kickflip's, the hardflip's and their 360s.
 -- Until 1.4.7 every roll was the other way round (the same Workshop player: the
 -- kickflip and heelflip turned the wrong way). A positive yaw swings the tail toward -Y, the toes:
 -- frontside. So the pop shove-it (the back foot scooping the tail behind, to the
--- heels: backside) is a NEGATIVE yaw, and so are the 360 flip's and the varial
--- kickflip's; the front shove-it, hardflip and varial heelflip go frontside. Until
+-- heels: backside) is a NEGATIVE yaw, and so are the varial kickflip's, the inward
+-- heelflip's and their 360s (the 360 flip is the varial kickflip's); the front
+-- shove-it, varial heelflip and hardflip go frontside, and so do their 360s (the laser
+-- flip is the varial heelflip's). Until
 -- 1.4.7 the yaws were the other way round, and none of it followed the stance: a
 -- Workshop player (2026-11-16) saw the shove-its and the 360 flip go frontside, and
 -- the tricks only matching their names riding switch. A goofy or switch rider faces
@@ -433,24 +446,39 @@ B.Flips = {
     kickflip   = { name = "Kickflip",        w = false, s = false, a = true,  d = false,
                    roll = -TAU, yaw = 0,   pitch = 0,   dur = 0.42, points = 300, input = "A after the pop" },
     heelflip   = { name = "Heelflip",        w = false, s = false, a = false, d = true,
-                   roll =  TAU, yaw = 0,   pitch = 0,   dur = 0.42, points = 300, input = "D after the pop" },
+                   roll =  TAU, yaw = 0,   pitch = 0,   dur = 0.42, points = 350, input = "D after the pop" },
     popshove   = { name = "Pop Shove-it",    w = false, s = true,  a = false, d = false,
                    roll = 0,    yaw = -PI, pitch = 0,   dur = 0.36, points = 200, input = "S after the pop" },
     frontshove = { name = "Front Shove-it",  w = true,  s = false, a = false, d = false,
-                   roll = 0,    yaw =  PI, pitch = 0,   dur = 0.36, points = 200, input = "W after the pop" },
-    flip360    = { name = "360 Flip",        w = false, s = true,  a = true,  d = false,
-                   roll = -TAU, yaw = -TAU, pitch = 0,  dur = 0.55, points = 600, input = "S + A after the pop" },
-    varialheel = { name = "Varial Heelflip", w = false, s = true,  a = false, d = true,
-                   roll =  TAU, yaw =  PI, pitch = 0,   dur = 0.46, points = 400, input = "S + D after the pop" },
-    varialkick = { name = "Varial Kickflip", w = true,  s = false, a = false, d = true,
-                   roll = -TAU, yaw = -PI, pitch = 0,   dur = 0.46, points = 400, input = "W + D after the pop" },
+                   roll = 0,    yaw =  PI, pitch = 0,   dur = 0.36, points = 250, input = "W after the pop" },
+    varialkick = { name = "Varial Kickflip", w = false, s = true,  a = true,  d = false,
+                   roll = -TAU, yaw = -PI, pitch = 0,   dur = 0.46, points = 400, input = "S + A after the pop" },
+    varialheel = { name = "Varial Heelflip", w = true,  s = false, a = false, d = true,
+                   roll =  TAU, yaw =  PI, pitch = 0,   dur = 0.46, points = 450, input = "W + D after the pop" },
     hardflip   = { name = "Hardflip",        w = true,  s = false, a = true,  d = false,
-                   roll = -TAU, yaw =  PI, pitch = 0,   dur = 0.50, points = 450, input = "W + A after the pop" },
+                   roll = -TAU, yaw =  PI, pitch = 0,   dur = 0.48, points = 450, input = "W + A after the pop" },
+    inwardheel = { name = "Inward Heelflip", w = false, s = true,  a = false, d = true,
+                   roll =  TAU, yaw = -PI, pitch = 0,   dur = 0.48, points = 500, input = "S + D after the pop" },
     impossible = { name = "Impossible",      w = true,  s = true,  a = false, d = false,
                    roll = 0,    yaw = 0,   pitch = TAU, dur = 0.50, points = 500, input = "W + S after the pop" },
+    -- CTRL held: the shove goes a whole turn.
+    shove360   = { name = "360 Shove-it",    w = false, s = true,  a = false, d = false, full = true,
+                   roll = 0,    yaw = -TAU, pitch = 0,  dur = 0.50, points = 400, input = "CTRL + S after the pop" },
+    front360   = { name = "360 Front Shove-it", w = true, s = false, a = false, d = false, full = true,
+                   roll = 0,    yaw =  TAU, pitch = 0,  dur = 0.50, points = 450, input = "CTRL + W after the pop" },
+    flip360    = { name = "360 Flip",        w = false, s = true,  a = true,  d = false, full = true,
+                   roll = -TAU, yaw = -TAU, pitch = 0,  dur = 0.55, points = 600, input = "CTRL + S + A after the pop" },
+    laserflip  = { name = "Laser Flip",      w = true,  s = false, a = false, d = true,  full = true,
+                   roll =  TAU, yaw =  TAU, pitch = 0,  dur = 0.57, points = 700, input = "CTRL + W + D after the pop" },
+    hardflip360 = { name = "360 Hardflip",   w = true,  s = false, a = true,  d = false, full = true,
+                   roll = -TAU, yaw =  TAU, pitch = 0,  dur = 0.57, points = 700, input = "CTRL + W + A after the pop" },
+    inward360  = { name = "360 Inward Heelflip", w = false, s = true, a = false, d = true, full = true,
+                   roll =  TAU, yaw = -TAU, pitch = 0,  dur = 0.57, points = 700, input = "CTRL + S + D after the pop" },
 }
-B.FlipOrder = { "kickflip", "heelflip", "popshove", "frontshove", "flip360",
-                "varialheel", "varialkick", "hardflip", "impossible" }
+for id, f in pairs(B.Flips) do f.id = id end
+B.FlipOrder = { "kickflip", "heelflip", "popshove", "frontshove", "varialkick",
+                "varialheel", "hardflip", "inwardheel", "impossible",
+                "shove360", "front360", "flip360", "laserflip", "hardflip360", "inward360" }
 
 T.flipWindow = 0.45          -- s after the pop in which a direction picks a flip
 T.flipSettle = 0.06          -- s a direction is held before it counts (so a diagonal is two keys)
@@ -462,20 +490,26 @@ T.switchMult = 1.2
 T.fakieMult  = 1.1
 T.nollieMult = 1.1
 
--- Which flip a set of keys picks, or nil. W + S is the impossible whatever A and
--- D say; otherwise the keys must be exactly a row's.
+-- Which flip a set of keys picks, or nil. W + S is the impossible whatever A, D
+-- and CTRL say; otherwise the keys must be exactly a row's, CTRL (k.duck) included.
+-- CTRL with only A or D is nothing: that is the body spin's.
 function B.FlipFor(k)
     if not (k.w or k.s or k.a or k.d) then return nil end
     local a, d = k.a, k.d
     if a and d then a, d = false, false end
     local w, s = k.w, k.s
-    if w and s then a, d = false, false end
+    local full = k.duck and true or false
+    if w and s then a, d, full = false, false, false end
     for _, id in ipairs(B.FlipOrder) do
         local f = B.Flips[id]
-        if f.w == w and f.s == s and f.a == a and f.d == d then return id end
+        if f.w == w and f.s == s and f.a == a and f.d == d and (f.full or false) == full then return id end
     end
     return nil
 end
+
+-- A flip that turns the deck a whole turn about the vertical (the client keeps the
+-- feet up through the half-way point, where a half turn's would come down).
+function B.FullSpin(flip) return flip ~= nil and abs(flip.yaw or 0) > PI * 1.5 end
 
 -- How far through its turn each axis of the deck is, `t` seconds after the flip
 -- began: roll, yaw, pitch (radians). Ease-out: it spins fastest at first and
@@ -499,14 +533,31 @@ function B.FlipAnglesFor(flip, t, stance)
 end
 
 -- How far from a flat landing the deck is at time `t`: the largest, over its three
--- axes, of the distance to the nearest whole turn (a half turn for yaw).
+-- axes, of the distance to the nearest whole turn (a half turn for yaw: a deck is
+-- the same either way round). A whole-turn flip's yaw is judged against its whole
+-- turn, so it has to be finished: half way round it is flat, but it is not a 360
+-- (B.HalfFlip says what it is instead).
+local function off(a, q)
+    local m = abs(a) % q
+    return min(m, q - m)
+end
 function B.CatchError(flip, t)
     local r, y, p = B.FlipAngles(flip, t)
-    local function off(a, q)
-        local m = abs(a) % q
-        return min(m, q - m)
-    end
-    return max(off(r, TAU), off(y, PI), off(p, TAU))
+    local yq = flip.full and TAU or PI
+    local ye = flip.full and abs(abs(y) - abs(flip.yaw)) or off(y, yq)
+    return max(off(r, TAU), ye, off(p, TAU))
+end
+
+-- A whole-turn flip landed flat half way round is the half-turn flip it started as
+-- (a 360 shove-it put down at 180 is a pop shove-it): its id, or nil.
+-- (Only the shove-its: a flip's roll is half done there too, so its deck is upside down.)
+B.HalfOf = { shove360 = "popshove", front360 = "frontshove" }
+function B.HalfFlip(flip, t)
+    local half = B.HalfOf[flip.id or ""]
+    if not half then return nil end
+    local r, y, p = B.FlipAngles(flip, t)
+    if max(off(r, TAU), abs(abs(y) - PI), off(p, TAU)) <= T.catchAngle then return half end
+    return nil
 end
 
 -- "clean", "ok", "late", or nil for a bail.

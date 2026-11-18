@@ -218,6 +218,23 @@ T.test("board flips: the flick goes off the edge the deck's top rolls toward, th
     local front = flipFeet(B, "frontshove")
     T.ok(shove[2] > 2.5, "a pop shove-it (yaw -, tail toward +Y, a regular rider's heels: backside): the back foot scoops with the tail: " .. shove[2])
     T.ok(front[2] < -2.5, "a front shove-it the other way: " .. front[2])
+    -- A whole-turn shove: the deck is crosswise again only at the end, so the feet
+    -- stay up through half way round, where a half turn's are already back down.
+    local function liftAt(id, frac, full)
+        local f = B.Flips[id]
+        local st = {}
+        local r, y, p = B.UnpackBits(B.PackBits(B.FlipAngles(f, f.dur * 0.02)))
+        B.TrackFlip(st, r, y, p)
+        local yaw = f.yaw * frac
+        r, y, p = B.UnpackBits(B.PackBits(0, yaw, 0))
+        st.roll, st.yaw, st.pitch, st.full = r, y, p, full
+        local fr = B.RiderFeet({ stance = 1, airT = 0.4, ollie = true, flip = st })
+        local rest = B.RiderFeet({ stance = 1, airT = 0.4, ollie = true, flip = { roll = 0, yaw = 0, pitch = 0 } })
+        return fr.z - rest.z
+    end
+    T.ok(liftAt("shove360", 0.5, true) > 3, "a 360 shove-it: feet up at half way: " .. liftAt("shove360", 0.5, true))
+    T.ok(liftAt("popshove", 1.0, false) < 0.5, "a pop shove-it: feet down at its end, half way round: " .. liftAt("popshove", 1.0, false))
+    T.ok(math.abs(liftAt("shove360", 1.0, true)) < 0.5, "a 360 shove-it: down at the end")
     local nk = flipFeet(B, "kickflip", true)
     T.ok(nk[2] > 3, "a nollie kickflip is flicked by the back foot: " .. nk[2])
     for _, id in ipairs(B.FlipOrder) do
@@ -330,4 +347,68 @@ T.test("board arms: open hands out for balance, and the torso does not bend over
         string.format("no reach lean: decided %s, shown %s", tostring(ply.bmxSpineLean), tostring(ply.bmxSpineLeanShown)))
     T.ok(bike.ikTargets.openHands == true, "the board says its hands are open")
     T.eq(#cl.errors, 0, "no errors: " .. table.concat(cl.errors, " | "))
+end)
+
+--------------------------------------------------------------------------
+-- THE FEET CLEAR THE TURNING DECK. While a flip turns the deck out from under the
+-- rider (before its catch window opens), neither sole goes into it: a foot through a
+-- spinning board is the ugliest thing a flip can draw, and the whole-turn flips
+-- (1.4.8: CTRL + a shove) keep the deck turning twice as long. The sole is the foot's
+-- line under the ankle (B.Ankle), from its heel to its toe across the deck; the deck
+-- is a slab DECK_TOP thick at its top, the kicks risen, turned as cl_board.lua's
+-- B.Frame turns it. Each flip from the regular stance and the goofy one, its angles as
+-- the client sees them (a byte each).
+--------------------------------------------------------------------------
+T.test("board flips: through every flip's turn the soles stay out of the deck until the catch", function()
+    local _, _, E, B = client()
+    local stub = { GetPos = function() return E.Vector(0, 0, 0) end,
+                   GetForward = function() return E.Vector(1, 0, 0) end,
+                   GetRight = function() return E.Vector(0, -1, 0) end,
+                   GetUp = function() return E.Vector(0, 0, 1) end }
+    local HALF_L, HALF_W, THICK = 15.5, 4.0, 0.8
+    local worst, bad, near = {}, {}, {}
+    local GAP = 1.0       -- units a sole keeps over the deck through the middle of its turn
+    for _, stance in ipairs({ 1, -1 }) do
+        local faceY = stance >= 0 and -1 or 1
+        for _, id in ipairs(B.FlipOrder) do
+            local f = B.Flips[id]
+            local st = {}
+            local catchAt = B.CatchFrom(f)
+            local deepest, at = 0, nil
+            local low, lowAt = 0, nil
+            for i = 1, 60 do
+                local t = catchAt * i / 60
+                local r, y, p = B.UnpackBits(B.PackBits(B.FlipAnglesFor(f, t, stance)))
+                B.TrackFlip(st, r, y, p)
+                st.roll, st.yaw, st.pitch, st.full = r, y, p, B.FullSpin(f)
+                local fr, bk = B.RiderFeet({ stance = stance, airT = 0.12 + t, ollie = true, flip = st })
+                local fm = B.Frame({ ent = stub, roll = r, yaw = y, pitch = p })
+                local c = fm.center
+                for _, ankle in ipairs({ fr, bk }) do
+                    for k = -3, 8.8, 0.9 do                      -- heel to toe, across the deck
+                        local sole = E.Vector(ankle.x, ankle.y + faceY * k, ankle.z - B.Ankle)
+                        local d = sole - c
+                        local lx, ly, lz = d:Dot(fm.f), d:Dot(fm.l), d:Dot(fm.u) + 1.4
+                        if math.abs(lx) < HALF_L and math.abs(ly) < HALF_W then
+                            local top = B.DeckTop + B.DeckRise(lx)
+                            local into = math.min(top - lz, lz - (top - THICK))
+                            if into > deepest then deepest, at = into, string.format("t %.2f of %.2f", t, f.dur) end
+                            -- in the middle of the turn the deck is spinning under them: a sole
+                            -- resting on it there is a foot standing on a board in mid-flip
+                            -- (the impossible wraps the deck round the back foot: it is meant to)
+                            if id ~= "impossible" and i >= 12 and i <= 48 and lz > top - THICK and top + GAP - lz > low then
+                                low, lowAt = top + GAP - lz, string.format("t %.2f", t)
+                            end
+                        end
+                    end
+                end
+            end
+            local key = (stance > 0 and "regular " or "goofy ") .. id
+            worst[#worst + 1] = string.format("%s %.2f%s", key, deepest, at and (" at " .. at) or "")
+            if deepest >= 0.5 then bad[#bad + 1] = key .. " " .. string.format("%.2f", deepest) .. (at and (" at " .. at) or "") end
+            if low > 0 then near[#near + 1] = key .. string.format(" %.2f short of %.1f clear at %s", low, GAP, lowAt) end
+        end
+    end
+    T.eq(#bad, 0, "soles into the turning deck: " .. table.concat(bad, "; "))
+    T.eq(#near, 0, "soles resting on the deck in mid-turn: " .. table.concat(near, "; "))
 end)

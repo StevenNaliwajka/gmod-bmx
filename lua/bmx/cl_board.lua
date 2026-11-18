@@ -279,6 +279,7 @@ local FLIP_LIFT  = 6.0         -- how high both feet go while the deck is on its
 local FLICK_SIDE = 4.5         -- how far off the deck's edge the flick goes
 local FLICK_FWD  = 2.5         -- ...and up it, toward the end it flicks off
 local SCOOP_SIDE = 3.8         -- the shove-it's scoop, with the tail
+local ROLL_HOLD  = 1.8         -- how long the feet stay up over a rolling deck (B.FlipFeet)
 
 -- out to 1 by `o` radians of the deck's turn, held to `h`, back to 0 by `e`
 local function bump(th, o, h, e)
@@ -312,7 +313,16 @@ end
 
 function B.FlipFeet(fs)
     local roll, yaw, pitch = fs.roll or 0, fs.yaw or 0, fs.pitch or 0
-    local lift = max(abs(sin(roll * 0.5)), abs(sin(pitch * 0.5)), 0.6 * abs(sin(yaw))) * FLIP_LIFT
+    -- A half-turn shove is flat again at half way round (yaw pi); a whole turn's deck
+    -- is only flat at the end, so its feet stay up through the middle (fs.full, the
+    -- networked fullspin flag) and the scoop is drawn out over the longer turn.
+    local full = fs.full
+    local yawLift = full and abs(sin(yaw * 0.5)) or abs(sin(yaw))
+    -- A rolled deck's edge stands up to its half width over the middle, so the feet stay
+    -- up until it is nearly flat and come down onto it for the catch, not onto an edge
+    -- still 50 degrees round (they did until 1.4.8: a sole riding the rolling deck).
+    local rollLift = min(1, ROLL_HOLD * abs(sin(roll * 0.5)))
+    local lift = max(rollLift, abs(sin(pitch * 0.5)), 0.6 * yawLift) * FLIP_LIFT
     local pop, flick = Vector(0, 0, lift), Vector(0, 0, lift)
     -- The flick: the deck's top rolls toward -Y for a positive roll (B.Frame), and
     -- the foot that flicked it leaves the same way, up toward its end of the deck.
@@ -324,7 +334,7 @@ function B.FlipFeet(fs)
     -- The scoop: a positive yaw swings the tail toward -Y, and the back foot with it.
     local ty = turned(yaw, fs.dYaw)
     if ty > 0 then
-        local k = bump(ty, 0.8, 1.8, 2.9)
+        local k = full and bump(ty, 0.8, 3.6, 5.8) or bump(ty, 0.8, 1.8, 2.9)
         pop = pop + Vector(-1.5 * k, -fs.dYaw * SCOOP_SIDE * k, 0.5 * k)
     end
     -- The impossible wraps the deck round the back foot, which stays low with it; the
@@ -1560,6 +1570,7 @@ BMX.DrawVehicle.board = function(ent, kit)
     end
     R.flip = B.TrackFlip(R.flip or {}, df.roll, df.yaw, df.pitch)
     R.flip.roll, R.flip.yaw, R.flip.pitch = df.roll, df.yaw, df.pitch
+    R.flip.full = B.HasFlag(flags, "fullspin")
 
     local front, back, offDeck = B.RiderFeet({
         stance = stance, push = airT and -1 or push, pushW = R.pushW,

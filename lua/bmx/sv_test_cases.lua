@@ -2613,7 +2613,7 @@ local function boardFlip(ctx, keys, hold)
     ctx:wait(0.3)
     boardInput(ctx, { jump = true })
     ctx:wait(hold)
-    boardInput(ctx, { side = (keys.d and 1 or 0) - (keys.a and 1 or 0) })
+    boardInput(ctx, { side = (keys.d and 1 or 0) - (keys.a and 1 or 0), duck = keys.duck })
     local inp = b.input.board
     inp.w, inp.s = keys.w or false, keys.s or false
     local id, sawBits = nil, false
@@ -2643,6 +2643,22 @@ function(ctx)
     ctx:ok(IsValid(ctx.bike:GetDriver()), "and the rider is still aboard")
     ctx:ok(ctx.bike:GetBoardBits() == 0, "the deck is flat again")
     ctx:between(math.deg(math.abs(ctx:st().roll)), 0, 20, "the chassis is level after it", "deg")
+end)
+
+-- 1.4.8: CTRL held makes the shove a whole turn (a Workshop player's idea). CTRL + S +
+-- A off a full crouch is a 360 flip that turns all the way, is caught, and pays.
+T.Case("board_ctrl_360_flip_lands", { vehicle = "skateboard", timeout = 40,
+    desc = "the skateboard: CTRL + S + A after a full pop is a 360 flip, turned all the way round, caught and paid" },
+function(ctx)
+    local landed, crashed, id, sawBits = boardFlip(ctx, { s = true, a = true, duck = true }, 0.45)
+    ctx:log("flip " .. tostring(id) .. ", landed: " .. table.concat(landed, ", ") .. ", crash " .. tostring(crashed))
+    ctx:ok(id == "flip360", "CTRL + S + A picks the 360 flip: " .. tostring(id))
+    ctx:ok(sawBits, "the deck's flip was networked while it turned")
+    ctx:ok(crashed == nil, "it did not bail: " .. tostring(crashed))
+    local paid = false
+    for _, n in ipairs(landed) do if n:find("360 Flip", 1, true) then paid = true end end
+    ctx:ok(paid, "a 360 Flip was paid")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "and the rider is still aboard")
 end)
 
 -- (It never bailed while the tap pop was lost: no pop, no flip to judge. And A

@@ -46,8 +46,11 @@ work on every skatepark map on day one.
 - **Flips:** during the pop window, a direction picks the flip, the way Skate
   flicks do (mouse or keys, rebindable):
   - Kickflip (A after pop), Heelflip (D), Pop shove-it (S), Front shove (W),
-    **360 flip / tre flip** (S + A), **Varial kick/heel** (S + A or D
-    combos), **Hardflip** (W + A), **Impossible** (W + S).
+    **Varial kickflip** (S + A), **Varial heelflip** (W + D), **Hardflip**
+    (W + A), **Inward heelflip** (S + D), **Impossible** (W + S). With CTRL
+    held the shove goes a whole turn: 360 shove-it, 360 front shove-it,
+    **360 flip / tre flip** (CTRL + S + A), **Laser flip** (CTRL + W + D),
+    360 hardflip, 360 inward heelflip (1.4.8, a Workshop player's idea).
   - The board rotates on its own axes (flip roll, shove yaw, impossible
     pitch) as a separate body from the rider. The rider's feet leave the deck
     and come back (IK), which is exactly the part they couldn't animate.

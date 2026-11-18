@@ -383,7 +383,7 @@ local function sync(ent, st, b, now)
         goofy = b.goofy, switch = b.switch, fakie = b.fakie, meter = b.meter ~= nil,
         manual = b.manual == "manual", nose = b.manual == "nose",
         slide = b.slide, powerslide = b.powerslide, nollie = b.nollie and (now - (b.popAt or -9) < 1),
-        grind = st.grind ~= nil,
+        grind = st.grind ~= nil, fullspin = b.flip ~= nil and B.FullSpin(b.flip.def),
     })
     if flags ~= ent:GetBoardFlags() then ent:SetBoardFlags(flags) end
 end
@@ -616,7 +616,12 @@ local function decode(ply, bike, cmd, down, fwd, side)
 
     -- In the air A and D are flip flicks, not a roll, and CTRL with them is a body
     -- spin, which sv_air.lua already does on `wheelieMod` (RMB + A/D on a bike).
-    local spin = air and b.duck and side ~= 0 and not b.grab
+    -- But CTRL is also the full-turn modifier of a flip (sh_board.lua): while a
+    -- flip may still be picked with W or S down, or once CTRL picked a full turn and
+    -- is still held, it is the flip's and not a spin.
+    if not b.duck then b.duckHeld = nil end
+    local picking = b.popAt and not b.flip and (CurTime() - b.popAt) <= T.flipWindow and (b.w or b.s)
+    local spin = air and b.duck and side ~= 0 and not b.grab and not picking and not b.duckHeld
     inp.wheelieMod = spin
     inp.leanTarget = air and (spin and side or 0) or side
 

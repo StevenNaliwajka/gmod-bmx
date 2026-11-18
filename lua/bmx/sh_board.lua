@@ -409,8 +409,12 @@ end
 -- Angles are the total each turns through, radians; `dur` how long it takes.
 --
 -- WHICH WAY, for a REGULAR rider (left foot forward, facing the deck's right, -Y:
--- the toe side). A positive roll takes the deck's top toward -Y: the kickflip, whose
--- flick pushes the toe edge down. A positive yaw swings the tail toward -Y, the toes:
+-- the toe side). A positive roll takes the deck's top toward -Y, the toes: the
+-- HEELFLIP. The kickflip's front foot flicks off diagonally toward the heels, so its
+-- top rolls to the heels (toe edge up and over; clockwise seen from the nose), a
+-- NEGATIVE roll; so do the 360 flip's, the varial kickflip's and the hardflip's.
+-- Until 1.4.7 every roll was the other way round (the same Workshop player: the
+-- kickflip and heelflip turned the wrong way). A positive yaw swings the tail toward -Y, the toes:
 -- frontside. So the pop shove-it (the back foot scooping the tail behind, to the
 -- heels: backside) is a NEGATIVE yaw, and so are the 360 flip's and the varial
 -- kickflip's; the front shove-it, hardflip and varial heelflip go frontside. Until
@@ -427,21 +431,21 @@ end
 local PI = math.pi
 B.Flips = {
     kickflip   = { name = "Kickflip",        w = false, s = false, a = true,  d = false,
-                   roll =  TAU, yaw = 0,   pitch = 0,   dur = 0.42, points = 300, input = "A after the pop" },
+                   roll = -TAU, yaw = 0,   pitch = 0,   dur = 0.42, points = 300, input = "A after the pop" },
     heelflip   = { name = "Heelflip",        w = false, s = false, a = false, d = true,
-                   roll = -TAU, yaw = 0,   pitch = 0,   dur = 0.42, points = 300, input = "D after the pop" },
+                   roll =  TAU, yaw = 0,   pitch = 0,   dur = 0.42, points = 300, input = "D after the pop" },
     popshove   = { name = "Pop Shove-it",    w = false, s = true,  a = false, d = false,
                    roll = 0,    yaw = -PI, pitch = 0,   dur = 0.36, points = 200, input = "S after the pop" },
     frontshove = { name = "Front Shove-it",  w = true,  s = false, a = false, d = false,
                    roll = 0,    yaw =  PI, pitch = 0,   dur = 0.36, points = 200, input = "W after the pop" },
     flip360    = { name = "360 Flip",        w = false, s = true,  a = true,  d = false,
-                   roll =  TAU, yaw = -TAU, pitch = 0,  dur = 0.55, points = 600, input = "S + A after the pop" },
+                   roll = -TAU, yaw = -TAU, pitch = 0,  dur = 0.55, points = 600, input = "S + A after the pop" },
     varialheel = { name = "Varial Heelflip", w = false, s = true,  a = false, d = true,
-                   roll = -TAU, yaw =  PI, pitch = 0,   dur = 0.46, points = 400, input = "S + D after the pop" },
+                   roll =  TAU, yaw =  PI, pitch = 0,   dur = 0.46, points = 400, input = "S + D after the pop" },
     varialkick = { name = "Varial Kickflip", w = true,  s = false, a = false, d = true,
-                   roll =  TAU, yaw = -PI, pitch = 0,   dur = 0.46, points = 400, input = "W + D after the pop" },
+                   roll = -TAU, yaw = -PI, pitch = 0,   dur = 0.46, points = 400, input = "W + D after the pop" },
     hardflip   = { name = "Hardflip",        w = true,  s = false, a = true,  d = false,
-                   roll =  TAU, yaw =  PI, pitch = 0,   dur = 0.50, points = 450, input = "W + A after the pop" },
+                   roll = -TAU, yaw =  PI, pitch = 0,   dur = 0.50, points = 450, input = "W + A after the pop" },
     impossible = { name = "Impossible",      w = true,  s = true,  a = false, d = false,
                    roll = 0,    yaw = 0,   pitch = TAU, dur = 0.50, points = 500, input = "W + S after the pop" },
 }

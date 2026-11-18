@@ -211,15 +211,15 @@ T.test("board flips: the flick goes off the edge the deck's top rolls toward, th
     local _, _, E, B = client()
     local kick = flipFeet(B, "kickflip")
     local heel = flipFeet(B, "heelflip")
-    T.ok(kick[1] < -3, "a kickflip (roll +, top toward -Y): the front foot flicks off toward -Y: " .. kick[1])
-    T.ok(heel[1] > 3, "a heelflip: off the other edge: " .. heel[1])
+    T.ok(kick[1] > 3, "a kickflip (roll -, top toward +Y, a regular rider's heels): the front foot flicks off toward the heels: " .. kick[1])
+    T.ok(heel[1] < -3, "a heelflip: off the toe edge: " .. heel[1])
     T.ok(math.abs(kick[2]) < 0.5, "the back foot only pops")
     local shove = flipFeet(B, "popshove")
     local front = flipFeet(B, "frontshove")
     T.ok(shove[2] > 2.5, "a pop shove-it (yaw -, tail toward +Y, a regular rider's heels: backside): the back foot scoops with the tail: " .. shove[2])
     T.ok(front[2] < -2.5, "a front shove-it the other way: " .. front[2])
     local nk = flipFeet(B, "kickflip", true)
-    T.ok(nk[2] < -3, "a nollie kickflip is flicked by the back foot: " .. nk[2])
+    T.ok(nk[2] > 3, "a nollie kickflip is flicked by the back foot: " .. nk[2])
     for _, id in ipairs(B.FlipOrder) do
         local _, last = flipFeet(B, id)
         T.ok(last[1]:Length() < 0.6 and last[2]:Length() < 0.6,

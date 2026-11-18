@@ -344,7 +344,9 @@ end)
 -- 2026-11-16: the shove-its and the 360 flip went frontside, and the tricks only
 -- matched their names riding switch). The rider faces where the seat's +Y is turned
 -- to (Tune.seatYaw); the toe side is that side. A kickflip's top rolls toward the
--- toes, a heelflip's toward the heels; a pop shove-it, a 360 flip and a varial
+-- heels (the front foot flicks off toward the heels; clockwise seen from the nose for
+-- a regular rider), a heelflip's toward the toes (the same player: these went the
+-- wrong way too); a pop shove-it, a 360 flip and a varial
 -- kickflip swing the tail behind, to the heels (backside); a front shove-it, a
 -- hardflip and a varial heelflip swing it to the toes (frontside). Mirrored for the
 -- other foot forward, whichever way that came about (goofy, or regular switch).
@@ -357,10 +359,10 @@ T.test("flips turn the right way for the side the rider faces, regular, goofy an
         return -math.sin(a), math.cos(a)
     end
     local want = {
-        kickflip = { top = "toes" }, heelflip = { top = "heels" },
+        kickflip = { top = "heels" }, heelflip = { top = "toes" },
         popshove = { tail = "heels" }, frontshove = { tail = "toes" },
-        flip360 = { top = "toes", tail = "heels" }, varialkick = { top = "toes", tail = "heels" },
-        varialheel = { top = "heels", tail = "toes" }, hardflip = { top = "toes", tail = "toes" },
+        flip360 = { top = "heels", tail = "heels" }, varialkick = { top = "heels", tail = "heels" },
+        varialheel = { top = "toes", tail = "toes" }, hardflip = { top = "heels", tail = "toes" },
     }
     local cases = {
         { "regular", B.Stance(false, false), B.Tune.seatYaw.regular },
@@ -402,5 +404,5 @@ T.test("flip ride: a goofy rider's kickflip rolls the deck the other way to a re
         sv:run(0.12)
         rolls[#rolls + 1] = e.st.board.flipRoll or 0
     end
-    T.ok(rolls[1] > 0.1 and rolls[2] < -0.1, string.format("regular %.2f, goofy %.2f", rolls[1], rolls[2]))
+    T.ok(rolls[1] < -0.1 and rolls[2] > 0.1, string.format("regular %.2f, goofy %.2f", rolls[1], rolls[2]))
 end)

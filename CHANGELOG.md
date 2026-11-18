@@ -5,6 +5,23 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.4.7 -- on the Workshop 2026-11-18
+
+**Skateboard flips turn the right way; a steady camera with other camera addons**
+
+- **Every flip trick turns the right way, for whichever foot you have forward.** The
+  kickflip now flicks off toward your heels and the board rolls toe edge up (clockwise
+  seen from the nose, riding regular); the heelflip the other way. The pop shove-it, 360
+  flip and varial kickflip swing the tail behind you (backside), the front shove-it,
+  hardflip and varial heelflip in front (frontside). Before, all of them went the wrong
+  way and only matched their names riding switch. Goofy and switch are mirrored.
+- **No more camera shake from other camera addons.** A third-person addon that follows
+  your eye shakes on a bike, because your eye leans with the frame. While you ride,
+  BMX's own camera is used and the other one steps aside (one line in chat says which);
+  off the bike it works as before. Turn it off with the "BMX camera while riding"
+  setting (bmx_cam_own 0). Measured on a slalom at 30 fps: 5.3 px of side-to-side shake
+  a frame down to 0.35. BMX's own replay and filmer views are never touched.
+
 ## 1.4.6 -- on the Workshop 2026-11-16
 
 **Smoother at low frame rates**

@@ -257,8 +257,12 @@ local function slideStep(ent, phys, C, dt, inp, st, b, now)
     local k = B.Keys(inp)
     local speed = st.speed or 0
     local side = (k.a and not k.d) and 1 or ((k.d and not k.a) and -1 or 0)
+    -- (Just popped, CTRL with A or D is a whole-turn flip being picked, 1.4.8: the board
+    -- can still be on the ground the tick the keys go down, and a slide begun there turned
+    -- it sideways and spoiled the pop.)
+    local popped = b.popAt and now - b.popAt <= T.flipWindow
     local ok = bi.duck and side ~= 0 and st.grounded and not st.grind and not b.manual
-        and not b.crouching and not b.kt and not b.revert
+        and not b.crouching and not b.kt and not b.revert and not popped
     if b.powerslide then
         ok = ok and speed >= T.slideMinSpeed * 0.5
     else

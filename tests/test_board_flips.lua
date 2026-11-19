@@ -275,6 +275,25 @@ T.test("flip ride: a kickflip off a full pop is caught: the deck turns, it lands
     T.eq(e.st.board.flip, nil, "and the flip is over")
 end)
 
+-- CTRL with A or D on the ground is the powerslide; pressed with a flip's keys as the
+-- board pops, it is the flip's (the in-game suite's 360 flip bailed, 2026-11-18: a slide
+-- begun the tick of the pop turned the board sideways).
+T.test("flip ride: CTRL + a flip's keys at the pop never starts a powerslide", function()
+    for _, k in ipairs({ "csa", "csd", "cwa", "cwd" }) do
+        local sv, e = ridden()
+        press(e, { throttle = 1, fwd = 1 })
+        sv:run(3)
+        press(e, { jump = true })
+        sv:run(0.45)
+        local kk = { w = k:find("w") ~= nil, s = k:find("s") ~= nil, a = k:find("a") ~= nil, d = k:find("d") ~= nil }
+        local slid = false
+        press(e, { side = (kk.d and 1 or 0) - (kk.a and 1 or 0), fwd = (kk.w and 1 or 0) - (kk.s and 1 or 0),
+                   w = kk.w, s = kk.s, duck = true })
+        sv:run(1.0, function() if e.st.board.powerslide then slid = true end return false end)
+        T.ok(not slid, k .. ": no powerslide out of the pop")
+    end
+end)
+
 T.test("flip ride: every flip off a full pop lands, caught, and pays under its own name", function()
     local keys = { kickflip = "a", heelflip = "d", popshove = "s", frontshove = "w", varialkick = "sa",
                    varialheel = "wd", hardflip = "wa", inwardheel = "sd", impossible = "ws",

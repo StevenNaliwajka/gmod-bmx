@@ -22,6 +22,7 @@
 #                                     (needs a session launched with BMX_SP_MAXPLAYERS > N: a listen server)
 #   tools/bench/sp.sh camshake [KINDS]  the camera's shake while riding: each kind straight, turning,
 #                                     in a slalom and still, smoothing on and off, full rate and 30 fps
+#   tools/bench/sp.sh flipshot DIR [IDS]  every skateboard flip with the real keys, photographed from beside
 #   tools/bench/sp.sh lowfps [FPS] [passes]   the camera sweep with the game held to FPS (30), a weak PC
 #   tools/bench/sp.sh ready           wait for the client VM to answer ssh and its Steam to be up
 #   tools/bench/sp.sh restore         quit, remove what install added, put the Workshop copy back
@@ -184,6 +185,25 @@ case "${1:-}" in
     cmd 'lua BroadcastLua([[RunString(file.Read("camshake_cl.txt","DATA"),"camshake_cl")]])'
     for _ in $(seq 1 600); do r "grep -q DONE $G/data/probe/camshake.txt 2>/dev/null" && break; sleep 3; done
     r "cat $G/data/probe/camshake.txt" ;;
+  flipshot)
+    # tools/bench/flipshot_{sv,cl}.lua: every skateboard flip done with the real keys, a picture
+    # from beside the board every 0.08 s after the pop; pictures to DIR ($2), results printed
+    focus
+    OUT="${2:-flipshot}"; mkdir -p "$OUT"
+    r "rm -rf $G/data/flipshot"
+    scp -q "$HERE/camshake_sv.lua" "$CL:$G/data/camshake_sv.txt"
+    scp -q "$HERE/flipshot_sv.lua" "$CL:$G/data/flipshot_sv.txt"
+    { [ -n "${3:-}" ] && echo "FLIPSHOT_IDS = { \"$(echo "$3" | sed 's/,/", "/g')\" }"
+      cat "$HERE/flipshot_cl.lua"; } | r "cat > $G/data/flipshot_cl.txt"
+    cmd 'lua RunString(file.Read("camshake_sv.txt","DATA"),"camshake_sv")'
+    cmd 'lua RunString(file.Read("flipshot_sv.txt","DATA"),"flipshot_sv")'
+    sleep 1
+    cmd 'camshake_seat skateboard'
+    sleep 3
+    cmd 'lua BroadcastLua([[RunString(file.Read("flipshot_cl.txt","DATA"),"flipshot_cl")]])'
+    for _ in $(seq 1 120); do r "test -f $G/data/flipshot/done.txt" && break; sleep 3; done
+    r "cd $G/data/flipshot && tar cf - *.jpg" | tar xf - -C "$OUT"
+    r "cat $G/data/flipshot/result.txt" ;;
   lowfps)
     # The camera sweep with the game held to FPS: what a weak PC draws. The rider's pose, the
     # carried targets and every smoothing must hold at a long frame as they do at a short one.

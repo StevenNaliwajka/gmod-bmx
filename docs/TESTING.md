@@ -763,3 +763,14 @@ tuning session is: change, ride, change, ride, dump.
 
 Keep the tickrate you tuned at written down next to whatever you commit. It is
 part of the answer.
+
+**Every skateboard flip, in game** (`tools/bench/sp.sh flipshot DIR [IDS]`, run 36,
+2026-11-18): on the GPU client in singleplayer the rider is seated on a skateboard
+(camshake_sv.lua's seat) and the client does each flip with the real keys through the real
+usercmd (`+forward`, `+jump`, `+back`, `+moveleft`, `+duck` ...), photographed from beside
+the board every 0.08 s after the pop. All 15 (the nine half turns and the six CTRL whole
+turns) were picked, landed and paid with a clean catch, and the pictures show the deck
+turning clear under the tucked feet and caught level. The offline photo studio's `flips`
+scenario (`tools/rider/studio/studio.sh skateboard flips`, STUDIO_FLIPS=ids) draws the
+same flips with kleiner's mesh and no game; `tests/test_board_rider.lua` measures the
+soles against the turning deck (none into it, 1 unit clear through the middle of a turn).

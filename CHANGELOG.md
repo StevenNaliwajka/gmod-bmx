@@ -5,7 +5,7 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
-## 1.4.8 -- on the Workshop 2026-11-18
+## 1.4.8 -- not on the Workshop yet (main 2026-11-18; the upload was refused, see docs/PUBLISHING.md)
 
 **Skateboard: CTRL for full spins, combos that match their parts, six new flips**
 

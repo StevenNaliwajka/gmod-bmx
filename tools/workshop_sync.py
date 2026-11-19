@@ -149,10 +149,14 @@ def sha1(path):
 
 
 def loads(url):
-    """True when Steam's image server actually has the picture at url."""
+    """True when Steam's image server actually has the picture at url. A GET of its first
+    byte: the server answers HEAD with 404 for pictures it serves (2026-11-18), which made
+    every gallery look broken, so each upload replaced it, and Steam then refused the
+    update (SubmitItemUpdate: FileNotFound)."""
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=20) as r:
-            return r.status == 200
+        req = urllib.request.Request(url, headers={"Range": "bytes=0-0", "User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status in (200, 206)
     except Exception:
         return False
 

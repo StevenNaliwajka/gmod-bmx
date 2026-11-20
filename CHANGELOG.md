@@ -5,6 +5,19 @@ The top entry is always the version in `lua/autorun/bmx_init.lua`
 Workshop has it yet, because `main` and the test server move ahead of Steam:
 a Workshop update goes out only when the owner says so.
 
+## 1.4.9 -- not on the Workshop yet (main 2026-11-20)
+
+**Skateboard: more in the air**
+
+- Double flips: press the flip key again during a kickflip or heelflip (A or D) for a Double Kickflip / Double Heelflip; a varial kickflip doubled is the Nightmare Flip
+- 540s: press the shove key again during a CTRL 360 shove-it or 360 flip for a 540 Shove-it, 540 Front Shove-it, 540 Flip or 540 Laser Flip (credit: ☭)
+- Late shove-its: press S (or W) after a flip is caught, still in the air
+- Bigspins: a CTRL 360 shove with a body 180 (CTRL + A / D) lands as a Bigspin, Frontside Bigspin, Bigspin Flip or Bigspin Heelflip
+- Ghetto Bird: a nollie hardflip with a body 180
+- Flip-to-grab: grab after the catch and it pays as one trick, like "Kickflip Indy"
+- 360 Impossible (CTRL + W + S) and Dolphin Flip (W + S off a nollie)
+- Grabs wait until the board is caught, and the feet stay clear of the board through doubles and 540s
+
 ## 1.4.8 -- on the Workshop 2026-11-20
 
 **Skateboard: CTRL for full spins, combos that match their parts, six new flips**

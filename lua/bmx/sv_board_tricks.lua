@@ -55,7 +55,8 @@ end
 --------------------------------------------------------------------------
 local function startFlip(ent, st, b, id, now)
     b.flip = { id = id, def = B.Flips[id], t0 = now, nollie = b.nollie,
-               switch = b.switch, fakie = b.fakie, stance = B.Stance(b.goofy, b.switch) }
+               switch = b.switch, fakie = b.fakie, stance = B.Stance(b.goofy, b.switch),
+               adds = {}, up = {} }
     -- CTRL picked a full turn: it is not a body spin until it is let go and pressed
     -- again (sv_board.lua's decoder reads this).
     if B.Flips[id].full then b.duckHeld = true end
@@ -74,8 +75,57 @@ local function pickFlip(ent, st, b, inp, now)
     end
     b.flipArm = b.flipArm or now
     if now - b.flipArm < T.flipSettle then return end
+    keys.nollie = b.nollie
     local id = B.FlipFor(keys)
     if id then startFlip(ent, st, b, id, now) end
+end
+
+--------------------------------------------------------------------------
+-- PRESSED AGAIN (1.4.9, sh_board.lua "MORE IN THE AIR"): a key let go and pressed
+-- again while the flip is under way adds to it. `f.up[k]` is true once key k has been
+-- seen up since the flip began, so the keys that picked it are not a second press.
+--------------------------------------------------------------------------
+local function addTurn(f, kind, now, roll, yaw, front)
+    local k = B.FlipSign(f.stance)
+    f.adds[#f.adds + 1] = { kind = kind, roll = roll * k, yaw = yaw * k, pitch = 0, t = now, front = front }
+end
+
+local function upgradeStep(ent, st, b, inp, now)
+    local f = b.flip
+    if not f or not st.airMode then return end
+    f.adds, f.up = f.adds or {}, f.up or {}
+    local keys = B.Keys(inp)
+    local fresh = {}
+    for _, k in ipairs(KEYS) do
+        if not keys[k] then f.up[k] = true
+        elseif f.up[k] then fresh[k] = true f.up[k] = false end
+    end
+    local def, t = f.def, now - f.t0
+    local upgraded = false
+    for _, a in ipairs(f.adds) do if a.kind ~= "late" then upgraded = true end end
+    if t <= T.upgradeWindow and not upgraded then
+        -- the flip key again: one more roll (a kick's key is A, a heel's D)
+        local rollKey = def.roll < 0 and "a" or (def.roll > 0 and "d" or nil)
+        if rollKey and fresh[rollKey] and B.Upgrades.double[def.id] then
+            addTurn(f, "double", now, def.roll > 0 and TAU or -TAU, 0)
+            hook.Run("BMX_BoardFlipStarted", ent, ent:GetDriver(), def.id .. "_double")
+            return
+        end
+        -- the shove key again on a whole-turn flip: half a turn more
+        local shoveKey = def.s and "s" or (def.w and "w" or nil)
+        if def.full and shoveKey and fresh[shoveKey] and B.Upgrades.more[def.id] then
+            addTurn(f, "more", now, 0, def.yaw > 0 and math.pi or -math.pi)
+            hook.Run("BMX_BoardFlipStarted", ent, ent:GetDriver(), def.id .. "_more")
+            return
+        end
+    end
+    -- caught, still in the air: S or W is a late shove-it (one)
+    if (fresh.s or fresh.w) and not (fresh.s and fresh.w) and B.StateCatchError(f, now) <= T.okAngle then
+        for _, a in ipairs(f.adds) do if a.kind == "late" then return end end
+        local front = fresh.w and true or false
+        addTurn(f, "late", now, 0, front and math.pi or -math.pi, front)
+        hook.Run("BMX_BoardFlipStarted", ent, ent:GetDriver(), "lateshove")
+    end
 end
 
 -- Where the deck is in its flip, every substep: the three angles the client
@@ -86,7 +136,14 @@ local function advanceFlip(b, now)
         b.flipRoll, b.flipYaw, b.flipPitch = 0, 0, 0
         return
     end
-    b.flipRoll, b.flipYaw, b.flipPitch = B.FlipAnglesFor(f.def, now - f.t0, f.stance)
+    b.flipRoll, b.flipYaw, b.flipPitch = B.StateAngles(f, now)
+    b.flipRemain = B.StateRemaining(f, now)
+end
+
+-- Is the deck still turning under the rider (not yet in its catch)? A grab waits for
+-- it: hands on a spinning board was the one thing a flip-to-grab could draw wrong.
+function B.FlipTurning(b, now)
+    return b.flip ~= nil and B.StateCatchError(b.flip, now) > T.catchAngle
 end
 
 --------------------------------------------------------------------------
@@ -96,24 +153,69 @@ end
 -- window through it.
 --------------------------------------------------------------------------
 function B.JudgeFlip(flip, now)
-    local def = flip.def
-    local err = B.CatchError(def, now - flip.t0)
+    flip.adds = flip.adds or {}
+    local n = #flip.adds
+    local err = B.StateCatchError(flip, now, n)
     local grade = B.CatchGrade(err)
-    if not grade then
+    local upto = n
+    -- An add pressed too late to finish, barely begun: the landing is the trick without it.
+    if not grade and n > 0 then
+        local last = flip.adds[n]
+        local r, y, p = B.StateAngles(flip, now, n)
+        local r0, y0, p0 = B.StateAngles(flip, now, n - 1)
+        if math.max(abs(r - r0), abs(y - y0), abs(p - p0)) <= T.catchAngle then
+            local e2 = B.StateCatchError(flip, now, n - 1)
+            local g2 = B.CatchGrade(e2)
+            if g2 then grade, err, upto = g2, e2, n - 1 end
+        end
+    end
+    local name, points, id = B.StateTrick(flip, upto)
+    local def = flip.def
+    if not grade and upto == 0 then
         -- a whole turn put down flat half way round: the half turn it started as
         local half = B.HalfFlip(def, now - flip.t0)
-        if half then def, grade, err = B.Flips[half], "late", T.okAngle end
+        if half then def, grade, err = B.Flips[half], "late", T.okAngle name, points, id = def.name, def.points, def.id end
     end
     if grade then
-        local mult = B.FlipPoints(def, grade, flip.switch, flip.fakie, flip.nollie)
-        local name = def.name
-        if flip.nollie then name = "Nollie " .. name end
-        if flip.switch then name = "Switch " .. name
-        elseif flip.fakie then name = "Fakie " .. name end
-        return { name = name, count = 1, points = mult, flip = def.id or flip.id, catch = grade }, nil, err
+        local mult = B.FlipPoints({ points = points }, grade, flip.switch, flip.fakie, flip.nollie)
+        local prefix = ""
+        if flip.nollie and not def.nollie then prefix = "Nollie " end
+        if flip.switch then prefix = "Switch " .. prefix
+        elseif flip.fakie then prefix = "Fakie " .. prefix end
+        return { name = prefix .. name, count = 1, points = mult, flip = id or flip.id, catch = grade,
+                 trick = name, prefix = prefix, base = def.id, grade = grade }, nil, err
     end
     local sev = BMX.Clamp(0.35 + (err - T.catchAngle) / math.pi * 0.65, 0, 1)
     return nil, { reason = "flip", severity = sev }, err
+end
+
+-- NAMED PAIRS (1.4.9). The flip `entry` just judged, the body's 180 `spin` (or nil) and
+-- the landing's other entries `out`: a pair that has a name of its own is paid as that
+-- one trick, its parts times Tune.comboMult, and the parts leave `out`. A flip then a
+-- grab (released before the landing) is "Kickflip Indy". Returns the entry to add.
+local GRABS = {}
+for _, id in ipairs(B.GrabOrder or {}) do GRABS[id] = true end
+local function drop(out, e) for i = #out, 1, -1 do if out[i] == e then table.remove(out, i) return end end end
+function B.ComboFor(entry, spin, out, f)
+    local base = entry.base
+    local plain = f and #(f.adds or {}) == 0
+    local named = spin and plain and (B.SpinCombos[base] or (f.nollie and B.NollieSpinCombos[base]))
+    if named then
+        drop(out, spin)
+        local prefix = B.NollieSpinCombos[base] and entry.prefix:gsub("Nollie ", "") or entry.prefix
+        entry.name, entry.trick = prefix .. named, named
+        entry.points = floor((entry.points + spin.points) * T.comboMult + 0.5)
+    end
+    for _, e in ipairs(out) do
+        if e.pose and GRABS[e.pose] then
+            drop(out, e)
+            entry.name, entry.trick = entry.name .. " " .. e.name, entry.trick .. " " .. e.name
+            entry.points = floor((entry.points + e.points) * T.grabComboMult + 0.5)
+            entry.grab = e.pose
+            break
+        end
+    end
+    return entry
 end
 
 -- A half turn of body spin, landed: a 180 (a whole turn is the 360 the registry
@@ -150,6 +252,7 @@ function BMX.ScoreExtras(st, out)
     if f then
         local entry, fault = B.JudgeFlip(f, now)
         if entry then
+            entry = B.ComboFor(entry, s, out, f)
             out[#out + 1] = entry
         elseif fault then
             -- The base may have set a fault of its own (a pose held, a part out of
@@ -308,6 +411,7 @@ end
 function BMX.BoardTricks(ent, phys, C, dt, inp, st, b, now)
     switchStep(ent, st, b, inp)
     pickFlip(ent, st, b, inp, now)
+    upgradeStep(ent, st, b, inp, now)
     advanceFlip(b, now)
     groundResolve(ent, st, b, now)
     revertStep(ent, phys, C, dt, inp, st, b, now)

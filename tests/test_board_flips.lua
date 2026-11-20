@@ -42,7 +42,7 @@ T.test("flips: each direction picks its own flip, W + S is the impossible, A + D
     T.eq(pick("csd"), "inward360", "CTRL + S + D")
     T.eq(pick("ca"), nil, "CTRL + A is the body spin, not a flip")
     T.eq(pick("cd"), nil, "CTRL + D likewise")
-    T.eq(pick("cws"), "impossible", "CTRL + W + S is still the impossible")
+    T.eq(pick("cws"), "impossible360", "CTRL + W + S is the 360 impossible (1.4.9)")
     T.eq(pick("ws"), "impossible", "W + S")
     T.eq(pick("wsa"), "impossible", "W + S + A is still the impossible")
     T.eq(pick(""), nil, "no keys, no flip")
@@ -52,11 +52,12 @@ T.test("flips: each direction picks its own flip, W + S is the impossible, A + D
     for _, id in ipairs(B.FlipOrder) do
         local f = B.Flips[id]
         local key = tostring(f.w) .. tostring(f.s) .. tostring(f.a) .. tostring(f.d) .. tostring(f.full or false)
+            .. tostring(f.nollie or false)
         T.ok(not seen[key], id .. " has its own keys")
         seen[key] = true
         T.eq(sv.env.BMX.Tricks[id].name, f.name, id .. " is a registered trick")
     end
-    T.eq(#B.FlipOrder, 15, "nine, and six whole-turn ones")
+    T.eq(#B.FlipOrder, 17, "nine, six whole-turn ones, the 360 impossible and the dolphin")
 end)
 
 T.test("flips: the keys come from the board record, or from the standard fields a scripted rider writes", function()
@@ -480,4 +481,161 @@ T.test("flip ride: a goofy rider's kickflip rolls the deck the other way to a re
         rolls[#rolls + 1] = e.st.board.flipRoll or 0
     end
     T.ok(rolls[1] < -0.1 and rolls[2] > 0.1, string.format("regular %.2f, goofy %.2f", rolls[1], rolls[2]))
+end)
+
+--------------------------------------------------------------------------
+-- 1.4.9: MORE IN THE AIR. A key pressed again adds to the flip under way (a double,
+-- a 540, a late shove-it), and a few pairs landed together are one named trick
+-- (Bigspins, the Ghetto Bird, a flip then a grab). Plus the 360 impossible and the
+-- dolphin flip.
+--------------------------------------------------------------------------
+T.test("flips 1.4.9: W + S off a nollie is the dolphin flip, with CTRL the 360 impossible; nothing else changes off a nollie", function()
+    local sv = F.server()
+    local B = sv.env.BMX.Board
+    T.eq(B.FlipFor({ w = true, s = true, nollie = true }), "dolphin", "nollie W + S")
+    T.eq(B.FlipFor({ w = true, s = true }), "impossible", "W + S")
+    T.eq(B.FlipFor({ w = true, s = true, duck = true }), "impossible360", "CTRL + W + S")
+    T.eq(B.FlipFor({ a = true, nollie = true }), "kickflip", "a nollie kickflip is still a kickflip")
+    T.eq(B.FlipFor({ s = true, a = true, nollie = true }), "varialkick", "and so on")
+    T.ok(B.Flips.dolphin.pitch < 0 and B.Flips.impossible.pitch > 0, "the dolphin goes over nose first, the other way to the impossible")
+end)
+
+T.test("flips 1.4.9: an add starts where the deck is, so it never jumps, and the turn ends on its target", function()
+    local sv = F.server()
+    local B = sv.env.BMX.Board
+    local T_ = B.Tune
+    for _, c in ipairs({ { "kickflip", -1, 0 }, { "shove360", 0, -1 }, { "heelflip", 1, 0 } }) do
+        local def = B.Flips[c[1]]
+        local f = { def = def, t0 = 0, stance = 1, adds = {} }
+        local at = 0.15
+        local r0, y0, p0 = B.StateAngles(f, at)
+        f.adds[1] = { kind = "x", roll = c[2] * 2 * math.pi, yaw = c[3] * math.pi, pitch = 0, t = at }
+        local r1, y1, p1 = B.StateAngles(f, at)
+        T.near(r1, r0, 1e-9, c[1] .. ": no jump in roll")
+        T.near(y1, y0, 1e-9, c[1] .. ": no jump in yaw")
+        local tr, ty = B.StateTarget(f)
+        local done = math.max(def.dur, at + T_.addDur) + 0.01
+        local r2, y2 = B.StateAngles(f, done)
+        T.near(r2, tr, 1e-6, c[1] .. ": the roll ends on its target")
+        T.near(y2, ty, 1e-6, c[1] .. ": the yaw too")
+        T.near(B.StateRemaining(f, done), 0, 1e-6, c[1] .. ": nothing left to turn")
+        T.ok(B.StateRemaining(f, at + 0.05) > 1, c[1] .. ": plenty left just after it was added")
+        T.ok(B.StateCatchError(f, done) < 1e-6, c[1] .. ": caught when it is all done")
+    end
+end)
+
+T.test("flips 1.4.9: what the adds are called and pay", function()
+    local sv = F.server()
+    local B = sv.env.BMX.Board
+    local function trick(id, adds)
+        return B.StateTrick({ def = B.Flips[id], adds = adds })
+    end
+    local n, p = trick("kickflip", { { kind = "double" } })
+    T.eq(n, "Double Kickflip", "kickflip + double") T.eq(p, 550, "its points")
+    n = trick("varialkick", { { kind = "double" } })
+    T.eq(n, "Nightmare Flip", "a varial kickflip doubled is the nightmare flip")
+    n, p = trick("shove360", { { kind = "more" } })
+    T.eq(n, "540 Shove-it", "a 360 shove-it with more") T.eq(p, 650, "its points")
+    n, p = trick("kickflip", { { kind = "late" } })
+    T.eq(n, "Kickflip Late Shove-it", "a late shove-it after a kickflip") T.eq(p, 300 + 200, "its points")
+    n, p = trick("heelflip", { { kind = "late", front = true } })
+    T.eq(n, "Heelflip Late Front Shove-it", "frontside") T.eq(p, 350 + 250, "pays the front's")
+    n, p = trick("kickflip", { { kind = "double" }, { kind = "late" } })
+    T.eq(n, "Double Kickflip Late Shove-it", "a double, then late") T.eq(p, 550 + 200, "both")
+    for kind, t in pairs(B.Upgrades) do
+        for base, u in pairs(t) do
+            T.ok(u.points > B.Flips[base].points, base .. " " .. kind .. " pays more than " .. base)
+            T.ok(sv.env.BMX.Tricks[base .. "_" .. kind], base .. "_" .. kind .. " is a registered trick")
+        end
+    end
+end)
+
+T.test("flips 1.4.9: a double has to be finished; pressed too late to start, the landing is the single flip", function()
+    local sv = F.server()
+    local B = sv.env.BMX.Board
+    local def = B.Flips.kickflip
+    local function state(addAt) return { id = "kickflip", def = def, t0 = 0, stance = 1,
+        adds = { { kind = "double", roll = -2 * math.pi, yaw = 0, pitch = 0, t = addAt } } } end
+    local f = state(0.12)
+    local e = B.JudgeFlip(f, 0.12 + B.Tune.addDur + 0.35)
+    T.ok(e and e.name == "Double Kickflip", "finished: a Double Kickflip: " .. tostring(e and e.name))
+    local _, fault = B.JudgeFlip(state(0.12), 0.12 + B.Tune.addDur * 0.5)
+    T.ok(fault and fault.reason == "flip", "landed half way through the second turn: a bail")
+    e = B.JudgeFlip(state(def.dur + 0.1), def.dur + 0.1 + 0.005)
+    T.ok(e and e.name == "Kickflip", "pressed as it landed: the kickflip it was: " .. tostring(e and e.name))
+end)
+
+T.test("flips 1.4.9: named pairs: Bigspin, the Ghetto Bird (no Nollie in its name), a flip then a grab", function()
+    local sv = F.server()
+    local B = sv.env.BMX.Board
+    local function entry(id, nollie)
+        local f = { id = id, def = B.Flips[id], t0 = 0, stance = 1, adds = {}, nollie = nollie }
+        return (B.JudgeFlip(f, B.Flips[id].dur + 0.05)), f
+    end
+    local spin = { name = "180", count = 1, points = 120 }
+    local e, f = entry("shove360")
+    local out = { spin }
+    local before = e.points
+    e = B.ComboFor(e, spin, out, f)
+    T.eq(e.name, "Bigspin", "a 360 shove-it and a 180 of the body")
+    T.eq(e.points, math.floor((before + 120) * B.Tune.comboMult + 0.5), "its parts times the combo multiplier")
+    T.eq(#out, 0, "the 180 is in it, not paid again")
+    e, f = entry("hardflip", true)
+    out = { spin }
+    e = B.ComboFor(e, spin, out, f)
+    T.eq(e.name, "Ghetto Bird", "a nollie hardflip and a 180")
+    e, f = entry("hardflip", false)
+    out = { spin }
+    e = B.ComboFor(e, spin, out, f)
+    T.eq(e.name, "Hardflip", "off the tail it is not the Ghetto Bird")
+    T.eq(#out, 1, "and the 180 is paid on its own")
+    local grab = { name = "Indy", count = 1, points = 90, pose = "indy" }
+    e, f = entry("kickflip")
+    out = { grab }
+    before = e.points
+    e = B.ComboFor(e, nil, out, f)
+    T.eq(e.name, "Kickflip Indy", "a kickflip then an indy")
+    T.eq(e.points, math.floor((before + 90) * B.Tune.grabComboMult + 0.5), "both, times the grab combo multiplier")
+    T.eq(#out, 0, "the grab is in it")
+end)
+
+-- Roll up, pop off a full crouch, and play `steps`: { seconds, press } after the pop.
+local function popSeq(steps, nollie)
+    local sv, e = ridden()
+    local landed, bailed = {}, nil
+    sv.env.hook.Add("BMX_TrickLanded", "test", function(ply, t) landed[#landed + 1] = t end)
+    sv.env.hook.Add("BMX_Crashed", "test", function(ent, ply, reason) bailed = reason end)
+    press(e, { throttle = 1, fwd = 1 })
+    sv:run(3)
+    press(e, { jump = true, alt = nollie })
+    sv:run(0.45)
+    for _, st in ipairs(steps) do
+        local k = st[2]
+        local kk = { w = k:find("w") ~= nil, s = k:find("s") ~= nil, a = k:find("a") ~= nil, d = k:find("d") ~= nil }
+        press(e, { side = (kk.d and 1 or 0) - (kk.a and 1 or 0), fwd = (kk.w and 1 or 0) - (kk.s and 1 or 0),
+                   w = kk.w, s = kk.s, duck = k:find("c") ~= nil, grab = k:find("g") ~= nil, alt = nollie })
+        sv:run(st[1])
+    end
+    sv:run(2.0)
+    local names = {}
+    for _, t in ipairs(landed) do names[#names + 1] = t.name end
+    return table.concat(names, ", "), bailed, e
+end
+
+T.test("flip ride 1.4.9: pressed again in the air: a double kickflip, a 540 shove-it, a late shove-it; and the new flips", function()
+    local got, bailed = popSeq({ { 0.1, "a" }, { 0.05, "" }, { 0.3, "a" }, { 0.01, "" } })
+    T.ok(got:find("Double Kickflip", 1, true) and not bailed, "A, let go, A again: " .. got .. " " .. tostring(bailed))
+    got, bailed = popSeq({ { 0.1, "cs" }, { 0.05, "c" }, { 0.3, "cs" }, { 0.01, "" } })
+    T.ok(got:find("540 Shove-it", 1, true) and not bailed, "CTRL + S, S again: " .. got .. " " .. tostring(bailed))
+    got, bailed = popSeq({ { 0.1, "a" }, { 0.3, "" }, { 0.3, "s" }, { 0.01, "" } })
+    T.ok(got:find("Kickflip Late Shove-it", 1, true) and not bailed, "a kickflip, then S once caught: " .. got .. " " .. tostring(bailed))
+    got, bailed = popSeq({ { 0.6, "cws" }, { 0.01, "" } })
+    T.ok(got:find("360 Impossible", 1, true) and not bailed, "CTRL + W + S: " .. got .. " " .. tostring(bailed))
+    got, bailed = popSeq({ { 0.6, "ws" }, { 0.01, "" } }, true)
+    T.ok(got:find("Dolphin Flip", 1, true) and not bailed, "W + S off a nollie: " .. got .. " " .. tostring(bailed))
+end)
+
+T.test("flip ride 1.4.9: a grab waits for the catch, then pays with the flip as one trick", function()
+    local got, bailed = popSeq({ { 0.04, "a" }, { 0.06, "ag" }, { 0.2, "ag" }, { 0.08, "" } })
+    T.ok(got:find("Kickflip", 1, true) and not bailed, "a kickflip with RMB held through it lands: " .. got .. " " .. tostring(bailed))
 end)

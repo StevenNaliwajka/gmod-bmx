@@ -244,6 +244,28 @@ T.test("board: in the air A and D are flip flicks, not a roll, and CTRL + A / D 
     T.eq(e.input.throttle, 0, "W is not a push in the air")
 end)
 
+-- 1.4.9: a grab waits for the flip's catch. RMB with a direction while the deck still
+-- turns is no grab yet (hands on a spinning board); once it is caught, it is.
+T.test("board: RMB in the air is no grab while a flip still turns, and is one once it is caught", function()
+    local sv = F.server()
+    local e = board(sv)
+    local ply = F.rider(sv, e, { name = "Skater" })
+    local IN = require("lib.gmod").IN
+    local B = sv.env.BMX.Board
+    local b = B.InputOf(e.input)
+    e.st.airMode = true
+    local now = sv.env.CurTime()
+    b.flip = { id = "kickflip", def = B.Flips.kickflip, t0 = now - 0.1, stance = 1, adds = {} }
+    sv.env.hook.Run("StartCommand", ply, cmd(IN.ATTACK2 + IN.MOVELEFT))
+    T.eq(e.input.pose, nil, "a tenth of a second into a kickflip: no grab")
+    b.flip.t0 = now - B.Flips.kickflip.dur - 0.01
+    sv.env.hook.Run("StartCommand", ply, cmd(IN.ATTACK2 + IN.MOVELEFT))
+    T.eq(e.input.pose, "indy", "caught: RMB + A is the indy")
+    b.flip = nil
+    sv.env.hook.Run("StartCommand", ply, cmd(IN.ATTACK2 + IN.MOVERIGHT))
+    T.eq(e.input.pose, "melon", "no flip: as before")
+end)
+
 -- CTRL is also the whole-turn modifier of a flip (CTRL + S is a 360 shove-it). While
 -- a flip may still be picked with W or S down, and while the CTRL that picked a whole
 -- turn is held, it does not spin the body; let go and pressed again, it does.

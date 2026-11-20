@@ -2661,6 +2661,42 @@ function(ctx)
     ctx:ok(IsValid(ctx.bike:GetDriver()), "and the rider is still aboard")
 end)
 
+-- 1.4.9: the flip key pressed again (let go, pressed) inside the upgrade window is a
+-- double: A, let go, A again off a full crouch is a Double Kickflip, caught and paid.
+T.Case("board_double_kickflip_lands", { vehicle = "skateboard", timeout = 40,
+    desc = "the skateboard: A, let go, A again after a full pop is a double kickflip, finished, caught and paid" },
+function(ctx)
+    local b = ctx.bike
+    local landed, crashed = {}, nil
+    hook.Add("BMX_TrickLanded", "BMX.Test.Double", function(ply, t) landed[#landed + 1] = t.name end)
+    hook.Add("BMX_Crashed", "BMX.Test.Double", function(ent, ply, reason) if ent == b then crashed = reason end end)
+    local start = b:GetPos()
+    boardInput(ctx, { push = true })
+    ctx:runUntil(7, function()
+        return (ctx:st().speed or 0) > 100 or (ctx.runway > 0 and b:GetPos():Distance(start) > ctx.runway)
+    end)
+    boardInput(ctx, {})
+    ctx:wait(0.3)
+    boardInput(ctx, { jump = true })
+    ctx:wait(0.45)
+    boardInput(ctx, { side = -1 })
+    ctx:wait(0.1)
+    boardInput(ctx, {})
+    ctx:wait(0.05)
+    boardInput(ctx, { side = -1 })
+    ctx:wait(0.3)
+    boardInput(ctx, {})
+    ctx:wait(2.0)
+    hook.Remove("BMX_TrickLanded", "BMX.Test.Double")
+    hook.Remove("BMX_Crashed", "BMX.Test.Double")
+    ctx:log("landed: " .. table.concat(landed, ", ") .. ", crash " .. tostring(crashed))
+    local paid = false
+    for _, n in ipairs(landed) do if n:find("Double Kickflip", 1, true) then paid = true end end
+    ctx:ok(crashed == nil, "it did not bail: " .. tostring(crashed))
+    ctx:ok(paid, "a Double Kickflip was paid")
+    ctx:ok(IsValid(ctx.bike:GetDriver()), "and the rider is still aboard")
+end)
+
 -- (It never bailed while the tap pop was lost: no pop, no flip to judge. And A
 -- pressed in the tick SPACE came up is a flip, not a key held into the crouch.)
 T.Case("board_bails_on_bad_catch", { vehicle = "skateboard", timeout = 40,

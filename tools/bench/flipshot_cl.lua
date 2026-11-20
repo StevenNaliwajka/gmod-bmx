@@ -8,7 +8,9 @@ FLIPSHOT = FLIPSHOT or {}
 local F = FLIPSHOT
 local IDS = FLIPSHOT_IDS or { "kickflip", "heelflip", "popshove", "frontshove", "varialkick", "varialheel",
     "hardflip", "inwardheel", "impossible", "shove360", "front360", "flip360", "laserflip", "hardflip360", "inward360" }
-local KEY = { w = "forward", s = "back", a = "moveleft", d = "moveright", c = "duck" }
+local KEY = { w = "forward", s = "back", a = "moveleft", d = "moveright", c = "duck", g = "attack2", n = "walk" }
+-- FLIPSHOT_SEQ (1.4.9): tricks done as a key sequence after the pop instead, each
+-- { name, nollie, { { seconds, "keys" }, ... } } (n = ALT for a nollie pop, g = RMB).
 file.CreateDir("flipshot")
 RunConsoleCommand("bmx_cam_own", "0")
 
@@ -42,6 +44,41 @@ local function press(keys, on)
     for c in keys:gmatch(".") do RunConsoleCommand((on and "+" or "-") .. KEY[c]) end
 end
 
+local SEQ = FLIPSHOT_SEQ
+local held = ""
+local function hold(keys)
+    for c in held:gmatch(".") do if not keys:find(c, 1, true) then RunConsoleCommand("-" .. KEY[c]) end end
+    for c in keys:gmatch(".") do if not held:find(c, 1, true) then RunConsoleCommand("+" .. KEY[c]) end end
+    held = keys
+end
+local function runSeq(i)
+    local q = SEQ[i]
+    if not q then
+        hold("")
+        file.Write("flipshot/done.txt", "DONE")
+        hook.Remove("CalcView", "flipshot_cam")
+        RunConsoleCommand("bmx_cam_own", "1")
+        return
+    end
+    local name, nollie, steps = q[1], q[2], q[3]
+    hold("w")
+    timer.Simple(2.6, function() hold("") end)
+    timer.Simple(3.0, function() hold(nollie and "n" or "") RunConsoleCommand("+jump") end)
+    timer.Simple(3.45, function()
+        RunConsoleCommand("-jump")
+        local t0 = RealTime()
+        for n = 1, 9 do shots[#shots + 1] = { at = t0 + 0.07 * n, name = string.format("%02d_%s_%d", i, name, n) } end
+        local at = 0
+        for _, st in ipairs(steps) do
+            local keys = (nollie and "n" or "") .. st[2]
+            timer.Simple(at, function() hold(keys) end)
+            at = at + st[1]
+        end
+        timer.Simple(at, function() hold("") end)
+    end)
+    timer.Simple(6.5, function() runSeq(i + 1) end)
+end
+
 local function run(i)
     local id = IDS[i]
     if not id then
@@ -65,5 +102,5 @@ local function run(i)
     timer.Simple(4.1, function() press(keys, false) end)
     timer.Simple(6.0, function() run(i + 1) end)
 end
-timer.Simple(2, function() run(1) end)
+timer.Simple(2, function() if SEQ then runSeq(1) else run(1) end end)
 print("[flipshot] client half running " .. #IDS .. " flips")

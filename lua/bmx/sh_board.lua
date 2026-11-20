@@ -298,14 +298,18 @@ end
 -- The deck's flip angles (radians): roll about its long axis, yaw about the
 -- vertical (shove-its), pitch about the cross axis (the impossible), one byte
 -- each. 0 is flat.
-function B.PackBits(roll, yaw, pitch)
-    return byteOf(roll or 0) + byteOf(yaw or 0) * 256 + byteOf(pitch or 0) * 65536
+-- The fourth byte (1.4.9) is how much turn the deck still has to go (B.StateRemaining),
+-- 4 degrees a step up to 508: a double flip passes flat half way through, and the
+-- client keeps the feet up over it only if it knows more is coming.
+function B.PackBits(roll, yaw, pitch, remain)
+    local rem = min(127, floor(math.deg(max(0, remain or 0)) / 4 + 0.5))
+    return byteOf(roll or 0) + byteOf(yaw or 0) * 256 + byteOf(pitch or 0) * 65536 + rem * 16777216
 end
 
 function B.UnpackBits(bits)
     bits = bits or 0
     return (bits % 256) / 256 * TAU, (floor(bits / 256) % 256) / 256 * TAU,
-        (floor(bits / 65536) % 256) / 256 * TAU
+        (floor(bits / 65536) % 256) / 256 * TAU, math.rad((floor(bits / 16777216) % 128) * 4)
 end
 
 --------------------------------------------------------------------------
@@ -474,11 +478,18 @@ B.Flips = {
                    roll = -TAU, yaw =  TAU, pitch = 0,  dur = 0.57, points = 700, input = "CTRL + W + A after the pop" },
     inward360  = { name = "360 Inward Heelflip", w = false, s = true, a = false, d = true, full = true,
                    roll =  TAU, yaw = -TAU, pitch = 0,  dur = 0.57, points = 700, input = "CTRL + S + D after the pop" },
+    -- 1.4.9: the impossible with a whole backside turn, and the dolphin flip (off the
+    -- nose: the deck goes over nose first, a forward flip, with a frontside half turn).
+    impossible360 = { name = "360 Impossible", w = true, s = true, a = false, d = false, full = true,
+                   roll = 0,    yaw = -TAU, pitch = TAU, dur = 0.56, points = 750, input = "CTRL + W + S after the pop" },
+    dolphin    = { name = "Dolphin Flip",    w = true,  s = true,  a = false, d = false, nollie = true,
+                   roll = 0,    yaw =  PI,  pitch = -TAU, dur = 0.52, points = 650, input = "W + S after a nollie pop (ALT)" },
 }
 for id, f in pairs(B.Flips) do f.id = id end
 B.FlipOrder = { "kickflip", "heelflip", "popshove", "frontshove", "varialkick",
                 "varialheel", "hardflip", "inwardheel", "impossible",
-                "shove360", "front360", "flip360", "laserflip", "hardflip360", "inward360" }
+                "shove360", "front360", "flip360", "laserflip", "hardflip360", "inward360",
+                "impossible360", "dolphin" }
 
 T.flipWindow = 0.45          -- s after the pop in which a direction picks a flip
 T.flipSettle = 0.06          -- s a direction is held before it counts (so a diagonal is two keys)
@@ -495,14 +506,18 @@ T.nollieMult = 1.1
 -- CTRL with only A or D is nothing: that is the body spin's.
 function B.FlipFor(k)
     if not (k.w or k.s or k.a or k.d) then return nil end
-    local a, d = k.a, k.d
+    local a, d = k.a and true or false, k.d and true or false
     if a and d then a, d = false, false end
-    local w, s = k.w, k.s
+    local w, s = k.w and true or false, k.s and true or false
     local full = k.duck and true or false
-    if w and s then a, d, full = false, false, false end
+    if w and s then
+        -- W + S: the impossible; with CTRL its 360; off a nollie the dolphin flip
+        if full then return "impossible360" end
+        return k.nollie and "dolphin" or "impossible"
+    end
     for _, id in ipairs(B.FlipOrder) do
         local f = B.Flips[id]
-        if f.w == w and f.s == s and f.a == a and f.d == d and (f.full or false) == full then return id end
+        if f.w == w and f.s == s and f.a == a and f.d == d and (f.full or false) == full and not f.nollie then return id end
     end
     return nil
 end
@@ -595,6 +610,150 @@ for _, id in ipairs(B.FlipOrder) do
     local f = B.Flips[id]
     BMX.RegisterTrick{ id = id, name = f.name, kind = "custom", points = f.points, input = f.input }
 end
+--------------------------------------------------------------------------
+-- MORE IN THE AIR (1.4.9, a Workshop player's ideas taken further). A flip under way
+-- takes one more of each, pressed again (let go and pressed: a fresh press):
+--
+--   the flip key again (A for a kick, D for a heel) inside Tune.upgradeWindow of the
+--       flip starting: one more roll, a DOUBLE (a varial kickflip's is the Nightmare Flip)
+--   the shove key again (S or W) inside the window, on a CTRL whole-turn flip: half a
+--       turn more, a 540
+--   S or W once the deck is caught and still in the air: a LATE shove-it, half a turn
+--       backside (S) or frontside (W)
+--
+-- Each is an ADD to the deck's turn, begun when it was pressed (B.StateAngles), so
+-- the deck never jumps; the catch then wants the whole lot finished. And at the
+-- landing a few pairs are one trick of their own name (B.ComboFor): a whole-turn
+-- shove with a 180 of the body the same night is a Bigspin, a nollie hardflip with a
+-- 180 the Ghetto Bird, a flip then a grab is "Kickflip Indy".
+--------------------------------------------------------------------------
+T.upgradeWindow = 0.22       -- s after a flip starts in which a key pressed again adds to it
+T.addDur = 0.30              -- s an added turn takes
+T.comboMult = 1.25           -- a named pair pays its parts times this
+T.grabComboMult = 1.2
+
+B.Upgrades = {
+    double = {
+        kickflip   = { name = "Double Kickflip",        points = 550 },
+        heelflip   = { name = "Double Heelflip",        points = 600 },
+        varialkick = { name = "Nightmare Flip",         points = 700 },
+        varialheel = { name = "Double Varial Heelflip", points = 750 },
+        hardflip   = { name = "Double Hardflip",        points = 750 },
+        inwardheel = { name = "Double Inward Heelflip", points = 800 },
+        flip360    = { name = "Double 360 Flip",        points = 950 },
+        laserflip  = { name = "Double Laser Flip",      points = 1050 },
+    },
+    more = {
+        shove360   = { name = "540 Shove-it",           points = 650 },
+        front360   = { name = "540 Front Shove-it",     points = 700 },
+        flip360    = { name = "540 Flip",               points = 900 },
+        laserflip  = { name = "540 Laser Flip",         points = 1000 },
+    },
+}
+B.LatePoints = { back = 200, front = 250 }
+
+-- Pairs landed together, by the flip's id: with a body 180 (CTRL + A / D, the 180 the
+-- board already pays) and, for the Ghetto Bird, off the nose.
+B.SpinCombos = {
+    shove360    = "Bigspin",
+    front360    = "Frontside Bigspin",
+    flip360     = "Bigspin Flip",
+    hardflip360 = "Frontside Bigspin Flip",
+    inward360   = "Bigspin Heelflip",
+    laserflip   = "Frontside Bigspin Heelflip",
+}
+B.NollieSpinCombos = { hardflip = "Ghetto Bird" }
+
+-- The deck's turn in the air so far, `now`: the flip's own (B.FlipAnglesFor) plus each
+-- add's, from when it was pressed. A flip state is { def, t0, stance, adds = { { kind,
+-- roll, yaw, pitch, t } } } (sv_board_tricks.lua); the adds are in the stance already.
+local function ease(x) x = max(0, min(1, x)) return 1 - (1 - x) * (1 - x) end
+function B.StateAngles(f, now, upto)
+    local r, y, p = B.FlipAnglesFor(f.def, now - f.t0, f.stance)
+    for i, a in ipairs(f.adds or {}) do
+        if upto and i > upto then break end
+        local e = ease((now - a.t) / T.addDur)
+        r, y, p = r + a.roll * e, y + a.yaw * e, p + a.pitch * e
+    end
+    return r, y, p
+end
+
+-- Where the deck ends up: every axis's whole turn, the adds included.
+function B.StateTarget(f, upto)
+    local k = B.FlipSign(f.stance)
+    local r, y, p = f.def.roll * k, f.def.yaw * k, f.def.pitch
+    for i, a in ipairs(f.adds or {}) do
+        if upto and i > upto then break end
+        r, y, p = r + a.roll, y + a.yaw, p + a.pitch
+    end
+    return r, y, p
+end
+
+-- How far from caught the deck is: as B.CatchError for a flip with nothing added;
+-- with adds, an axis that took one has to be turned all the way to its end.
+local function off(a, q) local m = abs(a) % q return min(m, q - m) end
+function B.StateCatchError(f, now, upto)
+    local n = upto or #(f.adds or {})
+    if n == 0 then return B.CatchError(f.def, now - f.t0) end
+    local r, y, p = B.StateAngles(f, now, n)
+    local tr, ty, tp = B.StateTarget(f, n)
+    local hasR, hasY, hasP = false, false, false
+    for i = 1, n do
+        local a = f.adds[i]
+        hasR, hasY, hasP = hasR or a.roll ~= 0, hasY or a.yaw ~= 0, hasP or a.pitch ~= 0
+    end
+    local er = hasR and abs(tr - r) or off(r, TAU)
+    local ey = (hasY or B.FullSpin(f.def)) and abs(ty - y) or off(y, PI)
+    local ep = hasP and abs(tp - p) or off(p, TAU)
+    return max(er, ey, ep)
+end
+
+-- How much turn is still to come, the largest over the axes (0 once it is all done).
+function B.StateRemaining(f, now)
+    local r, y, p = B.StateAngles(f, now)
+    local tr, ty, tp = B.StateTarget(f)
+    return max(abs(tr - r), abs(ty - y), abs(tp - p))
+end
+
+-- The trick a flip state is, by what was added: its name and points (before the catch
+-- and stance multipliers), `upto` adds counted.
+function B.StateTrick(f, upto)
+    local def = f.def
+    local name, pts, id = def.name, def.points, def.id
+    for i, a in ipairs(f.adds or {}) do
+        if upto and i > upto then break end
+        if a.kind == "late" then
+            name = name .. (a.front and " Late Front Shove-it" or " Late Shove-it")
+            pts = pts + B.LatePoints[a.front and "front" or "back"]
+        else
+            local u = B.Upgrades[a.kind][f.def.id]
+            local bonus = u.points - def.points
+            name, pts = u.name, pts + bonus
+            id = f.def.id .. "_" .. a.kind
+        end
+    end
+    return name, pts, id
+end
+
+-- Every named trick these make, registered like the flips (the trick list shows them).
+for kind, t in pairs(B.Upgrades) do
+    for base, u in pairs(t) do
+        BMX.RegisterTrick{ id = base .. "_" .. kind, name = u.name, kind = "custom", points = u.points,
+            input = kind == "double" and ("the flip key again during a " .. B.Flips[base].name)
+                or ("the shove key again during a " .. B.Flips[base].name) }
+    end
+end
+BMX.RegisterTrick{ id = "lateshove", name = "Late Shove-it", kind = "custom", points = B.LatePoints.back,
+    input = "S (W: frontside) after a flip is caught, still in the air" }
+for id, name in pairs(B.SpinCombos) do
+    BMX.RegisterTrick{ id = "bigspin_" .. id, name = name, kind = "custom",
+        points = floor((B.Flips[id].points + 120) * T.comboMult + 0.5),
+        input = B.Flips[id].input .. ", then CTRL + A / D for a 180 of the body" }
+end
+BMX.RegisterTrick{ id = "ghettobird", name = "Ghetto Bird", kind = "custom",
+    points = floor((B.Flips.hardflip.points + 120) * T.comboMult + 0.5),
+    input = "a nollie hardflip (ALT, W + A), then CTRL + A / D for a 180 of the body" }
+
 BMX.RegisterTrick{ id = "board180", name = "180", kind = "custom", points = 120,
     input = "CTRL + A / D in the air (a half turn)" }
 

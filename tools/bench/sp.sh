@@ -194,6 +194,7 @@ case "${1:-}" in
     scp -q "$HERE/camshake_sv.lua" "$CL:$G/data/camshake_sv.txt"
     scp -q "$HERE/flipshot_sv.lua" "$CL:$G/data/flipshot_sv.txt"
     { [ -n "${3:-}" ] && echo "FLIPSHOT_IDS = { \"$(echo "$3" | sed 's/,/", "/g')\" }"
+      [ -n "${BMX_FLIPSHOT_SEQ:-}" ] && echo "FLIPSHOT_SEQ = ${BMX_FLIPSHOT_SEQ}"
       cat "$HERE/flipshot_cl.lua"; } | r "cat > $G/data/flipshot_cl.txt"
     cmd 'lua RunString(file.Read("camshake_sv.txt","DATA"),"camshake_sv")'
     cmd 'lua RunString(file.Read("flipshot_sv.txt","DATA"),"flipshot_sv")'

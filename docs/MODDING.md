@@ -591,7 +591,9 @@ is true if it was popped off the nose.
 *Server.* The deck began a flip. `flipId` is `kickflip`, `heelflip`, `popshove`,
 `frontshove`, `varialkick`, `varialheel`, `hardflip`, `inwardheel`, `impossible`,
 or with CTRL held a whole turn: `shove360`, `front360`, `flip360`, `laserflip`,
-`hardflip360` or `inward360`
+`hardflip360` or `inward360`; or `impossible360` or `dolphin` (1.4.9). A key pressed
+again mid-air fires it once more with the add's id: `<flip>_double`, `<flip>_more`
+or `lateshove`
 (`BMX.Board.Flips`). Whether it was caught is `BMX_TrickLanded` (paid) or
 `BMX_Crashed` with the reason `"flip"` (not).
 

@@ -395,8 +395,8 @@ T.test("board flips: through every flip's turn the soles stay out of the deck un
                             if into > deepest then deepest, at = into, string.format("t %.2f of %.2f", t, f.dur) end
                             -- in the middle of the turn the deck is spinning under them: a sole
                             -- resting on it there is a foot standing on a board in mid-flip
-                            -- (the impossible wraps the deck round the back foot: it is meant to)
-                            if id ~= "impossible" and i >= 12 and i <= 48 and lz > top - THICK and top + GAP - lz > low then
+                            -- (a pitch flip, the impossible or the dolphin, wraps the deck round a foot: it is meant to)
+                            if f.pitch == 0 and i >= 12 and i <= 48 and lz > top - THICK and top + GAP - lz > low then
                                 low, lowAt = top + GAP - lz, string.format("t %.2f", t)
                             end
                         end
@@ -411,4 +411,74 @@ T.test("board flips: through every flip's turn the soles stay out of the deck un
     end
     T.eq(#bad, 0, "soles into the turning deck: " .. table.concat(bad, "; "))
     T.eq(#near, 0, "soles resting on the deck in mid-turn: " .. table.concat(near, "; "))
+end)
+
+-- 1.4.9: the same through the turns a key pressed again adds: a double kickflip (flat
+-- half way through, with a whole turn to go), the nightmare flip, a 540 shove-it and
+-- a late shove-it. The client knows the turn still to come (the fourth byte of the
+-- deck's bits) and keeps the feet up over it.
+T.test("board flips 1.4.9: through a double, a 540 and a late shove-it the soles stay clear of the turning deck", function()
+    local _, _, E, B = client()
+    local stub = { GetPos = function() return E.Vector(0, 0, 0) end,
+                   GetForward = function() return E.Vector(1, 0, 0) end,
+                   GetRight = function() return E.Vector(0, -1, 0) end,
+                   GetUp = function() return E.Vector(0, 0, 1) end }
+    local HALF_L, HALF_W, THICK, GAP = 15.5, 4.0, 0.8, 1.0
+    local PI = math.pi
+    local cases = {
+        { "double kickflip", "kickflip", { kind = "double", roll = -2 * PI, yaw = 0, at = 0.10 } },
+        { "nightmare flip", "varialkick", { kind = "double", roll = -2 * PI, yaw = 0, at = 0.10 } },
+        { "double heelflip", "heelflip", { kind = "double", roll = 2 * PI, yaw = 0, at = 0.12 } },
+        { "540 shove-it", "shove360", { kind = "more", roll = 0, yaw = -PI, at = 0.12 } },
+        { "kickflip late shove-it", "kickflip", { kind = "late", roll = 0, yaw = -PI, at = 0.36 } },
+    }
+    local bad, near = {}, {}
+    for _, stance in ipairs({ 1, -1 }) do
+        local faceY = stance >= 0 and -1 or 1
+        for _, c in ipairs(cases) do
+            local def = B.Flips[c[2]]
+            local a = c[3]
+            local k = B.FlipSign(stance)
+            local f = { def = def, t0 = 0, stance = stance,
+                        adds = { { kind = a.kind, roll = a.roll * k, yaw = a.yaw * k, pitch = 0, t = a.at } } }
+            local tEnd = math.max(def.dur, a.at + B.Tune.addDur)
+            local catchAt = tEnd
+            for i = 1, 200 do
+                local t = a.at + (tEnd - a.at) * i / 200
+                if B.StateCatchError(f, t) <= B.Tune.catchAngle then catchAt = t break end
+            end
+            local st, deepest, low, lowAt = {}, 0, 0, nil
+            for i = 1, 80 do
+                local t = catchAt * i / 80
+                local r, y, p, rem = B.UnpackBits(B.PackBits(B.StateAngles(f, t)) + 0)
+                rem = B.StateRemaining(f, t)
+                r, y, p, rem = B.UnpackBits(B.PackBits(r, y, p, rem))
+                B.TrackFlip(st, r, y, p, rem)
+                st.roll, st.yaw, st.pitch, st.full = r, y, p, B.FullSpin(def)
+                local fr, bk = B.RiderFeet({ stance = stance, airT = 0.12 + t, ollie = true, flip = st })
+                local fm = B.Frame({ ent = stub, roll = r, yaw = y, pitch = p })
+                for _, ankle in ipairs({ fr, bk }) do
+                    for kk = -3, 8.8, 0.9 do
+                        local sole = E.Vector(ankle.x, ankle.y + faceY * kk, ankle.z - B.Ankle)
+                        local d = sole - fm.center
+                        local lx, ly, lz = d:Dot(fm.f), d:Dot(fm.l), d:Dot(fm.u) + 1.4
+                        if math.abs(lx) < HALF_L and math.abs(ly) < HALF_W then
+                            local top = B.DeckTop + B.DeckRise(lx)
+                            local into = math.min(top - lz, lz - (top - THICK))
+                            if into > deepest then deepest = into end
+                            -- the middle of the turn: from the add to just before the catch
+                            if t > a.at + 0.03 and t < catchAt - 0.06 and lz > top - THICK and top + GAP - lz > low then
+                                low, lowAt = top + GAP - lz, string.format("t %.2f", t)
+                            end
+                        end
+                    end
+                end
+            end
+            local key = (stance > 0 and "regular " or "goofy ") .. c[1]
+            if deepest >= 0.5 then bad[#bad + 1] = key .. string.format(" %.2f into it", deepest) end
+            if low > 0 then near[#near + 1] = key .. string.format(" %.2f short of %.1f clear at %s", low, GAP, lowAt) end
+        end
+    end
+    T.eq(#bad, 0, "soles into the turning deck: " .. table.concat(bad, "; "))
+    T.eq(#near, 0, "soles on the deck while it still turns: " .. table.concat(near, "; "))
 end)

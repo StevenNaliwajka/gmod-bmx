@@ -299,10 +299,12 @@ end
 
 -- Which way each axis started turning: set when the deck leaves flat, kept until it
 -- is flat again (the server zeroes all three on the landing).
-function B.TrackFlip(st, roll, yaw, pitch)
+function B.TrackFlip(st, roll, yaw, pitch, remain)
     local function w(a) return (a + math.pi) % (math.pi * 2) - math.pi end
-    if abs(w(roll)) < 1e-3 and abs(w(yaw)) < 1e-3 and abs(w(pitch)) < 1e-3 then
-        st.dRoll, st.dYaw, st.dPitch = nil, nil, nil
+    st.remain = remain
+    -- (flat with more to come is the middle of a double flip, not the end of the flip)
+    if abs(w(roll)) < 1e-3 and abs(w(yaw)) < 1e-3 and abs(w(pitch)) < 1e-3 and (remain or 0) < 0.05 then
+        st.dRoll, st.dYaw, st.dPitch, st.up = nil, nil, nil, nil
         return st
     end
     if not st.dRoll and abs(w(roll)) >= 1e-3 then st.dRoll = w(roll) > 0 and 1 or -1 end
@@ -322,7 +324,14 @@ function B.FlipFeet(fs)
     -- up until it is nearly flat and come down onto it for the catch, not onto an edge
     -- still 50 degrees round (they did until 1.4.8: a sole riding the rolling deck).
     local rollLift = min(1, ROLL_HOLD * abs(sin(roll * 0.5)))
-    local lift = max(rollLift, abs(sin(pitch * 0.5)), 0.6 * yawLift) * FLIP_LIFT
+    local lift = max(rollLift, abs(sin(pitch * 0.5)), 0.6 * yawLift)
+    -- MORE TO COME (1.4.9, the networked remaining turn): a double flip is flat half way
+    -- through, and a 540 lengthwise at 360; once the feet are up they stay up until the
+    -- last of the turn, and come down with it.
+    fs.up = max(fs.up or 0, lift)                    -- the highest the feet have been in this flip
+    local rem = fs.remain or 0
+    if rem > 0 then lift = max(lift, min(fs.up, ROLL_HOLD * sin(min(rem, math.pi) * 0.5))) end
+    lift = lift * FLIP_LIFT
     local pop, flick = Vector(0, 0, lift), Vector(0, 0, lift)
     -- The flick: the deck's top rolls toward -Y for a positive roll (B.Frame), and
     -- the foot that flicked it leaves the same way, up toward its end of the deck.
@@ -1389,7 +1398,7 @@ BMX.DrawVehicle.board = function(ent, kit)
     local stance = B.Stance(B.HasFlag(flags, "goofy"), B.HasFlag(flags, "switch"))
 
     -- The deck's flip, followed (it arrives a byte at a time), and the pose.
-    local roll, yaw, pitch = B.UnpackBits(ent:GetBoardBits())
+    local roll, yaw, pitch, remain = B.UnpackBits(ent:GetBoardBits())
     ent.drawFlip = ent.drawFlip or { roll = roll, yaw = yaw, pitch = pitch }
     local df = ent.drawFlip
     df.roll  = approachAngle(df.roll,  roll,  FLIP_FOLLOW, dt)
@@ -1568,7 +1577,7 @@ BMX.DrawVehicle.board = function(ent, kit)
     else
         R.plantAt, R.strokeEnd, R.liftP = nil, nil, nil
     end
-    R.flip = B.TrackFlip(R.flip or {}, df.roll, df.yaw, df.pitch)
+    R.flip = B.TrackFlip(R.flip or {}, df.roll, df.yaw, df.pitch, remain)
     R.flip.roll, R.flip.yaw, R.flip.pitch = df.roll, df.yaw, df.pitch
     R.flip.full = B.HasFlag(flags, "fullspin")
 

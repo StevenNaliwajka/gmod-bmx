@@ -449,25 +449,38 @@ S.flips = function()
     local goofy = os.getenv("STUDIO_GOOFY") == "1" or nil
     local stance = Bd.Stance(goofy, false)
     local ids = Bd.FlipOrder
+    -- an id may carry an add (1.4.9): kickflip:double@0.10, shove360:more@0.12, kickflip:late@0.36
     if os.getenv("STUDIO_FLIPS") then ids = {} for id in os.getenv("STUDIO_FLIPS"):gmatch("[^,]+") do ids[#ids + 1] = id end end
     ent:SetBoardFlags(Bd.PackFlags({ goofy = goofy }))
     if goofy then ply._vehicle:SetAngles(ent:LocalToWorldAngles(E.Angle(0, Bd.Tune.seatYaw.goofy, 0))) end
     setSpeed(220)
     run(30)
-    for _, id in ipairs(ids) do
+    for _, spec in ipairs(ids) do
+        local id, kind, at = spec:match("^([%w_]+):?(%a*)@?([%d%.]*)$")
         local f = Bd.Flips[id]
+        local state = { def = f, t0 = 0, stance = stance, adds = {} }
+        if kind ~= "" then
+            local PI, k = math.pi, Bd.FlipSign(stance)
+            local roll = kind == "double" and (f.roll > 0 and 2 * PI or -2 * PI) or 0
+            local yaw = kind == "more" and (f.yaw > 0 and PI or -PI) or (kind == "late" and -PI or 0)
+            state.adds[1] = { kind = kind, roll = roll * k, yaw = yaw * k, pitch = 0, t = tonumber(at) or 0.1 }
+        end
+        local total = math.max(f.dur, kind ~= "" and (state.adds[1].t + Bd.Tune.addDur) or 0)
+        local name = kind ~= "" and Bd.StateTrick(state) or f.name
         for i = 1, 12 do ent:SetCrouch(math.min(1, i / 10)) frame() end
         ent:SetCrouch(0)
         ent:SetGrounded(false)
         lift(16)
         ent:SetBoardFlags(Bd.PackFlags({ goofy = goofy, fullspin = Bd.FullSpin(f) }))
-        local n = math.max(8, math.floor(f.dur / world.dt + 0.5))
+        local n = math.max(8, math.floor(total / world.dt + 0.5))
         local marks = { [math.floor(n * 0.25 + 0.5)] = "25%", [math.floor(n * 0.5 + 0.5)] = "50%",
                         [math.floor(n * 0.75 + 0.5)] = "75%", [n] = "catch" }
         for i = 1, n do
-            ent:SetBoardBits(Bd.PackBits(Bd.FlipAnglesFor(f, i / n * f.dur, stance)))
+            local t = i / n * total
+            local r, y, p = Bd.StateAngles(state, t)
+            ent:SetBoardBits(Bd.PackBits(r, y, p, Bd.StateRemaining(state, t)))
             frame()
-            if marks[i] then shot(string.format("%s %s", f.name, marks[i])) end
+            if marks[i] then shot(string.format("%s %s", name, marks[i])) end
         end
         ent:SetBoardBits(0)
         ent:SetBoardFlags(Bd.PackFlags({ goofy = goofy }))

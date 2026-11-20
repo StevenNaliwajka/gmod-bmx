@@ -377,7 +377,7 @@ local function sync(ent, st, b, now)
     local push = B.PushPhaseOf(b.ps, (ent:Bike().drive or {}).kickInterval or T.kickInterval)
     setf(ent.SetPushPhase, ent.GetPushPhase, push, 0.01)
     setf(ent.SetMeter, ent.GetMeter, b.meter or 0, 0.01)
-    local bits = B.PackBits(b.flipRoll or 0, b.flipYaw or 0, b.flipPitch or 0)
+    local bits = B.PackBits(b.flipRoll or 0, b.flipYaw or 0, b.flipPitch or 0, b.flip and b.flipRemain or 0)
     if bits ~= ent:GetBoardBits() then ent:SetBoardBits(bits) end
     local flags = B.PackFlags({
         goofy = b.goofy, switch = b.switch, fakie = b.fakie, meter = b.meter ~= nil,
@@ -626,7 +626,8 @@ local function decode(ply, bike, cmd, down, fwd, side)
     inp.leanTarget = air and (spin and side or 0) or side
 
     -- A grab is RMB in the air with a direction, a pose of G17's.
-    inp.pose = (air and b.grab) and B.GrabFor(B.Keys(inp)) or nil
+    -- (not while the deck is still turning: the grab waits for the catch, 1.4.9)
+    inp.pose = (air and b.grab and not (B.FlipTurning and B.FlipTurning(b, CurTime()))) and B.GrabFor(B.Keys(inp)) or nil
 
     -- A hop off a rail is the bike's (sv_grind.lua reads these); the board's own
     -- grind step reads b.jump, so they stay clear.
